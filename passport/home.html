@@ -650,360 +650,348 @@
 
 <script src="assets/js/home.js"></script>
 
-<!-- Supabase Wallet Connection - Uses Auth Session (Preserves ALL card features) -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../config/supabase.js"></script>
-<script>
-    (function() {
-        // Wait for page to load
-        window.addEventListener('DOMContentLoaded', function() {
-            let supabaseClient = window.supabase || window.supabaseClient;
+<!-- Supabase Wallet Connection - Fixed for ES6 Module -->
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+    
+    // Make it available globally
+    window.supabase = supabase;
+    
+    console.log("✅ Supabase loaded from module:", supabase);
+    
+    let currentWallet = null;
+    let currentProfile = null;
+    let currentSession = null;
+    
+    // Original fallback values (preserved)
+    const DEFAULT_NAME = "Mziwonke 👋";
+    const DEFAULT_PHONE = "063 571 3652";
+    const DEFAULT_CARD_HOLDER = "MZIWONKE";
+    
+    // Update balance display on page
+    function updateBalanceDisplay(balance) {
+        const balanceEl = document.getElementById('realWalletBalance');
+        const shishaBalance = document.getElementById('shishaWalletBalance');
+        const formatted = `R ${balance.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        if (balanceEl) balanceEl.textContent = formatted;
+        if (shishaBalance) shishaBalance.textContent = formatted;
+        console.log("Balance updated to:", formatted);
+    }
+    
+    // Update UI with profile data
+    function updateUIWithProfile(profile) {
+        const userNameEl = document.getElementById('userNameDisplay');
+        const cardHolderEl = document.getElementById('cardHolderName');
+        const phoneDisplay = document.getElementById('accountPhoneNumber');
+        
+        if (profile) {
+            if (profile.name && userNameEl) {
+                userNameEl.textContent = profile.name;
+            } else if (userNameEl) {
+                userNameEl.textContent = DEFAULT_NAME;
+            }
             
-            if (!supabaseClient) {
-                console.error("Supabase client not found");
+            if (cardHolderEl) {
+                cardHolderEl.textContent = (profile.name || profile.surname || DEFAULT_CARD_HOLDER).toUpperCase();
+            }
+            
+            if (phoneDisplay && profile.phone) {
+                let phone = profile.phone;
+                if (phone.match(/^\d+$/)) {
+                    phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
+                }
+                phoneDisplay.textContent = phone;
+            } else if (phoneDisplay) {
+                phoneDisplay.textContent = DEFAULT_PHONE;
+            }
+            
+            console.log("✅ UI updated with profile:", profile.name || profile.phone);
+        } else {
+            if (userNameEl) userNameEl.textContent = DEFAULT_NAME;
+            if (cardHolderEl) cardHolderEl.textContent = DEFAULT_CARD_HOLDER;
+            if (phoneDisplay) phoneDisplay.textContent = DEFAULT_PHONE;
+            console.log("Using original UI values (no profile)");
+        }
+    }
+    
+    // Load user data from Auth session
+    async function loadUserData() {
+        try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            
+            if (sessionError) {
+                console.error("Session error:", sessionError);
+                updateUIWithProfile(null);
+                return false;
+            }
+            
+            if (!session) {
+                console.log("No active Supabase session. User not logged in.");
+                updateUIWithProfile(null);
+                return false;
+            }
+            
+            currentSession = session;
+            const userId = session.user.id;
+            console.log("✅ User is logged in! ID:", userId);
+            console.log("✅ User email:", session.user.email);
+            
+            const { data: profile, error: pErr } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .maybeSingle();
+            
+            if (pErr) {
+                console.error("Profile fetch error:", pErr);
+                updateUIWithProfile(null);
+                return false;
+            }
+            
+            if (!profile) {
+                console.log("No profile found for user ID:", userId);
+                updateUIWithProfile(null);
+                return false;
+            }
+            
+            console.log("✅ Profile found:", profile);
+            currentProfile = profile;
+            updateUIWithProfile(profile);
+            
+            let { data: wallet, error: wErr } = await supabase
+                .from('wallets')
+                .select('*')
+                .eq('user_id', currentProfile.id)
+                .maybeSingle();
+            
+            if (wErr && wErr.code === 'PGRST116') {
+                console.log("Creating new wallet for user...");
+                const { data: newWallet, error: createErr } = await supabase
+                    .from('wallets')
+                    .insert({ 
+                        user_id: currentProfile.id, 
+                        balance: 0, 
+                        qr_code: `VBP_${currentProfile.id.slice(0,8)}_${Date.now()}` 
+                    })
+                    .select()
+                    .single();
+                if (!createErr) wallet = newWallet;
+            }
+            
+            if (wallet) {
+                currentWallet = wallet;
+                updateBalanceDisplay(wallet.balance);
+                console.log("✅ Wallet loaded! Balance: R", wallet.balance);
+                return true;
+            }
+            
+            return false;
+        } catch (err) {
+            console.error("Error in loadUserData:", err);
+            updateUIWithProfile(null);
+            return false;
+        }
+    }
+    
+    async function updateBalance(newBalance) {
+        if (!currentWallet) {
+            if (!currentSession) alert("Please login first");
+            return false;
+        }
+        const { error } = await supabase
+            .from('wallets')
+            .update({ balance: newBalance })
+            .eq('id', currentWallet.id);
+        
+        if (!error) {
+            currentWallet.balance = newBalance;
+            updateBalanceDisplay(newBalance);
+            return true;
+        }
+        console.error("Balance update error:", error);
+        return false;
+    }
+    
+    async function addTransaction(type, amount, description) {
+        if (!currentWallet) return false;
+        const { error } = await supabase
+            .from('wallet_transactions')
+            .insert({
+                wallet_id: currentWallet.id,
+                type: type,
+                amount: amount,
+                description: description,
+                reference: `${type.toUpperCase()}_${Date.now()}`
+            });
+        if (error) console.error("Transaction error:", error);
+        return !error;
+    }
+    
+    // Hook into Deposit button
+    const depositBtn = document.querySelector('.action-card-primary:first-child');
+    if (depositBtn && !depositBtn.hasAttribute('data-wallet-connected')) {
+        depositBtn.setAttribute('data-wallet-connected', 'true');
+        depositBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentSession) {
+                alert("Please login first");
+                window.location.href = 'login.html';
                 return;
             }
-            
-            let currentWallet = null;
-            let currentProfile = null;
-            let currentSession = null;
-            
-            // Original fallback values (preserved)
-            const DEFAULT_NAME = "Mziwonke 👋";
-            const DEFAULT_PHONE = "063 571 3652";
-            const DEFAULT_CARD_HOLDER = "MZIWONKE";
-            
-            // Update balance display on page
-            function updateBalanceDisplay(balance) {
-                const balanceEl = document.getElementById('realWalletBalance');
-                const shishaBalance = document.getElementById('shishaWalletBalance');
-                const formatted = `R ${balance.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                if (balanceEl) balanceEl.textContent = formatted;
-                if (shishaBalance) shishaBalance.textContent = formatted;
-                console.log("Balance updated to:", formatted);
+            const amount = prompt("Enter deposit amount (R):");
+            if (amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0) {
+                const amt = parseFloat(amount);
+                const newBalance = (currentWallet?.balance || 0) + amt;
+                await updateBalance(newBalance);
+                await addTransaction('manual_credit', amt, 'Mobile deposit');
+                alert(`✅ R${amt.toFixed(2)} deposited successfully!`);
             }
-            
-            // Update UI with profile data (preserves phone number on card back)
-            function updateUIWithProfile(profile) {
-                const userNameEl = document.getElementById('userNameDisplay');
-                const cardHolderEl = document.getElementById('cardHolderName');
-                const phoneDisplay = document.getElementById('accountPhoneNumber');
-                
-                if (profile) {
-                    // Update name
-                    if (profile.name && userNameEl) {
-                        userNameEl.textContent = profile.name;
-                    } else if (userNameEl) {
-                        userNameEl.textContent = DEFAULT_NAME;
-                    }
-                    
-                    // Update card holder name
-                    if (cardHolderEl) {
-                        cardHolderEl.textContent = (profile.name || profile.surname || DEFAULT_CARD_HOLDER).toUpperCase();
-                    }
-                    
-                    // Update phone number on card back (PRESERVED)
-                    if (phoneDisplay && profile.phone) {
-                        let phone = profile.phone;
-                        if (phone.match(/^\d+$/)) {
-                            phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
-                        }
-                        phoneDisplay.textContent = phone;
-                    } else if (phoneDisplay) {
-                        phoneDisplay.textContent = DEFAULT_PHONE;
-                    }
-                    
-                    console.log("✅ UI updated with profile:", profile.name || profile.phone);
-                } else {
-                    // No profile - use defaults (preserves original look)
-                    if (userNameEl) userNameEl.textContent = DEFAULT_NAME;
-                    if (cardHolderEl) cardHolderEl.textContent = DEFAULT_CARD_HOLDER;
-                    if (phoneDisplay) phoneDisplay.textContent = DEFAULT_PHONE;
-                    console.log("Using original UI values (no profile)");
-                }
-            }
-            
-            // Load user data from Auth session
-            async function loadUserData() {
-                // Get current Supabase session
-                const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-                
-                if (sessionError) {
-                    console.error("Session error:", sessionError);
-                    updateUIWithProfile(null);
-                    return false;
-                }
-                
-                if (!session) {
-                    console.log("No active Supabase session. User not logged in.");
-                    updateUIWithProfile(null);
-                    return false;
-                }
-                
-                currentSession = session;
-                const userId = session.user.id;
-                console.log("✅ User is logged in! ID:", userId);
-                
-                // Fetch profile using the logged-in user's ID
-                const { data: profile, error: pErr } = await supabaseClient
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', userId)
-                    .maybeSingle();
-                
-                if (pErr) {
-                    console.error("Profile fetch error:", pErr);
-                    updateUIWithProfile(null);
-                    return false;
-                }
-                
-                if (!profile) {
-                    console.log("No profile found for user ID:", userId);
-                    updateUIWithProfile(null);
-                    return false;
-                }
-                
-                console.log("✅ Profile found:", profile);
-                currentProfile = profile;
-                updateUIWithProfile(profile);
-                
-                // Get or create wallet
-                let { data: wallet, error: wErr } = await supabaseClient
-                    .from('wallets')
-                    .select('*')
-                    .eq('user_id', currentProfile.id)
-                    .maybeSingle();
-                
-                if (wErr && wErr.code === 'PGRST116') {
-                    console.log("Creating new wallet for user...");
-                    const { data: newWallet, error: createErr } = await supabaseClient
-                        .from('wallets')
-                        .insert({ 
-                            user_id: currentProfile.id, 
-                            balance: 0, 
-                            qr_code: `VBP_${currentProfile.id.slice(0,8)}_${Date.now()}` 
-                        })
-                        .select()
-                        .single();
-                    if (!createErr) wallet = newWallet;
-                }
-                
-                if (wallet) {
-                    currentWallet = wallet;
-                    updateBalanceDisplay(wallet.balance);
-                    console.log("✅ Wallet loaded! Balance: R", wallet.balance);
-                    return true;
-                }
-                
-                return false;
-            }
-            
-            // Update wallet balance
-            async function updateBalance(newBalance) {
-                if (!currentWallet) {
-                    if (!currentSession) alert("Please login first");
-                    return false;
-                }
-                const { error } = await supabaseClient
-                    .from('wallets')
-                    .update({ balance: newBalance })
-                    .eq('id', currentWallet.id);
-                
-                if (!error) {
-                    currentWallet.balance = newBalance;
-                    updateBalanceDisplay(newBalance);
-                    return true;
-                }
-                console.error("Balance update error:", error);
-                return false;
-            }
-            
-            // Add transaction record
-            async function addTransaction(type, amount, description) {
-                if (!currentWallet) return false;
-                const { error } = await supabaseClient
-                    .from('wallet_transactions')
-                    .insert({
-                        wallet_id: currentWallet.id,
-                        type: type,
-                        amount: amount,
-                        description: description,
-                        reference: `${type.toUpperCase()}_${Date.now()}`
-                    });
-                if (error) console.error("Transaction error:", error);
-                return !error;
-            }
-            
-            // Hook into Deposit button
-            const depositBtn = document.querySelector('.action-card-primary:first-child');
-            if (depositBtn && !depositBtn.hasAttribute('data-wallet-connected')) {
-                depositBtn.setAttribute('data-wallet-connected', 'true');
-                depositBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (!currentSession) {
-                        alert("Please login first");
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const amount = prompt("Enter deposit amount (R):");
-                    if (amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0) {
-                        const amt = parseFloat(amount);
-                        const newBalance = (currentWallet?.balance || 0) + amt;
-                        await updateBalance(newBalance);
-                        await addTransaction('manual_credit', amt, 'Mobile deposit');
-                        alert(`✅ R${amt.toFixed(2)} deposited successfully!`);
-                    }
-                });
-            }
-            
-            // Hook into Withdraw button
-            const withdrawBtn = document.querySelector('.action-card-primary:last-child');
-            if (withdrawBtn && !withdrawBtn.hasAttribute('data-wallet-connected')) {
-                withdrawBtn.setAttribute('data-wallet-connected', 'true');
-                withdrawBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (!currentSession) {
-                        alert("Please login first");
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const amount = prompt("Enter withdrawal amount (R):");
-                    if (amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0) {
-                        const amt = parseFloat(amount);
-                        const currentBal = currentWallet?.balance || 0;
-                        if (amt > currentBal) {
-                            alert("❌ Insufficient balance!");
-                            return;
-                        }
-                        const newBalance = currentBal - amt;
-                        await updateBalance(newBalance);
-                        await addTransaction('manual_debit', amt, 'Mobile withdrawal');
-                        alert(`✅ R${amt.toFixed(2)} withdrawn successfully!`);
-                    }
-                });
-            }
-            
-            // Hook into Hookah order button
-            const hookahBtn = document.getElementById('shishaPlaceOrderBtn');
-            if (hookahBtn && !hookahBtn.hasAttribute('data-wallet-connected')) {
-                hookahBtn.setAttribute('data-wallet-connected', 'true');
-                hookahBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (!currentSession) {
-                        alert("Please login first");
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const amount = 260;
-                    const currentBal = currentWallet?.balance || 0;
-                    if (currentBal >= amount) {
-                        const newBalance = currentBal - amount;
-                        await updateBalance(newBalance);
-                        await addTransaction('debit', amount, 'Hookah Session');
-                        alert(`✅ Hookah ordered! R${amount} deducted. Remaining: R${newBalance.toFixed(2)}`);
-                        const modal = document.getElementById('shishaModalOverlay');
-                        if (modal) modal.classList.remove('active');
-                    } else {
-                        alert(`❌ Insufficient balance! Need R${amount}. Current: R${currentBal.toFixed(2)}`);
-                    }
-                });
-            }
-            
-            // Hook into VVIP band button
-            const vvipBtn = document.getElementById('printVVIPBandBtn');
-            if (vvipBtn && !vvipBtn.hasAttribute('data-wallet-connected')) {
-                vvipBtn.setAttribute('data-wallet-connected', 'true');
-                vvipBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (!currentSession) {
-                        alert("Please login first");
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const amount = 500;
-                    const currentBal = currentWallet?.balance || 0;
-                    if (currentBal >= amount) {
-                        const newBalance = currentBal - amount;
-                        await updateBalance(newBalance);
-                        await addTransaction('debit', amount, 'VVIP Imperial Band');
-                        alert(`✅ VVIP Band purchased! R${amount} deducted. Remaining: R${newBalance.toFixed(2)}`);
-                        const modal = document.getElementById('vvipModalOverlay');
-                        if (modal) modal.classList.remove('active');
-                    } else {
-                        alert(`❌ Insufficient balance for VVIP Band! Need R${amount}. Current: R${currentBal.toFixed(2)}`);
-                    }
-                });
-            }
-            
-            // Hook into Pay Now service
-            const payNowBtn = document.querySelector('.service-card:last-child');
-            if (payNowBtn && !payNowBtn.hasAttribute('data-wallet-connected')) {
-                payNowBtn.setAttribute('data-wallet-connected', 'true');
-                payNowBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (!currentSession) {
-                        alert("Please login first");
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const amount = prompt("Enter payment amount (R):");
-                    if (amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0) {
-                        const amt = parseFloat(amount);
-                        const currentBal = currentWallet?.balance || 0;
-                        if (amt > currentBal) {
-                            alert(`❌ Insufficient balance! Need R${amt}. Current: R${currentBal.toFixed(2)}`);
-                            return;
-                        }
-                        const newBalance = currentBal - amt;
-                        await updateBalance(newBalance);
-                        await addTransaction('debit', amt, 'Quick Payment');
-                        alert(`✅ Payment of R${amt.toFixed(2)} completed!`);
-                    }
-                });
-            }
-            
-            // Update logout button to use Supabase sign out
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn && !logoutBtn.hasAttribute('data-auth-connected')) {
-                logoutBtn.setAttribute('data-auth-connected', 'true');
-                logoutBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (confirm('Logout from Vibe Pass?\n\nYour session will be cleared.')) {
-                        // Sign out from Supabase
-                        await supabaseClient.auth.signOut();
-                        // Clear local storage
-                        localStorage.removeItem('rands_current_user');
-                        localStorage.removeItem('rands_accounts_v2');
-                        localStorage.removeItem('rands_payment_request');
-                        localStorage.removeItem('rands_payment_approved');
-                        localStorage.removeItem('rands_refund_requests');
-                        localStorage.removeItem('vvip_bands');
-                        sessionStorage.clear();
-                        // Redirect to login page
-                        window.location.href = 'login.html';
-                    }
-                });
-            }
-            
-            // Listen for auth changes (when user logs in/out)
-            supabaseClient.auth.onAuthStateChange((event, session) => {
-                console.log("Auth state changed:", event);
-                if (event === 'SIGNED_IN' && session) {
-                    currentSession = session;
-                    loadUserData();
-                } else if (event === 'SIGNED_OUT') {
-                    currentSession = null;
-                    currentWallet = null;
-                    currentProfile = null;
-                    updateUIWithProfile(null);
-                    updateBalanceDisplay(0);
-                }
-            });
-            
-            // Initial load - check for existing session
-            loadUserData();
         });
-    })();
+    }
+    
+    // Hook into Withdraw button
+    const withdrawBtn = document.querySelector('.action-card-primary:last-child');
+    if (withdrawBtn && !withdrawBtn.hasAttribute('data-wallet-connected')) {
+        withdrawBtn.setAttribute('data-wallet-connected', 'true');
+        withdrawBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentSession) {
+                alert("Please login first");
+                window.location.href = 'login.html';
+                return;
+            }
+            const amount = prompt("Enter withdrawal amount (R):");
+            if (amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0) {
+                const amt = parseFloat(amount);
+                const currentBal = currentWallet?.balance || 0;
+                if (amt > currentBal) {
+                    alert("❌ Insufficient balance!");
+                    return;
+                }
+                const newBalance = currentBal - amt;
+                await updateBalance(newBalance);
+                await addTransaction('manual_debit', amt, 'Mobile withdrawal');
+                alert(`✅ R${amt.toFixed(2)} withdrawn successfully!`);
+            }
+        });
+    }
+    
+    // Hook into Hookah order button
+    const hookahBtn = document.getElementById('shishaPlaceOrderBtn');
+    if (hookahBtn && !hookahBtn.hasAttribute('data-wallet-connected')) {
+        hookahBtn.setAttribute('data-wallet-connected', 'true');
+        hookahBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentSession) {
+                alert("Please login first");
+                window.location.href = 'login.html';
+                return;
+            }
+            const amount = 260;
+            const currentBal = currentWallet?.balance || 0;
+            if (currentBal >= amount) {
+                const newBalance = currentBal - amount;
+                await updateBalance(newBalance);
+                await addTransaction('debit', amount, 'Hookah Session');
+                alert(`✅ Hookah ordered! R${amount} deducted. Remaining: R${newBalance.toFixed(2)}`);
+                const modal = document.getElementById('shishaModalOverlay');
+                if (modal) modal.classList.remove('active');
+            } else {
+                alert(`❌ Insufficient balance! Need R${amount}. Current: R${currentBal.toFixed(2)}`);
+            }
+        });
+    }
+    
+    // Hook into VVIP band button
+    const vvipBtn = document.getElementById('printVVIPBandBtn');
+    if (vvipBtn && !vvipBtn.hasAttribute('data-wallet-connected')) {
+        vvipBtn.setAttribute('data-wallet-connected', 'true');
+        vvipBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentSession) {
+                alert("Please login first");
+                window.location.href = 'login.html';
+                return;
+            }
+            const amount = 500;
+            const currentBal = currentWallet?.balance || 0;
+            if (currentBal >= amount) {
+                const newBalance = currentBal - amount;
+                await updateBalance(newBalance);
+                await addTransaction('debit', amount, 'VVIP Imperial Band');
+                alert(`✅ VVIP Band purchased! R${amount} deducted. Remaining: R${newBalance.toFixed(2)}`);
+                const modal = document.getElementById('vvipModalOverlay');
+                if (modal) modal.classList.remove('active');
+            } else {
+                alert(`❌ Insufficient balance for VVIP Band! Need R${amount}. Current: R${currentBal.toFixed(2)}`);
+            }
+        });
+    }
+    
+    // Hook into Pay Now service
+    const payNowBtn = document.querySelector('.service-card:last-child');
+    if (payNowBtn && !payNowBtn.hasAttribute('data-wallet-connected')) {
+        payNowBtn.setAttribute('data-wallet-connected', 'true');
+        payNowBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentSession) {
+                alert("Please login first");
+                window.location.href = 'login.html';
+                return;
+            }
+            const amount = prompt("Enter payment amount (R):");
+            if (amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0) {
+                const amt = parseFloat(amount);
+                const currentBal = currentWallet?.balance || 0;
+                if (amt > currentBal) {
+                    alert(`❌ Insufficient balance! Need R${amt}. Current: R${currentBal.toFixed(2)}`);
+                    return;
+                }
+                const newBalance = currentBal - amt;
+                await updateBalance(newBalance);
+                await addTransaction('debit', amt, 'Quick Payment');
+                alert(`✅ Payment of R${amt.toFixed(2)} completed!`);
+            }
+        });
+    }
+    
+    // Update logout button
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn && !logoutBtn.hasAttribute('data-auth-connected')) {
+        logoutBtn.setAttribute('data-auth-connected', 'true');
+        logoutBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm('Logout from Vibe Pass?\n\nYour session will be cleared.')) {
+                await supabase.auth.signOut();
+                localStorage.removeItem('rands_current_user');
+                localStorage.removeItem('rands_accounts_v2');
+                localStorage.removeItem('rands_payment_request');
+                localStorage.removeItem('rands_payment_approved');
+                localStorage.removeItem('rands_refund_requests');
+                localStorage.removeItem('vvip_bands');
+                sessionStorage.clear();
+                window.location.href = 'login.html';
+            }
+        });
+    }
+    
+    // Listen for auth changes
+    supabase.auth.onAuthStateChange((event, session) => {
+        console.log("Auth state changed:", event);
+        if (event === 'SIGNED_IN' && session) {
+            currentSession = session;
+            loadUserData();
+        } else if (event === 'SIGNED_OUT') {
+            currentSession = null;
+            currentWallet = null;
+            currentProfile = null;
+            updateUIWithProfile(null);
+            updateBalanceDisplay(0);
+        }
+    });
+    
+    // Initial load
+    loadUserData();
 </script>
 </body>
 </html>
