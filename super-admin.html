@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Rands | Super Admin Dashboard</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/super-admin.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        /* Additional toggle switch styles if not in your super-admin.css */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #E30613;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .module-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
+        <div class="sidebar-close-mobile" @click="sidebarOpen = false">
+            <i class="fas fa-times"></i>
+        </div>
+
+        <div class="sidebar-header">
+            <h2 :style="{ background: `linear-gradient(135deg, ${systemSettings.primaryColor || '#E30613'}, ${systemSettings.secondaryColor || '#9f0110'})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }">
+                {{ systemSettings.sidebarHeading || 'Rands Venue OS' }}
+            </h2>
+            <p>Super Admin Console</p>
+        </div>
+
+        <div class="nav-menu">
+            <div class="nav-item" @click="currentSection = 'dashboard'; closeSidebar()" :class="{ active: currentSection === 'dashboard' }">
+                <i class="fas fa-tachometer-alt"></i> <span>Dashboard</span>
+            </div>
+
+            <div class="nav-item" @click="currentSection = 'tenants'; closeSidebar()" :class="{ active: currentSection === 'tenants' }">
+                <i class="fas fa-building"></i> <span>Tenants</span>
+            </div>
+
+            <div class="nav-item" @click="goToModules" :class="{ active: currentSection === 'modules' }">
+                <i class="fas fa-puzzle-piece"></i> <span>Modules</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main-content">
+        <div class="top-header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="menu-toggle" @click="sidebarOpen = !sidebarOpen">
+                    <i class="fas fa-bars"></i>
+                </div>
+                <h3>{{ currentSectionTitle }}</h3>
+            </div>
+
+            <div class="sync-status">
+                <i class="fas fa-broadcast-tower"></i> Live Sync
+            </div>
+
+            <div class="profile-dropdown" @click="logout">
+                <div class="avatar">SA</div>
+                <span>{{ adminName }}</span>
+                <i class="fas fa-sign-out-alt"></i>
+            </div>
+        </div>
+
+        <div class="dashboard-container">
+
+            <!-- DASHBOARD -->
+            <div v-if="currentSection === 'dashboard'">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-store"></i></div>
+                        <div>Total Tenants</div>
+                        <div class="stat-number">{{ tenants.length }}</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                        <div>Active Tenants</div>
+                        <div class="stat-number">{{ activeTenantsCount }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TENANTS -->
+            <div v-if="currentSection === 'tenants'">
+                <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;">
+                    <h2>All Tenants</h2>
+                    <button style="background:#E30613;color:white;padding:10px 16px;border:none;border-radius:8px;cursor:pointer;" @click="showTenantModal = true">
+                        <i class="fas fa-plus"></i> Create Tenant
+                    </button>
+                </div>
+
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>Business</th><th>Owner ID</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="tenant in tenants" :key="tenant.id">
+                                <td><strong>{{ tenant.name }}</strong></td>
+                                <td>{{ tenant.owner_id || 'Not set' }}</td>
+                                <td>{{ tenant.status || 'Active' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- MODULES -->
+            <div v-if="currentSection === 'modules'">
+                <div class="section-header" style="margin-bottom:24px;">
+                    <h2>Module Management</h2>
+                </div>
+                
+                <div class="tenant-selector" style="background:white;border-radius:16px;padding:20px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    <label style="display:block;margin-bottom:8px;font-weight:600;color:#374151;">Select Tenant</label>
+                    <select 
+                        v-model="selectedTenantId" 
+                        @change="loadTenantModules"
+                        style="width:100%;padding:12px;border-radius:8px;border:1px solid #e5e7eb;font-size:14px;">
+                        <option v-for="tenant in tenants" :value="tenant.id">
+                            {{ tenant.name }}
+                        </option>
+                    </select>
+                    <p style="margin-top:8px;font-size:12px;color:#6b7280;">
+                        <i class="fas fa-info-circle"></i> 
+                        Managing modules for: <strong>{{ selectedTenant ? selectedTenant.name : 'Select a tenant' }}</strong>
+                    </p>
+                </div>
+
+                <div class="modules-grid">
+                    <div v-for="moduleRow in currentModules" :key="moduleRow.id" class="module-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <div style="display:flex;align-items:center;gap:16px;flex:1;">
+                                <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg, #E30613, #9f0110);display:flex;align-items:center;justify-content:center;">
+                                    <i :class="moduleRow.module.icon || 'fas fa-puzzle-piece'" style="color:white;font-size:24px;"></i>
+                                </div>
+                                <div style="flex:1;">
+                                    <h3 style="margin:0 0 4px 0;font-size:18px;font-weight:600;">
+                                        {{ moduleRow.module.name }}
+                                    </h3>
+                                    <p style="margin:0;font-size:13px;color:#6b7280;">
+                                        {{ moduleRow.module.description || 'No description' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <span style="font-size:13px;color:#6b7280;">{{ moduleRow.enabled ? 'Enabled' : 'Disabled' }}</span>
+                                <label class="switch">
+                                    <input type="checkbox" v-model="moduleRow.enabled" @change="toggleModule(moduleRow)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="currentModules.length === 0" style="text-align:center;padding:60px 20px;background:white;border-radius:16px;">
+                        <i class="fas fa-puzzle-piece" style="font-size:48px;color:#d1d5db;margin-bottom:16px;"></i>
+                        <p style="color:#6b7280;">No modules found. Select a tenant to view modules.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div class="modal-mask" :class="{ active: showTenantModal }">
+        <div class="modal-container">
+            <h3>Create Tenant</h3>
+            <input v-model="newTenant.businessName" placeholder="Business Name">
+            <input v-model="newTenant.ownerName" placeholder="Owner Name">
+            <input v-model="newTenant.phone" placeholder="Phone">
+            <input v-model="newTenant.username" placeholder="Username / Email">
+            <input v-model="newTenant.password" type="password" placeholder="Password">
+            <div style="display:flex;gap:10px;margin-top:10px;">
+                <button @click="createTenant">Create</button>
+                <button @click="showTenantModal = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast-notification" v-if="showToast" @click="showToast = false">
+        <i class="fas fa-check-circle"></i> {{ toastMessage }}
+    </div>
+
+</div>
+
+<script>
+// REPLACE WITH YOUR ACTUAL SUPABASE CREDENTIALS
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+new Vue({
+    el: '#app',
+
+    data: {
+        sidebarOpen: false,
+        currentSection: 'dashboard',
+        adminName: 'Super Admin (Dev Mode)',
+        tenants: [],
+        selectedTenantId: null,
+        currentModules: [],
+        agents: [],
+        systemSettings: {
+            systemName: 'Rands Venue OS',
+            sidebarHeading: 'Rands Venue OS',
+            primaryColor: '#E30613',
+            secondaryColor: '#9f0110',
+            currency: 'ZAR',
+            dateFormat: 'DD/MM/YYYY'
+        },
+        showTenantModal: false,
+        showToast: false,
+        toastMessage: '',
+        newTenant: {
+            businessName: '',
+            ownerName: '',
+            phone: '',
+            username: '',
+            password: '',
+            agent_id: null
+        }
+    },
+
+    computed: {
+        currentSectionTitle() {
+            const titles = {
+                dashboard: 'Dashboard',
+                tenants: 'Tenants',
+                modules: 'Modules'
+            };
+            return titles[this.currentSection] || 'Dashboard';
+        },
+        selectedTenant() {
+            return this.tenants.find(t => t.id === this.selectedTenantId);
+        },
+        activeTenantsCount() {
+            return this.tenants.filter(t => t.status === 'Active').length;
+        }
+    },
+
+    async mounted() {
+        console.log('App mounted');
+        await this.loadTenants();
+    },
+
+    methods: {
+        showSuccessToast(msg) {
+            this.toastMessage = msg;
+            this.showToast = true;
+            setTimeout(() => { this.showToast = false; }, 3000);
+        },
+
+        async loadTenants() {
+            const { data, error } = await supabaseClient
+                .from('tenants')
+                .select('id, name, owner_id, created_at')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Load tenants error:', error.message);
+                return;
+            }
+
+            this.tenants = data || [];
+            if (!this.selectedTenantId && this.tenants.length > 0) {
+                this.selectedTenantId = this.tenants[0].id;
+                await this.loadTenantModules();
+            }
+        },
+
+        async goToModules() {
+            this.currentSection = 'modules';
+            this.closeSidebar();
+            if (this.selectedTenantId) {
+                await this.loadTenantModules();
+            } else if (this.tenants.length > 0) {
+                this.selectedTenantId = this.tenants[0].id;
+                await this.loadTenantModules();
+            }
+        },
+
+        async loadTenantModules() {
+            if (!this.selectedTenantId) return;
+
+            const { data, error } = await supabaseClient
+                .from('tenant_modules')
+                .select(`
+                    id,
+                    enabled,
+                    module:module_id (
+                        id,
+                        name,
+                        description,
+                        icon,
+                        base_price,
+                        per_unit_fee,
+                        per_unit_label
+                    )
+                `)
+                .eq('tenant_id', this.selectedTenantId);
+
+            if (error) {
+                console.error('Load modules error:', error.message);
+                return;
+            }
+
+            this.currentModules = data || [];
+        },
+
+        async createTenant() {
+            if (!this.newTenant.businessName) {
+                alert('Business name is required');
+                return;
+            }
+
+            try {
+                const { data: tenant, error: tenantError } = await supabaseClient
+                    .from('tenants')
+                    .insert([{ name: this.newTenant.businessName, owner_id: null }])
+                    .select()
+                    .single();
+
+                if (tenantError) throw tenantError;
+
+                this.tenants.unshift(tenant);
+                await this.createTenantModules(tenant.id);
+                this.showTenantModal = false;
+                this.newTenant = { businessName: '', ownerName: '', phone: '', username: '', password: '', agent_id: null };
+                this.showSuccessToast('Tenant created successfully');
+
+            } catch (err) {
+                console.error('Error:', err);
+                alert(err.message);
+            }
+        },
+
+        async createTenantModules(tenantId) {
+            const { data: modules } = await supabaseClient.from('modules').select('id');
+            if (!modules || modules.length === 0) return;
+
+            const rows = modules.map(m => ({
+                tenant_id: tenantId,
+                module_id: m.id,
+                enabled: false
+            }));
+
+            await supabaseClient.from('tenant_modules').insert(rows);
+        },
+
+        async toggleModule(moduleRow) {
+            const newState = !moduleRow.enabled;
+            const originalState = moduleRow.enabled;
+            moduleRow.enabled = newState;
+
+            const { error } = await supabaseClient
+                .from('tenant_modules')
+                .update({ enabled: newState })
+                .eq('id', moduleRow.id);
+
+            if (error) {
+                moduleRow.enabled = originalState;
+                alert('Failed to toggle: ' + error.message);
+            } else {
+                this.showSuccessToast(`${moduleRow.module.name} ${newState ? 'enabled' : 'disabled'}`);
+            }
+        },
+
+        closeSidebar() {
+            if (window.innerWidth < 768) {
+                this.sidebarOpen = false;
+            }
+        },
+
+        logout() {
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
+    }
+});
+</script>
+
+</body>
+</html>
