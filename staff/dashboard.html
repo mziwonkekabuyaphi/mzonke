@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Rands | Staff Operations Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f5f7fb; overflow-x: hidden; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 270px; height: 100%; background: #ffffff; box-shadow: 0 0 20px rgba(0,0,0,0.05); z-index: 100; transition: all 0.3s ease; overflow-y: auto; border-right: 1px solid #edf2f7; }
+        .sidebar-header { padding: 24px 20px; border-bottom: 1px solid #eff3f8; display: flex; align-items: center; gap: 12px; }
+        .tenant-logo { width: 42px; height: 42px; background: #E30613; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem; }
+        .tenant-info h3 { font-size: 1rem; font-weight: 700; color: #1e293b; }
+        .tenant-info p { font-size: 0.7rem; color: #6c7a8e; }
+        .role-badge-header { background: #fef3c7; color: #d97706; font-size: 0.6rem; padding: 2px 8px; border-radius: 20px; margin-top: 4px; display: inline-block; }
+        .nav-menu { padding: 20px 0; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 4px 12px; border-radius: 12px; color: #4a5568; font-weight: 500; transition: all 0.2s; cursor: pointer; }
+        .nav-item i { width: 22px; font-size: 1.1rem; }
+        .nav-item:hover { background: #fff0f0; color: #E30613; }
+        .nav-item.active { background: #E30613; color: white; box-shadow: 0 4px 10px rgba(227,6,19,0.2); }
+        .main-content { margin-left: 270px; transition: all 0.3s ease; min-height: 100vh; }
+        .top-header { background: white; padding: 14px 28px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #edf2f7; position: sticky; top: 0; z-index: 99; }
+        .header-left h3 { font-size: 1.2rem; font-weight: 600; color: #1e293b; }
+        .header-right { display: flex; align-items: center; gap: 24px; }
+        .notification-icon { position: relative; cursor: pointer; font-size: 1.2rem; color: #4a5568; }
+        .badge-dot { position: absolute; top: -4px; right: -6px; width: 10px; height: 10px; background: #E30613; border-radius: 50%; border: 2px solid white; }
+        .profile-dropdown { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 6px 12px; border-radius: 40px; background: #f8fafd; }
+        .avatar { width: 38px; height: 38px; background: linear-gradient(135deg, #E30613, #b0020e); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; }
+        .dashboard-container { padding: 28px 32px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin-bottom: 32px; }
+        .stat-card { background: white; border-radius: 28px; padding: 20px; border: 1px solid #edf2f7; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -12px rgba(0,0,0,0.1); }
+        .stat-icon { width: 48px; height: 48px; background: #fff0f0; border-radius: 24px; display: flex; align-items: center; justify-content: center; color: #E30613; font-size: 1.4rem; margin-bottom: 16px; }
+        .stat-title { font-size: 0.75rem; font-weight: 500; color: #6c7a8e; text-transform: uppercase; }
+        .stat-number { font-size: 1.8rem; font-weight: 800; color: #1e293b; margin-top: 6px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin: 32px 0 20px 0; flex-wrap: wrap; gap: 12px; }
+        .section-header h2 { font-size: 1.2rem; font-weight: 700; color: #1e293b; }
+        .btn-primary { background: #E30613; color: white; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-outline { background: transparent; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 40px; font-weight: 500; cursor: pointer; }
+        .btn-success { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 40px; font-weight: 500; cursor: pointer; }
+        .btn-danger { background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; font-size: 0.8rem; cursor: pointer; }
+        .table-wrapper { overflow-x: auto; background: white; border-radius: 24px; border: 1px solid #edf2f7; }
+        .data-table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        .data-table th, .data-table td { padding: 14px 20px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+        .status-badge { padding: 4px 12px; border-radius: 40px; font-size: 0.7rem; font-weight: 600; display: inline-block; }
+        .status-active { background: #e6f7e6; color: #10b981; }
+        .status-warning { background: #fff3e0; color: #f59e0b; }
+        .status-valid { background: #d1fae5; color: #059669; }
+        .status-invalid { background: #fee2e2; color: #dc2626; }
+        .status-on-shift { background: #d1fae5; color: #059669; }
+        .status-off-shift { background: #f1f5f9; color: #64748b; }
+        .form-control { width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 40px; font-family: 'Inter', sans-serif; font-size: 0.85rem; }
+        .modal-mask { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; visibility: hidden; opacity: 0; transition: 0.2s; }
+        .modal-mask.active { visibility: visible; opacity: 1; }
+        .modal-container { background: white; width: 90%; max-width: 500px; border-radius: 32px; padding: 28px; }
+        .scanner-area { background: #1a1e24; border-radius: 24px; padding: 40px; text-align: center; margin-bottom: 24px; }
+        .scanner-placeholder { font-size: 4rem; color: #E30613; margin-bottom: 16px; }
+        .sync-status { display: flex; align-items: center; gap: 6px; background: #f0fdf4; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; color: #10b981; margin-right: 16px; }
+        .shift-card { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left: 4px solid #10b981; }
+        .modules-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
+        .item-card { background: white; border-radius: 20px; padding: 16px; margin-bottom: 12px; border: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .settings-panel { background: white; border-radius: 28px; padding: 24px; border: 1px solid #edf2f7; margin-top: 20px; }
+        .menu-toggle { display: none; font-size: 1.3rem; cursor: pointer; color: #1e293b; }
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); width: 260px; }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .dashboard-container { padding: 20px; }
+            .menu-toggle { display: block; margin-right: 16px; }
+            .modules-container { grid-template-columns: 1fr; }
+        }
+        @media (min-width: 769px) { .menu-toggle { display: none; } }
+        .fullscreen-btn-module { background: transparent; border: 1px solid #E30613; color: #E30613; padding: 6px 14px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; cursor: pointer; margin-left: auto; transition: 0.2s; }
+        .exit-fullscreen-btn { display: none; background: #E30613; color: white; border: none; padding: 8px 18px; border-radius: 40px; font-weight: 600; font-size: 0.85rem; cursor: pointer; align-items: center; gap: 8px; margin-left: auto; }
+        .fullscreen-active .sidebar, .fullscreen-active .top-header .header-right .notification-icon, .fullscreen-active .top-header .menu-toggle { display: none !important; }
+        .fullscreen-active .main-content { margin-left: 0 !important; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
+        <div class="sidebar-header">
+            <div class="tenant-logo" :style="{ backgroundColor: branding.primaryColor }">{{ tenantInitial }}</div>
+            <div class="tenant-info">
+                <h3>{{ tenantName }}</h3>
+                <p>Staff Portal</p>
+                <span class="role-badge-header"><i class="fas fa-user-tag"></i> {{ staffRoleDisplay }}</span>
+            </div>
+        </div>
+        <div class="nav-menu">
+            <div v-for="item in dynamicMenu" :key="item.id" class="nav-item" :class="{ active: currentSection === item.id }" @click="currentSection = item.id; closeSidebar()">
+                <i :class="item.icon"></i>
+                <span>{{ item.label }}</span>
+            </div>
+        </div>
+    </aside>
+
+    <div class="main-content">
+        <div class="top-header">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="menu-toggle" @click="sidebarOpen = !sidebarOpen"><i class="fas fa-bars"></i></div>
+                <div class="header-left"><h3>{{ currentSectionTitle }}</h3></div>
+            </div>
+            <div class="sync-status">
+                <i class="fas fa-circle" style="font-size: 0.6rem;"></i>
+                <span>Live</span>
+            </div>
+            <div class="header-right">
+                <div class="notification-icon"><i class="far fa-bell"></i><span class="badge-dot"></span></div>
+                <div class="profile-dropdown" @click="logout">
+                    <div class="avatar">{{ staffInitial }}</div>
+                    <span style="font-size:0.85rem;">{{ staffName }}</span>
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+            </div>
+            <button class="fullscreen-btn-module" id="fullscreenBtn">🔲 Fullscreen</button>
+            <button class="exit-fullscreen-btn" id="exitFullscreenBtn">✕ Exit</button>
+        </div>
+
+        <div class="dashboard-container">
+            <!-- DASHBOARD -->
+            <div v-if="currentSection === 'dashboard'">
+                <div class="stats-grid">
+                    <div class="stat-card" :class="{ 'shift-card': isOnShift }">
+                        <div class="stat-icon"><i class="fas" :class="isOnShift ? 'fa-play-circle' : 'fa-stop-circle'"></i></div>
+                        <div class="stat-title">My Shift Status</div>
+                        <div class="stat-number" :style="{ color: isOnShift ? '#10b981' : '#dc2626' }">{{ isOnShift ? 'ON DUTY' : 'OFF DUTY' }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-hourglass-half"></i></div>
+                        <div class="stat-title">Today's Hours</div>
+                        <div class="stat-number">{{ todayHours.toFixed(1) }}h</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-calendar-week"></i></div>
+                        <div class="stat-title">Week Total</div>
+                        <div class="stat-number">{{ weekHours.toFixed(1) }}h</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="stat-title">Today's Sales</div>
+                        <div class="stat-number">R {{ todaySales }}</div>
+                    </div>
+                </div>
+                
+                <div class="settings-panel" style="text-align: center;">
+                    <div v-if="!isOnShift">
+                        <div class="form-group" style="max-width: 300px; margin: 0 auto 20px;">
+                            <label>Select Station (Optional)</label>
+                            <select class="form-control" v-model="selectedStation">
+                                <option value="">Default Station</option>
+                                <option value="bar_1">Bar 1</option>
+                                <option value="bar_2">Bar 2</option>
+                                <option value="kitchen_1">Kitchen 1</option>
+                                <option value="entrance">Entrance</option>
+                                <option value="shisha_lounge">Shisha Lounge</option>
+                                <option value="vvip_area">VVIP Area</option>
+                            </select>
+                        </div>
+                        <button class="btn-success" @click="startShift" style="padding: 16px 40px; font-size: 1.1rem;">
+                            <i class="fas fa-play"></i> START MY SHIFT
+                        </button>
+                    </div>
+                    <div v-else>
+                        <div class="current-shift-info" style="margin-bottom: 24px;">
+                            <p><strong><i class="fas fa-clock"></i> Shift Started:</strong> {{ shiftStartTime }}</p>
+                            <p><strong><i class="fas fa-hourglass-half"></i> Current Duration:</strong> {{ currentShiftHours.toFixed(2) }} hours</p>
+                            <p><strong><i class="fas fa-map-marker-alt"></i> Station:</strong> {{ currentStation || 'Not assigned' }}</p>
+                        </div>
+                        <button class="btn-danger" @click="endShift" style="padding: 16px 40px; font-size: 1.1rem;">
+                            <i class="fas fa-stop"></i> END MY SHIFT
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="section-header"><h2>Quick Actions</h2></div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <button class="btn-primary" @click="currentSection = 'boxoffice'" v-if="isScreenAvailable('boxoffice')"><i class="fas fa-ticket-alt"></i> Box Office</button>
+                    <button class="btn-primary" @click="currentSection = 'gatecontrol'" v-if="isScreenAvailable('gatecontrol')"><i class="fas fa-qrcode"></i> Gate Scanner</button>
+                    <button class="btn-primary" @click="currentSection = 'butcher-pos'" v-if="isScreenAvailable('butcher-pos')"><i class="fas fa-utensils"></i> Butcher POS</button>
+                    <button class="btn-primary" @click="currentSection = 'shisha-pos'" v-if="isScreenAvailable('shisha-pos')"><i class="fas fa-smoking"></i> Shisha POS</button>
+                </div>
+                
+                <div class="section-header"><h2><i class="fas fa-history"></i> My Recent Shifts</h2></div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead><tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Station</th></tr></thead>
+                        <tbody>
+                            <tr v-for="shift in recentShifts" :key="shift.id">
+                                <td>{{ formatDate(shift.start_time) }}</div>
+                                <td>{{ formatTime(shift.start_time) }}</div>
+                                <td>{{ shift.end_time ? formatTime(shift.end_time) : 'Active' }}</div>
+                                <td><strong>{{ shift.total_hours ? shift.total_hours.toFixed(1) + 'h' : 'In progress' }}</strong></div>
+                                <td>{{ shift.station || '-' }}</div>
+                            </tr>
+                            <tr v-if="recentShifts.length === 0"><td colspan="5" style="text-align:center;">No shift history yet</tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- BOX OFFICE -->
+            <div v-if="currentSection === 'boxoffice' && isScreenAvailable('boxoffice')">
+                <div class="section-header"><h2><i class="fas fa-ticket-alt"></i> Box Office POS</h2></div>
+                <div class="scanner-area">
+                    <div class="scanner-placeholder"><i class="fas fa-camera"></i></div>
+                    <p style="color: white; margin-bottom: 16px;">Sell tickets or scan for entry</p>
+                    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                        <input type="text" class="form-control" v-model="scanCode" placeholder="Enter ticket ID" style="max-width: 250px;">
+                        <button class="btn-primary" @click="sellTicket"><i class="fas fa-dollar-sign"></i> Sell Ticket</button>
+                        <button class="btn-outline" @click="validateTicket" style="background:white;"><i class="fas fa-check"></i> Validate</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GATE CONTROL -->
+            <div v-if="currentSection === 'gatecontrol' && isScreenAvailable('gatecontrol')">
+                <div class="section-header"><h2><i class="fas fa-qrcode"></i> Gate Scanner</h2></div>
+                <div class="scanner-area">
+                    <div class="scanner-placeholder"><i class="fas fa-camera"></i></div>
+                    <p style="color: white; margin-bottom: 16px;">Scan tickets for entry validation</p>
+                    <div style="display: flex; gap: 12px; justify-content: center;">
+                        <input type="text" class="form-control" v-model="scanCodeGate" placeholder="Scan ticket ID" style="max-width: 300px;">
+                        <button class="btn-primary" @click="validateGateTicket"><i class="fas fa-check-circle"></i> Validate Entry</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BUTCHER POS -->
+            <div v-if="currentSection === 'butcher-pos' && isScreenAvailable('butcher-pos')">
+                <div class="section-header"><h2><i class="fas fa-utensils"></i> Butcher POS</h2></div>
+                <div class="stats-grid"><div class="stat-card"><div class="stat-icon"><i class="fas fa-shopping-cart"></i></div><div class="stat-title">Current Order</div><div class="stat-number">R {{ butcherCartTotal }}</div></div></div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px;">
+                    <button v-for="item in butcherMenu" :key="item.id" class="btn-outline" style="padding: 12px;" @click="addToButcherCart(item)">{{ item.name }} - R{{ item.price }}</button>
+                </div>
+                <div class="section-header"><h2>Current Order</h2><button class="btn-primary" @click="checkoutButcher"><i class="fas fa-credit-card"></i> Complete Sale (R{{ butcherCartTotal }})</button></div>
+                <div class="table-wrapper">
+                    <table class="data-table"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th><th></th></tr></thead>
+                    <tbody><tr v-for="(item, idx) in butcherCart" :key="idx"><td>{{ item.name }}</td><td>{{ item.qty }}</td><td>R{{ item.price }}</td><td>R{{ item.qty * item.price }}</td><td><i class="fas fa-trash" style="cursor:pointer; color:#E30613;" @click="removeFromButcherCart(idx)"></i></td></tr>
+                    <tr v-if="butcherCart.length === 0"><td colspan="5" style="text-align:center;">Cart is empty</td></tr>
+                    </tbody></table>
+                </div>
+            </div>
+
+            <!-- SHISHA POS -->
+            <div v-if="currentSection === 'shisha-pos' && isScreenAvailable('shisha-pos')">
+                <div class="section-header"><h2><i class="fas fa-smoking"></i> Shisha POS</h2></div>
+                <div class="stats-grid"><div class="stat-card"><div class="stat-icon"><i class="fas fa-shopping-cart"></i></div><div class="stat-title">Current Order</div><div class="stat-number">R {{ shishaCartTotal }}</div></div></div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px;">
+                    <button v-for="item in shishaMenu" :key="item.id" class="btn-outline" style="padding: 12px;" @click="addToShishaCart(item)">{{ item.name }} - R{{ item.price }}</button>
+                </div>
+                <div class="section-header"><h2>Current Order</h2><button class="btn-primary" @click="checkoutShisha"><i class="fas fa-credit-card"></i> Complete Sale (R{{ shishaCartTotal }})</button></div>
+                <div class="table-wrapper">
+                    <table class="data-table"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th><th></th></tr></thead>
+                    <tbody><tr v-for="(item, idx) in shishaCart" :key="idx"><td>{{ item.name }}</td><td>{{ item.qty }}</td><td>R{{ item.price }}</td><td>R{{ item.qty * item.price }}</td><td><i class="fas fa-trash" style="cursor:pointer; color:#E30613;" @click="removeFromShishaCart(idx)"></i></td></tr>
+                    <tr v-if="shishaCart.length === 0"><td colspan="5" style="text-align:center;">Cart is empty</td></tr>
+                    </tbody></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-mask" :class="{ active: showValidationModal }">
+        <div class="modal-container" style="text-align:center;">
+            <i class="fas" :class="validationResult.valid ? 'fa-check-circle' : 'fa-times-circle'" style="font-size: 48px;" :style="{ color: validationResult.valid ? '#10b981' : '#dc2626' }"></i>
+            <h3>{{ validationResult.valid ? 'Valid Ticket!' : 'Invalid Ticket' }}</h3>
+            <p>{{ validationResult.message }}</p>
+            <button class="btn-primary" @click="showValidationModal = false">Close</button>
+        </div>
+    </div>
+
+    <div class="modal-mask" :class="{ active: showInfoModal }">
+        <div class="modal-container" style="text-align:center;">
+            <i :class="infoIcon" style="font-size: 48px;" :style="{ color: infoIconColor }"></i>
+            <h3>{{ infoTitle }}</h3>
+            <p>{{ infoMessage }}</p>
+            <button class="btn-primary" @click="showInfoModal = false">OK</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const SCREEN_REQUIREMENTS = {
+        'boxoffice': { label: 'Box Office POS', icon: 'fas fa-ticket-alt', requiredModules: ['Tickets'], allowedRoles: ['boxoffice', 'venuemanager'] },
+        'gatecontrol': { label: 'Gate Scanner', icon: 'fas fa-qrcode', requiredModules: ['Tickets'], allowedRoles: ['gatecontrol', 'venuemanager'] },
+        'butcher-pos': { label: 'Butcher POS', icon: 'fas fa-utensils', requiredModules: ['Sales and Orders'], allowedRoles: ['hospitality', 'venuemanager'] },
+        'shisha-pos': { label: 'Shisha POS', icon: 'fas fa-smoking', requiredModules: ['Shisha Lounge System'], allowedRoles: ['shishamaster', 'venuemanager'] }
+    };
+
+    const ROLE_DISPLAY = { boxoffice: 'Box Office', gatecontrol: 'Gate Control', hospitality: 'Hospitality', shishamaster: 'Shisha Master', support: 'Support Staff', venuemanager: 'Venue Manager' };
+
+    new Vue({
+        el: '#app',
+        data: {
+            sidebarOpen: false, currentSection: 'dashboard',
+            tenantId: null, tenantName: '', staffId: null, staffName: '', staffRole: '', staffRoleDisplay: '',
+            branding: { primaryColor: '#E30613', logoUrl: '' }, tenantModules: [],
+            todaySales: 8450, scanCode: '', scanCodeGate: '', ticketSales: [], gateScans: [],
+            butcherMenu: [{ id: 1, name: 'Burger', price: 65 }, { id: 2, name: 'Pizza', price: 120 }, { id: 3, name: 'Wings', price: 55 }, { id: 4, name: 'Steak', price: 150 }, { id: 5, name: 'Chips', price: 35 }, { id: 6, name: 'Soda', price: 25 }],
+            butcherCart: [],
+            shishaMenu: [{ id: 1, name: 'Double Apple', price: 120 }, { id: 2, name: 'Blue Mist', price: 120 }, { id: 3, name: 'Watermelon', price: 120 }, { id: 4, name: 'Grape Mint', price: 130 }, { id: 5, name: 'Peach', price: 120 }, { id: 6, name: 'Lemon Mint', price: 125 }],
+            shishaCart: [],
+            showValidationModal: false, validationResult: { valid: false, message: '' }, showInfoModal: false,
+            infoTitle: '', infoMessage: '', infoIcon: 'fas fa-info-circle', infoIconColor: '#E30613',
+            shifts: [], selectedStation: '', isOnShift: false, activeShift: null, shiftStartTime: '', currentStation: '', todayHours: 0, weekHours: 0
+        },
+        computed: {
+            tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
+            staffInitial() { return this.staffName ? this.staffName.charAt(0).toUpperCase() : 'S'; },
+            shishaCartTotal() { return this.shishaCart.reduce((sum, item) => sum + (item.price * item.qty), 0); },
+            butcherCartTotal() { return this.butcherCart.reduce((sum, item) => sum + (item.price * item.qty), 0); },
+            currentShiftHours() {
+                if (!this.isOnShift || !this.activeShift) return 0;
+                const startTime = new Date(this.activeShift.start_time);
+                const now = new Date();
+                return (now - startTime) / (1000 * 60 * 60);
+            },
+            recentShifts() {
+                return this.shifts.sort((a,b) => new Date(b.start_time) - new Date(a.start_time)).slice(0, 10);
+            },
+            dynamicMenu() {
+                const menu = [{ id: 'dashboard', label: 'Dashboard', icon: 'fas fa-tachometer-alt' }];
+                for (const [screenId, requirements] of Object.entries(SCREEN_REQUIREMENTS)) {
+                    const modulesEnabled = requirements.requiredModules.every(moduleName => this.isModuleEnabled(moduleName));
+                    if (modulesEnabled && requirements.allowedRoles.includes(this.staffRole)) {
+                        menu.push({ id: screenId, label: requirements.label, icon: requirements.icon });
+                    }
+                }
+                return menu;
+            },
+            currentSectionTitle() {
+                const item = this.dynamicMenu.find(i => i.id === this.currentSection);
+                return item ? item.label : 'Dashboard';
+            }
+        },
+        methods: {
+            closeSidebar() { if(window.innerWidth <= 768) this.sidebarOpen = false; },
+            formatTime(date) { if(!date) return '-'; const d = new Date(date); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); },
+            formatDate(date) { if(!date) return '-'; const d = new Date(date); return d.toLocaleDateString(); },
+            showAlert(title, message, icon = 'fas fa-info-circle', color = '#E30613') { this.infoTitle = title; this.infoMessage = message; this.infoIcon = icon; this.infoIconColor = color; this.showInfoModal = true; },
+            
+            isModuleEnabled(moduleName) {
+                const module = this.tenantModules.find(m => m.name === moduleName);
+                return module ? module.enabled : false;
+            },
+            isScreenAvailable(screenId) {
+                const req = SCREEN_REQUIREMENTS[screenId];
+                if (!req) return false;
+                const modulesEnabled = req.requiredModules.every(m => this.isModuleEnabled(m));
+                return modulesEnabled && req.allowedRoles.includes(this.staffRole);
+            },
+            
+            async loadSession() {
+                const session = localStorage.getItem('rands_session');
+                if (!session) { window.location.href = 'staff-login.html'; return; }
+                try {
+                    const data = JSON.parse(session);
+                    this.staffId = data.userId;
+                    this.staffName = data.name;
+                    this.staffRole = data.staffRole;
+                    this.tenantId = data.tenantId;
+                    this.tenantName = data.businessName || 'Venue';
+                    this.staffRoleDisplay = ROLE_DISPLAY[this.staffRole] || 'Staff';
+                    await this.loadTenantModules();
+                    await this.loadShiftsFromSupabase();
+                } catch(e) { window.location.href = 'staff-login.html'; }
+            },
+            
+            async loadTenantModules() {
+                const { data: modules, error } = await supabase
+                    .from('tenant_modules')
+                    .select(`enabled, module:module_id (id, name)`)
+                    .eq('tenant_id', this.tenantId);
+                if (!error && modules) {
+                    this.tenantModules = modules.map(m => ({ id: m.module.id, name: m.module.name, enabled: m.enabled }));
+                } else {
+                    this.tenantModules = [{ id: 1, name: 'Tickets', enabled: true }, { id: 2, name: 'Sales and Orders', enabled: true }, { id: 3, name: 'Shisha Lounge System', enabled: true }];
+                }
+            },
+            
+            async loadShiftsFromSupabase() {
+                const { data, error } = await supabase
+                    .from('staff_shifts')
+                    .select('*')
+                    .eq('staff_id', this.staffId)
+                    .order('start_time', { ascending: false });
+                if (error) console.error('Error loading shifts:', error);
+                this.shifts = data || [];
+                
+                // Check for active shift
+                const active = this.shifts.find(s => s.status === 'active');
+                if (active) {
+                    this.isOnShift = true;
+                    this.activeShift = active;
+                    this.shiftStartTime = this.formatDateTime(active.start_time);
+                    this.currentStation = active.station || '';
+                } else {
+                    this.isOnShift = false;
+                    this.activeShift = null;
+                }
+                this.calculateHours();
+            },
+            
+            calculateHours() {
+                const today = new Date(); today.setHours(0,0,0,0);
+                const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay()); weekStart.setHours(0,0,0,0);
+                let todayTotal = 0, weekTotal = 0;
+                this.shifts.forEach(shift => {
+                    if (shift.status === 'completed' && shift.total_hours) {
+                        const shiftDate = new Date(shift.start_time);
+                        if (shiftDate >= today) todayTotal += shift.total_hours;
+                        if (shiftDate >= weekStart) weekTotal += shift.total_hours;
+                    } else if (shift.status === 'active' && shift.start_time) {
+                        const shiftDate = new Date(shift.start_time);
+                        const hours = (new Date() - new Date(shift.start_time)) / (1000 * 60 * 60);
+                        if (shiftDate >= today) todayTotal += hours;
+                        if (shiftDate >= weekStart) weekTotal += hours;
+                    }
+                });
+                this.todayHours = todayTotal;
+                this.weekHours = weekTotal;
+            },
+            
+            formatDateTime(date) { if(!date) return '-'; return new Date(date).toLocaleString(); },
+            
+            async startShift() {
+                if (this.isOnShift) { this.showAlert('Already On Shift', 'You already have an active shift', 'fas fa-exclamation-triangle', '#f59e0b'); return; }
+                const { data, error } = await supabase.from('staff_shifts').insert([{
+                    staff_id: this.staffId,
+                    tenant_id: this.tenantId,
+                    start_time: new Date().toISOString(),
+                    status: 'active',
+                    station: this.selectedStation || null
+                }]).select().single();
+                if (error) { this.showAlert('Error', 'Failed to start shift: ' + error.message, 'fas fa-exclamation-triangle', '#dc2626'); return; }
+                await this.loadShiftsFromSupabase();
+                this.showAlert('Shift Started', `Your shift started at ${this.formatTime(new Date())}`, 'fas fa-play-circle', '#10b981');
+                this.selectedStation = '';
+            },
+            
+            async endShift() {
+                if (!this.isOnShift || !this.activeShift) { this.showAlert('No Active Shift', 'You are not currently on shift', 'fas fa-exclamation-triangle', '#f59e0b'); return; }
+                const endTime = new Date();
+                const startTime = new Date(this.activeShift.start_time);
+                const totalHours = (endTime - startTime) / (1000 * 60 * 60);
+                const { error } = await supabase.from('staff_shifts').update({
+                    end_time: endTime.toISOString(),
+                    status: 'completed',
+                    total_hours: totalHours
+                }).eq('id', this.activeShift.id);
+                if (error) { this.showAlert('Error', 'Failed to end shift: ' + error.message, 'fas fa-exclamation-triangle', '#dc2626'); return; }
+                await this.loadShiftsFromSupabase();
+                this.showAlert('Shift Ended', `Your shift ended. Total hours: ${totalHours.toFixed(2)}h`, 'fas fa-stop-circle', '#10b981');
+            },
+            
+            sellTicket() { if (!this.scanCode) return; const amount = Math.floor(Math.random() * 200) + 50; this.todaySales += amount; this.showAlert('Ticket Sold', `Ticket ${this.scanCode} sold for R${amount}`, 'fas fa-check-circle', '#10b981'); this.scanCode = ''; },
+            validateTicket() { if (!this.scanCode) return; this.validationResult = { valid: true, message: `Ticket ${this.scanCode} is valid!` }; this.showValidationModal = true; this.scanCode = ''; },
+            validateGateTicket() { if (!this.scanCodeGate) return; this.validationResult = { valid: true, message: `Ticket ${this.scanCodeGate} is valid! Entry granted.` }; this.showValidationModal = true; this.scanCodeGate = ''; },
+            addToButcherCart(item) { const existing = this.butcherCart.find(i => i.id === item.id); if (existing) existing.qty++; else this.butcherCart.push({ ...item, qty: 1 }); },
+            removeFromButcherCart(index) { this.butcherCart.splice(index, 1); },
+            checkoutButcher() { if (this.butcherCart.length === 0) return; const total = this.butcherCartTotal; this.showAlert('Sale Complete', `Food order total: R${total}`, 'fas fa-check-circle', '#10b981'); this.butcherCart = []; this.todaySales += total; },
+            addToShishaCart(item) { const existing = this.shishaCart.find(i => i.id === item.id); if (existing) existing.qty++; else this.shishaCart.push({ ...item, qty: 1 }); },
+            removeFromShishaCart(index) { this.shishaCart.splice(index, 1); },
+            checkoutShisha() { if (this.shishaCart.length === 0) return; const total = this.shishaCartTotal; this.showAlert('Sale Complete', `Shisha order total: R${total}`, 'fas fa-check-circle', '#10b981'); this.shishaCart = []; this.todaySales += total; },
+            logout() { localStorage.removeItem('rands_session'); window.location.href = 'staff-login.html'; }
+        },
+        mounted() {
+            this.loadSession();
+            setTimeout(() => {
+                const app = document.querySelector('#app');
+                let fs = false;
+                document.getElementById('fullscreenBtn')?.addEventListener('click', () => { app.classList.add('fullscreen-active'); fs = true; });
+                document.getElementById('exitFullscreenBtn')?.addEventListener('click', () => { app.classList.remove('fullscreen-active'); fs = false; });
+            }, 500);
+        }
+    });
+</script>
+</body>
+</html>
