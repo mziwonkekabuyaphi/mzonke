@@ -543,24 +543,78 @@
 </div>
 
 <script type="module">
-  import { supabase } from '../config/supabase.js';
+  import { supabase } from '../config/supabase.js'; // adjust path if needed – here same folder as pre-order.html
 
-  // ========== MENU (unchanged) ==========
-  let menu = {};
-  const defaultMenu = {
-    meat: [{ id: "ribeye", name: "Ribeye Steak", price: 159 }, { id: "beef_sausage", name: "Beef Sausage", price: 89 }, { id: "lamb_chop", name: "Lamb Chop", price: 199 }, { id: "bacon_pack", name: "Bacon 500g", price: 79 }],
-    meals: [{ id: "steak_combo", name: "Steak + Chips", price: 189 }, { id: "boerewors_roll", name: "Boerewors Roll", price: 65 }, { id: "barbecue_platter", name: "BBQ Platter", price: 299 }],
-    sides: [{ id: "chips", name: "Chips", price: 25 }, { id: "salad", name: "Fresh Salad", price: 32 }, { id: "pap_sheba", name: "Pap & Sheba", price: 28 }],
-    drinks: [{ id: "coke", name: "Coca-Cola", price: 18 }, { id: "water", name: "Still Water", price: 12 }, { id: "beer", name: "Castle Lager", price: 28 }]
+  // ========== PRODUCTS FROM SUPABASE (butcher category) ==========
+  let butcherProducts = [];
+  let categories = ['meat', 'meals', 'sides', 'drinks']; // We'll map butcher items into these categories by heuristic
+  let activeCategory = "meat";
+
+  // We'll still keep the "menu" object for UI categories, but populate from supabase.
+  let menu = {
+    meat: [],
+    meals: [],
+    sides: [],
+    drinks: []
   };
-  const menuKey = "butcher_menu_config";
-  function loadMenuFromStorage() {
-    const saved = localStorage.getItem(menuKey);
-    if (saved) menu = JSON.parse(saved);
-    else menu = JSON.parse(JSON.stringify(defaultMenu));
+
+  async function loadButcherProducts() {
+    try {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('*')
+        .eq('category', 'butcher');
+      if (error) throw error;
+      if (data && data.length) {
+        butcherProducts = data.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          description: item.description,
+          image: item.image_url
+        }));
+        console.log(`Loaded ${butcherProducts.length} butcher products from Supabase.`);
+        // Heuristic: assign to categories based on name (simple mapping)
+        menu = { meat: [], meals: [], sides: [], drinks: [] };
+        butcherProducts.forEach(p => {
+          const lower = p.name.toLowerCase();
+          if (lower.includes('steak') || lower.includes('ribeye') || lower.includes('t-bone') || lower.includes('lamb') || lower.includes('beef') || lower.includes('sausage')) {
+            menu.meat.push(p);
+          } else if (lower.includes('combo') || lower.includes('platter') || lower.includes('roll') || lower.includes('burger')) {
+            menu.meals.push(p);
+          } else if (lower.includes('chips') || lower.includes('salad') || lower.includes('pap') || lower.includes('fries')) {
+            menu.sides.push(p);
+          } else if (lower.includes('coke') || lower.includes('water') || lower.includes('beer') || lower.includes('soda')) {
+            menu.drinks.push(p);
+          } else {
+            // fallback to meat
+            menu.meat.push(p);
+          }
+        });
+        refreshMenuUI();
+      } else {
+        console.warn("No butcher products found, using fallback default menu.");
+        loadDefaultMenu();
+      }
+    } catch (err) {
+      console.error("Failed to load butcher products:", err);
+      loadDefaultMenu();
+    }
+  }
+
+  function loadDefaultMenu() {
+    menu = {
+      meat: [{ id: "ribeye", name: "Ribeye Steak", price: 159 }, { id: "beef_sausage", name: "Beef Sausage", price: 89 }, { id: "lamb_chop", name: "Lamb Chop", price: 199 }, { id: "bacon_pack", name: "Bacon 500g", price: 79 }],
+      meals: [{ id: "steak_combo", name: "Steak + Chips", price: 189 }, { id: "boerewors_roll", name: "Boerewors Roll", price: 65 }, { id: "barbecue_platter", name: "BBQ Platter", price: 299 }],
+      sides: [{ id: "chips", name: "Chips", price: 25 }, { id: "salad", name: "Fresh Salad", price: 32 }, { id: "pap_sheba", name: "Pap & Sheba", price: 28 }],
+      drinks: [{ id: "coke", name: "Coca-Cola", price: 18 }, { id: "water", name: "Still Water", price: 12 }, { id: "beer", name: "Castle Lager", price: 28 }]
+    };
     refreshMenuUI();
   }
-  function refreshMenuUI() { renderMenuAndCart(); }
+
+  function refreshMenuUI() {
+    renderMenuAndCart();
+  }
 
   // ========== REAL WALLET DEDUCTION ==========
   async function getWalletByPhone(phone) {
@@ -606,7 +660,6 @@
   let currentCart = [];
   let currentOrderPaid = false;
   let currentOrderLocked = false;
-  let activeCategory = "meat";
 
   async function showStunningPopup(title, message, type = 'success', autoClose = 2000) {
     return new Promise((resolve) => {
@@ -661,7 +714,9 @@
   }
 
   async function renderQueueList() {
+    console.log('🔄 renderQueueList called');
     const queue = await getQueue();
+    console.log('Queue length:', queue.length, queue);
     const container = document.getElementById('queueListContainer');
     if (!queue.length) {
       container.innerHTML = '<div style="padding:40px;text-align:center; color:var(--mist);"><i class="fas fa-user-plus"></i><p style="margin-top:8px;">No customers waiting</p></div>';
@@ -685,6 +740,11 @@
         </div>
       </div>`;
     }).join('');
+    // attach events
+    attachQueueEvents();
+  }
+
+  function attachQueueEvents() {
     document.querySelectorAll('.call-ticket').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); callTicket(btn.dataset.ticket); }));
     document.querySelectorAll('.skip-ticket').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); skipTicket(btn.dataset.ticket); }));
     document.querySelectorAll('.queue-item').forEach(el => {
@@ -824,7 +884,7 @@
     document.getElementById('categoriesContainer').innerHTML = catsHtml;
     document.querySelectorAll('.cat-btn').forEach(btn => btn.addEventListener('click', () => { activeCategory = btn.dataset.cat; renderMenuAndCart(); }));
     const items = menu[activeCategory] || [];
-    const itemsHtml = items.map(item => `<div class="item-card" data-item='${JSON.stringify(item)}'><div class="item-name">${escapeHtml(item.name)}</div><div class="item-price">R${item.price}</div></div>`).join('');
+    const itemsHtml = items.map(item => `<div class="item-card" data-item='${JSON.stringify({ id: item.id, name: item.name, price: item.price })}'><div class="item-name">${escapeHtml(item.name)}</div><div class="item-price">R${item.price}</div></div>`).join('');
     document.getElementById('itemsGrid').innerHTML = itemsHtml;
     document.querySelectorAll('.item-card').forEach(card => card.addEventListener('click', () => {
       if (!currentOrderLocked) {
@@ -872,7 +932,6 @@
     renderMenuAndCart();
   }
 
-  // Simulated card payment (no wallet integration)
   async function markAsPaid(method) {
     if (!currentActiveTicket || !currentCart.length) return;
     if (method === 'wallet') {
@@ -985,11 +1044,10 @@
     });
   });
 
-  setInterval(() => { renderAll(); }, 2000);
-  window.addEventListener('storage', (e) => { if (e.key === menuKey) loadMenuFromStorage(); });
-
-  loadMenuFromStorage();
+  // ========== INITIALIZATION ==========
+  await loadButcherProducts();
   renderAll();
+  setInterval(() => { renderAll(); }, 2000);
 </script>
 </body>
 </html>
