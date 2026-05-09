@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Staff Clock | Time Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+        }
+        :root {
+            --bg-primary: #f8fafc;
+            --card-bg: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --border-light: #e2e8f0;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+            --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1);
+            --green-500: #10b981;
+            --green-600: #059669;
+            --green-100: #d1fae5;
+            --red-500: #ef4444;
+            --neutral-200: #e2e8f0;
+        }
+        body {
+            background: var(--bg-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .staff-card {
+            max-width: 500px;
+            width: 100%;
+            background: var(--card-bg);
+            border-radius: 2rem;
+            box-shadow: var(--shadow-xl);
+            overflow: hidden;
+        }
+        .pin-screen, .staff-dashboard {
+            padding: 2rem 1.5rem;
+        }
+        .pin-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .pin-display {
+            background: var(--bg-primary);
+            border-radius: 2rem;
+            text-align: center;
+            letter-spacing: 12px;
+            font-size: 2rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-family: monospace;
+            border: 1px solid var(--border-light);
+        }
+        .keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .key-btn {
+            background: var(--bg-primary);
+            border: none;
+            font-size: 1.8rem;
+            font-weight: 600;
+            padding: 1rem;
+            border-radius: 1.5rem;
+            cursor: pointer;
+            box-shadow: var(--shadow-sm);
+            transition: 0.05s linear;
+        }
+        .key-btn:active { transform: scale(0.96); background: var(--neutral-200);}
+        .keypad-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+        .key-action {
+            flex: 1;
+            background: var(--neutral-200);
+            border: none;
+            font-weight: 600;
+            padding: 0.85rem;
+            border-radius: 3rem;
+            cursor: pointer;
+        }
+        .key-enter { background: var(--green-500); color: white; }
+        .welcome-name { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .timer-card {
+            background: var(--bg-primary);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+        .timer-display {
+            font-size: 3rem;
+            font-weight: 700;
+            font-family: monospace;
+            letter-spacing: 4px;
+        }
+        .badge-active {
+            background: var(--green-100);
+            color: var(--green-700);
+            padding: 0.25rem 1rem;
+            border-radius: 2rem;
+            display: inline-block;
+        }
+        .btn-clock {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.3rem;
+            font-weight: 700;
+            border-radius: 3rem;
+            border: none;
+            cursor: pointer;
+            margin: 0.5rem 0;
+        }
+        .btn-clock-in { background: var(--green-500); color: white; }
+        .btn-clock-out { background: var(--red-500); color: white; }
+        .btn-logout {
+            background: transparent;
+            border: 1px solid var(--border-light);
+            padding: 0.6rem;
+            border-radius: 2rem;
+            width: 100%;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        .toast-container {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        .toast {
+            background: #1e293b;
+            color: white;
+            padding: 0.75rem 1.2rem;
+            border-radius: 2rem;
+            font-size: 0.85rem;
+            animation: slideIn 0.2s ease;
+        }
+        .toast-success { background: var(--green-600); }
+        .toast-error { background: var(--red-500); }
+        .toast-info { background: #3b82f6; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="staffAppRoot"></div>
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script type="module">
+        import { supabase } from '../config/supabase.js';
+
+        // ---------- GLOBAL STATE ----------
+        let currentStaff = null;       // { id, name, hourly_rate, tenant_id }
+        let currentShiftId = null;
+        let timerInterval = null;
+        let inactivityTimer = null;
+
+        // ---------- HELPERS ----------
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerText = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function resetInactivity() {
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            if (currentStaff) {
+                inactivityTimer = setTimeout(() => {
+                    showToast('Auto logout due to inactivity', 'info');
+                    logoutStaff();
+                }, 10 * 60 * 1000);
+            }
+        }
+
+        // ---------- SUPABASE AUTH (PIN LOGIN) ----------
+        async function authenticateStaff(pin) {
+            const { data, error } = await supabase
+                .from('staff')
+                .select('id, name, hourly_rate, tenant_id, status')
+                .eq('pin', pin)
+                .maybeSingle();
+
+            if (error || !data) {
+                showToast('Invalid PIN', 'error');
+                return false;
+            }
+            if (data.status !== 'Active') {
+                showToast('Your account is inactive. Contact admin.', 'error');
+                return false;
+            }
+            currentStaff = data;
+
+            // Check for active shift
+            const { data: activeShift, error: shiftError } = await supabase
+                .from('staff_shifts')
+                .select('id, start_time')
+                .eq('staff_id', currentStaff.id)
+                .eq('shift_status', 'active')
+                .maybeSingle();
+
+            if (activeShift) {
+                currentShiftId = activeShift.id;
+            }
+            renderDashboard();
+            resetInactivity();
+            return true;
+        }
+
+        // ---------- CLOCK IN / OUT ----------
+        async function clockIn() {
+            try {
+                const { data, error } = await supabase
+                    .from('staff_shifts')
+                    .insert({
+                        staff_id: currentStaff.id,
+                        start_time: new Date().toISOString(),
+                        shift_status: 'active',
+                        tenant_id: currentStaff.tenant_id,
+                        station: 'Main'  // optional, can be customised
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+                currentShiftId = data.id;
+                showToast(`Clocked in at ${new Date().toLocaleTimeString()}`);
+                renderDashboard();
+                resetInactivity();
+            } catch (err) {
+                console.error(err);
+                showToast('Clock in failed: ' + err.message, 'error');
+            }
+        }
+
+        async function clockOut() {
+            if (!currentShiftId) return;
+            try {
+                const { error } = await supabase
+                    .from('staff_shifts')
+                    .update({ end_time: new Date().toISOString() }) // trigger auto‑calculates total_hours & sets status=completed
+                    .eq('id', currentShiftId);
+
+                if (error) throw error;
+                showToast(`Clocked out at ${new Date().toLocaleTimeString()}`, 'success');
+                currentShiftId = null;
+                renderDashboard();
+                resetInactivity();
+            } catch (err) {
+                console.error(err);
+                showToast('Clock out failed: ' + err.message, 'error');
+            }
+        }
+
+        function logoutStaff() {
+            if (timerInterval) clearInterval(timerInterval);
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            currentStaff = null;
+            currentShiftId = null;
+            renderAuthScreen();
+        }
+
+        // ---------- UI RENDERING ----------
+        function renderAuthScreen() {
+            const root = document.getElementById('staffAppRoot');
+            root.innerHTML = `
+                <div class="staff-card">
+                    <div class="pin-screen">
+                        <div class="pin-title">🔐 Staff Clock In/Out</div>
+                        <div class="pin-display" id="pinDisplay">____</div>
+                        <div class="keypad" id="keypadGrid"></div>
+                        <div class="keypad-actions">
+                            <button class="key-action" id="clearPinBtn">⌫ Clear</button>
+                            <button class="key-action key-enter" id="enterPinBtn">✓ Enter</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            let currentPin = "";
+            const pinDisplay = document.getElementById('pinDisplay');
+            const grid = document.getElementById('keypadGrid');
+            for (let i = 1; i <= 9; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'key-btn';
+                btn.innerText = i;
+                btn.addEventListener('click', () => {
+                    if (currentPin.length < 4) {
+                        currentPin += i;
+                        pinDisplay.innerText = currentPin.padEnd(4, '_');
+                    }
+                    resetInactivity();
+                });
+                grid.appendChild(btn);
+            }
+            const zeroBtn = document.createElement('button');
+            zeroBtn.className = 'key-btn';
+            zeroBtn.innerText = 0;
+            zeroBtn.addEventListener('click', () => {
+                if (currentPin.length < 4) {
+                    currentPin += 0;
+                    pinDisplay.innerText = currentPin.padEnd(4, '_');
+                }
+                resetInactivity();
+            });
+            grid.appendChild(zeroBtn);
+            // placeholder to keep 3x3 layout
+            const dummy = document.createElement('button');
+            dummy.style.visibility = 'hidden';
+            dummy.className = 'key-btn';
+            grid.appendChild(dummy);
+
+            document.getElementById('clearPinBtn').addEventListener('click', () => {
+                currentPin = "";
+                pinDisplay.innerText = "____";
+                resetInactivity();
+            });
+            document.getElementById('enterPinBtn').addEventListener('click', async () => {
+                if (currentPin.length === 4) {
+                    await authenticateStaff(currentPin);
+                } else {
+                    showToast('Enter 4-digit PIN', 'error');
+                }
+                resetInactivity();
+            });
+        }
+
+        function renderDashboard() {
+            if (timerInterval) clearInterval(timerInterval);
+            const root = document.getElementById('staffAppRoot');
+            const isClockedIn = !!currentShiftId;
+
+            root.innerHTML = `
+                <div class="staff-card">
+                    <div class="staff-dashboard">
+                        <div class="welcome-name">👋 Hello, ${escapeHtml(currentStaff.name)}</div>
+                        <div class="timer-card">
+                            <div class="timer-display" id="liveTimer">00:00:00</div>
+                            <div class="shift-status">${isClockedIn ? '<span class="badge-active">✅ ACTIVE SHIFT</span>' : '<span style="color:gray;">No active shift</span>'}</div>
+                        </div>
+                        <button id="clockActionBtn" class="btn-clock ${isClockedIn ? 'btn-clock-out' : 'btn-clock-in'}">
+                            ${isClockedIn ? '⏹️ Clock Out' : '🟢 Clock In'}
+                        </button>
+                        <button id="staffLogoutBtn" class="btn-logout">🚪 Logout & Exit</button>
+                    </div>
+                </div>
+            `;
+
+            if (isClockedIn) {
+                // fetch start_time of this shift to calculate live timer
+                supabase
+                    .from('staff_shifts')
+                    .select('start_time')
+                    .eq('id', currentShiftId)
+                    .single()
+                    .then(({ data, error }) => {
+                        if (error || !data) return;
+                        const startTime = new Date(data.start_time);
+                        const updateTimer = () => {
+                            const diff = Math.max(0, Date.now() - startTime);
+                            const hours = Math.floor(diff / 3600000);
+                            const mins = Math.floor((diff % 3600000) / 60000);
+                            const secs = Math.floor((diff % 60000) / 1000);
+                            const timerElem = document.getElementById('liveTimer');
+                            if (timerElem) timerElem.innerText = `${hours.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+                        };
+                        updateTimer();
+                        timerInterval = setInterval(updateTimer, 1000);
+                    });
+            } else {
+                const timerElem = document.getElementById('liveTimer');
+                if (timerElem) timerElem.innerText = "00:00:00";
+            }
+
+            document.getElementById('clockActionBtn').addEventListener('click', () => {
+                if (currentShiftId) clockOut();
+                else clockIn();
+                resetInactivity();
+            });
+            document.getElementById('staffLogoutBtn').addEventListener('click', () => {
+                logoutStaff();
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[m]);
+        }
+
+        // start
+        renderAuthScreen();
+    </script>
+</body>
+</html>
