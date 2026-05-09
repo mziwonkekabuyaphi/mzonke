@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Rands | Kiosk Payment</title>
+  <!-- Fonts: order.html design system (Inter + Playfair) merged with kiosk identity -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <style>
+    /* ========== DESIGN SYSTEM (from order.html = kiosk unified) ========== */
+    :root {
+      --red: #E30613;
+      --red-dark: #a0010e;
+      --red-deep: #8A0009;
+      --red-glow: rgba(227,6,19,0.18);
+      --red-subtle: rgba(227,6,19,0.06);
+      --ink: #1e293b;
+      --ink-muted: #334155;
+      --slate: #475569;
+      --mist: #94a3b8;
+      --bone: #f8fafd;
+      --white: #ffffff;
+      --card-bg: #ffffff;
+      --border: rgba(0,0,0,0.07);
+      --border-strong: #eef2f8;
+      --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.12);
+      --shadow-card: 0 4px 24px rgba(0,0,0,0.08);
+      --shadow-float: 0 16px 48px rgba(0,0,0,0.14);
+      --radius-sm: 12px;
+      --radius-md: 20px;
+      --radius-lg: 28px;
+      --radius-xl: 32px;
+      --radius-full: 9999px;
+      --transition: all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bone);
+      min-height: 100vh;
+      color: var(--ink);
+      overflow-x: hidden;
+    }
+    /* Subtle noise texture matching order.html */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+    #app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    /* Payment container: card style from order.html */
+    .payment-container {
+      max-width: 620px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .payment-card {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-float);
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      transition: var(--transition);
+    }
+    /* Header gradient matching order.html header */
+    .payment-header {
+      background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%);
+      padding: 32px 24px;
+      text-align: center;
+      color: white;
+    }
+    .payment-header i {
+      font-size: 3rem;
+      margin-bottom: 12px;
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(4px);
+      width: 80px;
+      height: 80px;
+      border-radius: var(--radius-full);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .payment-header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+    .payment-header p {
+      opacity: 0.85;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .payment-body {
+      padding: 28px 28px;
+    }
+    /* Section titles */
+    .section-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--mist);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* Order summary box (order.html card style) */
+    .order-summary-box {
+      background: var(--bone);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border-strong);
+    }
+    .order-summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.87rem;
+      color: var(--slate);
+      margin-bottom: 10px;
+    }
+    .order-summary-row.total {
+      border-top: 1px solid var(--border-strong);
+      padding-top: 12px;
+      margin-top: 8px;
+      font-weight: 800;
+      font-size: 1rem;
+      color: var(--ink);
+    }
+    .order-summary-row.total .amt {
+      color: var(--red);
+      font-family: 'Playfair Display', serif;
+      font-size: 1.2rem;
+    }
+    .alcohol-notice {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--red-subtle);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 0.75rem;
+      color: var(--red-dark);
+      font-weight: 600;
+      margin-top: 12px;
+    }
+    /* Form fields (order.html input style) */
+    .field-wrap {
+      margin-bottom: 18px;
+    }
+    .field-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--slate);
+      margin-bottom: 8px;
+      display: block;
+    }
+    .field-input {
+      width: 100%;
+      padding: 14px 18px;
+      border: 1.5px solid var(--border-strong);
+      border-radius: var(--radius-full);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      background: var(--white);
+      transition: var(--transition);
+      outline: none;
+    }
+    .field-input:focus {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px var(--red-glow);
+    }
+    /* Buttons matching order.html button system */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 24px;
+      border-radius: var(--radius-full);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: var(--transition);
+      width: 100%;
+    }
+    .btn:active {
+      transform: scale(0.96);
+    }
+    .btn-primary {
+      background: var(--red);
+      color: white;
+      box-shadow: 0 4px 12px var(--red-glow);
+    }
+    .btn-primary:hover {
+      background: var(--red-dark);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-ghost {
+      background: var(--bone);
+      color: var(--ink-muted);
+      border: 1px solid var(--border-strong);
+      margin-top: 12px;
+    }
+    .btn-ghost:hover {
+      background: #eef2f6;
+    }
+    /* Payment method cards (enhanced card UI) */
+    .pay-option {
+      border: 1.5px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      cursor: pointer;
+      transition: var(--transition);
+      margin-bottom: 16px;
+      background: var(--white);
+    }
+    .pay-option:hover {
+      border-color: var(--red);
+      background: var(--red-subtle);
+    }
+    .pay-option.selected {
+      border-color: var(--red);
+      background: var(--red-subtle);
+    }
+    .pay-option-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .pay-icon-wrap {
+      width: 52px;
+      height: 52px;
+      background: var(--bone);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+    }
+    .pay-icon-wrap img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+    .pay-icon-wrap i {
+      font-size: 1.5rem;
+      color: var(--red);
+    }
+    .pay-option-title {
+      font-weight: 800;
+      font-size: 0.95rem;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .pay-option-desc {
+      font-size: 0.72rem;
+      color: var(--mist);
+    }
+    .pay-option-expand {
+      overflow: hidden;
+      transition: var(--transition);
+      margin-top: 14px;
+      padding-top: 8px;
+    }
+    /* Fingerprint specific */
+    .fingerprint-zone {
+      text-align: center;
+      padding: 8px 0;
+    }
+    .fp-circle {
+      width: 100px;
+      height: 100px;
+      background: var(--bone);
+      border-radius: 50%;
+      border: 2px solid var(--border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .fp-circle:hover {
+      background: var(--red-subtle);
+      transform: scale(1.02);
+    }
+    .fp-circle:active {
+      transform: scale(0.96);
+    }
+    .fp-circle i {
+      font-size: 2.4rem;
+      color: var(--red);
+    }
+    .fp-circle.scanning {
+      animation: fpPulse 0.9s ease-in-out infinite;
+      background: var(--red);
+      border-color: var(--red-dark);
+    }
+    .fp-circle.scanning i {
+      color: white;
+    }
+    .fp-circle.success-fp {
+      background: #D1FAE5;
+      border-color: #059669;
+    }
+    .fp-circle.success-fp i {
+      color: #059669;
+    }
+    @keyframes fpPulse {
+      0%, 100% { box-shadow: 0 0 0 0 var(--red-glow); transform: scale(1); }
+      50% { box-shadow: 0 0 0 14px transparent; transform: scale(1.04); }
+    }
+    .fp-hint {
+      font-size: 0.75rem;
+      color: var(--mist);
+      font-weight: 500;
+    }
+    .fp-error {
+      font-size: 0.75rem;
+      color: var(--red);
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    /* Modal system (order.html style) */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .modal-backdrop.open {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal-box {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      max-width: 480px;
+      width: 90%;
+      padding: 36px;
+      text-align: center;
+      transform: translateY(30px) scale(0.95);
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      border: 2px solid var(--red);
+      box-shadow: var(--shadow-float);
+    }
+    .modal-backdrop.open .modal-box {
+      transform: translateY(0) scale(1);
+    }
+    .modal-emblem {
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(145deg, var(--red), var(--red-dark));
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .modal-emblem i {
+      font-size: 2rem;
+      color: white;
+    }
+    .modal-emblem.success-emblem {
+      background: linear-gradient(145deg, #059669, #047857);
+    }
+    .modal-emblem.wait-emblem {
+      background: linear-gradient(145deg, #2563EB, #1D4ED8);
+    }
+    .modal-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      color: var(--ink);
+    }
+    .modal-subtitle {
+      font-size: 0.85rem;
+      color: var(--slate);
+    }
+    .timer-display {
+      font-family: 'DM Mono', monospace;
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 20px 0;
+      color: var(--red);
+    }
+    .waiting-anim {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .waiting-dot {
+      width: 12px;
+      height: 12px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: bounce 1.4s ease-in-out infinite;
+    }
+    .waiting-dot:nth-child(2) { animation-delay: 0.2s; }
+    .waiting-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    /* Toast matching order.html */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--ink);
+      backdrop-filter: blur(8px);
+      color: white;
+      padding: 12px 24px;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+      z-index: 2000;
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+      font-size: 0.85rem;
+      box-shadow: var(--shadow-soft);
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .toast.success { background: #059669; }
+    .toast.error { background: var(--red); }
+    .toast.info { background: var(--ink); }
+    .wallet-hint {
+      font-size: 0.7rem;
+      color: var(--mist);
+      text-align: center;
+      margin-top: 8px;
+    }
+    .voucher-code-display {
+      background: var(--bone);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      text-align: center;
+      margin-top: 12px;
+      font-family: 'DM Mono', monospace;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      font-weight: 700;
+      color: var(--red);
+      border: 1px solid var(--border-strong);
+    }
+    /* Empty cart warning */
+    .empty-cart-warning {
+      text-align: center;
+      padding: 20px;
+      color: var(--red);
+      font-weight: 600;
+      background: var(--red-subtle);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+    }
+    /* Responsive */
+    @media (max-width: 560px) {
+      .payment-body { padding: 20px; }
+      .order-summary-box { padding: 16px; }
+      .modal-box { padding: 28px 20px; }
+      .toast { white-space: normal; text-align: center; width: 90%; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="payment-container">
+    <div class="payment-card">
+      <div class="payment-header">
+        <i class="fas fa-receipt"></i>
+        <h1>Kiosk Payment</h1>
+        <p>Complete your order</p>
+      </div>
+      <div class="payment-body">
+        <!-- Order Summary -->
+        <div class="section-title"><i class="fas fa-shopping-bag"></i> Your Order</div>
+        <div class="order-summary-box">
+          <div v-for="item in cart" :key="item.id" class="order-summary-row">
+            <span>{{ item.name }} ×{{ item.quantity }}</span>
+            <span>R {{ formatPrice(item.price * item.quantity) }}</span>
+          </div>
+          <div v-if="cart.length === 0" class="empty-cart-warning">
+            <i class="fas fa-shopping-cart"></i> Your cart is empty
+            <div style="font-size:0.7rem; margin-top:8px;">Please add items from the menu first</div>
+          </div>
+          <div class="order-summary-row total">
+            <span>Total to Pay</span>
+            <span class="amt">R {{ formatPrice(totalAmount) }}</span>
+          </div>
+          <div v-if="cartHasAlcohol" class="alcohol-notice">
+            <i class="fas fa-triangle-exclamation"></i> Contains alcohol — age verification required
+          </div>
+        </div>
+
+        <!-- Payment Method Selection -->
+        <div class="section-title"><i class="fas fa-wallet"></i> Select Payment Method</div>
+
+        <!-- 1. Rands Wallet Option -->
+        <div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'">
+          <div class="pay-option-header">
+            <div class="pay-icon-wrap"><i class="fas fa-paper-plane"></i></div>
+            <div>
+              <div class="pay-option-title">Rands Wallet</div>
+              <div class="pay-option-desc">Send payment request to wallet app</div>
+            </div>
+          </div>
+          <div v-if="selectedPayMethod === 'wallet'" class="pay-option-expand">
+            <label class="field-label">Wallet Account ID / Phone Number</label>
+            <input type="tel" class="field-input" v-model="walletAccountId" placeholder="e.g., 0635713652" />
+            <button class="btn btn-primary" @click="sendWalletRequest" :disabled="!walletAccountId || sending || cart.length === 0" style="margin-top:12px;">
+              <i class="fas fa-paper-plane"></i> Send Payment Request
+            </button>
+            <div class="wallet-hint"><i class="fas fa-info-circle"></i> Customer will approve in their Rands Wallet app</div>
+          </div>
+        </div>
+
+        <!-- 2. 1Voucher Option -->
+        <div class="pay-option" :class="{ selected: selectedPayMethod === '1voucher' }" @click="selectedPayMethod = '1voucher'">
+          <div class="pay-option-header">
+            <div class="pay-icon-wrap"><img src="../icons/1voucher-icon.png" alt="1Voucher" @error="handleImageError"></div>
+            <div>
+              <div class="pay-option-title">1Voucher</div>
+              <div class="pay-option-desc">Pay with 1Voucher (Airtime, Data, Electricity)</div>
+            </div>
+          </div>
+          <div v-if="selectedPayMethod === '1voucher'" class="pay-option-expand">
+            <label class="field-label">Voucher PIN / Code</label>
+            <input type="text" class="field-input" v-model="voucherCode" placeholder="Enter 16-digit voucher PIN" maxlength="20" />
+            <button class="btn btn-primary" @click="processVoucherPayment" :disabled="!voucherCode || processing || cart.length === 0" style="margin-top:12px;">
+              <i class="fas fa-ticket-alt"></i> {{ processing ? 'Processing...' : 'Redeem Voucher' }}
+            </button>
+            <div class="voucher-code-display" v-if="voucherRedeemed">
+              <i class="fas fa-check-circle" style="color:#059669"></i> Voucher Redeemed! R {{ formatPrice(voucherAmount) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. CapitecPay Option -->
+        <div class="pay-option" :class="{ selected: selectedPayMethod === 'capitecpay' }" @click="selectedPayMethod = 'capitecpay'">
+          <div class="pay-option-header">
+            <div class="pay-icon-wrap"><img src="../images/capitec.png" alt="CapitecPay" @error="handleImageError"></div>
+            <div>
+              <div class="pay-option-title">CapitecPay</div>
+              <div class="pay-option-desc">Pay instantly with Capitec banking app</div>
+            </div>
+          </div>
+          <div v-if="selectedPayMethod === 'capitecpay'" class="pay-option-expand">
+            <label class="field-label">Capitec Mobile Number</label>
+            <input type="tel" class="field-input" v-model="capitecNumber" placeholder="+27 XX XXX XXXX" />
+            <button class="btn btn-primary" @click="processCapitecPay" :disabled="!capitecNumber || processing || cart.length === 0" style="margin-top:12px;">
+              <i class="fas fa-university"></i> {{ processing ? 'Processing...' : 'Pay with CapitecPay' }}
+            </button>
+            <p style="font-size:0.7rem; color:var(--mist); margin-top:8px; text-align:center;">You will receive a push notification on your Capitec app</p>
+          </div>
+        </div>
+
+        <!-- 4. Fingerprint Option -->
+        <div class="pay-option" :class="{ selected: selectedPayMethod === 'fingerprint' }" @click="selectedPayMethod = 'fingerprint'">
+          <div class="pay-option-header">
+            <div class="pay-icon-wrap"><i class="fas fa-fingerprint"></i></div>
+            <div>
+              <div class="pay-option-title">Fingerprint</div>
+              <div class="pay-option-desc">Biometric secure authentication</div>
+            </div>
+          </div>
+          <div v-if="selectedPayMethod === 'fingerprint'" class="pay-option-expand">
+            <div class="fingerprint-zone">
+              <div class="fp-circle" :class="{ scanning: fpScanning, 'success-fp': fpSuccess }" @click="startFingerprintScan">
+                <i :class="fpSuccess ? 'fas fa-check' : 'fas fa-fingerprint'"></i>
+              </div>
+              <div v-if="fpScanning" class="fp-hint">Scanning… hold still</div>
+              <div v-else-if="fpSuccess" class="fp-hint" style="color:#059669;font-weight:700;">Verified!</div>
+              <div v-else-if="fpError" class="fp-error">{{ fpError }}</div>
+              <div v-else class="fp-hint">Tap to scan your fingerprint</div>
+            </div>
+            <div style="text-align:center;margin-top:12px;">
+              <span style="cursor:pointer;color:var(--red);font-weight:600;font-size:0.75rem;" @click="showRegisterModal = true">
+                <i class="fas fa-plus-circle"></i> Register new fingerprint
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-ghost" @click="goBack">
+          <i class="fas fa-arrow-left"></i> Back to Menu
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Waiting Modal (for Wallet & CapitecPay) -->
+  <div class="modal-backdrop" :class="{ open: waitingModalOpen }">
+    <div class="modal-box">
+      <div class="modal-emblem wait-emblem"><i class="fas fa-clock"></i></div>
+      <h2 class="modal-title">Waiting for Approval</h2>
+      <p class="modal-subtitle">{{ waitingMessage }}</p>
+      <div class="waiting-anim"><div class="waiting-dot"></div><div class="waiting-dot"></div><div class="waiting-dot"></div></div>
+      <div class="timer-display">{{ formatTime(remainingSeconds) }}</div>
+      <button class="btn btn-ghost" @click="cancelWaiting" style="margin-top: 20px;">Cancel Request</button>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div class="modal-backdrop" :class="{ open: successModalOpen }">
+    <div class="modal-box">
+      <div class="modal-emblem success-emblem"><i class="fas fa-check"></i></div>
+      <h2 class="modal-title">Payment Successful!</h2>
+      <p class="modal-subtitle">Payment of <strong>R {{ formatPrice(lastPaidAmount) }}</strong> was successful.</p>
+      <div style="margin-top: 24px; font-size: 0.85rem; color: var(--mist);">Redirecting to menu...</div>
+    </div>
+  </div>
+
+  <!-- Register Fingerprint Modal -->
+  <div class="modal-backdrop" :class="{ open: showRegisterModal }" @click.self="showRegisterModal = false">
+    <div class="modal-box" style="text-align:center;">
+      <div class="modal-emblem"><i class="fas fa-fingerprint"></i></div>
+      <h2 class="modal-title">Register Fingerprint</h2>
+      <p class="modal-subtitle">Place your finger on the sensor to register a new biometric profile.</p>
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <button class="btn btn-ghost" @click="showRegisterModal = false" style="margin-top:0;">Cancel</button>
+        <button class="btn btn-primary" @click="simulateRegister" style="margin-top:0;">Register</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" :class="[toastType, { show: toastVisible }]"><i :class="toastIcon"></i> {{ toastMessage }}</div>
+</div>
+
+<script>
+// ==================== PRESERVED COMPLETE FUNCTIONALITY (Custom Amount Removed) ====================
+new Vue({
+  el: '#app',
+  data() {
+    return {
+      cart: [],
+      selectedPayMethod: 'wallet',
+      walletAccountId: '',
+      voucherCode: '',
+      voucherRedeemed: false,
+      voucherAmount: 0,
+      capitecNumber: '',
+      fpScanning: false,
+      fpSuccess: false,
+      fpError: '',
+      fpTimer: null,
+      showRegisterModal: false,
+      sending: false,
+      processing: false,
+      waitingModalOpen: false,
+      successModalOpen: false,
+      remainingSeconds: 120,
+      approvalTimer: null,
+      currentRequestId: null,
+      lastPaidAmount: 0,
+      waitingMessage: 'Waiting for payment confirmation...',
+      toastVisible: false,
+      toastMessage: '',
+      toastType: '',
+      toastIcon: '',
+      toastTimer: null,
+      isEventMode: false
+    };
+  },
+  computed: {
+    totalAmount() {
+      // Amount strictly from cart (kiosk menu or tickets page)
+      return this.cart.reduce((s, i) => s + (i.price * i.quantity), 0);
+    },
+    cartHasAlcohol() {
+      return this.cart.some(i => i.alcohol === true);
+    }
+  },
+  mounted() {
+    const savedCart = localStorage.getItem('rands_kiosk_cart');
+    if (savedCart) {
+      try { this.cart = JSON.parse(savedCart); } catch(e) { console.error(e); }
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    this.isEventMode = urlParams.get('event') === 'true' || urlParams.get('tickets') === 'true';
+    window.addEventListener('storage', this.handleWalletApproval);
+  },
+  beforeDestroy() {
+    window.removeEventListener('storage', this.handleWalletApproval);
+    if (this.approvalTimer) clearInterval(this.approvalTimer);
+    if (this.fpTimer) clearTimeout(this.fpTimer);
+  },
+  methods: {
+    formatPrice(n) { return Number(n).toFixed(2); },
+    formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    },
+    showToast(msg, type = 'info') {
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+      const icons = { success: 'fas fa-check-circle', error: 'fas fa-exclamation-circle', info: 'fas fa-info-circle' };
+      this.toastMessage = msg;
+      this.toastType = type;
+      this.toastIcon = icons[type] || icons.info;
+      this.toastVisible = true;
+      this.toastTimer = setTimeout(() => { this.toastVisible = false; }, 3000);
+    },
+    goBack() { window.location.href = 'kiosk-menu.html'; },
+    handleImageError(e) { e.target.style.display = 'none'; },
+    completePayment() {
+      this.lastPaidAmount = this.totalAmount;
+      localStorage.removeItem('rands_kiosk_cart');
+      this.cart = [];
+      this.successModalOpen = true;
+      setTimeout(() => { window.location.href = 'kiosk-menu.html'; }, 3000);
+    },
+    startTimer(message, duration = 120) {
+      this.remainingSeconds = duration;
+      this.waitingMessage = message;
+      this.waitingModalOpen = true;
+      if (this.approvalTimer) clearInterval(this.approvalTimer);
+      this.approvalTimer = setInterval(() => {
+        if (this.remainingSeconds > 0) {
+          this.remainingSeconds--;
+        } else {
+          this.clearTimer();
+          this.showToast('Payment request expired. Please try again.', 'error');
+        }
+      }, 1000);
+    },
+    clearTimer() {
+      if (this.approvalTimer) { clearInterval(this.approvalTimer); this.approvalTimer = null; }
+      this.waitingModalOpen = false;
+    },
+    cancelWaiting() {
+      this.clearTimer();
+      this.showToast('Payment cancelled', 'error');
+    },
+    sendWalletRequest() {
+      if (!this.walletAccountId || this.walletAccountId.length < 8) {
+        this.showToast('Please enter a valid wallet ID (phone number)', 'error');
+        return;
+      }
+      if (this.totalAmount <= 0) {
+        this.showToast('Cart is empty. Please add items first.', 'error');
+        return;
+      }
+      this.sending = true;
+      this.currentRequestId = 'REQ_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+      const paymentRequest = {
+        id: this.currentRequestId,
+        amount: this.totalAmount,
+        from: 'Rands Kiosk',
+        reference: this.isEventMode ? 'EVENT-' + Date.now().toString().slice(-8) : 'KIO-' + Date.now().toString().slice(-8),
+        accountId: this.walletAccountId.trim(),
+        timestamp: Date.now(),
+        status: 'pending',
+        items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+        isEvent: this.isEventMode
+      };
+      localStorage.setItem('rands_payment_request', JSON.stringify(paymentRequest));
+      this.startTimer(`Waiting for approval from ${this.walletAccountId}`, 120);
+      this.showToast(`Payment request sent to ${this.walletAccountId}`, 'success');
+      this.sending = false;
+    },
+    handleWalletApproval(e) {
+      if (e.key === 'rands_payment_approved' && e.newValue && this.currentRequestId) {
+        try {
+          const approval = JSON.parse(e.newValue);
+          if (approval.requestId === this.currentRequestId) {
+            if (approval.approved === true) {
+              this.clearTimer();
+              this.completePayment();
+            } else {
+              this.clearTimer();
+              this.showToast('Payment was declined in wallet', 'error');
+            }
+            localStorage.removeItem('rands_payment_request');
+            this.currentRequestId = null;
+          }
+        } catch(err) { console.error(err); }
+      }
+    },
+    processVoucherPayment() {
+      if (!this.voucherCode.trim()) {
+        this.showToast('Please enter voucher code', 'error');
+        return;
+      }
+      if (this.totalAmount <= 0) {
+        this.showToast('Cart is empty. Please add items first.', 'error');
+        return;
+      }
+      this.processing = true;
+      setTimeout(() => {
+        const success = Math.random() > 0.1;
+        if (success) {
+          this.voucherRedeemed = true;
+          this.voucherAmount = this.totalAmount;
+          this.showToast(`Voucher of R${this.formatPrice(this.totalAmount)} redeemed successfully!`, 'success');
+          this.completePayment();
+        } else {
+          this.showToast('Invalid voucher code or insufficient balance', 'error');
+        }
+        this.processing = false;
+      }, 1500);
+    },
+    processCapitecPay() {
+      if (!this.capitecNumber.trim()) {
+        this.showToast('Please enter Capitec mobile number', 'error');
+        return;
+      }
+      if (this.totalAmount <= 0) {
+        this.showToast('Cart is empty. Please add items first.', 'error');
+        return;
+      }
+      if (!this.capitecNumber.match(/^[\+]?[0-9]{9,15}$/)) {
+        this.showToast('Please enter a valid mobile number', 'error');
+        return;
+      }
+      this.processing = true;
+      this.startTimer(`Waiting for CapitecPay approval on ${this.capitecNumber}`, 120);
+      setTimeout(() => {
+        if (this.waitingModalOpen) {
+          this.clearTimer();
+          const success = Math.random() > 0.2;
+          if (success) {
+            this.showToast('CapitecPay payment approved!', 'success');
+            this.completePayment();
+          } else {
+            this.showToast('CapitecPay payment declined or timed out', 'error');
+          }
+        }
+        this.processing = false;
+      }, 5000);
+    },
+    startFingerprintScan() {
+      if (this.fpScanning || this.fpSuccess) return;
+      if (this.totalAmount <= 0) {
+        this.showToast('Cart is empty. Please add items first.', 'error');
+        return;
+      }
+      this.fpScanning = true;
+      this.fpError = '';
+      this.fpTimer = setTimeout(() => {
+        this.fpScanning = false;
+        const success = Math.random() > 0.15;
+        if (success) {
+          this.fpSuccess = true;
+          setTimeout(() => {
+            this.fpSuccess = false;
+            this.completePayment();
+          }, 600);
+        } else {
+          this.fpError = 'Fingerprint not recognized. Please try again.';
+        }
+      }, 1000);
+    },
+    simulateRegister() {
+      this.showRegisterModal = false;
+      this.showToast('Fingerprint registered successfully!', 'success');
+    }
+  }
+});
+</script>
+</body>
+</html>
