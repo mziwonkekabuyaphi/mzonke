@@ -71,7 +71,7 @@
         .form-group label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: #1e293b; }
         .modal-mask { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 1000; visibility: hidden; opacity: 0; transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
         .modal-mask.active { visibility: visible; opacity: 1; }
-        .modal-container { background: rgba(255,255,255,0.98); width: 90%; max-width: 480px; border-radius: 48px; padding: 32px 28px; box-shadow: 0 30px 50px -20px rgba(0,0,0,0.3), 0 0 0 1px rgba(227,6,19,0.1); text-align: left; animation: modalPop 0.3s cubic-bezier(0.34, 1.2, 0.64, 1) forwards; }
+        .modal-container { background: rgba(255,255,255,0.98); width: 90%; max-width: 500px; border-radius: 48px; padding: 32px 28px; box-shadow: 0 30px 50px -20px rgba(0,0,0,0.3), 0 0 0 1px rgba(227,6,19,0.1); text-align: left; animation: modalPop 0.3s cubic-bezier(0.34, 1.2, 0.64, 1) forwards; }
         @keyframes modalPop { 0% { transform: scale(0.92); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         .modal-icon { width: 70px; height: 70px; background: linear-gradient(145deg, #fff0f0, #ffe6e6); border-radius: 60px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 34px; color: #E30613; box-shadow: 0 12px 18px -8px rgba(227,6,19,0.2); }
         .modal-container h3 { font-size: 1.6rem; font-weight: 800; margin-bottom: 12px; background: linear-gradient(135deg, #1e293b, #334155); -webkit-background-clip: text; background-clip: text; color: transparent; text-align: center; }
@@ -128,7 +128,7 @@
         </div>
 
         <div class="dashboard-container">
-            <!-- DASHBOARD (unchanged) -->
+            <!-- DASHBOARD -->
             <div v-if="currentSection === 'dashboard'">
                 <div class="stats-grid">
                     <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-title">Total Staff</div><div class="stat-number">{{ staffList.length }}</div></div>
@@ -145,10 +145,10 @@
                 </div>
                 <div v-else class="settings-panel" style="text-align:center; padding:20px;"><i class="fas fa-user-clock" style="font-size:32px; color:#cbd5e1;"></i><p style="margin-top:8px;">No staff currently on shift</p></div>
                 <div class="section-header"><h2>Recent Staff Activity</h2></div>
-                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td><td>{{ getStaffTodayHours(staff.id).toFixed(1) }}h</tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</tr></tbody></table></div>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tbody></table></div>
             </div>
 
-            <!-- PRIVATE LABEL (unchanged) -->
+            <!-- PRIVATE LABEL -->
             <div v-for="module in enabledModulesList" :key="'brand_' + module.id" v-if="currentSection === 'module_' + module.id && module.name === 'Private Label'">
                 <div class="section-header"><h2><i class="fas fa-palette"></i> Venue Branding</h2><button class="btn-outline" @click="currentSection = 'dashboard'"><i class="fas fa-arrow-left"></i> Back</button></div>
                 <div class="settings-panel">
@@ -160,7 +160,7 @@
                 </div>
             </div>
 
-            <!-- STAFF MANAGEMENT MODULE (updated) -->
+            <!-- STAFF MANAGEMENT MODULE - WITH AUTH & PROFILES -->
             <div v-for="module in enabledModulesList" :key="'staff_' + module.id" v-if="currentSection === 'module_' + module.id && module.name === 'Staff Management'">
                 <div class="section-header"><h2><i class="fas fa-users"></i> Staff Management</h2><button class="btn-outline" @click="currentSection = 'dashboard'">Back</button></div>
                 <div class="tabs-container">
@@ -181,14 +181,25 @@
                     </div>
                     <div class="table-wrapper">
                         <table class="data-table">
-                            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Today's Hours</th><th>Actions</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Role</th>
+                                    <th>Phone</th>
+                                    <th>Hourly Rate</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 <tr v-for="staff in staffList" :key="staff.id">
-                                    <td><strong>{{ staff.name }}</strong></td>
-                                    <td>{{ staff.email }}</td>
+                                    <td><strong>{{ staff.name }} {{ staff.surname }}</strong></td>
                                     <td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td>
+                                    <td>{{ staff.phone || '—' }}</td>
+                                    <td>R{{ parseFloat(staff.hourly_rate || 0).toFixed(2) }}</td>
                                     <td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td>
-                                    <td>{{ getStaffTodayHours(staff.id).toFixed(1) }}h</td>
+                                    <td>{{ formatDate(staff.created_at) }}</td>
                                     <td>
                                         <div class="action-icons">
                                             <i class="fas fa-edit" @click="editStaff(staff)" style="color:#f59e0b;"></i>
@@ -197,7 +208,7 @@
                                         </div>
                                     </td>
                                 </tr>
-                                <tr v-if="staffList.length===0"><td colspan="6" style="text-align:center;">No staff members</td></tr>
+                                <tr v-if="staffList.length===0"><td colspan="7" style="text-align:center;">No staff members</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -234,7 +245,7 @@
                 </div>
             </div>
 
-            <!-- SETTINGS (unchanged) -->
+            <!-- SETTINGS -->
             <div v-if="currentSection === 'settings'">
                 <div class="section-header"><h2>System Settings</h2></div>
                 <div class="settings-panel">
@@ -245,21 +256,25 @@
         </div>
     </div>
 
-    <!-- STAFF MODAL (updated: name, email, role, password) -->
+    <!-- STAFF MODAL (Create/Edit) - NO PIN, NO USERNAME -->
     <div class="modal-mask" :class="{ active: showStaffModal }">
         <div class="modal-container">
             <h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3>
             <div class="form-group">
-                <label>Full Name *</label>
-                <input class="form-control" v-model="staffForm.name" placeholder="e.g., John Doe">
+                <label>Name *</label>
+                <input class="form-control" v-model="staffForm.name" placeholder="First name">
+            </div>
+            <div class="form-group">
+                <label>Surname *</label>
+                <input class="form-control" v-model="staffForm.surname" placeholder="Last name">
             </div>
             <div class="form-group">
                 <label>Email *</label>
-                <input class="form-control" v-model="staffForm.email" placeholder="john@example.com" type="email">
+                <input class="form-control" v-model="staffForm.email" placeholder="staff@example.com" type="email">
             </div>
             <div class="form-group" v-if="!isEditing">
                 <label>Password *</label>
-                <input class="form-control" v-model="staffForm.password" placeholder="Create a password" type="password">
+                <input class="form-control" v-model="staffForm.password" placeholder="Min 6 characters" type="password">
             </div>
             <div class="form-group">
                 <label>Role *</label>
@@ -270,6 +285,14 @@
                     <option value="security">Security</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>Hourly Rate (ZAR) *</label>
+                <input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50" placeholder="e.g., 45.00">
+            </div>
+            <div class="form-group">
+                <label>Phone (optional)</label>
+                <input class="form-control" v-model="staffForm.phone" placeholder="+27 12 345 6789">
+            </div>
             <div class="modal-buttons">
                 <button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button>
                 <button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button>
@@ -277,7 +300,7 @@
         </div>
     </div>
 
-    <!-- INFO MODAL (unchanged) -->
+    <!-- INFO MODAL -->
     <div class="modal-mask" :class="{ active: showInfoModal }">
         <div class="modal-container">
             <div class="modal-icon"><i :class="infoIcon" :style="{ color: infoIconColor }"></i></div>
@@ -289,12 +312,10 @@
 </div>
 
 <script>
-// Supabase configuration
+// Supabase configuration (same as before)
 const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// Storage keys (shifts only)
 const STORAGE_KEYS = { SHIFTS: 'qless_shifts' };
 
 new Vue({
@@ -307,12 +328,12 @@ new Vue({
         adminName: 'Admin',
         branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
         tenantModules: [],
-        staffList: [],          // from profiles
+        staffList: [],          // from public.profiles (role staff/manager/cashier/security)
         showStaffModal: false,
         showInfoModal: false,
         isEditing: false,
         editingStaffId: null,
-        staffForm: { name: '', email: '', password: '', role: 'staff' },
+        staffForm: { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0, phone: '' },
         saving: false,
         infoTitle: '',
         infoMessage: '',
@@ -323,7 +344,7 @@ new Vue({
         totalHoursToday: 0,
         avgHoursPerStaff: 0,
         staffModuleTab: 'accounts',
-        currentUserTenantId: null   // tenant_id of logged-in admin
+        currentUserTenantId: null
     },
     computed: {
         tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
@@ -342,33 +363,15 @@ new Vue({
         activeShiftsList() {
             return this.shifts.filter(s => s.status === 'active' && s.tenant_id === this.tenantId).map(s => {
                 const staff = this.staffList.find(st => st.id === s.staff_id);
-                return { ...s, staff_name: staff?.name || 'Unknown', staff_role: staff?.role || 'unknown' };
+                return { ...s, staff_name: staff ? `${staff.name} ${staff.surname}` : 'Unknown', staff_role: staff?.role || 'unknown' };
             });
         }
     },
     methods: {
-        getModuleDisplayName(name) {
-            if(name === 'Private Label') return 'Venue Branding';
-            return name;
-        },
-        getModuleIcon(name) {
-            if(name === 'Private Label') return 'fas fa-palette';
-            if(name === 'Staff Management') return 'fas fa-users';
-            return 'fas fa-cube';
-        },
-        getRoleDisplay(r) {
-            const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security' };
-            return map[r] || r;
-        },
-        getStaffTodayHours(id) {
-            const staffShifts = this.shifts.filter(s => s.staff_id === id && new Date(s.login_time).setHours(0,0,0,0) === new Date().setHours(0,0,0,0));
-            let hours=0;
-            staffShifts.forEach(s=>{
-                if(s.hours_worked) hours+=s.hours_worked;
-                else if(s.status==='active') hours+=(new Date()-new Date(s.login_time))/(1000*60*60);
-            });
-            return hours;
-        },
+        getModuleDisplayName(name) { if(name === 'Private Label') return 'Venue Branding'; return name; },
+        getModuleIcon(name) { if(name === 'Private Label') return 'fas fa-palette'; if(name === 'Staff Management') return 'fas fa-users'; return 'fas fa-cube'; },
+        getRoleDisplay(r) { const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security' }; return map[r] || r; },
+        formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
         formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
         formatDateTime(d){ return d?new Date(d).toLocaleString():'-'; },
         calculateDuration(loginTime){ const diff = Math.floor((new Date() - new Date(loginTime)) / 60000); return `${Math.floor(diff/60)}h ${diff%60}m`; },
@@ -377,52 +380,34 @@ new Vue({
         goToModuleSection(module){ this.currentSection='module_'+module.id; if(module.name==='Staff Management') this.staffModuleTab='accounts'; this.closeSidebar(); },
         closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
 
-        // Load current admin's profile to get tenant_id
+        // Load current admin's tenant_id from profiles
         async loadCurrentAdminTenant() {
             const { data: { user } } = await supabaseClient.auth.getUser();
-            if (!user) {
-                this.showStunningAlert('Not logged in', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626');
-                return false;
-            }
-            const { data: profile, error } = await supabaseClient
-                .from('profiles')
-                .select('tenant_id')
-                .eq('id', user.id)
-                .single();
-            if (error || !profile) {
-                console.error('No profile found for admin');
-                return false;
-            }
+            if (!user) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); return false; }
+            const { data: profile, error } = await supabaseClient.from('profiles').select('tenant_id').eq('id', user.id).single();
+            if (error || !profile) { console.error('Admin profile missing'); return false; }
             this.currentUserTenantId = profile.tenant_id;
-            this.tenantId = profile.tenant_id;  // used globally
+            this.tenantId = profile.tenant_id;
             return true;
         },
 
-        // Load staff list from profiles (only for current tenant)
+        // Load staff list from profiles (filter by tenant_id and allowed roles)
         async loadStaffFromSupabase() {
             if (!this.tenantId) return;
             const { data, error } = await supabaseClient
                 .from('profiles')
-                .select('id, name, email, role, status')
+                .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
                 .eq('tenant_id', this.tenantId)
+                .in('role', ['staff', 'manager', 'cashier', 'security'])
                 .order('created_at', { ascending: false });
-            if (error) {
-                console.error('Error loading staff profiles:', error);
-                return;
-            }
-            // Exclude the current admin? optional, we keep all for now
+            if (error) { console.error('Error loading staff profiles:', error); return; }
             this.staffList = data || [];
         },
 
         // Load tenant modules (unchanged)
         async loadTenantModules() {
-            const { data: tenants, error: tenantError } = await supabaseClient
-                .from('tenants')
-                .select('id, name');
-            if (tenantError) {
-                console.error('Error loading tenant:', tenantError);
-                return;
-            }
+            const { data: tenants, error: tenantError } = await supabaseClient.from('tenants').select('id, name');
+            if (tenantError) { console.error(tenantError); return; }
             if (tenants && tenants.length > 0) {
                 this.tenantId = tenants[0].id;
                 this.tenantName = tenants[0].name;
@@ -430,30 +415,17 @@ new Vue({
                     .from('tenant_modules')
                     .select(`id, enabled, module:module_id (id, name, description, icon)`)
                     .eq('tenant_id', this.tenantId);
-                if (error) {
-                    console.error('Error loading modules:', error);
-                    return;
-                }
-                this.tenantModules = modules.map(m => ({
-                    id: m.module.id,
-                    name: m.module.name,
-                    enabled: m.enabled,
-                    description: m.module.description,
-                    icon: m.module.icon
-                }));
+                if (error) console.error(error);
+                else this.tenantModules = modules.map(m => ({ id: m.module.id, name: m.module.name, enabled: m.enabled, description: m.module.description, icon: m.module.icon }));
             }
         },
 
-        // Local shifts and branding (unchanged)
+        // Local shifts & branding (unchanged)
         loadLocalData() {
             const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
             this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
             const savedBrand = localStorage.getItem(`qless_tenant_branding_${this.tenantId}`);
-            if(savedBrand){
-                const b=JSON.parse(savedBrand);
-                this.tenantName=b.tenantName||this.tenantName;
-                this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''};
-            }
+            if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
             this.calcTotals();
         },
         calcTotals(){
@@ -467,61 +439,36 @@ new Vue({
             this.totalHoursToday=todayTotal;
             this.avgHoursPerStaff=this.staffList.length?todayTotal/this.staffList.length:0;
         },
-        saveShifts(){
-            const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
-            const filtered=all.filter(s=>s.tenant_id!==this.tenantId);
-            localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts]));
-        },
-        async forceLogout(shift){
-            if(!confirm(`Force logout ${shift.staff_name}?`)) return;
-            const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id);
-            if(idx!==-1){
-                const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60);
-                this.shifts[idx].logout_time=new Date().toISOString();
-                this.shifts[idx].status='completed';
-                this.shifts[idx].hours_worked=hrs;
-                this.saveShifts();
-                this.showStunningAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981');
-                this.calcTotals();
-            }
-        },
-        saveBranding(){
-            const data={tenantName:this.tenantName,branding:this.branding};
-            localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data));
-            this.showStunningAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613');
-        },
+        saveShifts(){ const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); const filtered=all.filter(s=>s.tenant_id!==this.tenantId); localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); },
+        async forceLogout(shift){ if(!confirm(`Force logout ${shift.staff_name}?`)) return; const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); if(idx!==-1){ const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); this.shifts[idx].logout_time=new Date().toISOString(); this.shifts[idx].status='completed'; this.shifts[idx].hours_worked=hrs; this.saveShifts(); this.showStunningAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); this.calcTotals(); } },
+        saveBranding(){ const data={tenantName:this.tenantName,branding:this.branding}; localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); this.showStunningAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); },
 
-        // Staff UI handlers
         openCreateStaffModal(){
             this.isEditing=false;
             this.editingStaffId=null;
-            this.staffForm={ name:'', email:'', password:'', role:'staff' };
+            this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0, phone:'' };
             this.showStaffModal=true;
         },
         editStaff(staff){
             this.isEditing=true;
             this.editingStaffId=staff.id;
-            // Editing: we don't show password field; we just copy name, email, role
-            this.staffForm={ name:staff.name, email:staff.email, password:'', role:staff.role };
+            this.staffForm={ name:staff.name, surname:staff.surname, email:staff.email, password:'', role:staff.role, hourly_rate:staff.hourly_rate, phone:staff.phone || '' };
             this.showStaffModal=true;
         },
-        closeStaffModal(){
-            this.showStaffModal=false;
-            this.staffForm={ name:'', email:'', password:'', role:'staff' };
-            this.saving=false;
-        },
+        closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0, phone:'' }; this.saving=false; },
 
-        // Create staff via Edge Function
+        // Save staff via Edge Function
         async saveStaff(){
-            if(!this.staffForm.name || !this.staffForm.email) {
-                return this.showStunningAlert('Missing', 'Name and email are required', 'fas fa-exclamation', '#dc2626');
+            if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) {
+                return this.showStunningAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
             }
             if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) {
                 return this.showStunningAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
             }
-            if(!this.currentUserTenantId) {
-                return this.showStunningAlert('Error', 'Tenant not found. Please refresh.', 'fas fa-exclamation', '#dc2626');
+            if(!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) {
+                return this.showStunningAlert('Invalid', 'Hourly rate must be greater than 0', 'fas fa-exclamation', '#dc2626');
             }
+            if(!this.currentUserTenantId) { return this.showStunningAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626'); }
 
             this.saving = true;
             try {
@@ -529,80 +476,57 @@ new Vue({
                     email: this.staffForm.email,
                     password: this.staffForm.password,
                     name: this.staffForm.name,
+                    surname: this.staffForm.surname,
                     role: this.staffForm.role,
+                    phone: this.staffForm.phone || '',
+                    hourly_rate: parseFloat(this.staffForm.hourly_rate),
                     tenant_id: this.currentUserTenantId
                 };
-                const { data, error } = await supabaseClient.functions.invoke('create-staff', {
-                    body: payload
-                });
+                const { data, error } = await supabaseClient.functions.invoke('create-staff', { body: payload });
                 if (error) throw new Error(error.message);
                 if (data && data.error) throw new Error(data.error);
-
-                this.showStunningAlert('Success', `Staff ${this.staffForm.name} created. Login credentials sent.`, 'fas fa-user-check', '#10b981');
+                this.showStunningAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check', '#10b981');
                 this.closeStaffModal();
                 await this.loadStaffFromSupabase();
-                this.loadLocalData(); // refresh hours if needed
+                this.loadLocalData();
             } catch (err) {
-                console.error('Edge function error:', err);
+                console.error(err);
                 this.showStunningAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626');
             } finally {
                 this.saving = false;
             }
         },
 
-        // Toggle status (still works on profiles)
         async toggleStaffStatus(id){
             const staff = this.staffList.find(s => s.id === id);
             if(!staff) return;
             const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
-            const { error } = await supabaseClient
-                .from('profiles')
-                .update({ status: newStatus })
-                .eq('id', id);
-            if(error){
-                console.error('Error updating status:', error);
-                return this.showStunningAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626');
-            }
+            const { error } = await supabaseClient.from('profiles').update({ status: newStatus }).eq('id', id);
+            if(error){ console.error(error); return this.showStunningAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); }
             await this.loadStaffFromSupabase();
-            this.showStunningAlert('Status Updated', `${staff.name} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
+            this.showStunningAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
         },
 
-        // Delete staff (only from profiles – auth user remains, but we can optionally disable)
         async deleteStaff(id){
             const staff = this.staffList.find(s => s.id === id);
-            if(staff && confirm(`Delete ${staff.name}? This will remove their profile but the login account will remain disabled.`)){
+            if(staff && confirm(`Delete ${staff.name} ${staff.surname}? This will remove their profile permanently.`)){
                 const { error } = await supabaseClient.from('profiles').delete().eq('id', id);
-                if(error){
-                    console.error('Error deleting staff:', error);
-                    return this.showStunningAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626');
-                }
+                if(error){ console.error(error); return this.showStunningAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); }
                 await this.loadStaffFromSupabase();
                 this.showStunningAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
             }
         },
 
-        exportAttendanceReport(){
-            this.showStunningAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981');
-        },
-
-        logout(){
-            sessionStorage.clear();
-            window.location.href = 'login.html';
-        }
+        exportAttendanceReport(){ this.showStunningAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
+        logout(){ sessionStorage.clear(); window.location.href = 'login.html'; }
     },
 
     async mounted() {
-        // First, ensure admin is logged in and get tenant_id
         const loggedIn = await this.loadCurrentAdminTenant();
-        if (!loggedIn) {
-            this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626');
-            setTimeout(() => { window.location.href = 'login.html'; }, 2000);
-            return;
-        }
+        if (!loggedIn) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); setTimeout(() => { window.location.href = 'login.html'; }, 2000); return; }
         await this.loadTenantModules();
         await this.loadStaffFromSupabase();
         this.loadLocalData();
-
         setInterval(() => { this.loadLocalData(); }, 5000);
     }
 });
