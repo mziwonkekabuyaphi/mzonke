@@ -1,0 +1,223 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+serve(async (req) => {
+  try {
+
+    // ================================
+    // CORS
+    // ================================
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers":
+        "authorization, x-client-info, apikey, content-type",
+    };
+
+    // Handle OPTIONS
+    if (req.method === "OPTIONS") {
+      return new Response("ok", {
+        headers: corsHeaders,
+      });
+    }
+
+    // ================================
+    // SUPABASE CLIENT
+    // ================================
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    // ================================
+    // GET TOKEN
+    // ================================
+    const authHeader = req.headers.get("Authorization");
+
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({
+          error: "Missing authorization header",
+        }),
+        {
+          status: 401,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+
+    // ================================
+    // VERIFY CURRENT USER
+    // ================================
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({
+          error: "Unauthorized",
+        }),
+        {
+          status: 401,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // ================================
+    // CHECK PROFILE
+    // ================================
+    const { data: profile, error: profileError } =
+      await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+    if (profileError || !profile) {
+      return new Response(
+        JSON.stringify({
+          error: "Profile not found",
+        }),
+        {
+          status: 404,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // ================================
+    // ALLOW ONLY TENANT ADMIN
+    // ================================
+    if (profile.role !== "tenant_admin") {
+      return new Response(
+        JSON.stringify({
+          error: "Only tenant admins can create staff",
+        }),
+        {
+          status: 403,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // ================================
+    // GET BODY
+    // ================================
+    const body = await req.json();
+
+    const {
+      email,
+      password,
+      name,
+      surname,
+      phone,
+      hourly_rate,
+    } = body;
+
+    // ================================
+    // CREATE AUTH USER
+    // ================================
+    const {
+      data: authData,
+      error: createError,
+    } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+
+    if (createError) {
+      return new Response(
+        JSON.stringify({
+          error: createError.message,
+        }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // ================================
+    // INSERT PROFILE
+    // ================================
+    const { error: insertError } =
+      await supabase
+        .from("profiles")
+        .insert({
+          id: authData.user.id,
+          role: "staff",
+          tenant_id: profile.tenant_id,
+          name,
+          surname,
+          phone,
+          hourly_rate,
+          status: "Active",
+        });
+
+    if (insertError) {
+      return new Response(
+        JSON.stringify({
+          error: insertError.message,
+        }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // ================================
+    // SUCCESS
+    // ================================
+    return new Response(
+      JSON.stringify({
+        success: true,
+        user_id: authData.user.id,
+      }),
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+  } catch (err) {
+
+    return new Response(
+      JSON.stringify({
+        error: err.message,
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+});
