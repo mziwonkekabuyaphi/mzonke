@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Rands — Staff Clock</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --red: #e01c2e;
+  --red-dark: #b01020;
+  --red-glow: rgba(224,28,46,0.28);
+  --red-soft: rgba(224,28,46,0.12);
+  --glass: rgba(255,255,255,0.06);
+  --glass-border: rgba(255,255,255,0.12);
+  --glass-hover: rgba(255,255,255,0.09);
+  --bg: #08080e;
+  --bg2: #0e0e1c;
+  --surface: rgba(14,14,24,0.92);
+  --text: #f0f0f8;
+  --text-dim: rgba(240,240,248,0.55);
+  --text-faint: rgba(240,240,248,0.28);
+  --success: #22d47e;
+  --warn: #f5a623;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 12px 48px rgba(0,0,0,0.55);
+  --shadow-red: 0 4px 28px rgba(224,28,46,0.4);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
+h1,h2,h3,h4{font-family:'Syne',sans-serif}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--glass-border);border-radius:99px}
+
+/* BG */
+body{background:
+radial-gradient(ellipse 70% 50% at 10% 0%,rgba(224,28,46,0.2) 0%,transparent 55%),
+radial-gradient(ellipse 50% 40% at 90% 100%,rgba(224,28,46,0.1) 0%,transparent 50%),
+var(–bg)}
+
+/* TOAST */
+.toast-container{position:fixed;top:16px;right:16px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{background:#1e1e2e;border:1px solid var(–glass-border);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:8px;box-shadow:var(–shadow);animation:slideIn .3s ease;font-size:13px;font-weight:500;max-width:300px}
+.toast.success{border-left:3px solid var(–success)}
+.toast.error{border-left:3px solid var(–red)}
+.toast.info{border-left:3px solid #7b8dff}
+@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* LOGIN PAGE */
+.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-card{background:var(–surface);border:1px solid var(–glass-border);border-radius:24px;padding:40px;width:100%;max-width:400px;backdrop-filter:blur(20px);box-shadow:var(–shadow);animation:fadeUp .4s ease}
+.login-logo{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:30px}
+.logo-mark{width:44px;height:44px;background:var(–red);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:‘Syne’,sans-serif;font-weight:800;font-size:20px;color:#fff;box-shadow:var(–shadow-red)}
+.logo-text{font-family:‘Syne’,sans-serif;font-weight:800;font-size:24px}
+.logo-text span{color:var(–red)}
+.login-title{font-family:‘Syne’,sans-serif;font-size:22px;font-weight:700;text-align:center;margin-bottom:6px}
+.login-sub{font-size:13px;color:var(–text-dim);text-align:center;margin-bottom:28px}
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;font-weight:600;color:var(–text-dim);margin-bottom:6px;letter-spacing:.4px}
+.form-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid var(–glass-border);border-radius:12px;padding:12px 16px;color:var(–text);font-size:15px;font-family:‘DM Sans’,sans-serif;outline:none;transition:all .2s}
+.form-input:focus{border-color:var(–red);background:rgba(224,28,46,0.05);box-shadow:0 0 0 3px var(–red-soft)}
+.form-input::placeholder{color:var(–text-faint)}
+
+/* PIN INPUT */
+.pin-row{display:flex;gap:10px;justify-content:center;margin:8px 0}
+.pin-dot{width:16px;height:16px;border-radius:50%;background:var(–glass-border);transition:all .2s}
+.pin-dot.filled{background:var(–red);box-shadow:0 0 8px var(–red-glow)}
+.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.pin-key{background:var(–glass);border:1px solid var(–glass-border);border-radius:12px;padding:16px;font-family:‘Syne’,sans-serif;font-weight:700;font-size:20px;text-align:center;cursor:pointer;color:var(–text);user-select:none;transition:all .15s;-webkit-tap-highlight-color:transparent}
+.pin-key:hover{background:var(–glass-hover);border-color:rgba(255,255,255,0.2);transform:scale(1.02)}
+.pin-key:active{transform:scale(.96);background:var(–red-soft)}
+.pin-key.del{font-size:16px;color:var(–text-dim)}
+.pin-key.zero{grid-column:2}
+
+/* BTNS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;border:none;outline:none;transition:all .2s;font-family:‘DM Sans’,sans-serif;width:100%}
+.btn-primary{background:var(–red);color:#fff;box-shadow:var(–shadow-red)}
+.btn-primary:hover{background:var(–red-dark);transform:translateY(-1px);box-shadow:0 6px 28px var(–red-glow)}
+.btn-primary:active{transform:translateY(0)}
+.btn-ghost{background:var(–glass);color:var(–text);border:1px solid var(–glass-border)}
+.btn-ghost:hover{background:var(–glass-hover)}
+.btn-danger{background:rgba(224,28,46,0.15);color:var(–red);border:1px solid var(–red-glow)}
+.btn-danger:hover{background:var(–red);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+
+/* SPINNER */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* MAIN DASHBOARD */
+.dashboard{min-height:100vh;display:flex;flex-direction:column}
+
+/* HEADER */
+.dash-header{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,8,14,0.8);backdrop-filter:blur(12px);border-bottom:1px solid var(–glass-border);position:sticky;top:0;z-index:50}
+.dash-brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:32px;height:32px;background:var(–red);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:‘Syne’,sans-serif;font-weight:800;font-size:14px;color:#fff}
+.brand-name{font-family:‘Syne’,sans-serif;font-weight:800;font-size:17px}
+.brand-name span{color:var(–red)}
+.header-clock{font-family:‘Syne’,sans-serif;font-size:13px;font-weight:600;color:var(–text-dim);background:var(–glass);padding:5px 14px;border-radius:99px;border:1px solid var(–glass-border)}
+.logout-btn{background:var(–glass);border:1px solid var(–glass-border);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;color:var(–text-dim);cursor:pointer;transition:all .2s}
+.logout-btn:hover{color:var(–red);border-color:var(–red-glow)}
+
+/* CONTENT */
+.dash-content{padding:20px;flex:1;max-width:800px;margin:0 auto;width:100%}
+
+/* WELCOME */
+.welcome-card{background:linear-gradient(135deg,rgba(224,28,46,0.18) 0%,rgba(224,28,46,0.05) 100%);border:1px solid var(–red-glow);border-radius:var(–radius);padding:24px;margin-bottom:20px;display:flex;align-items:center;gap:16px}
+.welcome-avatar{width:54px;height:54px;background:var(–red);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:‘Syne’,sans-serif;font-weight:800;font-size:22px;color:#fff;flex-shrink:0;box-shadow:var(–shadow-red)}
+.welcome-name{font-family:‘Syne’,sans-serif;font-size:20px;font-weight:700}
+.welcome-role{font-size:13px;color:var(–text-dim);margin-top:3px}
+.status-badge-lg{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:99px;font-size:12px;font-weight:700;margin-top:8px}
+.status-in{background:rgba(34,212,126,0.15);color:var(–success);border:1px solid rgba(34,212,126,0.25)}
+.status-out{background:var(–glass);color:var(–text-dim);border:1px solid var(–glass-border)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.status-dot.pulsing{animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* CLOCK CARD */
+.clock-card{background:var(–surface);border:1px solid var(–glass-border);border-radius:var(–radius);padding:28px;margin-bottom:20px;backdrop-filter:blur(20px);text-align:center}
+.shift-timer{font-family:‘Syne’,sans-serif;font-size:52px;font-weight:800;letter-spacing:-2px;background:linear-gradient(135deg,#fff 30%,rgba(224,28,46,.9));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;margin:12px 0}
+.timer-label{font-size:13px;color:var(–text-dim);font-weight:500;margin-bottom:20px}
+.clock-actions{display:flex;gap:12px;max-width:380px;margin:0 auto}
+.shift-info-row{display:flex;gap:14px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.shift-info-pill{background:var(–glass);border:1px solid var(–glass-border);border-radius:99px;padding:6px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+.shift-info-pill .val{color:var(–red)}
+
+/* EARNINGS GRID */
+.earnings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}
+@media(min-width:500px){.earnings-grid{grid-template-columns:repeat(4,1fr)}}
+.earn-card{background:var(–surface);border:1px solid var(–glass-border);border-radius:var(–radius-sm);padding:16px;text-align:center;backdrop-filter:blur(12px)}
+.earn-period{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(–text-faint);margin-bottom:6px}
+.earn-amount{font-family:‘Syne’,sans-serif;font-size:19px;font-weight:800}
+.earn-amount.main{color:var(–red)}
+.earn-hours{font-size:11px;color:var(–text-faint);margin-top:3px}
+
+/* GLASS CARD */
+.glass-card{background:var(–surface);border:1px solid var(–glass-border);border-radius:var(–radius);padding:20px;margin-bottom:20px;backdrop-filter:blur(16px)}
+.card-title{font-family:‘Syne’,sans-serif;font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+
+/* TABLE */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;color:var(–text-faint);font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;border-bottom:1px solid var(–glass-border)}
+td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,0.04);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(–glass)}
+
+/* BADGE */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(34,212,126,0.12);color:var(–success);border:1px solid rgba(34,212,126,0.2)}
+.badge-dim{background:var(–glass);color:var(–text-dim);border:1px solid var(–glass-border)}
+
+/* CHART */
+.chart-wrap{height:160px;position:relative}
+
+/* EMPTY */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;color:var(–text-faint);gap:8px;font-size:13px}
+.empty-state svg{width:36px;height:36px;opacity:.3}
+
+/* LOADING */
+.loading-full{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.loading-full .spinner{width:28px;height:28px;border-width:3px}
+
+/* ANIMATIONS */
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp .4s ease both}
+.fade-up-1{animation-delay:.06s}
+.fade-up-2{animation-delay:.12s}
+.fade-up-3{animation-delay:.18s}
+.fade-up-4{animation-delay:.24s}
+
+/* KIOSK FULLSCREEN */
+.fullscreen-btn{background:var(–glass);border:1px solid var(–glass-border);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;color:var(–text-dim);cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px}
+.fullscreen-btn:hover{color:var(–text);border-color:rgba(255,255,255,0.2)}
+.fullscreen-btn svg{width:13px;height:13px}
+
+@media(max-width:480px){
+.welcome-card{flex-direction:column;text-align:center}
+.shift-timer{font-size:38px}
+.dash-content{padding:14px}
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+  <!-- TOASTS -->
+  <div class="toast-container">
+    <div v-for="t in toasts" :key="t.id" :class="['toast',t.type]">
+      <span>{{t.icon}}</span><span>{{t.msg}}</span>
+    </div>
+  </div>
+
+  <!-- LOADING -->
+
+  <div class="loading-full" v-if="appLoading">
+    <div class="logo-mark" style="width:48px;height:48px;background:var(--red);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#fff;box-shadow:var(--shadow-red);margin-bottom:10px">R</div>
+    <div class="spinner"></div>
+    <div style="font-size:14px;color:var(--text-dim)">Loading Rands…</div>
+  </div>
+
+  <!-- LOGIN -->
+
+  <div class="login-page" v-else-if="!loggedIn">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-mark">R</div>
+        <div class="logo-text">Ran<span>ds</span></div>
+      </div>
+      <div class="login-title">Staff Portal</div>
+      <div class="login-sub">Sign in to clock in and manage your shifts</div>
+
+```
+  <div class="form-group">
+    <label class="form-label">Username</label>
+    <input class="form-input" v-model="loginForm.username" placeholder="your username" @keyup.enter="focusPin" ref="usernameInput"/>
+  </div>
+  <div class="form-group">
+    <label class="form-label">PIN</label>
+    <div class="pin-row">
+      <div v-for="i in 6" :key="i" :class="['pin-dot',loginForm.pin.length>=i?'filled':'']"></div>
+    </div>
+    <div class="pin-keypad">
+      <div v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" class="pin-key" @click="pinKey(n)">{{n}}</div>
+      <div class="pin-key del" @click="pinDel">⌫</div>
+      <div class="pin-key zero" @click="pinKey(0)">0</div>
+      <div class="pin-key" @click="doLogin" style="background:var(--red-soft);color:var(--red)">→</div>
+    </div>
+  </div>
+
+  <div v-if="loginError" style="background:var(--red-soft);border:1px solid var(--red-glow);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--red);margin-top:12px;text-align:center">
+    {{loginError}}
+  </div>
+
+  <button class="btn btn-primary" style="margin-top:16px" @click="doLogin" :disabled="loggingIn">
+    <span v-if="loggingIn" class="spinner"></span>
+    <span v-else>Sign In</span>
+  </button>
+</div>
+```
+
+  </div>
+
+  <!-- DASHBOARD -->
+
+  <div class="dashboard" v-else>
+    <!-- HEADER -->
+    <div class="dash-header">
+      <div class="dash-brand">
+        <div class="brand-mark">R</div>
+        <div class="brand-name">Ran<span>ds</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="header-clock">{{liveClock}}</div>
+        <button class="fullscreen-btn" @click="toggleFullscreen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          Fullscreen
+        </button>
+        <button class="logout-btn" @click="logout">Sign Out</button>
+      </div>
+    </div>
+
+```
+<!-- CONTENT -->
+<div class="dash-content">
+  <!-- WELCOME -->
+  <div class="welcome-card fade-up">
+    <div class="welcome-avatar">{{initials(currentStaff.name)}}</div>
+    <div>
+      <div class="welcome-name">Welcome, {{currentStaff.name?.split(' ')[0]}}!</div>
+      <div class="welcome-role">{{currentStaff.role}} · ${{currentStaff.hourly_rate||0}}/hr</div>
+      <div :class="['status-badge-lg', activeShift ? 'status-in' : 'status-out']">
+        <div :class="['status-dot', activeShift ? 'pulsing' : '']"></div>
+        {{activeShift ? 'Clocked In' : 'Clocked Out'}}
+      </div>
+    </div>
+  </div>
+
+  <!-- CLOCK CARD -->
+  <div class="clock-card fade-up fade-up-1">
+    <div style="font-size:13px;color:var(--text-dim);font-weight:600">{{activeShift ? 'Current Shift Duration' : 'Ready to Start Shift'}}</div>
+    <div class="shift-timer">{{timerDisplay}}</div>
+    <div class="timer-label">{{activeShift ? 'hrs : min : sec' : 'Clock in to begin tracking'}}</div>
+
+    <div class="clock-actions">
+      <button v-if="!activeShift" class="btn btn-primary" @click="clockIn" :disabled="clockingIn">
+        <span v-if="clockingIn" class="spinner"></span>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Clock In
+      </button>
+      <button v-if="activeShift" class="btn btn-danger" @click="clockOut" :disabled="clockingOut" style="width:100%">
+        <span v-if="clockingOut" class="spinner" style="border-top-color:var(--red)"></span>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
+        Clock Out
+      </button>
+    </div>
+
+    <div v-if="activeShift" class="shift-info-row">
+      <div class="shift-info-pill">Started <span class="val">{{fmtTime(activeShift.start_time)}}</span></div>
+      <div class="shift-info-pill">Station <span class="val">{{activeShift.station||'—'}}</span></div>
+      <div class="shift-info-pill">Earned <span class="val">${{currentEarnings}}</span></div>
+    </div>
+  </div>
+
+  <!-- EARNINGS -->
+  <div class="earnings-grid fade-up fade-up-2">
+    <div class="earn-card">
+      <div class="earn-period">Today</div>
+      <div class="earn-amount main">${{earnings.daily}}</div>
+      <div class="earn-hours">{{earnHours.daily}}h worked</div>
+    </div>
+    <div class="earn-card">
+      <div class="earn-period">Weekly</div>
+      <div class="earn-amount">${{earnings.weekly}}</div>
+      <div class="earn-hours">{{earnHours.weekly}}h worked</div>
+    </div>
+    <div class="earn-card">
+      <div class="earn-period">Biweekly</div>
+      <div class="earn-amount">${{earnings.biweekly}}</div>
+      <div class="earn-hours">{{earnHours.biweekly}}h worked</div>
+    </div>
+    <div class="earn-card">
+      <div class="earn-period">Monthly</div>
+      <div class="earn-amount">${{earnings.monthly}}</div>
+      <div class="earn-hours">{{earnHours.monthly}}h worked</div>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="glass-card fade-up fade-up-3">
+    <div class="card-title">
+      Weekly Earnings
+      <span style="font-size:12px;color:var(--text-dim);font-weight:500;font-family:'DM Sans',sans-serif">Last 7 days</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas ref="earningsChart"></canvas>
+    </div>
+  </div>
+
+  <!-- SHIFT HISTORY -->
+  <div class="glass-card fade-up fade-up-4">
+    <div class="card-title">Shift History</div>
+    <div v-if="loadingHistory" style="display:flex;align-items:center;justify-content:center;height:100px;gap:10px;color:var(--text-dim);font-size:13px">
+      <div class="spinner"></div> Loading…
+    </div>
+    <div v-else-if="completedShifts.length===0" class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>No completed shifts yet</span>
+    </div>
+    <div v-else class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Hours</th><th>Earnings</th></tr></thead>
+        <tbody>
+          <tr v-for="s in completedShifts.slice(0,20)" :key="s.id">
+            <td style="font-weight:600">{{fmtDate(s.start_time)}}</td>
+            <td style="color:var(--text-dim)">{{fmtTime(s.start_time)}}</td>
+            <td style="color:var(--text-dim)">{{s.end_time?fmtTime(s.end_time):'—'}}</td>
+            <td style="font-weight:600">{{s.total_hours?s.total_hours.toFixed(2):'—'}}</td>
+            <td style="font-weight:700;color:var(--red)">${{((s.total_hours||0)*(currentStaff.hourly_rate||0)).toFixed(2)}}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+</div>
+
+<script>
+// ==========================================
+// CONFIGURATION — EDIT THESE
+// ==========================================
+const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
+const TENANT_ID = '2059fdaf-27d1-499f-9045-5823137d33a2'; // UUID of the tenant
+// ==========================================
+
+const { createApp, ref, computed, onMounted, onUnmounted, nextTick, watch } = Vue;
+const supabase = supabase_js.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+createApp({
+  setup() {
+    const appLoading = ref(true);
+    const loggedIn = ref(false);
+    const loggingIn = ref(false);
+    const loginError = ref('');
+    const loginForm = ref({ username:'', pin:'' });
+    const usernameInput = ref(null);
+    const currentStaff = ref({});
+    const myShifts = ref([]);
+    const loadingHistory = ref(false);
+    const clockingIn = ref(false);
+    const clockingOut = ref(false);
+    const toasts = ref([]);
+    const liveClock = ref('');
+    const timerDisplay = ref('00:00:00');
+    const earningsChart = ref(null);
+    let earningsChartInst = null;
+    let timerInterval = null;
+    let clockInterval = null;
+    let realtimeChannel = null;
+
+    // COMPUTED
+    const activeShift = computed(() => myShifts.value.find(s => s.shift_status === 'active') || null);
+    const completedShifts = computed(() => myShifts.value.filter(s => s.shift_status === 'completed').sort((a,b)=>new Date(b.start_time)-new Date(a.start_time)));
+
+    const currentEarnings = computed(() => {
+      if (!activeShift.value) return '0.00';
+      const now = Date.now();
+      const started = new Date(activeShift.value.start_time).getTime();
+      const hrs = (now - started) / 3600000;
+      return (hrs * (currentStaff.value.hourly_rate||0)).toFixed(2);
+    });
+
+    const earnCalc = (from) => {
+      const relevant = myShifts.value.filter(s => s.shift_status==='completed' && new Date(s.start_time)>=from);
+      const hours = relevant.reduce((a,s)=>a+(s.total_hours||0),0);
+      return { hours: hours.toFixed(2), earnings: (hours*(currentStaff.value.hourly_rate||0)).toFixed(2) };
+    };
+
+    const earnings = computed(() => {
+      const now = new Date();
+      const startOf = (days) => { const d=new Date(now); d.setDate(d.getDate()-days); d.setHours(0,0,0,0); return d; };
+      const monthStart = new Date(now.getFullYear(),now.getMonth(),1);
+      return {
+        daily: earnCalc(startOf(0)).earnings,
+        weekly: earnCalc(startOf(7)).earnings,
+        biweekly: earnCalc(startOf(14)).earnings,
+        monthly: earnCalc(monthStart).earnings,
+      };
+    });
+
+    const earnHours = computed(() => {
+      const now = new Date();
+      const startOf = (days) => { const d=new Date(now); d.setDate(d.getDate()-days); d.setHours(0,0,0,0); return d; };
+      const monthStart = new Date(now.getFullYear(),now.getMonth(),1);
+      return {
+        daily: earnCalc(startOf(0)).hours,
+        weekly: earnCalc(startOf(7)).hours,
+        biweekly: earnCalc(startOf(14)).hours,
+        monthly: earnCalc(monthStart).hours,
+      };
+    });
+
+    // HELPERS
+    const initials = (name='') => name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    const fmtTime = (dt) => dt ? new Date(dt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—';
+    const fmtDate = (dt) => dt ? new Date(dt).toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'}) : '—';
+
+    const toast = (msg, type='info') => {
+      const icons={success:'✅',error:'❌',info:'ℹ️'};
+      const id = Date.now();
+      toasts.value.push({id,msg,type,icon:icons[type]});
+      setTimeout(()=>toasts.value=toasts.value.filter(t=>t.id!==id),3500);
+    };
+
+    // PIN
+    const pinKey = (n) => {
+      if (loginForm.value.pin.length < 6) loginForm.value.pin += String(n);
+    };
+    const pinDel = () => { loginForm.value.pin = loginForm.value.pin.slice(0,-1); };
+    const focusPin = () => {};
+
+    // LOGIN
+    const doLogin = async () => {
+      if (!loginForm.value.username || !loginForm.value.pin) {
+        loginError.value = 'Enter your username and PIN';
+        return;
+      }
+      loggingIn.value = true;
+      loginError.value = '';
+      try {
+        const { data, error } = await supabase.from('staff')
+          .select('*')
+          .eq('tenant_id', TENANT_ID)
+          .eq('username', loginForm.value.username.trim().toLowerCase())
+          .eq('pin', loginForm.value.pin)
+          .single();
+        if (error || !data) { loginError.value = 'Invalid username or PIN'; return; }
+        if (data.status === 'suspended') { loginError.value = 'Your account has been suspended. Contact admin.'; return; }
+        currentStaff.value = data;
+        loggedIn.value = true;
+        sessionStorage.setItem('rands_staff_id', data.id);
+        await loadMyShifts();
+        setupRealtime();
+        nextTick(()=>buildEarningsChart());
+        toast(`Welcome back, ${data.name.split(' ')[0]}!`,'success');
+      } catch (e) { loginError.value = 'Login failed. Try again.'; }
+      finally { loggingIn.value = false; }
+    };
+
+    const logout = () => {
+      sessionStorage.removeItem('rands_staff_id');
+      loggedIn.value = false;
+      currentStaff.value = {};
+      myShifts.value = [];
+      loginForm.value = {username:'',pin:''};
+      clearInterval(timerInterval);
+      if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+    };
+
+    // LOAD SHIFTS
+    const loadMyShifts = async () => {
+      loadingHistory.value = true;
+      try {
+        const { data, error } = await supabase.from('staff_shifts')
+          .select('*')
+          .eq('staff_id', currentStaff.value.id)
+          .eq('tenant_id', TENANT_ID)
+          .order('start_time',{ascending:false})
+          .limit(200);
+        if (error) throw error;
+        myShifts.value = data || [];
+      } catch (e) { toast('Failed to load shifts','error'); }
+      finally { loadingHistory.value = false; }
+    };
+
+    // CLOCK IN
+    const clockIn = async () => {
+      if (activeShift.value) { toast('You are already clocked in','error'); return; }
+      clockingIn.value = true;
+      try {
+        const { error } = await supabase.from('staff_shifts').insert({
+          staff_id: currentStaff.value.id,
+          tenant_id: TENANT_ID,
+          start_time: new Date().toISOString(),
+          shift_status: 'active',
+          status: 'active'
+        });
+        if (error) throw error;
+        await logActivity('clock_in', `${currentStaff.value.name} clocked in`);
+        toast('Clocked in successfully!','success');
+        await loadMyShifts();
+        startTimer();
+      } catch (e) { toast('Clock-in failed: '+e.message,'error'); }
+      finally { clockingIn.value = false; }
+    };
+
+    // CLOCK OUT
+    const clockOut = async () => {
+      if (!activeShift.value) { toast('No active shift','error'); return; }
+      clockingOut.value = true;
+      try {
+        const end = new Date().toISOString();
+        const hours = (new Date(end) - new Date(activeShift.value.start_time)) / 3600000;
+        const { error } = await supabase.from('staff_shifts').update({
+          end_time: end,
+          total_hours: +hours.toFixed(4),
+          shift_status: 'completed',
+          status: 'completed'
+        }).eq('id', activeShift.value.id);
+        if (error) throw error;
+        await logActivity('clock_out', `${currentStaff.value.name} clocked out after ${hours.toFixed(2)}h`);
+        toast('Clocked out. Have a great day!','success');
+        clearInterval(timerInterval);
+        timerDisplay.value = '00:00:00';
+        await loadMyShifts();
+        nextTick(()=>buildEarningsChart());
+      } catch (e) { toast('Clock-out failed: '+e.message,'error'); }
+      finally { clockingOut.value = false; }
+    };
+
+    const logActivity = async (action, description) => {
+      try {
+        await supabase.from('staff_activity').insert({
+          action, description,
+          staff_id: currentStaff.value.id,
+          staff_name: currentStaff.value.name,
+          tenant_id: TENANT_ID,
+          created_at: new Date().toISOString()
+        });
+      } catch {}
+    };
+
+    // TIMER
+    const startTimer = () => {
+      clearInterval(timerInterval);
+      const update = () => {
+        if (!activeShift.value) return;
+        const diff = Date.now() - new Date(activeShift.value.start_time).getTime();
+        const h = Math.floor(diff/3600000);
+        const m = Math.floor((diff%3600000)/60000);
+        const s = Math.floor((diff%60000)/1000);
+        timerDisplay.value = [h,m,s].map(v=>String(v).padStart(2,'0')).join(':');
+      };
+      update();
+      timerInterval = setInterval(update, 1000);
+    };
+
+    // REALTIME
+    const setupRealtime = () => {
+      realtimeChannel = supabase.channel('my-shifts').on('postgres_changes',{
+        event:'*', schema:'public', table:'staff_shifts',
+        filter:`staff_id=eq.${currentStaff.value.id}`
+      }, async () => { await loadMyShifts(); if(activeShift.value) startTimer(); }).subscribe();
+    };
+
+    // CHART
+    const buildEarningsChart = () => {
+      nextTick(() => {
+        if (!earningsChart.value) return;
+        if (earningsChartInst) earningsChartInst.destroy();
+        const labels=[], data=[];
+        for(let i=6;i>=0;i--){
+          const d=new Date(); d.setDate(d.getDate()-i);
+          labels.push(d.toLocaleDateString([],{weekday:'short'}));
+          const dayStart=new Date(d); dayStart.setHours(0,0,0,0);
+          const dayEnd=new Date(d); dayEnd.setHours(23,59,59,999);
+          const pay = myShifts.value
+            .filter(s=>s.shift_status==='completed'&&new Date(s.start_time)>=dayStart&&new Date(s.start_time)<=dayEnd)
+            .reduce((a,s)=>a+(s.total_hours||0)*(currentStaff.value.hourly_rate||0),0);
+          data.push(+pay.toFixed(2));
+        }
+        earningsChartInst = new Chart(earningsChart.value,{
+          type:'bar',
+          data:{labels,datasets:[{label:'$',data,backgroundColor:'rgba(224,28,46,0.55)',borderColor:'rgba(224,28,46,1)',borderWidth:1,borderRadius:8}]},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#888',font:{size:11}}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#888',callback:v=>'$'+v},beginAtZero:true}}}
+        });
+      });
+    };
+
+    // FULLSCREEN
+    const toggleFullscreen = () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    };
+
+    // CLOCK
+    const updateClock = () => {
+      liveClock.value = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    };
+
+    // AUTO RESTORE SESSION
+    const tryRestoreSession = async () => {
+      const savedId = sessionStorage.getItem('rands_staff_id');
+      if (savedId) {
+        try {
+          const { data } = await supabase.from('staff').select('*').eq('id',savedId).single();
+          if (data && data.status !== 'suspended') {
+            currentStaff.value = data;
+            loggedIn.value = true;
+            await loadMyShifts();
+            setupRealtime();
+            nextTick(()=>buildEarningsChart());
+            if (activeShift.value) startTimer();
+          }
+        } catch {}
+      }
+      appLoading.value = false;
+    };
+
+    watch(activeShift, (val) => { if (val) startTimer(); });
+
+    onMounted(async () => {
+      updateClock();
+      clockInterval = setInterval(updateClock, 1000);
+      await tryRestoreSession();
+    });
+
+    onUnmounted(() => {
+      clearInterval(clockInterval);
+      clearInterval(timerInterval);
+      if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+    });
+
+    return {
+      appLoading, loggedIn, loggingIn, loginError, loginForm, usernameInput,
+      currentStaff, myShifts, loadingHistory, clockingIn, clockingOut,
+      toasts, liveClock, timerDisplay, earningsChart,
+      activeShift, completedShifts, currentEarnings, earnings, earnHours,
+      initials, fmtTime, fmtDate,
+      doLogin, logout, pinKey, pinDel, focusPin, clockIn, clockOut, toggleFullscreen
+    };
+  }
+}).mount('#app');
+</script>
+
+</body>
+</html>
