@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>Activity Log (Embedded)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: transparent;
+    padding: 0;
+  }
+  .module-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .stats-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: white;
+    border-radius: 24px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    border: 1px solid #edf2f7;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .stat-card::before { content: ''; width: 4px; background: #E30613; border-radius: 4px; height: 40px; }
+  .stat-icon { font-size: 1.8rem; color: #E30613; width: 50px; text-align: center; }
+  .stat-info { flex: 1; }
+  .stat-value { font-size: 1.6rem; font-weight: 800; color: #0b1a2f; line-height: 1.2; }
+  .stat-label { color: #6c7a8e; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }
+  .dashboard-card {
+    background: white;
+    border-radius: 28px;
+    border: 1px solid #edf2f7;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #eff3f8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .card-header h3 { font-size: 0.9rem; font-weight: 700; color: #0b1a2f; display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 20px; }
+  .activity-list { max-height: 600px; overflow-y: auto; }
+  .activity-item {
+    background: #f8fafd;
+    border-radius: 20px;
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid #eef2f8;
+    transition: all 0.2s;
+  }
+  .activity-item:hover { border-color: #E30613; background: #fff5f5; }
+  .activity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .activity-action {
+    font-weight: 700;
+    color: #E30613;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+  }
+  .activity-time {
+    font-size: 0.7rem;
+    color: #6c7a8e;
+    background: #eef2f8;
+    padding: 2px 8px;
+    border-radius: 30px;
+  }
+  .activity-details { font-size: 0.75rem; color: #475569; margin-bottom: 6px; }
+  .activity-admin { font-size: 0.7rem; color: #2b7a3e; display: flex; align-items: center; gap: 5px; }
+  .action-btn {
+    padding: 8px 16px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    cursor: pointer;
+    background: #f1f4f9;
+    color: #1f2a48;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s;
+  }
+  .action-btn.info { background: #2196f3; color: white; border: none; }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    background: #1e2a3a;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 60px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    z-index: 2000;
+    font-size: 0.8rem;
+    justify-content: center;
+  }
+  .toast.show { display: flex; animation: slideUp 0.3s ease; }
+  .toast.success { background: #2e7d32; }
+  @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .empty-state { text-align: center; padding: 40px; color: #6c7a8e; }
+</style>
+</head>
+<body>
+<div class="module-container">
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-user-clock"></i></div><div class="stat-info"><div class="stat-value" id="totalActions">0</div><div class="stat-label">Total Actions</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-calendar-day"></i></div><div class="stat-info"><div class="stat-value" id="todayActions">0</div><div class="stat-label">Today</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-shield-alt"></i></div><div class="stat-info"><div class="stat-value" id="adminActions">0</div><div class="stat-label">Admin Actions</div></div></div>
+  </div>
+
+  <div class="dashboard-card">
+    <div class="card-header"><h3><i class="fas fa-history"></i> Staff Activity Log</h3><button class="action-btn info" onclick="refreshActivityLog()"><i class="fas fa-sync-alt"></i> Refresh</button></div>
+    <div class="card-body"><div class="activity-list" id="activityLogList"></div></div>
+  </div>
+</div>
+<div id="toast" class="toast"><span id="toastIcon">✅</span><span id="toastMessage">Success!</span></div>
+
+<script>
+  const ACTIVITY_KEY = 'rands_staff_activity';
+  let staffActivity = [];
+  function loadActivityLog() { const stored = localStorage.getItem(ACTIVITY_KEY); staffActivity = stored ? JSON.parse(stored) : []; }
+  function saveActivityLog() { localStorage.setItem(ACTIVITY_KEY, JSON.stringify(staffActivity)); }
+  function updateStats() {
+    document.getElementById('totalActions').innerText = staffActivity.length;
+    const today = new Date().toISOString().slice(0,10);
+    const todayActions = staffActivity.filter(a => a.date === today).length;
+    document.getElementById('todayActions').innerText = todayActions;
+    document.getElementById('adminActions').innerText = staffActivity.length;
+  }
+  function renderActivityLog() {
+    const container = document.getElementById('activityLogList');
+    if (!staffActivity.length) { container.innerHTML = '<div class="empty-state">📭 No activity recorded yet</div>'; return; }
+    container.innerHTML = staffActivity.slice(0,100).map(act => `<div class="activity-item"><div class="activity-header"><span class="activity-action">${act.action.replace(/_/g, ' ')}</span><span class="activity-time">${act.time} • ${act.date}</span></div><div class="activity-details">${escapeHtml(act.details)}</div><div class="activity-admin"><i class="fas fa-user-shield"></i> ${act.admin || 'Administrator'}</div></div>`).join('');
+  }
+  function refreshActivityLog() { loadActivityLog(); updateStats(); renderActivityLog(); showToast('Activity log refreshed', 'success'); }
+  function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toastIcon').innerText = '✅';
+    document.getElementById('toastMessage').innerText = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+  function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+  function init() { loadActivityLog(); updateStats(); renderActivityLog(); }
+  init();
+  window.refreshActivityLog = refreshActivityLog;
+</script>
+</body>
+</html>
