@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Rands | Tenant Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f5f7fb; overflow-x: hidden; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 270px; height: 100%; background: #ffffff; box-shadow: 0 0 20px rgba(0,0,0,0.05); z-index: 100; transition: all 0.3s ease; overflow-y: auto; border-right: 1px solid #edf2f7; }
+        .sidebar-header { padding: 24px 20px; border-bottom: 1px solid #eff3f8; display: flex; align-items: center; gap: 12px; }
+        .tenant-logo { width: 42px; height: 42px; background: #E30613; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem; }
+        .tenant-info h3 { font-size: 1rem; font-weight: 700; color: #1e293b; }
+        .tenant-info p { font-size: 0.7rem; color: #6c7a8e; }
+        .nav-menu { padding: 20px 0; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 4px 12px; border-radius: 12px; color: #4a5568; font-weight: 500; transition: all 0.2s; cursor: pointer; }
+        .nav-item i { width: 22px; font-size: 1.1rem; }
+        .nav-item:hover { background: #fff0f0; color: #E30613; }
+        .nav-item.active { background: #E30613; color: white; box-shadow: 0 4px 10px rgba(227,6,19,0.2); }
+        .nav-divider { height: 1px; background: #edf2f7; margin: 12px 20px; }
+        .nav-section-title { font-size: 0.65rem; text-transform: uppercase; color: #94a3b8; padding: 8px 20px 4px 20px; letter-spacing: 0.5px; font-weight: 600; }
+        .main-content { margin-left: 270px; transition: all 0.3s ease; min-height: 100vh; }
+        .top-header { background: white; padding: 14px 28px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #edf2f7; position: sticky; top: 0; z-index: 99; }
+        .header-left h3 { font-size: 1.2rem; font-weight: 600; color: #1e293b; }
+        .header-right { display: flex; align-items: center; gap: 24px; }
+        .notification-icon { position: relative; cursor: pointer; font-size: 1.2rem; color: #4a5568; }
+        .badge-dot { position: absolute; top: -4px; right: -6px; width: 10px; height: 10px; background: #E30613; border-radius: 50%; border: 2px solid white; }
+        .profile-dropdown { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 6px 12px; border-radius: 40px; background: #f8fafd; }
+        .avatar { width: 38px; height: 38px; background: linear-gradient(135deg, #E30613, #b0020e); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; }
+        .dashboard-container { padding: 28px 32px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin-bottom: 32px; }
+        .stat-card { background: white; border-radius: 28px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border: 1px solid #edf2f7; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -12px rgba(0,0,0,0.1); }
+        .stat-icon { width: 48px; height: 48px; background: #fff0f0; border-radius: 24px; display: flex; align-items: center; justify-content: center; color: #E30613; font-size: 1.4rem; margin-bottom: 16px; }
+        .stat-title { font-size: 0.75rem; font-weight: 500; color: #6c7a8e; text-transform: uppercase; }
+        .stat-number { font-size: 1.8rem; font-weight: 800; color: #1e293b; margin-top: 6px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin: 32px 0 20px 0; flex-wrap: wrap; gap: 12px; }
+        .section-header h2 { font-size: 1.2rem; font-weight: 700; color: #1e293b; }
+        .btn-primary { background: #E30613; color: white; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform 0.1s; }
+        .btn-primary:active { transform: scale(0.97); }
+        .btn-outline { background: transparent; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 40px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        .btn-outline:hover { background: #f1f5f9; }
+        .btn-danger { background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 30px; font-size: 0.7rem; cursor: pointer; }
+        .btn-success { background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 30px; font-size: 0.7rem; cursor: pointer; }
+        .table-wrapper { overflow-x: auto; background: white; border-radius: 24px; border: 1px solid #edf2f7; }
+        .data-table { width: 100%; border-collapse: collapse; min-width: 650px; }
+        .data-table th, .data-table td { padding: 14px 20px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+        .data-table th { background: #fafcff; font-weight: 600; color: #4a5568; }
+        .status-badge { padding: 4px 12px; border-radius: 40px; font-size: 0.7rem; font-weight: 600; display: inline-block; }
+        .status-active { background: #e6f7e6; color: #10b981; }
+        .status-inactive { background: #fee2e2; color: #E30613; }
+        .role-badge { background: #e0e7ff; color: #4f46e5; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; display: inline-block; }
+        .modules-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
+        .module-card-item { background: white; border-radius: 20px; padding: 20px; border: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; }
+        .active-staff-card { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left: 4px solid #10b981; }
+        .force-logout-btn { background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 30px; font-size: 0.7rem; cursor: pointer; }
+        .staff-stat-card { background: #f8fafc; border-radius: 16px; padding: 12px; text-align: center; }
+        .staff-stat-number { font-size: 1.5rem; font-weight: 800; color: #E30613; }
+        .tabs-container { display: flex; gap: 8px; border-bottom: 1px solid #e2e8f0; margin-bottom: 24px; flex-wrap: wrap; }
+        .tab-button { padding: 10px 20px; background: transparent; border: none; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; border-radius: 12px 12px 0 0; }
+        .tab-button:hover { color: #E30613; background: #fff0f0; }
+        .tab-button.active { color: #E30613; border-bottom: 3px solid #E30613; background: transparent; }
+        .settings-panel { background: white; border-radius: 28px; padding: 24px; border: 1px solid #edf2f7; margin-top: 20px; }
+        .form-control { width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 40px; font-family: 'Inter', sans-serif; font-size: 0.85rem; margin-bottom: 16px; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: #1e293b; }
+        .modal-mask { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 1000; visibility: hidden; opacity: 0; transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
+        .modal-mask.active { visibility: visible; opacity: 1; }
+        .modal-container { background: rgba(255,255,255,0.98); width: 90%; max-width: 500px; border-radius: 48px; padding: 32px 28px; box-shadow: 0 30px 50px -20px rgba(0,0,0,0.3), 0 0 0 1px rgba(227,6,19,0.1); text-align: left; animation: modalPop 0.3s cubic-bezier(0.34, 1.2, 0.64, 1) forwards; }
+        @keyframes modalPop { 0% { transform: scale(0.92); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .modal-icon { width: 70px; height: 70px; background: linear-gradient(145deg, #fff0f0, #ffe6e6); border-radius: 60px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 34px; color: #E30613; box-shadow: 0 12px 18px -8px rgba(227,6,19,0.2); }
+        .modal-container h3 { font-size: 1.6rem; font-weight: 800; margin-bottom: 12px; background: linear-gradient(135deg, #1e293b, #334155); -webkit-background-clip: text; background-clip: text; color: transparent; text-align: center; }
+        .modal-container p { color: #475569; line-height: 1.5; margin: 16px 0 24px; font-size: 1rem; white-space: pre-line; text-align: center; }
+        .modal-btn { background: #E30613; border: none; padding: 12px 28px; border-radius: 40px; font-weight: 700; cursor: pointer; color: white; font-size: 0.9rem; transition: all 0.2s; box-shadow: 0 6px 14px rgba(227,6,19,0.3); width: 100%; }
+        .modal-btn:hover { background: #b8050f; transform: translateY(-2px); }
+        .modal-buttons { display: flex; gap: 12px; margin-top: 20px; }
+        @media (max-width: 768px) { .sidebar { transform: translateX(-100%); width: 260px; } .sidebar.open { transform: translateX(0); } .main-content { margin-left: 0; } .dashboard-container { padding: 20px; } .menu-toggle { display: block; margin-right: 16px; } }
+        @media (min-width: 769px) { .menu-toggle { display: none; } }
+        .menu-toggle { font-size: 1.3rem; cursor: pointer; color: #1e293b; }
+        /* External iframe container */
+        .external-module { margin-top: 20px; }
+        .external-back-btn { margin-bottom: 20px; }
+        .external-iframe { width: 100%; height: 80vh; border: none; background: white; border-radius: 24px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
+        <div class="sidebar-header">
+            <div class="tenant-logo" :style="{ backgroundColor: branding.primaryColor }">{{ tenantInitial }}</div>
+            <div class="tenant-info">
+                <h3>{{ tenantName }}</h3>
+                <p>Venue Dashboard</p>
+            </div>
+        </div>
+        <div class="nav-menu">
+            <div v-for="item in coreNavItems" :key="item.id" class="nav-item" :class="{ active: currentSection === item.id }" @click="handleNavClick(item)">
+                <i :class="item.icon"></i>
+                <span>{{ item.label }}</span>
+            </div>
+            <div class="nav-divider" v-if="enabledModulesList.length > 0"></div>
+            <div class="nav-section-title" v-if="enabledModulesList.length > 0"><i class="fas fa-puzzle-piece"></i> ACTIVE MODULES</div>
+            <div v-for="module in enabledModulesList" :key="'module_' + module.id" class="nav-item" :class="{ active: currentSection === 'module_' + module.id }" @click="goToModuleSection(module)">
+                <i :class="getModuleIcon(module.name)"></i>
+                <span>{{ getModuleDisplayName(module.name) }}</span>
+                <span class="module-badge-enabled" style="font-size: 0.6rem; padding: 2px 6px; margin-left: auto; background: #10b981; color: white; border-radius: 30px;">Live</span>
+            </div>
+            <div class="nav-divider"></div>
+            <div class="nav-item" :class="{ active: currentSection === 'settings' }" @click="currentSection = 'settings'; closeSidebar()">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </div>
+        </div>
+    </aside>
+
+    <div class="main-content">
+        <div class="top-header">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="menu-toggle" @click="sidebarOpen = !sidebarOpen"><i class="fas fa-bars"></i></div>
+                <div class="header-left"><h3>{{ currentSectionTitle }}</h3></div>
+            </div>
+            <div class="header-right">
+                <div class="session-status"><i class="fas fa-circle" style="font-size: 0.6rem;"></i><span>Session Active</span></div>
+                <div class="notification-icon"><i class="far fa-bell"></i><span class="badge-dot"></span></div>
+                <div class="profile-dropdown" @click="logout"><div class="avatar">{{ adminInitial }}</div><span style="font-size:0.85rem;">{{ adminName }}</span><i class="fas fa-sign-out-alt"></i></div>
+            </div>
+        </div>
+
+        <div class="dashboard-container">
+            <!-- DASHBOARD (unchanged) -->
+            <div v-if="currentSection === 'dashboard'">
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-title">Total Staff</div><div class="stat-number">{{ staffList.length }}</div></div>
+                    <div class="stat-card"><div class="stat-icon"><i class="fas fa-user-check"></i></div><div class="stat-title">Active Staff</div><div class="stat-number">{{ staffList.filter(s => s.status === 'Active').length }}</div></div>
+                    <div class="stat-card"><div class="stat-icon"><i class="fas fa-clock"></i></div><div class="stat-title">On Shift Now</div><div class="stat-number">{{ activeShiftsList.length }}</div></div>
+                    <div class="stat-card"><div class="stat-icon"><i class="fas fa-ticket-alt"></i></div><div class="stat-title">Tickets Sold</div><div class="stat-number">1,284</div></div>
+                </div>
+                <div class="section-header"><h2><i class="fas fa-circle" style="color: #10b981; font-size: 0.7rem;"></i> Staff Currently On Shift ({{ activeShiftsList.length }})</h2></div>
+                <div class="modules-container" v-if="activeShiftsList.length > 0">
+                    <div v-for="shift in activeShiftsList.slice(0, 4)" :key="shift.shift_id" class="module-card-item active-staff-card">
+                        <div class="module-info"><h4><i class="fas fa-user-circle"></i> {{ shift.staff_name }}</h4><p><i class="fas fa-clock"></i> Since: {{ formatTime(shift.login_time) }} | {{ calculateDuration(shift.login_time) }}</p><p><i class="fas fa-tag"></i> Role: {{ getRoleDisplay(shift.staff_role) }}</p></div>
+                        <button class="force-logout-btn" @click="forceLogout(shift)"><i class="fas fa-sign-out-alt"></i> Force</button>
+                    </div>
+                </div>
+                <div v-else class="settings-panel" style="text-align:center; padding:20px;"><i class="fas fa-user-clock" style="font-size:32px; color:#cbd5e1;"></i><p style="margin-top:8px;">No staff currently on shift</p></div>
+                <div class="section-header"><h2>Recent Staff Activity</h2></div>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span><tr><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
+            </div>
+
+            <!-- PRIVATE LABEL (internal) -->
+            <div v-for="module in enabledModulesList" :key="'brand_' + module.id" v-if="currentSection === 'module_' + module.id && module.name === 'Private Label'">
+                <div class="section-header"><h2><i class="fas fa-palette"></i> Venue Branding</h2><button class="btn-outline" @click="currentSection = 'dashboard'"><i class="fas fa-arrow-left"></i> Back</button></div>
+                <div class="settings-panel">
+                    <div class="form-group"><label>Venue Name</label><input class="form-control" v-model="tenantName" @blur="saveBranding"></div>
+                    <div class="form-group"><label>Logo URL</label><input class="form-control" v-model="branding.logoUrl" placeholder="https://..."><div v-if="branding.logoUrl"><img :src="branding.logoUrl" class="site-logo-preview" style="max-width:120px; max-height:60px; margin-top:8px; border-radius:12px; border:1px solid #e2e8f0;"></div></div>
+                    <div class="form-group"><label>Primary Color</label><div class="color-preview" style="display:flex; align-items:center; gap:12px; margin-top:8px;"><input type="color" v-model="branding.primaryColor" class="form-control" style="width:80px; padding:4px;" @change="saveBranding"><div class="preview-box" style="width:40px; height:40px; border-radius:12px; border:1px solid #e2e8f0;" :style="{ backgroundColor: branding.primaryColor }"></div><span>{{ branding.primaryColor }}</span></div></div>
+                    <div class="form-group"><label>Favicon URL</label><input class="form-control" v-model="branding.faviconUrl" placeholder="Favicon link"></div>
+                    <button class="btn-primary" @click="saveBranding"><i class="fas fa-save"></i> Save Branding</button>
+                </div>
+            </div>
+
+            <!-- STAFF MANAGEMENT MODULE (internal) -->
+            <div v-for="module in enabledModulesList" :key="'staff_' + module.id" v-if="currentSection === 'module_' + module.id && module.name === 'Staff Management'">
+                <div class="section-header"><h2><i class="fas fa-users"></i> Staff Management</h2><button class="btn-outline" @click="currentSection = 'dashboard'">Back</button></div>
+                <div class="tabs-container">
+                    <button class="tab-button" :class="{ active: staffModuleTab === 'accounts' }" @click="staffModuleTab = 'accounts'"><i class="fas fa-id-card"></i> Staff Accounts</button>
+                    <button class="tab-button" :class="{ active: staffModuleTab === 'attendance' }" @click="staffModuleTab = 'attendance'"><i class="fas fa-clock"></i> Attendance</button>
+                    <button class="tab-button" :class="{ active: staffModuleTab === 'activity' }" @click="staffModuleTab = 'activity'"><i class="fas fa-chart-line"></i> Activity</button>
+                    <button class="tab-button" :class="{ active: staffModuleTab === 'reports' }" @click="staffModuleTab = 'reports'"><i class="fas fa-file-alt"></i> Reports</button>
+                </div>
+                
+                <div v-if="staffModuleTab === 'accounts'">
+                    <div style="display: flex; justify-content: flex-end; margin-bottom:20px;">
+                        <button class="btn-primary" @click="openCreateStaffModal"><i class="fas fa-plus"></i> Add Staff</button>
+                    </div>
+                    <div class="stats-grid" style="margin-bottom:24px;">
+                        <div class="staff-stat-card"><div class="staff-stat-number">{{ staffList.length }}</div><div>Total Staff</div></div>
+                        <div class="staff-stat-card"><div class="staff-stat-number">{{ staffList.filter(s => s.status === 'Active').length }}</div><div>Active</div></div>
+                        <div class="staff-stat-card"><div class="staff-stat-number">{{ staffList.filter(s => s.status === 'Inactive').length }}</div><div>Inactive</div></div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Role</th>
+                                    <th>Phone</th>
+                                    <th>Hourly Rate</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="staff in staffList" :key="staff.id">
+                                    <td><strong>{{ staff.name }} {{ staff.surname }}</strong></td>
+                                    <td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td>
+                                    <td>{{ staff.phone || '—' }}</td>
+                                    <td>R{{ parseFloat(staff.hourly_rate || 0).toFixed(2) }}</td>
+                                    <td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td>
+                                    <td>{{ formatDate(staff.created_at) }}</td>
+                                    <td>
+                                        <div class="action-icons">
+                                            <i class="fas fa-edit" @click="editStaff(staff)" style="color:#f59e0b;"></i>
+                                            <i class="fas" :class="staff.status === 'Active' ? 'fa-toggle-on' : 'fa-toggle-off'" @click="toggleStaffStatus(staff.id)" style="cursor:pointer;"></i>
+                                            <i class="fas fa-trash-alt" @click="deleteStaff(staff.id)" style="color:#dc2626;"></i>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="staffList.length===0"><td colspan="7" style="text-align:center;">No staff members</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div v-if="staffModuleTab === 'attendance'">
+                    <div class="stats-grid">
+                        <div class="stat-card"><div class="stat-number">{{ activeShiftsList.length }}</div><div>On Shift</div></div>
+                        <div class="stat-card"><div class="stat-number">{{ totalHoursToday.toFixed(1) }}h</div><div>Total Hours Today</div></div>
+                        <div class="stat-card"><div class="stat-number">{{ avgHoursPerStaff.toFixed(1) }}h</div><div>Avg Hours/Staff</div></div>
+                    </div>
+                    <div class="section-header"><h3>Currently Active Shifts</h3></div>
+                    <div class="modules-container">
+                        <div v-for="shift in activeShiftsList" class="module-card-item active-staff-card">
+                            <div class="module-info">
+                                <h4><i class="fas fa-user-circle"></i> {{ shift.staff_name }}</h4>
+                                <p>Started: {{ formatDateTime(shift.login_time) }} | Duration: {{ calculateDuration(shift.login_time) }}</p>
+                                <p>Role: {{ getRoleDisplay(shift.staff_role) }}</p>
+                            </div>
+                            <button class="force-logout-btn" @click="forceLogout(shift)">Force Logout</button>
+                        </div>
+                        <div v-if="activeShiftsList.length===0" class="settings-panel" style="text-align:center;">No active shifts</div>
+                    </div>
+                </div>
+                
+                <div v-if="staffModuleTab === 'activity'" class="settings-panel" style="text-align:center; padding:60px;">
+                    <i class="fas fa-chart-line fa-3x" style="color:#E30613;"></i>
+                    <h3 style="margin-top:12px;">Real-time Activity</h3>
+                    <p>Staff actions will appear here</p>
+                </div>
+                
+                <div v-if="staffModuleTab === 'reports'" class="settings-panel" style="text-align:center; padding:60px;">
+                    <button class="btn-primary" @click="exportAttendanceReport"><i class="fas fa-download"></i> Export Report</button>
+                </div>
+            </div>
+
+            <!-- SETTINGS (internal) -->
+            <div v-if="currentSection === 'settings'">
+                <div class="section-header"><h2>System Settings</h2></div>
+                <div class="settings-panel">
+                    <div class="form-group"><label>Venue Name</label><input class="form-control" v-model="tenantName" @blur="saveBranding"></div>
+                    <button class="btn-primary" @click="saveBranding">Save Changes</button>
+                </div>
+            </div>
+
+            <!-- EXTERNAL MODULE CONTENT (iframe mode – no changes needed to external HTML files) -->
+            <div v-if="currentSection === 'external'" class="external-module">
+                <div class="external-back-btn">
+                    <button class="btn-outline" @click="currentSection = 'dashboard'">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </button>
+                </div>
+                <iframe :src="externalUrl" class="external-iframe" title="External Module"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- STAFF MODAL (unchanged) -->
+    <div class="modal-mask" :class="{ active: showStaffModal }">
+        <div class="modal-container">
+            <h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3>
+            <div class="form-group">
+                <label>Name *</label>
+                <input class="form-control" v-model="staffForm.name" placeholder="First name">
+            </div>
+            <div class="form-group">
+                <label>Surname *</label>
+                <input class="form-control" v-model="staffForm.surname" placeholder="Last name">
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input class="form-control" v-model="staffForm.email" placeholder="staff@example.com" type="email">
+            </div>
+            <div class="form-group" v-if="!isEditing">
+                <label>Password *</label>
+                <input class="form-control" v-model="staffForm.password" placeholder="Min 6 characters" type="password">
+            </div>
+            <div class="form-group">
+                <label>Role *</label>
+                <select class="form-control" v-model="staffForm.role">
+                    <option value="staff">Staff</option>
+                    <option value="manager">Manager</option>
+                    <option value="cashier">Cashier</option>
+                    <option value="security">Security</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Hourly Rate (ZAR) *</label>
+                <input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50" placeholder="e.g., 45.00">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button>
+                <button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INFO MODAL (unchanged) -->
+    <div class="modal-mask" :class="{ active: showInfoModal }">
+        <div class="modal-container">
+            <div class="modal-icon"><i :class="infoIcon" :style="{ color: infoIconColor }"></i></div>
+            <h3>{{ infoTitle }}</h3>
+            <p>{{ infoMessage }}</p>
+            <button class="modal-btn" @click="showInfoModal = false">Got it</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Supabase configuration (yours – unchanged)
+const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const STORAGE_KEYS = { SHIFTS: 'qless_shifts' };
+
+// ========== MODULE TO FILE MAPPING (EXTERNAL IFrame LINKS) ==========
+// 👇 Replace the paths with your actual external HTML file locations
+const moduleFileMap = {
+  // Example:
+  // 'Box Office': '/modules/boxoffice.html',
+  // 'Event Manager': '/modules/events.html',
+  // 'Reports': '/modules/reports.html',
+  // 'Attendance': '/modules/attendance.html',
+  // 'Payroll': '/modules/payroll.html',
+  // 'Inventory': '/modules/inventory.html',
+  // 'CRM': '/modules/crm.html'
+};
+
+new Vue({
+    el: '#app',
+    data: {
+        sidebarOpen: false,
+        currentSection: 'dashboard',  // 'dashboard', 'settings', 'module_xxx', or 'external'
+        tenantId: null,
+        tenantName: 'Demo Venue',
+        adminName: 'Admin',
+        branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
+        tenantModules: [],
+        staffList: [],
+        showStaffModal: false,
+        showInfoModal: false,
+        isEditing: false,
+        editingStaffId: null,
+        staffForm: { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0 },
+        saving: false,
+        infoTitle: '',
+        infoMessage: '',
+        infoIcon: 'fas fa-check-circle',
+        infoIconColor: '#E30613',
+        coreNavItems: [{ id: 'dashboard', label: 'Dashboard', icon: 'fas fa-tachometer-alt' }],
+        shifts: [],
+        totalHoursToday: 0,
+        avgHoursPerStaff: 0,
+        staffModuleTab: 'accounts',
+        currentUserTenantId: null,
+        // External iframe data
+        externalUrl: ''
+    },
+    computed: {
+        tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
+        adminInitial() { return this.adminName ? this.adminName.charAt(0).toUpperCase() : 'A'; },
+        currentSectionTitle() {
+            if (this.currentSection === 'external') return 'External Module';
+            if (this.currentSection === 'settings') return 'Settings';
+            if (this.currentSection === 'dashboard') return 'Dashboard';
+            if (this.currentSection.startsWith('module_')) {
+                const mod = this.enabledModulesList.find(m => 'module_'+m.id === this.currentSection);
+                return mod ? this.getModuleDisplayName(mod.name) : 'Module';
+            }
+            return 'Dashboard';
+        },
+        enabledModulesList() {
+            return this.tenantModules.filter(m => m.enabled === true);
+        },
+        activeShiftsList() {
+            return this.shifts.filter(s => s.status === 'active' && s.tenant_id === this.tenantId).map(s => {
+                const staff = this.staffList.find(st => st.id === s.staff_id);
+                return { ...s, staff_name: staff ? `${staff.name} ${staff.surname}` : 'Unknown', staff_role: staff?.role || 'unknown' };
+            });
+        }
+    },
+    methods: {
+        getModuleDisplayName(name) { if(name === 'Private Label') return 'Venue Branding'; return name; },
+        getModuleIcon(name) { if(name === 'Private Label') return 'fas fa-palette'; if(name === 'Staff Management') return 'fas fa-users'; return 'fas fa-cube'; },
+        getRoleDisplay(r) { const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security' }; return map[r] || r; },
+        formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
+        formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
+        formatDateTime(d){ return d?new Date(d).toLocaleString():'-'; },
+        calculateDuration(loginTime){ const diff = Math.floor((new Date() - new Date(loginTime)) / 60000); return `${Math.floor(diff/60)}h ${diff%60}m`; },
+        showStunningAlert(title, msg, icon, color){ this.infoTitle=title; this.infoMessage=msg; this.infoIcon=icon; this.infoIconColor=color; this.showInfoModal=true; },
+        handleNavClick(item){ this.currentSection = item.id; this.closeSidebar(); },
+        
+        // Updated module click handler: if external mapping exists, load iframe; else internal Vue section
+        async goToModuleSection(module) {
+            const externalPath = moduleFileMap[module.name];
+            if (externalPath) {
+                // External module – load in iframe
+                this.externalUrl = externalPath;
+                this.currentSection = 'external';
+                this.closeSidebar();
+                return;
+            }
+            // Internal module (Vue sections)
+            this.currentSection = 'module_' + module.id;
+            if (module.name === 'Staff Management') this.staffModuleTab = 'accounts';
+            if (module.name === 'Private Label') {
+                // stays internal
+            }
+            this.closeSidebar();
+        },
+        
+        closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
+
+        // ========== REST OF YOUR EXISTING METHODS (unchanged) ==========
+        async loadCurrentAdminTenant() {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (!user) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); return false; }
+            const { data: profile, error } = await supabaseClient.from('profiles').select('tenant_id').eq('id', user.id).single();
+            if (error || !profile || !profile.tenant_id) {
+                const { data: tenants, error: tenantErr } = await supabaseClient.from('tenants').select('id').limit(1);
+                if (tenantErr || !tenants || tenants.length === 0) { this.showStunningAlert('Error', 'No tenant found', 'fas fa-exclamation', '#dc2626'); return false; }
+                this.currentUserTenantId = tenants[0].id;
+                this.tenantId = tenants[0].id;
+                const { data: tenantData } = await supabaseClient.from('tenants').select('name').eq('id', this.tenantId).single();
+                if (tenantData) this.tenantName = tenantData.name;
+                return true;
+            }
+            this.currentUserTenantId = profile.tenant_id;
+            this.tenantId = profile.tenant_id;
+            return true;
+        },
+        async loadStaffFromSupabase() {
+            if (!this.tenantId) return;
+            const { data, error } = await supabaseClient.from('profiles').select('id, name, surname, email, role, phone, hourly_rate, status, created_at').eq('tenant_id', this.tenantId).in('role', ['staff', 'manager', 'cashier', 'security']).order('created_at', { ascending: false });
+            if (error) { console.error('Error loading staff profiles:', error); return; }
+            this.staffList = data || [];
+        },
+        async loadTenantModules() {
+            const { data: tenants, error: tenantError } = await supabaseClient.from('tenants').select('id, name');
+            if (tenantError) { console.error(tenantError); return; }
+            if (tenants && tenants.length > 0) {
+                this.tenantId = tenants[0].id;
+                this.tenantName = tenants[0].name;
+                const { data: modules, error } = await supabaseClient.from('tenant_modules').select(`id, enabled, module:module_id (id, name, description, icon)`).eq('tenant_id', this.tenantId);
+                if (error) console.error(error);
+                else this.tenantModules = modules.map(m => ({ id: m.module.id, name: m.module.name, enabled: m.enabled, description: m.module.description, icon: m.module.icon }));
+            }
+        },
+        loadLocalData() {
+            const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
+            this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
+            const savedBrand = localStorage.getItem(`qless_tenant_branding_${this.tenantId}`);
+            if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
+            this.calcTotals();
+        },
+        calcTotals(){
+            let todayTotal=0;
+            this.shifts.forEach(s=>{
+                if(new Date(s.login_time).setHours(0,0,0,0)===new Date().setHours(0,0,0,0)){
+                    if(s.hours_worked) todayTotal+=s.hours_worked;
+                    else if(s.status==='active') todayTotal+=(new Date()-new Date(s.login_time))/(1000*60*60);
+                }
+            });
+            this.totalHoursToday=todayTotal;
+            this.avgHoursPerStaff=this.staffList.length?todayTotal/this.staffList.length:0;
+        },
+        saveShifts(){ const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); const filtered=all.filter(s=>s.tenant_id!==this.tenantId); localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); },
+        async forceLogout(shift){ if(!confirm(`Force logout ${shift.staff_name}?`)) return; const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); if(idx!==-1){ const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); this.shifts[idx].logout_time=new Date().toISOString(); this.shifts[idx].status='completed'; this.shifts[idx].hours_worked=hrs; this.saveShifts(); this.showStunningAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); this.calcTotals(); } },
+        saveBranding(){ const data={tenantName:this.tenantName,branding:this.branding}; localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); this.showStunningAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); },
+        openCreateStaffModal(){ this.isEditing=false; this.editingStaffId=null; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.showStaffModal=true; },
+        editStaff(staff){ this.isEditing=true; this.editingStaffId=staff.id; this.staffForm={ name:staff.name, surname:staff.surname, email:staff.email, password:'', role:staff.role, hourly_rate:staff.hourly_rate }; this.showStaffModal=true; },
+        closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.saving=false; },
+        async saveStaff(){
+            if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showStunningAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
+            if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showStunningAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
+            if(!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) return this.showStunningAlert('Invalid', 'Hourly rate must be greater than 0', 'fas fa-exclamation', '#dc2626');
+            if(!this.currentUserTenantId) return this.showStunningAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626');
+            this.saving = true;
+            try {
+                const payload = { email: this.staffForm.email, password: this.staffForm.password, name: this.staffForm.name, surname: this.staffForm.surname, role: this.staffForm.role, hourly_rate: parseFloat(this.staffForm.hourly_rate), tenant_id: this.currentUserTenantId };
+                const { data, error } = await supabaseClient.functions.invoke('create-staff', { body: payload });
+                if (error) throw new Error(error.message);
+                if (data && data.error) throw new Error(data.error);
+                this.showStunningAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check', '#10b981');
+                this.closeStaffModal();
+                await this.loadStaffFromSupabase();
+                this.loadLocalData();
+            } catch (err) { console.error(err); this.showStunningAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } finally { this.saving = false; }
+        },
+        async toggleStaffStatus(id){
+            const staff = this.staffList.find(s => s.id === id);
+            if(!staff) return;
+            const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
+            const { error } = await supabaseClient.from('profiles').update({ status: newStatus }).eq('id', id);
+            if(error){ console.error(error); return this.showStunningAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); }
+            await this.loadStaffFromSupabase();
+            this.showStunningAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
+        },
+        async deleteStaff(id){
+            const staff = this.staffList.find(s => s.id === id);
+            if(staff && confirm(`Delete ${staff.name} ${staff.surname}? This will remove their profile permanently.`)){
+                const { error } = await supabaseClient.from('profiles').delete().eq('id', id);
+                if(error){ console.error(error); return this.showStunningAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); }
+                await this.loadStaffFromSupabase();
+                this.showStunningAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
+            }
+        },
+        exportAttendanceReport(){ this.showStunningAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
+        logout(){ sessionStorage.clear(); window.location.href = 'login.html'; }
+    },
+    async mounted() {
+        const loggedIn = await this.loadCurrentAdminTenant();
+        if (!loggedIn) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); setTimeout(() => { window.location.href = 'login.html'; }, 2000); return; }
+        await this.loadTenantModules();
+        await this.loadStaffFromSupabase();
+        this.loadLocalData();
+        setInterval(() => { this.loadLocalData(); }, 5000);
+    }
+});
+</script>
+</body>
+</html>
