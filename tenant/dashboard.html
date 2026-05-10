@@ -308,7 +308,7 @@
 </div>
 
 <script>
-// Supabase configuration (same as before)
+// Supabase configuration
 const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -324,7 +324,7 @@ new Vue({
         adminName: 'Admin',
         branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
         tenantModules: [],
-        staffList: [],          // from public.profiles (role staff/manager/cashier/security)
+        staffList: [],
         showStaffModal: false,
         showInfoModal: false,
         isEditing: false,
@@ -376,12 +376,30 @@ new Vue({
         goToModuleSection(module){ this.currentSection='module_'+module.id; if(module.name==='Staff Management') this.staffModuleTab='accounts'; this.closeSidebar(); },
         closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
 
-        // Load current admin's tenant_id from profiles
+        // Load current admin's tenant_id (with fallback)
         async loadCurrentAdminTenant() {
             const { data: { user } } = await supabaseClient.auth.getUser();
-            if (!user) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); return false; }
+            if (!user) {
+                this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626');
+                return false;
+            }
+            // Try to get tenant from admin's profile
             const { data: profile, error } = await supabaseClient.from('profiles').select('tenant_id').eq('id', user.id).single();
-            if (error || !profile) { console.error('Admin profile missing'); return false; }
+            if (error || !profile || !profile.tenant_id) {
+                console.warn('Admin profile missing tenant_id, falling back to first tenant');
+                // Fallback: fetch the first tenant from the tenants table
+                const { data: tenants, error: tenantErr } = await supabaseClient.from('tenants').select('id').limit(1);
+                if (tenantErr || !tenants || tenants.length === 0) {
+                    this.showStunningAlert('Error', 'No tenant found. Please contact support.', 'fas fa-exclamation', '#dc2626');
+                    return false;
+                }
+                this.currentUserTenantId = tenants[0].id;
+                this.tenantId = tenants[0].id;
+                // Also try to get tenant name
+                const { data: tenantData } = await supabaseClient.from('tenants').select('name').eq('id', this.tenantId).single();
+                if (tenantData) this.tenantName = tenantData.name;
+                return true;
+            }
             this.currentUserTenantId = profile.tenant_id;
             this.tenantId = profile.tenant_id;
             return true;
