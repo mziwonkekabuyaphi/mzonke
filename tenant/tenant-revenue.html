@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>QLess · Revenue & Settlement | Tenant Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f5f7fb; overflow-x: hidden; }
+        .app-container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+        /* header */
+        .top-bar { background: white; border-radius: 1.5rem; padding: 1rem 1.8rem; margin-bottom: 1.8rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); border: 1px solid #edf2f7; }
+        .logo-area h1 { font-size: 1.5rem; font-weight: 800; background: linear-gradient(135deg, #1e293b, #E30613); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .tenant-badge { background: #fff0f0; padding: 0.4rem 1rem; border-radius: 40px; color: #E30613; font-weight: 600; font-size: 0.8rem; border: 1px solid #ffe0e0; }
+        /* KPI row */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.2rem; margin-bottom: 2rem; }
+        .kpi-card { background: white; border-radius: 1.5rem; padding: 1.2rem 1.5rem; border: 1px solid #edf2f7; transition: 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+        .kpi-card:hover { transform: translateY(-2px); border-color: #E30613; }
+        .kpi-icon { background: #fff0f0; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 1rem; color: #E30613; font-size: 1.3rem; margin-bottom: 0.8rem; }
+        .kpi-label { font-size: 0.7rem; text-transform: uppercase; font-weight: 600; color: #6c7a8e; letter-spacing: 0.03em; }
+        .kpi-value { font-size: 1.8rem; font-weight: 800; color: #0f172a; margin-top: 0.2rem; }
+        .kpi-sub { font-size: 0.7rem; color: #64748b; margin-top: 4px; }
+        /* sections */
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin: 1.8rem 0 1rem 0; flex-wrap: wrap; gap: 0.8rem; }
+        .section-title { font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #0f172a; }
+        .section-title i { color: #E30613; }
+        .btn-outline { background: transparent; border: 1px solid #e2e8f0; padding: 0.5rem 1.2rem; border-radius: 40px; font-weight: 500; font-size: 0.75rem; cursor: pointer; transition: 0.2s; }
+        .btn-outline:hover { background: #fff0f0; border-color: #E30613; color: #E30613; }
+        .btn-primary-sm { background: #E30613; border: none; padding: 0.5rem 1.2rem; border-radius: 40px; font-weight: 600; font-size: 0.75rem; color: white; cursor: pointer; transition: 0.2s; }
+        .btn-primary-sm:hover { background: #b0050f; }
+        /* tables */
+        .table-wrapper { overflow-x: auto; background: white; border-radius: 1.5rem; border: 1px solid #edf2f7; }
+        .data-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+        .data-table th, .data-table td { padding: 1rem 1.2rem; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+        .data-table th { background: #fafcff; font-weight: 600; color: #334155; }
+        .badge-amount { font-weight: 700; color: #0f172a; }
+        .status-paid { background: #e6f7e6; color: #10b981; padding: 0.2rem 0.7rem; border-radius: 30px; font-size: 0.7rem; font-weight: 600; display: inline-block; }
+        .status-unpaid { background: #fee2e2; color: #E30613; padding: 0.2rem 0.7rem; border-radius: 30px; font-size: 0.7rem; font-weight: 600; }
+        .amount-negative { color: #E30613; font-weight: 700; }
+        .amount-positive { color: #10b981; font-weight: 700; }
+        .chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; margin: 1.5rem 0; }
+        .chart-card { background: white; border-radius: 1.5rem; padding: 1.2rem; border: 1px solid #edf2f7; }
+        .chart-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 1rem; border-left: 3px solid #E30613; padding-left: 10px; }
+        .outstanding-box { background: linear-gradient(135deg, #fff5f5, #ffffff); border-left: 6px solid #E30613; border-radius: 1.2rem; padding: 1rem 1.8rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+        .outstanding-label { font-weight: 600; color: #1e293b; }
+        .outstanding-amount { font-size: 1.8rem; font-weight: 800; color: #E30613; }
+        .footer-note { text-align: center; margin-top: 2rem; font-size: 0.7rem; color: #94a3b8; border-top: 1px solid #edf2f7; padding-top: 1rem; }
+        @media (max-width: 680px) { .app-container { padding: 1rem; } .kpi-value { font-size: 1.3rem; } }
+    </style>
+</head>
+<body>
+<div class="app-container" id="tenantRevenueApp">
+    <!-- header -->
+    <div class="top-bar">
+        <div class="logo-area"><h1>QLess · Revenue Hub</h1><p style="font-size:0.7rem; color:#64748b;">tenant financials & settlements</p></div>
+        <div class="tenant-badge"><i class="fas fa-store"></i> {{ tenantName }} · <span style="font-weight:400;">{{ tenantStatus }}</span></div>
+    </div>
+
+    <!-- KPI Cards: dynamic from real transactions -->
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-icon"><i class="fas fa-chart-line"></i></div><div class="kpi-label">Total Gross Revenue</div><div class="kpi-value">R {{ formatMoney(grossRevenue) }}</div><div class="kpi-sub">last 90 days (all modules)</div></div>
+        <div class="kpi-card"><div class="kpi-icon"><i class="fas fa-hand-holding-usd"></i></div><div class="kpi-label">Platform Fees (QLess)</div><div class="kpi-value">R {{ formatMoney(totalPlatformFees) }}</div><div class="kpi-sub">what we owe QLess</div></div>
+        <div class="kpi-card"><div class="kpi-icon"><i class="fas fa-wallet"></i></div><div class="kpi-label">Your Net Revenue</div><div class="kpi-value">R {{ formatMoney(netTenantRevenue) }}</div><div class="kpi-sub">after platform fees</div></div>
+        <div class="kpi-card"><div class="kpi-icon"><i class="fas fa-clock"></i></div><div class="kpi-label">Pending Settlement</div><div class="kpi-value" style="color:#E30613;">R {{ formatMoney(outstandingBalance) }}</div><div class="kpi-sub">unpaid invoices / money owed to QLess</div></div>
+    </div>
+
+    <!-- Outstanding summary (what tenant owes) -->
+    <div class="outstanding-box">
+        <div><i class="fas fa-receipt" style="color:#E30613; margin-right: 8px;"></i><span class="outstanding-label">Current amount owed to QLess (platform fees + pending invoices)</span></div>
+        <div class="outstanding-amount">R {{ formatMoney(outstandingBalance) }}</div>
+    </div>
+
+    <!-- Revenue breakdown + chart row -->
+    <div class="section-header"><div class="section-title"><i class="fas fa-chart-pie"></i> Revenue breakdown by module</div><button class="btn-outline" @click="refreshData"><i class="fas fa-sync-alt"></i> Sync with platform</button></div>
+    <div class="chart-row">
+        <div class="chart-card"><div class="chart-title"><i class="fas fa-chart-bar"></i> Revenue per module (R)</div><canvas id="moduleRevenueChart" width="400" height="250" style="max-height:260px;"></canvas></div>
+        <div class="chart-card"><div class="chart-title"><i class="fas fa-chart-line"></i> Weekly trend (net revenue)</div><canvas id="trendChart" width="400" height="250" style="max-height:260px;"></canvas></div>
+    </div>
+
+    <!-- Invoices / settlement history (money owed to QLess) -->
+    <div class="section-header"><div class="section-title"><i class="fas fa-file-invoice-dollar"></i> Settlement & invoices (platform fees)</div><button class="btn-primary-sm" @click="downloadStatement"><i class="fas fa-download"></i> Export statement</button></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Invoice ID</th><th>Period</th><th>Total platform fees</th><th>Status</th><th>Due date</th><th>Amount owed</th></tr></thead>
+            <tbody>
+                <tr v-for="inv in invoices" :key="inv.id">
+                    <td><strong>{{ inv.id }}</strong></td><td>{{ inv.period }}</td><td>R {{ formatMoney(inv.platformFees) }}</td>
+                    <td><span :class="inv.status === 'paid' ? 'status-paid' : 'status-unpaid'">{{ inv.status === 'paid' ? 'Paid' : 'Unpaid' }}</span></td>
+                    <td>{{ inv.dueDate }}</td>
+                    <td class="amount-negative" v-if="inv.status !== 'paid'">R {{ formatMoney(inv.amountOwed) }}</td>
+                    <td v-else class="amount-positive">R 0.00</td>
+                </tr>
+                <tr v-if="invoices.length === 0"><td colspan="6" style="text-align:center; padding:2rem;">No invoice history found</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- recent transactions (that generated revenue) -->
+    <div class="section-header" style="margin-top:1.8rem;"><div class="section-title"><i class="fas fa-list-ul"></i> Recent transactions (contributing to revenue)</div><button class="btn-outline" @click="exportTransactionsCSV"><i class="fas fa-file-csv"></i> Export CSV</button></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Transaction ID</th><th>Module</th><th>Gross amount</th><th>Platform fee</th><th>Your net</th><th>Date</th></tr></thead>
+            <tbody>
+                <tr v-for="tx in recentTransactions" :key="tx.id">
+                    <td>{{ tx.id }}</td><td>{{ tx.module }}</td><td>R {{ formatMoney(tx.gross) }}</td><td style="color:#E30613;">R {{ formatMoney(tx.fee) }}</td><td style="color:#10b981;">R {{ formatMoney(tx.net) }}</td><td>{{ tx.date }}</td>
+                </tr>
+                <tr v-if="recentTransactions.length === 0"><td colspan="6" style="text-align:center; padding:2rem;">No transactions in selected period</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="footer-note"><i class="fas fa-charging-station"></i> Platform fees: Queue R2 fixed (100% to QLess) · Orders 2% · Tickets R1.5 · VVIP 3% · net revenue is your earnings after fees.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // --------------------------------------------------------------
+    //  MOCK DATABASE but fully dynamic based on tenant logged in
+    //  uses localStorage to share data with super admin (qless_tenants, qless_tenant_modules, qless_transactions)
+    // --------------------------------------------------------------
+    const STORAGE_KEYS = {
+        TENANTS: 'qless_tenants',
+        TENANT_MODULES: 'qless_tenant_modules',
+        TRANSACTIONS: 'qless_transactions',
+        INVOICES: 'qless_invoices_tenant'
+    };
+
+    // Revenue rules (same as super admin)
+    const REVENUE_RULES = {
+        queue: { type: 'fixed', fee: 2, platformKeepsAll: true },
+        orders: { type: 'percentage', fee: 0.02 },
+        tickets: { type: 'fixed', fee: 1.5 },
+        vvip: { type: 'percentage', fee: 0.03 }
+    };
+
+    // Vue instance
+    new Vue({
+        el: '#tenantRevenueApp',
+        data: {
+            tenantId: null,
+            tenantName: 'Loading...',
+            tenantStatus: 'Active',
+            transactions: [],          // raw transactions from storage
+            invoices: [],              // invoice/settlement list
+            grossRevenue: 0,
+            totalPlatformFees: 0,
+            netTenantRevenue: 0,
+            outstandingBalance: 0,
+            recentTransactions: [],
+            charts: { moduleChart: null, trendChart: null }
+        },
+        computed: {
+            // not used directly, but dynamic filtering
+        },
+        methods: {
+            formatMoney(val) { return val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); },
+            loadSessionAndData() {
+                // 1) get tenant session (same as admin.html)
+                const tenantId = sessionStorage.getItem('qless_tenant_id');
+                const tenantName = sessionStorage.getItem('qless_tenant_name');
+                const role = sessionStorage.getItem('qless_user_role');
+                const isLoggedIn = sessionStorage.getItem('qless_logged_in');
+                if (!isLoggedIn || isLoggedIn !== 'true') {
+                    alert('Session expired or not logged in. Redirecting to login.');
+                    window.location.href = 'login.html';
+                    return false;
+                }
+                const validRoles = ['tenant', 'tenant_administrator', 'tenant_admin'];
+                if (!validRoles.includes(role)) {
+                    alert('Access denied: tenant credentials required.');
+                    window.location.href = 'login.html';
+                    return false;
+                }
+                if (!tenantId) {
+                    alert('No tenant context. Please login again.');
+                    window.location.href = 'login.html';
+                    return false;
+                }
+                this.tenantId = parseInt(tenantId);
+                this.tenantName = tenantName || 'Venue';
+                this.tenantStatus = 'Active';
+                return true;
+            },
+            loadTransactions() {
+                const allTx = JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS) || '[]');
+                // filter only current tenant + completed
+                this.transactions = allTx.filter(t => t.tenant_id === this.tenantId && t.status === 'completed');
+                if (this.transactions.length === 0) {
+                    // generate demo transaction history if empty (so tenant sees realistic data)
+                    this.generateDemoTransactions();
+                    const refreshed = JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS) || '[]');
+                    this.transactions = refreshed.filter(t => t.tenant_id === this.tenantId && t.status === 'completed');
+                }
+            },
+            generateDemoTransactions() {
+                // ensure tenant modules are read for realistic categories
+                const modulesData = JSON.parse(localStorage.getItem(STORAGE_KEYS.TENANT_MODULES) || '{}');
+                const tenantMods = modulesData[this.tenantId] || [];
+                const possibleCats = [];
+                if (tenantMods.some(m => m.name === 'Queue Management' && m.enabled)) possibleCats.push('queue');
+                if (tenantMods.some(m => m.name === 'Ordering Module' && m.enabled)) possibleCats.push('orders');
+                if (tenantMods.some(m => m.name === 'Tickets' && m.enabled)) possibleCats.push('tickets');
+                if (tenantMods.some(m => m.name === 'VVIP Management' && m.enabled)) possibleCats.push('vvip');
+                if (possibleCats.length === 0) possibleCats.push('orders', 'tickets');
+                
+                const newTx = [];
+                const now = new Date();
+                for (let i = 0; i < 85; i++) {
+                    const cat = possibleCats[Math.floor(Math.random() * possibleCats.length)];
+                    let amount = 0;
+                    if (cat === 'queue') amount = 2;
+                    else if (cat === 'orders') amount = 40 + Math.floor(Math.random() * 380);
+                    else if (cat === 'tickets') amount = 30 + Math.floor(Math.random() * 140);
+                    else amount = 250 + Math.floor(Math.random() * 1800);
+                    const rule = REVENUE_RULES[cat];
+                    let fee = 0;
+                    if (rule.type === 'fixed') fee = rule.fee;
+                    else fee = amount * rule.fee;
+                    const daysAgo = Math.floor(Math.random() * 80);
+                    const createdAt = new Date(now);
+                    createdAt.setDate(createdAt.getDate() - daysAgo);
+                    newTx.push({
+                        id: 'tx_' + Date.now() + i + this.tenantId,
+                        tenant_id: this.tenantId,
+                        transaction_type: cat,
+                        amount: amount,
+                        platform_fee: fee,
+                        tenant_revenue: amount - fee,
+                        status: 'completed',
+                        created_at: createdAt.toISOString(),
+                        user_id: 'user_' + Math.floor(Math.random()*50)
+                    });
+                }
+                const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS) || '[]');
+                const filteredExisting = existing.filter(t => t.tenant_id !== this.tenantId);
+                const merged = [...filteredExisting, ...newTx];
+                localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(merged));
+            },
+            loadInvoices() {
+                // generate invoices based on platform fees per month (money tenant owes QLess)
+                let storedInv = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVOICES) || '[]');
+                // if empty or not for this tenant, create realistic billing periods
+                let tenantInvoices = storedInv.filter(i => i.tenantId === this.tenantId);
+                if (tenantInvoices.length === 0) {
+                    tenantInvoices = this.generateInvoicesFromTransactions();
+                    const allInv = storedInv.filter(i => i.tenantId !== this.tenantId);
+                    allInv.push(...tenantInvoices);
+                    localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(allInv));
+                }
+                this.invoices = tenantInvoices.sort((a,b) => new Date(b.dueDate) - new Date(a.dueDate));
+                // compute outstanding balance = sum of unpaid platform fees (where status !== 'paid')
+                this.outstandingBalance = this.invoices.filter(i => i.status !== 'paid').reduce((sum, i) => sum + i.amountOwed, 0);
+            },
+            generateInvoicesFromTransactions() {
+                // group transactions by month, sum platform fees
+                const monthlyFees = {};
+                this.transactions.forEach(t => {
+                    const date = new Date(t.created_at);
+                    const key = `${date.getFullYear()}-${date.getMonth()+1}`;
+                    if (!monthlyFees[key]) monthlyFees[key] = 0;
+                    monthlyFees[key] += t.platform_fee;
+                });
+                const invoicesList = [];
+                const now = new Date();
+                for (const [periodKey, totalFees] of Object.entries(monthlyFees)) {
+                    const [year, month] = periodKey.split('-');
+                    const periodName = `${year}-${month.padStart(2,'0')}`;
+                    const dueDate = new Date(year, month, 15);
+                    dueDate.setMonth(dueDate.getMonth() + 1);
+                    const isPast = dueDate < now;
+                    invoicesList.push({
+                        id: `INV-${this.tenantId}-${periodKey}`,
+                        tenantId: this.tenantId,
+                        period: periodName,
+                        platformFees: totalFees,
+                        amountOwed: totalFees,
+                        status: isPast ? 'unpaid' : 'pending',
+                        dueDate: dueDate.toISOString().split('T')[0]
+                    });
+                }
+                if (invoicesList.length === 0) {
+                    invoicesList.push({
+                        id: `INV-${this.tenantId}-demo`,
+                        tenantId: this.tenantId,
+                        period: 'Current month',
+                        platformFees: 1240.50,
+                        amountOwed: 1240.50,
+                        status: 'unpaid',
+                        dueDate: new Date(Date.now() + 15*86400000).toISOString().split('T')[0]
+                    });
+                }
+                return invoicesList;
+            },
+            computeTotals() {
+                let gross = 0, fees = 0, net = 0;
+                this.transactions.forEach(t => {
+                    gross += t.amount;
+                    fees += t.platform_fee;
+                    net += t.tenant_revenue;
+                });
+                this.grossRevenue = gross;
+                this.totalPlatformFees = fees;
+                this.netTenantRevenue = net;
+                // recent 15 transactions
+                this.recentTransactions = this.transactions.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at)).slice(0, 18).map(t => ({
+                    id: t.id.slice(-8),
+                    module: t.transaction_type === 'queue' ? 'Queue' : (t.transaction_type === 'orders' ? 'Orders' : (t.transaction_type === 'tickets' ? 'Tickets' : 'VVIP')),
+                    gross: t.amount,
+                    fee: t.platform_fee,
+                    net: t.tenant_revenue,
+                    date: new Date(t.created_at).toLocaleDateString()
+                }));
+            },
+            refreshData() {
+                this.loadTransactions();
+                this.loadInvoices();
+                this.computeTotals();
+                this.renderCharts();
+                this.$forceUpdate();
+            },
+            getModuleBreakdown() {
+                const categories = { queue:0, orders:0, tickets:0, vvip:0 };
+                this.transactions.forEach(t => {
+                    if (categories[t.transaction_type] !== undefined) categories[t.transaction_type] += t.amount;
+                });
+                return categories;
+            },
+            getWeeklyNetRevenue() {
+                const weeks = {};
+                this.transactions.forEach(t => {
+                    const d = new Date(t.created_at);
+                    const weekStart = new Date(d);
+                    weekStart.setDate(d.getDate() - d.getDay());
+                    const key = weekStart.toISOString().slice(0,10);
+                    if (!weeks[key]) weeks[key] = 0;
+                    weeks[key] += t.tenant_revenue;
+                });
+                const sorted = Object.entries(weeks).sort((a,b)=> a[0].localeCompare(b[0])).slice(-8);
+                return { labels: sorted.map(k=>k[0]), values: sorted.map(k=>k[1]) };
+            },
+            renderCharts() {
+                const breakdown = this.getModuleBreakdown();
+                const ctxBar = document.getElementById('moduleRevenueChart').getContext('2d');
+                if (this.charts.moduleChart) this.charts.moduleChart.destroy();
+                this.charts.moduleChart = new Chart(ctxBar, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Queue', 'Orders', 'Tickets', 'VVIP'],
+                        datasets: [{ label: 'Gross Revenue (R)', data: [breakdown.queue, breakdown.orders, breakdown.tickets, breakdown.vvip], backgroundColor: '#E30613', borderRadius: 8 }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+                });
+                const weekly = this.getWeeklyNetRevenue();
+                const ctxLine = document.getElementById('trendChart').getContext('2d');
+                if (this.charts.trendChart) this.charts.trendChart.destroy();
+                this.charts.trendChart = new Chart(ctxLine, {
+                    type: 'line',
+                    data: { labels: weekly.labels, datasets: [{ label: 'Your net revenue (R)', data: weekly.values, borderColor: '#10b981', backgroundColor: '#10b98120', fill: true, tension: 0.3 }] },
+                    options: { responsive: true, plugins: { tooltip: { callbacks: { label: (ctx) => `R ${ctx.raw.toFixed(2)}` } } } }
+                });
+            },
+            downloadStatement() {
+                const dataStr = JSON.stringify({ tenant: this.tenantName, invoices: this.invoices, summary: { totalPlatformFees: this.totalPlatformFees, outstanding: this.outstandingBalance, netRevenue: this.netTenantRevenue }, transactions: this.recentTransactions }, null, 2);
+                const blob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `settlement_${this.tenantName}_${new Date().toISOString().split('T')[0]}.json`;
+                a.click(); URL.revokeObjectURL(url);
+            },
+            exportTransactionsCSV() {
+                let csvRows = [["Transaction ID","Module","Gross Amount (R)","Platform Fee (R)","Your Net (R)","Date"]];
+                this.recentTransactions.forEach(tx => {
+                    csvRows.push([tx.id, tx.module, tx.gross.toFixed(2), tx.fee.toFixed(2), tx.net.toFixed(2), tx.date]);
+                });
+                const csvContent = csvRows.map(row => row.join(",")).join("\n");
+                const blob = new Blob([csvContent], {type: 'text/csv'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `transactions_${this.tenantName}.csv`;
+                a.click(); URL.revokeObjectURL(url);
+            }
+        },
+        mounted() {
+            if (!this.loadSessionAndData()) return;
+            this.loadTransactions();
+            this.loadInvoices();
+            this.computeTotals();
+            this.$nextTick(() => {
+                this.renderCharts();
+            });
+            // listen for storage events (if super admin updates modules/transactions)
+            window.addEventListener('storage', (e) => {
+                if (e.key === STORAGE_KEYS.TRANSACTIONS || e.key === STORAGE_KEYS.TENANT_MODULES) {
+                    this.refreshData();
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html>

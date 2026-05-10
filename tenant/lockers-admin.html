@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Rands Vault | Admin Studio - Locker & Item Management</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f2f8;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+
+        /* Modern glassmorphism admin header */
+        .admin-header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: white;
+            padding: 1.25rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .logo-area h1 {
+            font-size: 1.65rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .logo-area h1 i {
+            color: #f97316;
+            margin-right: 8px;
+        }
+        .logo-area p {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+        .header-stats {
+            display: flex;
+            gap: 1.5rem;
+            background: rgba(255,255,255,0.12);
+            padding: 0.6rem 1.5rem;
+            border-radius: 60px;
+            backdrop-filter: blur(4px);
+        }
+        .stat-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+        .stat-pill i {
+            font-size: 1.1rem;
+        }
+        .btn-primary {
+            background: #f97316;
+            border: none;
+            padding: 0.6rem 1.3rem;
+            border-radius: 40px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary:hover {
+            background: #ea580c;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(249,115,22,0.3);
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 0.55rem 1.2rem;
+            border-radius: 40px;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-outline:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: white;
+        }
+        .btn-secondary {
+            background: #334155;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 30px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 30px;
+            cursor: pointer;
+        }
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        /* main container */
+        .admin-container {
+            max-width: 1600px;
+            margin: 2rem auto;
+            padding: 0 1.8rem;
+        }
+
+        /* stats cards */
+        .kpi-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .kpi-card {
+            background: white;
+            border-radius: 28px;
+            padding: 1.2rem 1.8rem;
+            flex: 1;
+            min-width: 160px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            transition: all 0.2s;
+            border: 1px solid #e9eef3;
+        }
+        .kpi-card i {
+            font-size: 2rem;
+            color: #f97316;
+            margin-bottom: 0.5rem;
+        }
+        .kpi-number {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        /* Two column layout (lockers left, items right) */
+        .dashboard-split {
+            display: grid;
+            grid-template-columns: 1fr 0.9fr;
+            gap: 2rem;
+        }
+        @media (max-width: 1000px) {
+            .dashboard-split {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+        }
+
+        /* panel styles */
+        .panel {
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+        .panel-header {
+            background: #f8fafc;
+            padding: 1.2rem 1.8rem;
+            border-bottom: 2px solid #eef2f6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .panel-header h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .locker-grid-admin {
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.2rem;
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+        .locker-admin-card {
+            background: #ffffff;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            padding: 1rem;
+            transition: 0.2s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+        .locker-admin-card:hover {
+            border-color: #f97316;
+            transform: translateY(-3px);
+            box-shadow: 0 12px 20px -12px rgba(0,0,0,0.15);
+        }
+        .locker-status {
+            display: inline-block;
+            padding: 0.2rem 0.7rem;
+            border-radius: 40px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .status-available {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-occupied {
+            background: #fed7aa;
+            color: #9a3412;
+        }
+        .locker-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+            padding: 0.7rem 1rem;
+            border-radius: 14px;
+            margin-bottom: 8px;
+        }
+        .item-price {
+            font-weight: 700;
+            color: #f97316;
+        }
+        .items-list-scroll {
+            max-height: 55vh;
+            overflow-y: auto;
+            padding: 0 1rem 1rem 1rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2.5rem;
+            color: #94a3b8;
+        }
+        .modal-glass {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            visibility: hidden;
+            opacity: 0;
+            transition: 0.2s;
+        }
+        .modal-glass.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .modal-card {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 36px;
+            padding: 1.8rem;
+            box-shadow: 0 30px 40px rgba(0,0,0,0.3);
+        }
+        .modal-card input, .modal-card select {
+            width: 100%;
+            padding: 12px 16px;
+            margin: 10px 0 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 60px;
+            font-family: inherit;
+        }
+        .flex-btns {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .toast-notify {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            background: #1e293b;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 60px;
+            font-weight: 500;
+            z-index: 1100;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.2);
+            animation: fadeUp 0.3s ease;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+        i.icon-click {
+            cursor: pointer;
+        }
+        .search-bar {
+            padding: 0.3rem 0.8rem;
+            border-radius: 40px;
+            border: 1px solid #e2e8f0;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="admin-header">
+    <div class="logo-area">
+        <h1><i class="fas fa-crown"></i> Rands Vault · Admin Studio</h1>
+        <p>locker & inventory command center</p>
+    </div>
+    <div class="header-stats">
+        <div class="stat-pill"><i class="fas fa-boxes"></i> <span id="headerTotalLockers">0</span> lockers</div>
+        <div class="stat-pill"><i class="fas fa-wine-bottle"></i> <span id="headerTotalItems">0</span> items</div>
+    </div>
+    <div>
+        <button class="btn-outline" onclick="openCustomerPortalLink()"><i class="fas fa-external-link-alt"></i> Customer Portal</button>
+    </div>
+</div>
+
+<div class="admin-container">
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card"><i class="fas fa-locker"></i><div class="kpi-number" id="kpiTotalLockers">0</div><div>Total Lockers</div></div>
+        <div class="kpi-card"><i class="fas fa-check-circle"></i><div class="kpi-number" id="kpiAvailable">0</div><div>Available</div></div>
+        <div class="kpi-card"><i class="fas fa-user-lock"></i><div class="kpi-number" id="kpiOccupied">0</div><div>Occupied</div></div>
+        <div class="kpi-card"><i class="fas fa-tag"></i><div class="kpi-number" id="kpiItemsCount">0</div><div>Product SKUs</div></div>
+    </div>
+
+    <div class="dashboard-split">
+        <!-- LEFT: LOCKER MANAGER (Create, View, Delete) -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><i class="fas fa-archive" style="color:#f97316;"></i> Vault Lockers</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-primary" onclick="openCreateLockerModal()"><i class="fas fa-plus-circle"></i> Create Locker</button>
+                    <button class="btn-secondary" onclick="refreshLockersAdmin()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
+            </div>
+            <div class="locker-grid-admin" id="lockerAdminGrid">
+                <!-- dynamic locker cards -->
+                <div class="empty-state">Loading lockers...</div>
+            </div>
+        </div>
+
+        <!-- RIGHT: ITEM MANAGER (Add, View, Delete items with prices) -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><i class="fas fa-cube" style="color:#f97316;"></i> Item Inventory</h2>
+                <button class="btn-primary" onclick="openCreateItemModal()"><i class="fas fa-plus"></i> New Item</button>
+            </div>
+            <div class="items-list-scroll" id="itemsListContainer">
+                <!-- items will be injected -->
+                <div class="empty-state"><i class="fas fa-box-open"></i> No items yet. Add bottles, beverages or products.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CREATE LOCKER -->
+<div id="createLockerModalWin" class="modal-glass">
+    <div class="modal-card">
+        <h3 style="font-size: 1.6rem;"><i class="fas fa-plus-circle"></i> New Locker</h3>
+        <label>Locker Number (unique)</label>
+        <input type="number" id="lockerNumberInput" placeholder="e.g., 101">
+        <label>QR Tag (optional - auto if blank)</label>
+        <input type="text" id="lockerQrInput" placeholder="QL-xxx or auto">
+        <div class="flex-btns">
+            <button class="btn-secondary" onclick="closeLockerModal()">Cancel</button>
+            <button class="btn-primary" onclick="createLockerAdmin()">Create Locker</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CREATE ITEM (with price) -->
+<div id="createItemModalWin" class="modal-glass">
+    <div class="modal-card">
+        <h3><i class="fas fa-tag"></i> Add Product to Inventory</h3>
+        <label>Item Name</label>
+        <input type="text" id="itemNameInput" placeholder="e.g., Johnnie Walker Black Label">
+        <label>Price (R)</label>
+        <input type="number" step="0.01" id="itemPriceInput" placeholder="0.00">
+        <label>Barcode (optional)</label>
+        <input type="text" id="itemBarcodeInput" placeholder="scan or custom code">
+        <div class="flex-btns">
+            <button class="btn-secondary" onclick="closeItemModal()">Cancel</button>
+            <button class="btn-primary" onclick="addItemToInventory()">Add Item</button>
+        </div>
+    </div>
+</div>
+
+<!-- confirm delete modal (dynamic) -->
+<div id="confirmDeleteModal" class="modal-glass">
+    <div class="modal-card">
+        <h3><i class="fas fa-trash-alt"></i> Confirm Delete</h3>
+        <p id="deleteConfirmMsg">Are you sure?</p>
+        <div class="flex-btns">
+            <button class="btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+            <button class="btn-danger" id="confirmDeleteBtn">Delete Permanently</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- GLOBAL STORAGE KEYS ----------
+    const STORAGE_LOCKERS = 'rands_lockers';
+    const STORAGE_ITEMS = 'rands_inventory_items';   // new: items master list
+    let pendingDeleteCallback = null;
+
+    // Data stores
+    let lockers = [];
+    let inventoryItems = [];    // each: { id, name, price, barcode }
+
+    // ---------- INIT & LOAD ----------
+    function loadLockersFromStorage() {
+        const stored = localStorage.getItem(STORAGE_LOCKERS);
+        if (stored) {
+            lockers = JSON.parse(stored);
+        } else {
+            // create default lockers (10, with some occupied demo)
+            createInitialLockers();
+        }
+    }
+
+    function createInitialLockers() {
+        lockers = [];
+        for (let i = 1; i <= 8; i++) {
+            lockers.push({
+                id: i,
+                lockerNumber: i,
+                qr: `QL-${1000+i}`,
+                customer: "",
+                phone: "",
+                pin: "",
+                items: [],
+                itemsText: "",
+                status: "Available",
+                balance: 0,
+                totalItems: 0,
+                lastUpdated: null,
+                registrationTime: null
+            });
+        }
+        // add a few occupied for demo
+        lockers[0].status = "Occupied";
+        lockers[0].customer = "Liam Ndlovu";
+        lockers[0].phone = "+27 71 234 5678";
+        lockers[0].pin = "1122";
+        lockers[0].itemsText = "Whisky, Wine";
+        lockers[1].status = "Occupied";
+        lockers[1].customer = "Amanda Dlamini";
+        lockers[1].phone = "+27 82 998 1234";
+        lockers[1].pin = "3344";
+        lockers[1].itemsText = "Champagne, Vodka";
+        saveLockers();
+    }
+
+    function loadInventoryFromStorage() {
+        const storedItems = localStorage.getItem(STORAGE_ITEMS);
+        if (storedItems) {
+            inventoryItems = JSON.parse(storedItems);
+        } else {
+            // seeding demo premium items with prices
+            inventoryItems = [
+                { id: 1, name: "Heineken Beer 6-pack", price: 89.99, barcode: "123456" },
+                { id: 2, name: "Jameson Whiskey 750ml", price: 249.99, barcode: "789012" },
+                { id: 3, name: "Smirnoff Vodka 1L", price: 179.99, barcode: "345678" },
+                { id: 4, name: "Robertson Winery Shiraz", price: 129.99, barcode: "901234" },
+                { id: 5, name: "Johnnie Walker Black", price: 399.99, barcode: "111111" },
+                { id: 6, name: "Amarula Cream", price: 189.99, barcode: "555555" }
+            ];
+            saveInventory();
+        }
+    }
+
+    function saveLockers() {
+        localStorage.setItem(STORAGE_LOCKERS, JSON.stringify(lockers));
+        localStorage.setItem('rands_last_update', new Date().toISOString());
+    }
+
+    function saveInventory() {
+        localStorage.setItem(STORAGE_ITEMS, JSON.stringify(inventoryItems));
+    }
+
+    // ---------------- RENDER LOCKER GRID (ADMIN) ----------------
+    function renderLockersAdmin() {
+        const container = document.getElementById('lockerAdminGrid');
+        if (!container) return;
+        if (!lockers.length) {
+            container.innerHTML = '<div class="empty-state">No lockers found. Create your first locker.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        lockers.forEach(locker => {
+            const card = document.createElement('div');
+            card.className = 'locker-admin-card';
+            const statusClass = locker.status === "Available" ? "status-available" : "status-occupied";
+            const statusLabel = locker.status === "Available" ? "Available" : "Occupied";
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items:center;">
+                    <strong style="font-size:1.2rem;">Locker #${locker.lockerNumber}</strong>
+                    <span class="locker-status ${statusClass}">${statusLabel}</span>
+                </div>
+                <div style="margin-top: 8px; font-size:0.85rem; color:#475569;">
+                    <i class="fas fa-qrcode"></i> ${locker.qr}<br>
+                    ${locker.status === "Occupied" ? `<i class="fas fa-user"></i> ${locker.customer || '—'} | 📞 ${locker.phone || '—'}` : '<i class="fas fa-check-circle"></i> Ready to assign'}
+                </div>
+                <div class="locker-actions">
+                    <button class="btn-secondary" style="padding:0.4rem 0.9rem; background:#eef2ff; color:#1e293b;" onclick="viewLockerItems(${locker.id})"><i class="fas fa-eye"></i> View</button>
+                    <button class="btn-danger" style="background:#fee2e2; color:#b91c1c;" onclick="deleteLockerPrompt(${locker.id})"><i class="fas fa-trash"></i> Delete</button>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+        updateStatsUI();
+    }
+
+    // view locker's assigned items (for admin clarity)
+    function viewLockerItems(lockerId) {
+        const locker = lockers.find(l => l.id === lockerId);
+        if (!locker) return;
+        let itemsDesc = locker.itemsText || 'No stored items';
+        if (locker.items && locker.items.length) {
+            itemsDesc = locker.items.map(it => `${it.name} (R${it.price})`).join(', ');
+        }
+        alert(`🔐 Locker #${locker.lockerNumber}\nCustomer: ${locker.customer || 'None'}\nStatus: ${locker.status}\nItems: ${itemsDesc}\nBalance: R${(locker.balance || 0).toFixed(2)}`);
+    }
+
+    // delete locker with confirmation
+    let lockerToDelete = null;
+    function deleteLockerPrompt(lockerId) {
+        const locker = lockers.find(l => l.id === lockerId);
+        if (!locker) return;
+        if (locker.status === "Occupied") {
+            alert("Cannot delete an occupied locker. Please release/unlock it first from staff dashboard.");
+            return;
+        }
+        lockerToDelete = lockerId;
+        document.getElementById('deleteConfirmMsg').innerHTML = `⚠️ Permanently delete Locker #${locker.lockerNumber}? This action cannot be undone.`;
+        const modal = document.getElementById('confirmDeleteModal');
+        modal.classList.add('active');
+        const confirmBtn = document.getElementById('confirmDeleteBtn');
+        confirmBtn.onclick = () => {
+            const index = lockers.findIndex(l => l.id === lockerToDelete);
+            if (index !== -1) {
+                lockers.splice(index, 1);
+                saveLockers();
+                renderLockersAdmin();
+                showToast(`Locker #${locker.lockerNumber} deleted.`);
+            }
+            closeConfirmModal();
+            lockerToDelete = null;
+        };
+    }
+
+    function closeConfirmModal() {
+        document.getElementById('confirmDeleteModal').classList.remove('active');
+        lockerToDelete = null;
+    }
+
+    // CREATE locker (staff)
+    function openCreateLockerModal() {
+        document.getElementById('lockerNumberInput').value = '';
+        document.getElementById('lockerQrInput').value = '';
+        document.getElementById('createLockerModalWin').classList.add('active');
+    }
+
+    function closeLockerModal() {
+        document.getElementById('createLockerModalWin').classList.remove('active');
+    }
+
+    function createLockerAdmin() {
+        let lockerNum = parseInt(document.getElementById('lockerNumberInput').value);
+        let customQr = document.getElementById('lockerQrInput').value.trim();
+        if (isNaN(lockerNum) || lockerNum <= 0) {
+            alert("Please enter a valid positive locker number.");
+            return;
+        }
+        const exists = lockers.some(l => l.lockerNumber === lockerNum);
+        if (exists) {
+            alert(`Locker #${lockerNum} already exists. Use another number.`);
+            return;
+        }
+        const newId = lockers.length ? Math.max(...lockers.map(l => l.id)) + 1 : 1;
+        const qrFinal = customQr || `QL-${Date.now()}-${Math.floor(Math.random()*9000+1000)}`;
+        const newLocker = {
+            id: newId,
+            lockerNumber: lockerNum,
+            qr: qrFinal,
+            customer: "",
+            phone: "",
+            pin: "",
+            items: [],
+            itemsText: "",
+            status: "Available",
+            balance: 0,
+            totalItems: 0,
+            lastUpdated: new Date().toISOString(),
+            registrationTime: null
+        };
+        lockers.push(newLocker);
+        saveLockers();
+        renderLockersAdmin();
+        closeLockerModal();
+        showToast(`Locker #${lockerNum} created successfully.`);
+    }
+
+    // ---------- ITEM MANAGEMENT (Add, View, Delete with price) ----------
+    function renderItemsAdmin() {
+        const container = document.getElementById('itemsListContainer');
+        if (!container) return;
+        if (!inventoryItems.length) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-box-open"></i> No items yet. Click "New Item" to add beverages or products with price.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        inventoryItems.forEach(item => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'item-row';
+            itemDiv.innerHTML = `
+                <div style="flex:1;">
+                    <strong>${item.name}</strong><br>
+                    <small style="color:#64748b;"><i class="fas fa-barcode"></i> ${item.barcode || '—'}</small>
+                </div>
+                <div class="item-price">R ${item.price.toFixed(2)}</div>
+                <button class="btn-danger" style="padding:0.3rem 0.8rem; margin-left:12px;" onclick="deleteItem(${item.id})"><i class="fas fa-trash"></i></button>
+            `;
+            container.appendChild(itemDiv);
+        });
+        document.getElementById('headerTotalItems').innerText = inventoryItems.length;
+        document.getElementById('kpiItemsCount').innerText = inventoryItems.length;
+    }
+
+    function openCreateItemModal() {
+        document.getElementById('itemNameInput').value = '';
+        document.getElementById('itemPriceInput').value = '';
+        document.getElementById('itemBarcodeInput').value = '';
+        document.getElementById('createItemModalWin').classList.add('active');
+    }
+
+    function closeItemModal() {
+        document.getElementById('createItemModalWin').classList.remove('active');
+    }
+
+    function addItemToInventory() {
+        const name = document.getElementById('itemNameInput').value.trim();
+        const price = parseFloat(document.getElementById('itemPriceInput').value);
+        const barcode = document.getElementById('itemBarcodeInput').value.trim();
+        if (!name || isNaN(price) || price < 0) {
+            alert("Please enter valid item name and price.");
+            return;
+        }
+        const newId = inventoryItems.length ? Math.max(...inventoryItems.map(i => i.id)) + 1 : 100;
+        const newItem = {
+            id: newId,
+            name: name,
+            price: price,
+            barcode: barcode || `BC-${Date.now()}`
+        };
+        inventoryItems.push(newItem);
+        saveInventory();
+        renderItemsAdmin();
+        closeItemModal();
+        showToast(`"${name}" added to inventory (R${price.toFixed(2)})`);
+    }
+
+    function deleteItem(itemId) {
+        const item = inventoryItems.find(i => i.id === itemId);
+        if (!item) return;
+        if (confirm(`Delete "${item.name}" from inventory? This won't affect already assigned lockers.`)) {
+            inventoryItems = inventoryItems.filter(i => i.id !== itemId);
+            saveInventory();
+            renderItemsAdmin();
+            showToast(`Removed ${item.name}`);
+        }
+    }
+
+    // Helper update stats (lockers & header)
+    function updateStatsUI() {
+        const total = lockers.length;
+        const available = lockers.filter(l => l.status === "Available").length;
+        const occupied = lockers.filter(l => l.status === "Occupied").length;
+        document.getElementById('kpiTotalLockers').innerText = total;
+        document.getElementById('kpiAvailable').innerText = available;
+        document.getElementById('kpiOccupied').innerText = occupied;
+        document.getElementById('headerTotalLockers').innerText = total;
+    }
+
+    function refreshLockersAdmin() {
+        loadLockersFromStorage();
+        renderLockersAdmin();
+        showToast("Lockers refreshed");
+    }
+
+    function refreshAllAdmin() {
+        loadLockersFromStorage();
+        loadInventoryFromStorage();
+        renderLockersAdmin();
+        renderItemsAdmin();
+        showToast("Dashboard fully synced");
+    }
+
+    // helper: toast
+    function showToast(msg) {
+        let existingToast = document.querySelector('.toast-notify');
+        if(existingToast) existingToast.remove();
+        const toast = document.createElement('div');
+        toast.className = 'toast-notify';
+        toast.innerHTML = `<i class="fas fa-check-circle"></i> ${msg}`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
+    }
+
+    function openCustomerPortalLink() {
+        window.open('customer-choice.html', '_blank');
+    }
+
+    // sync with external changes (auto-refresh data every 3 seconds but don't override manual creation conflicts, but just sync)
+    let syncInterval = setInterval(() => {
+        const freshLockers = localStorage.getItem(STORAGE_LOCKERS);
+        const freshItems = localStorage.getItem(STORAGE_ITEMS);
+        if (freshLockers) {
+            const parsed = JSON.parse(freshLockers);
+            if (JSON.stringify(parsed) !== JSON.stringify(lockers)) {
+                lockers = parsed;
+                renderLockersAdmin();
+            }
+        }
+        if (freshItems) {
+            const parsedItems = JSON.parse(freshItems);
+            if (JSON.stringify(parsedItems) !== JSON.stringify(inventoryItems)) {
+                inventoryItems = parsedItems;
+                renderItemsAdmin();
+            }
+        }
+        updateStatsUI();
+    }, 2800);
+
+    // initial loading
+    function init() {
+        loadLockersFromStorage();
+        loadInventoryFromStorage();
+        renderLockersAdmin();
+        renderItemsAdmin();
+    }
+    init();
+
+    // expose global functions
+    window.openCreateLockerModal = openCreateLockerModal;
+    window.closeLockerModal = closeLockerModal;
+    window.createLockerAdmin = createLockerAdmin;
+    window.deleteLockerPrompt = deleteLockerPrompt;
+    window.closeConfirmModal = closeConfirmModal;
+    window.viewLockerItems = viewLockerItems;
+    window.openCreateItemModal = openCreateItemModal;
+    window.closeItemModal = closeItemModal;
+    window.addItemToInventory = addItemToInventory;
+    window.deleteItem = deleteItem;
+    window.refreshLockersAdmin = refreshLockersAdmin;
+    window.refreshAllAdmin = refreshAllAdmin;
+    window.openCustomerPortalLink = openCustomerPortalLink;
+</script>
+</body>
+</html>
