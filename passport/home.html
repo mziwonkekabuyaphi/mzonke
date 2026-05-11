@@ -587,1413 +587,311 @@
 </div>
 
 <script>
-// =====================================================
-
-// BARCODE GENERATION
-
-// =====================================================
-
-const barcodeInner = document.getElementById('barcodeInner');
-
-if (barcodeInner) {
-
-    const seed = [
-
-        1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,0,1,1,0,0,1,1,0,
-
-        1,0,1,1,0,0,1,0,0,1,1,0,1,0,0,1,1,0,0,1,0,1,0,0,
-
-        1,1,0,1,1,0,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,0,
-
-        1,0,0,1,1,0,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0,0,1,0,
-
-        1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,0,0,1
-
-    ];
-
-    let totalWidth = 0;
-
-    const barData = [];
-
-    seed.forEach((isTall, i) => {
-
-        const isBar = i % 3 !== 2;
-
-        if (isBar) {
-
-            const w = Math.random() > 0.65 ? 2 : 1;
-
-            totalWidth += w;
-
-            barData.push({
-
-                type: 'bar',
-
-                w,
-
-                tall: isTall === 1
-
-            });
-
-        } else {
-
-            const w = Math.random() > 0.6 ? 2 : 1;
-
-            totalWidth += w;
-
-            barData.push({
-
-                type: 'space',
-
-                w
-
-            });
-
-        }
-
-    });
-
-    const scaleFactor = 100 / totalWidth;
-
-    barData.forEach(b => {
-
-        const el = document.createElement('div');
-
-        if (b.type === 'bar') {
-
-            el.className =
-
-                'bar ' + (b.tall ? 'tall' : 'short');
-
-            el.style.width =
-
-                (b.w * scaleFactor) + '%';
-
-        } else {
-
-            el.style.width =
-
-                (b.w * scaleFactor) + '%';
-
-            el.style.flexShrink = '0';
-
-        }
-
-        barcodeInner.appendChild(el);
-
-    });
-
-}
-
-// =====================================================
-
-// PHONE FORMATTER
-
-// =====================================================
-
-function formatSAPhone(phone) {
-
-    if (!phone) return '---';
-
-    const digits =
-
-        phone.toString().replace(/\D/g, '');
-
-    if (digits.length === 10) {
-
-        return digits.replace(
-
-            /(\d{3})(\d{3})(\d{4})/,
-
-            '$1 $2 $3'
-
-        );
-
-    }
-
-    return phone;
-
-}
-
-// =====================================================
-
-// LOCALSTORAGE PHONE FALLBACK
-
-// =====================================================
-
-function loadUserPhoneNumber() {
-
-    const accounts =
-
-        JSON.parse(
-
-            localStorage.getItem('rands_accounts_v2') || '[]'
-
-        );
-
-    const currentUserId =
-
-        localStorage.getItem('rands_current_user');
-
-    let userPhone = '0635713652';
-
-    if (currentUserId && accounts.length) {
-
-        const user =
-
-            accounts.find(acc => acc.id == currentUserId);
-
-        if (user && user.phone) {
-
-            userPhone = user.phone;
-
-        } else if (user && user.id) {
-
-            userPhone = user.id;
-
-        }
-
-    } else if (accounts.length > 0) {
-
-        userPhone =
-
-            accounts[0].phone ||
-
-            accounts[0].id ||
-
-            '0635713652';
-
-    }
-
-    const phoneDisplay =
-
-        document.getElementById('accountPhoneNumber');
-
-    if (phoneDisplay) {
-
-        phoneDisplay.textContent =
-
-            formatSAPhone(userPhone);
-
-    }
-
-}
-
-loadUserPhoneNumber();
-
-// =====================================================
-
-// COLOR PERSISTENCE
-
-// =====================================================
-
-const STORAGE_KEY_FRONT =
-
-    'rvp_card_front_gradient';
-
-const STORAGE_KEY_BACK =
-
-    'rvp_card_back_gradient';
-
-const DEFAULT_FRONT_GRADIENT =
-
-    "linear-gradient(135deg, #8B0000 0%, #C41E3A 15%, #DC143C 30%, #B22222 50%, #8B0000 70%, #5C0A0A 85%, #3D0000 100%)";
-
-const DEFAULT_BACK_GRADIENT =
-
-    "linear-gradient(135deg, #2a0000 0%, #4a0a0a 30%, #2d0000 55%, #5c0c0c 80%, #1a0000 100%)";
-
-function loadSavedColors() {
-
-    const savedFront =
-
-        localStorage.getItem(STORAGE_KEY_FRONT);
-
-    const savedBack =
-
-        localStorage.getItem(STORAGE_KEY_BACK);
-
-    const cardFront =
-
-        document.getElementById('cardFront');
-
-    const cardBack =
-
-        document.getElementById('cardBack');
-
-    if (cardFront) {
-
-        cardFront.style.background =
-
-            savedFront || DEFAULT_FRONT_GRADIENT;
-
-    }
-
-    if (cardBack) {
-
-        cardBack.style.background =
-
-            savedBack || DEFAULT_BACK_GRADIENT;
-
-    }
-
-}
-
-function saveColors(frontGradient, backGradient) {
-
-    if (frontGradient) {
-
-        localStorage.setItem(
-
-            STORAGE_KEY_FRONT,
-
-            frontGradient
-
-        );
-
-    }
-
-    if (backGradient) {
-
-        localStorage.setItem(
-
-            STORAGE_KEY_BACK,
-
-            backGradient
-
-        );
-
-    }
-
-}
-
-// =====================================================
-
-// CARD LOGIC
-
-// =====================================================
-
-const cardStage =
-
-    document.getElementById('cardStage');
-
-const flipperElem =
-
-    document.getElementById('cardFlipper');
-
-const cardFront =
-
-    document.getElementById('cardFront');
-
-const cardBack =
-
-    document.getElementById('cardBack');
-
-let flipped = false;
-
-let pressTimer = null;
-
-// =====================================================
-
-// CARD FLIP
-
-// =====================================================
-
-if (cardStage) {
-
-    cardStage.addEventListener('click', (e) => {
-
-        // Prevent accidental flip during long press
-
-        if (pressTimer) return;
-
-        e.stopPropagation();
-
-        flipped = !flipped;
-
-        cardStage.classList.toggle(
-
-            'flipped',
-
-            flipped
-
-        );
-
-        if (flipped) {
-
-            cardStage.style.animation = 'none';
-
-        } else {
-
-            setTimeout(() => {
-
-                cardStage.style.animation =
-
-                    'floatCard 4s ease-in-out infinite';
-
-            }, 300);
-
-        }
-
-    });
-
-}
-
-// =====================================================
-
-// TILT EFFECT
-
-// =====================================================
-
-if (cardStage && flipperElem) {
-
-    let ticking = false;
-
-    cardStage.addEventListener('pointermove', (e) => {
-
-        if (flipped || ticking) return;
-
-        ticking = true;
-
-        requestAnimationFrame(() => {
-
-            const rect =
-
-                cardStage.getBoundingClientRect();
-
-            const cx =
-
-                rect.left + rect.width / 2;
-
-            const cy =
-
-                rect.top + rect.height / 2;
-
-            const dx =
-
-                (e.clientX - cx) /
-
-                (rect.width / 2);
-
-            const dy =
-
-                (e.clientY - cy) /
-
-                (rect.height / 2);
-
-            flipperElem.style.transform =
-
-                `rotateY(${dx * 8}deg) rotateX(${-dy * 6}deg)`;
-
-            ticking = false;
-
+    // ========== BARCODE GENERATION ==========
+    const barcodeInner = document.getElementById('barcodeInner');
+    if (barcodeInner) {
+        const seed = [1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,0,0,1,0,0,1,1,0,1,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,1,0,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,0,0,1];
+        let totalWidth = 0;
+        const barData = [];
+        seed.forEach((isTall, i) => {
+            const isBar = i % 3 !== 2;
+            if (isBar) {
+                const w = Math.random() > 0.65 ? 2 : 1;
+                totalWidth += w;
+                barData.push({ type: 'bar', w, tall: isTall === 1 });
+            } else {
+                const w = Math.random() > 0.6 ? 2 : 1;
+                totalWidth += w;
+                barData.push({ type: 'space', w });
+            }
         });
-
-    });
-
-    cardStage.addEventListener('pointerleave', () => {
-
-        if (flipped) return;
-
-        flipperElem.style.transform = '';
-
-    });
-
-}
-
-// =====================================================
-
-// RANDOM CARD COLORS
-
-// =====================================================
-
-function randomFrontGradient() {
-
-    const hue1 =
-
-        Math.floor(Math.random() * 360);
-
-    const hue2 =
-
-        (hue1 + 40 + Math.random() * 100) % 360;
-
-    const hue3 =
-
-        (hue2 + 30 + Math.random() * 80) % 360;
-
-    const hue4 =
-
-        (hue1 + 180) % 360;
-
-    const hue5 =
-
-        (hue2 + 210) % 360;
-
-    const sat1 =
-
-        60 + Math.random() * 32;
-
-    const sat2 =
-
-        55 + Math.random() * 32;
-
-    const sat3 =
-
-        60 + Math.random() * 28;
-
-    const lit1 =
-
-        25 + Math.random() * 28;
-
-    const lit2 =
-
-        20 + Math.random() * 22;
-
-    const lit3 =
-
-        15 + Math.random() * 24;
-
-    return `
-
-        linear-gradient(
-
-            135deg,
-
-            hsl(${hue1}, ${sat1}%, ${lit1}%) 0%,
-
-            hsl(${hue2}, ${sat2}%, ${lit2}%) 25%,
-
-            hsl(${hue3}, ${sat3}%, ${lit3}%) 50%,
-
-            hsl(${hue4}, ${sat1 - 10}%, ${lit1 - 5}%) 75%,
-
-            hsl(${hue5}, ${sat2 - 5}%, ${lit2 - 4}%) 100%
-
-        )
-
-    `;
-
-}
-
-function randomBackGradient() {
-
-    const hueA =
-
-        Math.floor(Math.random() * 360);
-
-    const hueB =
-
-        (hueA + 50) % 360;
-
-    const hueC =
-
-        (hueB + 70) % 360;
-
-    return `
-
-        linear-gradient(
-
-            135deg,
-
-            hsl(${hueA}, 68%, 10%) 0%,
-
-            hsl(${hueB}, 62%, 16%) 30%,
-
-            hsl(${hueC}, 72%, 8%) 55%,
-
-            hsl(${(hueA + 120) % 360}, 68%, 12%) 80%,
-
-            hsl(${(hueB + 90) % 360}, 65%, 6%) 100%
-
-        )
-
-    `;
-
-}
-
-function randomizeCardColors() {
-
-    if (!cardFront || !cardBack) return;
-
-    const newFront =
-
-        randomFrontGradient();
-
-    const newBack =
-
-        randomBackGradient();
-
-    cardFront.style.background =
-
-        newFront;
-
-    cardBack.style.background =
-
-        newBack;
-
-    saveColors(
-
-        newFront,
-
-        newBack
-
-    );
-
-    if (
-
-        window.navigator &&
-
-        window.navigator.vibrate
-
-    ) {
-
-        window.navigator.vibrate(30);
-
+        const scaleFactor = 100 / totalWidth;
+        barData.forEach(b => {
+            const el = document.createElement('div');
+            if (b.type === 'bar') {
+                el.className = 'bar ' + (b.tall ? 'tall' : 'short');
+                el.style.width = (b.w * scaleFactor) + '%';
+            } else {
+                el.style.width = (b.w * scaleFactor) + '%';
+                el.style.flexShrink = '0';
+            }
+            barcodeInner.appendChild(el);
+        });
     }
 
+    // ========== LOAD USER PHONE NUMBER ==========
+    function loadUserPhoneNumber() {
+        const accounts = JSON.parse(localStorage.getItem('rands_accounts_v2') || '[]');
+        const currentUserId = localStorage.getItem('rands_current_user');
+        let userPhone = '063 571 3652';
+        
+        if (currentUserId && accounts.length) {
+            const user = accounts.find(acc => acc.id == currentUserId);
+            if (user && user.phone) {
+                userPhone = user.phone;
+            } else if (user && user.id) {
+                userPhone = user.id;
+            }
+        } else if (accounts.length > 0) {
+            userPhone = accounts[0].phone || accounts[0].id || '063 571 3652';
+        }
+        
+        if (userPhone.match(/^\d+$/)) {
+            userPhone = userPhone.replace(/(\d{3})(?=\d)/g, '$1 ');
+        }
+        
+        const phoneDisplay = document.getElementById('accountPhoneNumber');
+        if (phoneDisplay) {
+            phoneDisplay.textContent = userPhone;
+        }
+    }
+    
+    loadUserPhoneNumber();
+
+    // ========== COLOR PERSISTENCE ==========
+    const STORAGE_KEY_FRONT = 'rvp_card_front_gradient';
+    const STORAGE_KEY_BACK = 'rvp_card_back_gradient';
+    const DEFAULT_FRONT_GRADIENT = "linear-gradient(135deg, #8B0000 0%, #C41E3A 15%, #DC143C 30%, #B22222 50%, #8B0000 70%, #5C0A0A 85%, #3D0000 100%)";
+    const DEFAULT_BACK_GRADIENT = "linear-gradient(135deg, #2a0000 0%, #4a0a0a 30%, #2d0000 55%, #5c0c0c 80%, #1a0000 100%)";
+
+    function loadSavedColors() {
+        const savedFront = localStorage.getItem(STORAGE_KEY_FRONT);
+        const savedBack = localStorage.getItem(STORAGE_KEY_BACK);
+        const cardFront = document.getElementById('cardFront');
+        const cardBack = document.getElementById('cardBack');
+        if (savedFront && cardFront) cardFront.style.background = savedFront;
+        else if (cardFront) cardFront.style.background = DEFAULT_FRONT_GRADIENT;
+        if (savedBack && cardBack) cardBack.style.background = savedBack;
+        else if (cardBack) cardBack.style.background = DEFAULT_BACK_GRADIENT;
+    }
+
+    function saveColors(frontGradient, backGradient) {
+        if (frontGradient) localStorage.setItem(STORAGE_KEY_FRONT, frontGradient);
+        if (backGradient) localStorage.setItem(STORAGE_KEY_BACK, backGradient);
+    }
+
+    // ========== FLIP LOGIC ==========
+    const cardStage = document.getElementById('cardStage');
+    let flipped = false;
     if (cardStage) {
-
-        cardStage.style.filter =
-
-            'drop-shadow(0 0 12px rgba(220,60,80,0.8))';
-
-        setTimeout(() => {
-
-            if (cardStage) {
-
-                cardStage.style.filter = '';
-
-            }
-
-        }, 200);
-
-    }
-
-}
-
-// =====================================================
-
-// LONG PRESS
-
-// =====================================================
-
-function startLongPress(e) {
-
-    if (e.cancelable) {
-
-        e.preventDefault();
-
-    }
-
-    pressTimer = setTimeout(() => {
-
-        randomizeCardColors();
-
-        if (cardStage) {
-
-            cardStage.classList.add(
-
-                'long-press-active'
-
-            );
-
-        }
-
-        setTimeout(() => {
-
-            if (cardStage) {
-
-                cardStage.classList.remove(
-
-                    'long-press-active'
-
-                );
-
-            }
-
-        }, 280);
-
-    }, 380);
-
-}
-
-function cancelLongPress() {
-
-    if (pressTimer) {
-
-        clearTimeout(pressTimer);
-
-        pressTimer = null;
-
-    }
-
-    if (cardStage) {
-
-        cardStage.classList.remove(
-
-            'long-press-active'
-
-        );
-
-    }
-
-}
-
-if (cardStage) {
-
-    cardStage.addEventListener(
-
-        'mousedown',
-
-        startLongPress
-
-    );
-
-    cardStage.addEventListener(
-
-        'mouseup',
-
-        cancelLongPress
-
-    );
-
-    cardStage.addEventListener(
-
-        'mouseleave',
-
-        cancelLongPress
-
-    );
-
-    cardStage.addEventListener(
-
-        'touchstart',
-
-        startLongPress,
-
-        { passive: false }
-
-    );
-
-    cardStage.addEventListener(
-
-        'touchend',
-
-        cancelLongPress
-
-    );
-
-    cardStage.addEventListener(
-
-        'touchcancel',
-
-        cancelLongPress
-
-    );
-
-}
-
-loadSavedColors();
-
-// =====================================================
-
-// SUPABASE
-
-// =====================================================
-
-const SUPABASE_URL =
-
-    'https://fqbcidcezfprranfxhyj.supabase.co';
-
-const SUPABASE_ANON_KEY =
-
-    'YOUR_SUPABASE_ANON_KEY';
-
-const supabase =
-
-    window.supabase.createClient(
-
-        SUPABASE_URL,
-
-        SUPABASE_ANON_KEY
-
-    );
-
-// =====================================================
-
-// AUTH GUARD
-
-// =====================================================
-
-supabase.auth.onAuthStateChange(
-
-    (event, session) => {
-
-        if (!session) {
-
-            window.location.href =
-
-                '../login.html';
-
-        }
-
-    }
-
-);
-
-// =====================================================
-
-// LOAD USER DATA
-
-// =====================================================
-
-async function loadUserData() {
-
-    console.log("Loading user data...");
-
-    try {
-
-        const {
-
-            data: { session },
-
-            error
-
-        } = await supabase.auth.getSession();
-
-        if (error) {
-
-            console.error(
-
-                "Session error:",
-
-                error
-
-            );
-
-            return;
-
-        }
-
-        if (!session) {
-
-            window.location.href =
-
-                '../login.html';
-
-            return;
-
-        }
-
-        console.log(
-
-            "✅ Logged in as:",
-
-            session.user.email
-
-        );
-
-        // PROFILE
-
-        const {
-
-            data: profile,
-
-            error: pErr
-
-        } = await supabase
-
-            .from('profiles')
-
-            .select('*')
-
-            .eq('id', session.user.id)
-
-            .single();
-
-        if (pErr) {
-
-            console.error(
-
-                "Profile error:",
-
-                pErr
-
-            );
-
-            return;
-
-        }
-
-        console.log(
-
-            "✅ Profile found:",
-
-            profile
-
-        );
-
-        // UPDATE NAME
-
-        const userNameDisplay =
-
-            document.getElementById(
-
-                'userNameDisplay'
-
-            );
-
-        const cardHolderName =
-
-            document.getElementById(
-
-                'cardHolderName'
-
-            );
-
-        if (
-
-            userNameDisplay &&
-
-            profile.name
-
-        ) {
-
-            userNameDisplay.textContent =
-
-                profile.name;
-
-        }
-
-        if (
-
-            cardHolderName &&
-
-            profile.name
-
-        ) {
-
-            cardHolderName.textContent =
-
-                profile.name.toUpperCase();
-
-        }
-
-        // UPDATE PHONE
-
-        const accountPhoneNumber =
-
-            document.getElementById(
-
-                'accountPhoneNumber'
-
-            );
-
-        if (
-
-            accountPhoneNumber &&
-
-            profile.phone
-
-        ) {
-
-            accountPhoneNumber.textContent =
-
-                formatSAPhone(
-
-                    profile.phone
-
-                );
-
-        }
-
-        // WALLET
-
-        const {
-
-            data: wallet,
-
-            error: wErr
-
-        } = await supabase
-
-            .from('wallets')
-
-            .select('balance')
-
-            .eq('user_id', profile.id)
-
-            .single();
-
-        if (wErr) {
-
-            console.error(
-
-                "Wallet error:",
-
-                wErr
-
-            );
-
-        }
-
-        if (wallet) {
-
-            const balanceEl =
-
-                document.getElementById(
-
-                    'realWalletBalance'
-
-                );
-
-            const shishaBalance =
-
-                document.getElementById(
-
-                    'shishaWalletBalance'
-
-                );
-
-            const formatted =
-
-                `R ${Number(wallet.balance).toLocaleString(
-
-                    'en-ZA',
-
-                    {
-
-                        minimumFractionDigits: 2
-
-                    }
-
-                )}`;
-
-            if (balanceEl) {
-
-                balanceEl.textContent =
-
-                    formatted;
-
-            }
-
-            if (shishaBalance) {
-
-                shishaBalance.textContent =
-
-                    formatted;
-
-            }
-
-            console.log(
-
-                "✅ Balance loaded:",
-
-                wallet.balance
-
-            );
-
-        }
-
-    } catch (err) {
-
-        console.error(
-
-            "Fatal load error:",
-
-            err
-
-        );
-
-    }
-
-}
-
-// =====================================================
-
-// GLOBAL BALANCE UPDATE
-
-// =====================================================
-
-window.updateUserBalance =
-
-    async function(newBalance) {
-
-        const balanceEl =
-
-            document.getElementById(
-
-                'realWalletBalance'
-
-            );
-
-        const shishaBalance =
-
-            document.getElementById(
-
-                'shishaWalletBalance'
-
-            );
-
-        const formatted =
-
-            `R ${Number(newBalance).toLocaleString(
-
-                'en-ZA',
-
-                {
-
-                    minimumFractionDigits: 2
-
-                }
-
-            )}`;
-
-        if (balanceEl) {
-
-            balanceEl.textContent =
-
-                formatted;
-
-        }
-
-        if (shishaBalance) {
-
-            shishaBalance.textContent =
-
-                formatted;
-
-        }
-
-    };
-
-// =====================================================
-
-// PROFILE MODAL
-
-// =====================================================
-
-async function updateProfileModal() {
-
-    const {
-
-        data: { session }
-
-    } = await supabase.auth.getSession();
-
-    if (!session) return;
-
-    const {
-
-        data: profile,
-
-        error
-
-    } = await supabase
-
-        .from('profiles')
-
-        .select('*')
-
-        .eq('id', session.user.id)
-
-        .single();
-
-    if (error || !profile) {
-
-        console.error(
-
-            "Modal profile error:",
-
-            error
-
-        );
-
-        return;
-
-    }
-
-    const modalFullName =
-
-        document.getElementById(
-
-            'modalFullName'
-
-        );
-
-    const modalEmail =
-
-        document.getElementById(
-
-            'modalEmail'
-
-        );
-
-    const modalPhone =
-
-        document.getElementById(
-
-            'modalPhone'
-
-        );
-
-    const modalBalance =
-
-        document.getElementById(
-
-            'modalBalance'
-
-        );
-
-    if (modalFullName) {
-
-        modalFullName.innerText =
-
-            profile.name || '---';
-
-    }
-
-    if (modalEmail) {
-
-        modalEmail.innerText =
-
-            session.user.email || '---';
-
-    }
-
-    if (modalPhone) {
-
-        modalPhone.innerText =
-
-            formatSAPhone(
-
-                profile.phone || '---'
-
-            );
-
-    }
-
-    const {
-
-        data: wallet
-
-    } = await supabase
-
-        .from('wallets')
-
-        .select('balance')
-
-        .eq('user_id', profile.id)
-
-        .single();
-
-    const balanceVal =
-
-        wallet
-
-            ? Number(wallet.balance)
-
-            : 0;
-
-    if (modalBalance) {
-
-        modalBalance.innerText =
-
-            `R ${balanceVal.toLocaleString(
-
-                'en-ZA',
-
-                {
-
-                    minimumFractionDigits: 2
-
-                }
-
-            )}`;
-
-    }
-
-}
-
-// =====================================================
-
-// PROFILE MODAL EVENTS
-
-// =====================================================
-
-const profileModal =
-
-    document.getElementById(
-
-        'fullProfileModal'
-
-    );
-
-const profileIcon =
-
-    document.getElementById(
-
-        'profileIconBtn'
-
-    );
-
-const closeProfile =
-
-    document.querySelector(
-
-        '.close-profile-modal'
-
-    );
-
-if (profileIcon) {
-
-    profileIcon.addEventListener(
-
-        'click',
-
-        async (e) => {
-
+        cardStage.addEventListener('click', (e) => {
             e.stopPropagation();
-
-            await updateProfileModal();
-
-            if (profileModal) {
-
-                profileModal.classList.add(
-
-                    'active'
-
-                );
-
+            flipped = !flipped;
+            cardStage.classList.toggle('flipped', flipped);
+            if (flipped) {
+                cardStage.style.animation = 'none';
+            } else {
+                setTimeout(() => {
+                    cardStage.style.animation = 'floatCard 4s ease-in-out infinite';
+                }, 300);
             }
-
-        }
-
-    );
-
-}
-
-if (closeProfile) {
-
-    closeProfile.addEventListener(
-
-        'click',
-
-        () => {
-
-            if (profileModal) {
-
-                profileModal.classList.remove(
-
-                    'active'
-
-                );
-
-            }
-
-        }
-
-    );
-
-}
-
-if (profileModal) {
-
-    profileModal.addEventListener(
-
-        'click',
-
-        (e) => {
-
-            if (e.target === profileModal) {
-
-                profileModal.classList.remove(
-
-                    'active'
-
-                );
-
-            }
-
-        }
-
-    );
-
-}
-
-// =====================================================
-
-// LOGOUT
-
-// =====================================================
-
-async function performLogout() {
-
-    await supabase.auth.signOut();
-
-    window.location.href =
-
-        '../login.html';
-
-}
-
-const modalLogoutBtn =
-
-    document.getElementById(
-
-        'modalLogoutBtn'
-
-    );
-
-if (modalLogoutBtn) {
-
-    modalLogoutBtn.addEventListener(
-
-        'click',
-
-        performLogout
-
-    );
-
-}
-
-const headerLogoutBtn =
-
-    document.getElementById(
-
-        'logoutBtn'
-
-    );
-
-if (headerLogoutBtn) {
-
-    headerLogoutBtn.addEventListener(
-
-        'click',
-
-        performLogout
-
-    );
-
-}
-
-// =====================================================
-
-// PAGE LOAD
-
-// =====================================================
-
-document.addEventListener(
-
-    'DOMContentLoaded',
-
-    () => {
-
-        loadUserData();
-
+        });
     }
 
-);
+    // ========== TILT EFFECT ==========
+    const flipperElem = document.getElementById('cardFlipper');
+    if (cardStage && flipperElem) {
+        cardStage.addEventListener('pointermove', (e) => {
+            if (flipped) return;
+            const rect = cardStage.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dx = (e.clientX - cx) / (rect.width / 2);
+            const dy = (e.clientY - cy) / (rect.height / 2);
+            flipperElem.style.transform = `rotateY(${dx * 8}deg) rotateX(${-dy * 6}deg)`;
+        });
+        cardStage.addEventListener('pointerleave', () => {
+            if (flipped) return;
+            flipperElem.style.transform = '';
+        });
+    }
+
+    // ========== LONG PRESS COLOR RANDOMIZER ==========
+    const cardFront = document.getElementById('cardFront');
+    const cardBack = document.getElementById('cardBack');
+    let pressTimer = null;
+
+    function randomFrontGradient() {
+        const hue1 = Math.floor(Math.random() * 360);
+        const hue2 = (hue1 + 40 + Math.random() * 100) % 360;
+        const hue3 = (hue2 + 30 + Math.random() * 80) % 360;
+        const hue4 = (hue1 + 180) % 360;
+        const hue5 = (hue2 + 210) % 360;
+        const sat1 = 60 + Math.random() * 32;
+        const sat2 = 55 + Math.random() * 32;
+        const sat3 = 60 + Math.random() * 28;
+        const lit1 = 25 + Math.random() * 28;
+        const lit2 = 20 + Math.random() * 22;
+        const lit3 = 15 + Math.random() * 24;
+        return `linear-gradient(135deg, hsl(${hue1}, ${sat1}%, ${lit1}%) 0%, hsl(${hue2}, ${sat2}%, ${lit2}%) 25%, hsl(${hue3}, ${sat3}%, ${lit3}%) 50%, hsl(${hue4}, ${sat1 - 10}%, ${lit1 - 5}%) 75%, hsl(${hue5}, ${sat2 - 5}%, ${lit2 - 4}%) 100%)`;
+    }
+    
+    function randomBackGradient() {
+        const hueA = Math.floor(Math.random() * 360);
+        const hueB = (hueA + 50) % 360;
+        const hueC = (hueB + 70) % 360;
+        return `linear-gradient(135deg, hsl(${hueA}, 68%, 10%) 0%, hsl(${hueB}, 62%, 16%) 30%, hsl(${hueC}, 72%, 8%) 55%, hsl(${(hueA + 120) % 360}, 68%, 12%) 80%, hsl(${(hueB + 90) % 360}, 65%, 6%) 100%)`;
+    }
+    
+    function randomizeCardColors() {
+        if (!cardFront || !cardBack) return;
+        const newFront = randomFrontGradient();
+        const newBack = randomBackGradient();
+        cardFront.style.background = newFront;
+        cardBack.style.background = newBack;
+        saveColors(newFront, newBack);
+        if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(30);
+        if (cardStage) {
+            cardStage.style.filter = 'drop-shadow(0 0 12px rgba(220, 60, 80, 0.8))';
+            setTimeout(() => { if (cardStage) cardStage.style.filter = ''; }, 200);
+        }
+    }
+    
+    function startLongPress(e) {
+        if (flipped) return;
+        // NOTE: removed e.preventDefault() to avoid breaking click/tap for flip
+        pressTimer = setTimeout(() => {
+            randomizeCardColors();
+            if (cardStage) cardStage.classList.add('long-press-active');
+            setTimeout(() => { if (cardStage) cardStage.classList.remove('long-press-active'); }, 280);
+        }, 380);
+    }
+    
+    function cancelLongPress() {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+        if (cardStage) cardStage.classList.remove('long-press-active');
+    }
+    
+    if (cardStage) {
+        cardStage.addEventListener('mousedown', startLongPress);
+        cardStage.addEventListener('mouseup', cancelLongPress);
+        cardStage.addEventListener('mouseleave', cancelLongPress);
+        cardStage.addEventListener('touchstart', startLongPress, { passive: false });
+        cardStage.addEventListener('touchend', cancelLongPress);
+        cardStage.addEventListener('touchcancel', cancelLongPress);
+    }
+    
+    loadSavedColors();
+</script>
+
+<script src="assets/js/home.js"></script>
+
+<!-- Supabase Connection - SIMPLE WORKING VERSION -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    // DIRECT CONNECTION - Your Supabase credentials
+    const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    async function loadUserData() {
+        console.log("Loading user data...");
+        
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) { console.error("Session error:", error); return; }
+        if (!session) { console.log("Not logged in - showing default"); return; }
+        
+        console.log("✅ Logged in as:", session.user.email);
+        
+        const { data: profile, error: pErr } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+        
+        if (pErr) { console.error("Profile error:", pErr); return; }
+        if (!profile) { console.warn("No profile row found for user", session.user.id); return; }
+        
+        console.log("✅ Profile found:", profile);
+        
+        if (profile.name) {
+            document.getElementById('userNameDisplay').textContent = profile.name;
+            document.getElementById('cardHolderName').textContent = profile.name.toUpperCase();
+        }
+        
+        if (profile.phone) {
+            let phone = profile.phone;
+            if (phone.match(/^\d+$/)) phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
+            document.getElementById('accountPhoneNumber').textContent = phone;
+        }
+        
+        // Wallet fetch with maybeSingle() – does not throw on missing row
+        const { data: wallet, error: wErr } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', profile.id)
+            .maybeSingle();
+        
+        const balanceEl = document.getElementById('realWalletBalance');
+        const shishaBalance = document.getElementById('shishaWalletBalance');
+        
+        if (wErr) console.error("❌ Wallet load error:", wErr);
+        
+        const balanceNum = Number(wallet?.balance ?? 0);
+        const formatted = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        if (balanceEl) balanceEl.textContent = formatted;
+        if (shishaBalance) shishaBalance.textContent = formatted;
+        console.log("✅ Balance loaded:", wallet ? wallet.balance : "(no wallet row)", "->", formatted);
+    }
+    
+    window.updateUserBalance = async function(newBalance) {
+        const balanceEl = document.getElementById('realWalletBalance');
+        const shishaBalance = document.getElementById('shishaWalletBalance');
+        const formatted = `R ${newBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        if (balanceEl) balanceEl.textContent = formatted;
+        if (shishaBalance) shishaBalance.textContent = formatted;
+    };
+    
+    async function updateProfileModal() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+        if (!error && profile) {
+            document.getElementById('modalFullName').innerText = profile.name || '---';
+            document.getElementById('modalEmail').innerText = session.user.email || '---';
+            document.getElementById('modalPhone').innerText = profile.phone || '---';
+            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', profile.id).maybeSingle();
+            const balanceVal = wallet ? wallet.balance : 0;
+            document.getElementById('modalBalance').innerText = `R ${balanceVal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        }
+    }
+    
+    const profileModal = document.getElementById('fullProfileModal');
+    const profileIcon = document.getElementById('profileIconBtn');
+    const closeProfile = document.querySelector('.close-profile-modal');
+    
+    if (profileIcon) {
+        profileIcon.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await updateProfileModal();
+            profileModal.classList.add('active');
+        });
+    }
+    if (closeProfile) {
+        closeProfile.addEventListener('click', () => profileModal.classList.remove('active'));
+    }
+    profileModal.addEventListener('click', (e) => {
+        if (e.target === profileModal) profileModal.classList.remove('active');
+    });
+    
+    async function performLogout() {
+        await supabase.auth.signOut();
+        window.location.href = '../login.html';
+    }
+    
+    const modalLogoutBtn = document.getElementById('modalLogoutBtn');
+    if (modalLogoutBtn) modalLogoutBtn.addEventListener('click', performLogout);
+    
+    const headerLogoutBtn = document.getElementById('logoutBtn');
+    if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
+    
+    document.addEventListener('DOMContentLoaded', loadUserData);
+    setTimeout(loadUserData, 500);
 </script>
 </body>
 </html>
