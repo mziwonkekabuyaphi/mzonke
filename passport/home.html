@@ -741,7 +741,6 @@
         cardBack.style.background = newBack;
         saveColors(newFront, newBack);
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(30);
-        // Add a quick visual "flash" effect to confirm change
         if (cardStage) {
             cardStage.style.filter = 'drop-shadow(0 0 12px rgba(220, 60, 80, 0.8))';
             setTimeout(() => { if (cardStage) cardStage.style.filter = ''; }, 200);
@@ -750,8 +749,7 @@
     
     function startLongPress(e) {
         if (flipped) return;
-        // prevent context menu on long press
-        if (e.cancelable) e.preventDefault();
+        // NOTE: removed e.preventDefault() to avoid breaking click/tap for flip
         pressTimer = setTimeout(() => {
             randomizeCardColors();
             if (cardStage) cardStage.classList.add('long-press-active');
@@ -790,69 +788,45 @@
     async function loadUserData() {
         console.log("Loading user data...");
         
-        // Get current session
         const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-            console.error("Session error:", error);
-            return;
-        }
-        
-        if (!session) {
-            console.log("Not logged in - showing default");
-            return;
-        }
+        if (error) { console.error("Session error:", error); return; }
+        if (!session) { console.log("Not logged in - showing default"); return; }
         
         console.log("✅ Logged in as:", session.user.email);
         
-        // Get profile
         const { data: profile, error: pErr } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
-            .maybeSingle();  // <-- changed from .single()
+            .maybeSingle();
         
-        if (pErr) {
-            console.error("Profile error:", pErr);
-            return;
-        }
-        
-        if (!profile) {
-            console.warn("No profile row found for user", session.user.id);
-            // Optional: create a minimal profile here or show message
-            return;
-        }
+        if (pErr) { console.error("Profile error:", pErr); return; }
+        if (!profile) { console.warn("No profile row found for user", session.user.id); return; }
         
         console.log("✅ Profile found:", profile);
         
-        // Update name on card
         if (profile.name) {
             document.getElementById('userNameDisplay').textContent = profile.name;
             document.getElementById('cardHolderName').textContent = profile.name.toUpperCase();
         }
         
-        // Update phone on card back
         if (profile.phone) {
             let phone = profile.phone;
-            if (phone.match(/^\d+$/)) {
-                phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
-            }
+            if (phone.match(/^\d+$/)) phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
             document.getElementById('accountPhoneNumber').textContent = phone;
         }
         
-        // ========== FIXED WALLET FETCH (using maybeSingle) ==========
+        // Wallet fetch with maybeSingle() – does not throw on missing row
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
             .select('balance')
             .eq('user_id', profile.id)
-            .maybeSingle();   // key fix: doesn't throw error on missing row
+            .maybeSingle();
         
         const balanceEl = document.getElementById('realWalletBalance');
         const shishaBalance = document.getElementById('shishaWalletBalance');
         
-        if (wErr) {
-            console.error("❌ Wallet load error:", wErr);
-        }
+        if (wErr) console.error("❌ Wallet load error:", wErr);
         
         const balanceNum = Number(wallet?.balance ?? 0);
         const formatted = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
@@ -861,7 +835,6 @@
         console.log("✅ Balance loaded:", wallet ? wallet.balance : "(no wallet row)", "->", formatted);
     }
     
-    // Also update after deposit/withdraw actions
     window.updateUserBalance = async function(newBalance) {
         const balanceEl = document.getElementById('realWalletBalance');
         const shishaBalance = document.getElementById('shishaWalletBalance');
@@ -870,7 +843,6 @@
         if (shishaBalance) shishaBalance.textContent = formatted;
     };
     
-    // PROFILE MODAL LOGIC - FULL SCREEN
     async function updateProfileModal() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
@@ -907,26 +879,18 @@
         if (e.target === profileModal) profileModal.classList.remove('active');
     });
     
-    // Logout from modal and also from the header logout button -> redirect to ../login.html
     async function performLogout() {
         await supabase.auth.signOut();
         window.location.href = '../login.html';
     }
     
     const modalLogoutBtn = document.getElementById('modalLogoutBtn');
-    if (modalLogoutBtn) {
-        modalLogoutBtn.addEventListener('click', performLogout);
-    }
+    if (modalLogoutBtn) modalLogoutBtn.addEventListener('click', performLogout);
     
     const headerLogoutBtn = document.getElementById('logoutBtn');
-    if (headerLogoutBtn) {
-        headerLogoutBtn.addEventListener('click', performLogout);
-    }
+    if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
     
-    // Run when page loads
     document.addEventListener('DOMContentLoaded', loadUserData);
-    
-    // Also run after a short delay to ensure everything is loaded
     setTimeout(loadUserData, 500);
 </script>
 </body>
