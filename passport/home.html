@@ -261,6 +261,85 @@
         .logout-from-modal:active {
             transform: scale(0.97);
         }
+
+        /* LOGIN MODAL STYLES */
+        .login-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(12px);
+            z-index: 40000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: visibility 0.25s, opacity 0.25s ease;
+        }
+        .login-modal.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .login-card {
+            background: #ffffff;
+            border-radius: 48px;
+            max-width: 380px;
+            width: 90%;
+            padding: 32px 28px;
+            text-align: center;
+            box-shadow: 0 30px 50px rgba(0,0,0,0.5);
+            border: 1px solid rgba(227,6,19,0.2);
+        }
+        .login-card h3 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #E30613, #b0020e);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 8px;
+        }
+        .login-card p {
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-bottom: 24px;
+        }
+        .login-card input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #eef2f8;
+            border-radius: 60px;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+            font-family: 'Inter', sans-serif;
+        }
+        .login-card input:focus {
+            outline: none;
+            border-color: #E30613;
+        }
+        .login-card button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(95deg, #E30613, #b0020e);
+            color: white;
+            border: none;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .login-card button:active { transform: scale(0.97); }
+        .login-error {
+            color: #E30613;
+            font-size: 0.75rem;
+            margin-top: 12px;
+            display: none;
+        }
+        .login-error.show { display: block; }
     </style>
 
     <!-- Styles for the imported flip card -->
@@ -515,7 +594,7 @@
                                 <div class="barcode-wrap">
                                     <div class="barcode-inner" id="barcodeInner"></div>
                                 </div>
-                                <div class="phone-number-display" id="accountPhoneNumber">063 571 3652</div>
+                                <div class="phone-number-display" id="accountPhoneNumber">—</div>
                             </div>
                             <div class="card-back-mid">
                                 <div class="signature-strip">
@@ -586,6 +665,18 @@
     </div>
 </div>
 
+<!-- LOGIN MODAL -->
+<div id="loginModal" class="login-modal">
+    <div class="login-card">
+        <h3>Welcome Back</h3>
+        <p>Sign in to access your Vibe Pass</p>
+        <input type="email" id="loginEmail" placeholder="Email address" autocomplete="email">
+        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+        <button id="loginButton">Login</button>
+        <div id="loginError" class="login-error">Invalid email or password</div>
+    </div>
+</div>
+
 <script>
     // ========== BARCODE GENERATION ==========
     const barcodeInner = document.getElementById('barcodeInner');
@@ -619,36 +710,7 @@
         });
     }
 
-    // ========== LOAD USER PHONE NUMBER ==========
-    function loadUserPhoneNumber() {
-        const accounts = JSON.parse(localStorage.getItem('rands_accounts_v2') || '[]');
-        const currentUserId = localStorage.getItem('rands_current_user');
-        let userPhone = '063 571 3652';
-        
-        if (currentUserId && accounts.length) {
-            const user = accounts.find(acc => acc.id == currentUserId);
-            if (user && user.phone) {
-                userPhone = user.phone;
-            } else if (user && user.id) {
-                userPhone = user.id;
-            }
-        } else if (accounts.length > 0) {
-            userPhone = accounts[0].phone || accounts[0].id || '063 571 3652';
-        }
-        
-        if (userPhone.match(/^\d+$/)) {
-            userPhone = userPhone.replace(/(\d{3})(?=\d)/g, '$1 ');
-        }
-        
-        const phoneDisplay = document.getElementById('accountPhoneNumber');
-        if (phoneDisplay) {
-            phoneDisplay.textContent = userPhone;
-        }
-    }
-    
-    loadUserPhoneNumber();
-
-    // ========== COLOR PERSISTENCE ==========
+    // ========== COLOR PERSISTENCE (ONLY localStorage allowed) ==========
     const STORAGE_KEY_FRONT = 'rvp_card_front_gradient';
     const STORAGE_KEY_BACK = 'rvp_card_back_gradient';
     const DEFAULT_FRONT_GRADIENT = "linear-gradient(135deg, #8B0000 0%, #C41E3A 15%, #DC143C 30%, #B22222 50%, #8B0000 70%, #5C0A0A 85%, #3D0000 100%)";
@@ -749,7 +811,6 @@
     
     function startLongPress(e) {
         if (flipped) return;
-        // NOTE: removed e.preventDefault() to avoid breaking click/tap for flip
         pressTimer = setTimeout(() => {
             randomizeCardColors();
             if (cardStage) cardStage.classList.add('long-press-active');
@@ -776,22 +837,34 @@
 
 <script src="assets/js/home.js"></script>
 
-<!-- Supabase Connection - SIMPLE WORKING VERSION -->
+<!-- Supabase Connection + Login Logic -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-    // DIRECT CONNECTION - Your Supabase credentials
+    // Your Supabase credentials
     const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-    
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
+
+    let isLoggedIn = false;
+
+    async function checkSessionAndShowLogin() {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) console.error("Session check error:", error);
+        if (!session) {
+            // Not logged in → show login modal
+            document.getElementById('loginModal').classList.add('active');
+            return false;
+        }
+        return true;
+    }
+
     async function loadUserData() {
         console.log("Loading user data...");
-        
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) { console.error("Session error:", error); return; }
-        if (!session) { console.log("Not logged in - showing default"); return; }
+        if (!session) { console.log("Not logged in"); return; }
         
+        isLoggedIn = true;
         console.log("✅ Logged in as:", session.user.email);
         
         const { data: profile, error: pErr } = await supabase
@@ -814,9 +887,10 @@
             let phone = profile.phone;
             if (phone.match(/^\d+$/)) phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
             document.getElementById('accountPhoneNumber').textContent = phone;
+        } else {
+            document.getElementById('accountPhoneNumber').textContent = '—';
         }
         
-        // Wallet fetch with maybeSingle() – does not throw on missing row
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
             .select('balance')
@@ -825,9 +899,7 @@
         
         const balanceEl = document.getElementById('realWalletBalance');
         const shishaBalance = document.getElementById('shishaWalletBalance');
-        
         if (wErr) console.error("❌ Wallet load error:", wErr);
-        
         const balanceNum = Number(wallet?.balance ?? 0);
         const formatted = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         if (balanceEl) balanceEl.textContent = formatted;
@@ -868,6 +940,10 @@
     if (profileIcon) {
         profileIcon.addEventListener('click', async (e) => {
             e.stopPropagation();
+            if (!isLoggedIn) {
+                document.getElementById('loginModal').classList.add('active');
+                return;
+            }
             await updateProfileModal();
             profileModal.classList.add('active');
         });
@@ -881,7 +957,8 @@
     
     async function performLogout() {
         await supabase.auth.signOut();
-        window.location.href = '../login.html';
+        isLoggedIn = false;
+        window.location.reload(); // reset UI
     }
     
     const modalLogoutBtn = document.getElementById('modalLogoutBtn');
@@ -890,8 +967,46 @@
     const headerLogoutBtn = document.getElementById('logoutBtn');
     if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
     
-    document.addEventListener('DOMContentLoaded', loadUserData);
-    setTimeout(loadUserData, 500);
+    // Login handler
+    const loginModal = document.getElementById('loginModal');
+    const loginBtn = document.getElementById('loginButton');
+    const loginEmail = document.getElementById('loginEmail');
+    const loginPassword = document.getElementById('loginPassword');
+    const loginError = document.getElementById('loginError');
+    
+    async function performLogin() {
+        const email = loginEmail.value.trim();
+        const password = loginPassword.value;
+        if (!email || !password) {
+            loginError.textContent = "Please enter email and password";
+            loginError.classList.add('show');
+            return;
+        }
+        loginError.classList.remove('show');
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            loginError.textContent = error.message;
+            loginError.classList.add('show');
+            return;
+        }
+        // success
+        loginModal.classList.remove('active');
+        await loadUserData();
+        // Optionally reload page to ensure everything resets
+        window.location.reload();
+    }
+    
+    loginBtn.addEventListener('click', performLogin);
+    loginEmail.addEventListener('keypress', (e) => { if (e.key === 'Enter') performLogin(); });
+    loginPassword.addEventListener('keypress', (e) => { if (e.key === 'Enter') performLogin(); });
+    
+    // Initial check
+    (async () => {
+        const hasSession = await checkSessionAndShowLogin();
+        if (hasSession) {
+            await loadUserData();
+        }
+    })();
 </script>
 </body>
 </html>
