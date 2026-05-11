@@ -810,10 +810,16 @@
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();  // <-- changed from .single()
         
         if (pErr) {
             console.error("Profile error:", pErr);
+            return;
+        }
+        
+        if (!profile) {
+            console.warn("No profile row found for user", session.user.id);
+            // Optional: create a minimal profile here or show message
             return;
         }
         
@@ -834,21 +840,25 @@
             document.getElementById('accountPhoneNumber').textContent = phone;
         }
         
-        // Get wallet balance
+        // ========== FIXED WALLET FETCH (using maybeSingle) ==========
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
             .select('balance')
             .eq('user_id', profile.id)
-            .single();
+            .maybeSingle();   // key fix: doesn't throw error on missing row
         
-        if (wallet) {
-            const balanceEl = document.getElementById('realWalletBalance');
-            const shishaBalance = document.getElementById('shishaWalletBalance');
-            const formatted = `R ${wallet.balance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
-            if (balanceEl) balanceEl.textContent = formatted;
-            if (shishaBalance) shishaBalance.textContent = formatted;
-            console.log("✅ Balance loaded: R", wallet.balance);
+        const balanceEl = document.getElementById('realWalletBalance');
+        const shishaBalance = document.getElementById('shishaWalletBalance');
+        
+        if (wErr) {
+            console.error("❌ Wallet load error:", wErr);
         }
+        
+        const balanceNum = Number(wallet?.balance ?? 0);
+        const formatted = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        if (balanceEl) balanceEl.textContent = formatted;
+        if (shishaBalance) shishaBalance.textContent = formatted;
+        console.log("✅ Balance loaded:", wallet ? wallet.balance : "(no wallet row)", "->", formatted);
     }
     
     // Also update after deposit/withdraw actions
@@ -868,12 +878,12 @@
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
         if (!error && profile) {
             document.getElementById('modalFullName').innerText = profile.name || '---';
             document.getElementById('modalEmail').innerText = session.user.email || '---';
             document.getElementById('modalPhone').innerText = profile.phone || '---';
-            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', profile.id).single();
+            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', profile.id).maybeSingle();
             const balanceVal = wallet ? wallet.balance : 0;
             document.getElementById('modalBalance').innerText = `R ${balanceVal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         }
