@@ -261,85 +261,6 @@
         .logout-from-modal:active {
             transform: scale(0.97);
         }
-
-        /* LOGIN MODAL STYLES */
-        .login-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.85);
-            backdrop-filter: blur(12px);
-            z-index: 40000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            visibility: hidden;
-            opacity: 0;
-            transition: visibility 0.25s, opacity 0.25s ease;
-        }
-        .login-modal.active {
-            visibility: visible;
-            opacity: 1;
-        }
-        .login-card {
-            background: #ffffff;
-            border-radius: 48px;
-            max-width: 380px;
-            width: 90%;
-            padding: 32px 28px;
-            text-align: center;
-            box-shadow: 0 30px 50px rgba(0,0,0,0.5);
-            border: 1px solid rgba(227,6,19,0.2);
-        }
-        .login-card h3 {
-            font-size: 1.8rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #E30613, #b0020e);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            margin-bottom: 8px;
-        }
-        .login-card p {
-            color: #64748b;
-            font-size: 0.85rem;
-            margin-bottom: 24px;
-        }
-        .login-card input {
-            width: 100%;
-            padding: 14px 16px;
-            border: 2px solid #eef2f8;
-            border-radius: 60px;
-            font-size: 0.9rem;
-            margin-bottom: 16px;
-            font-family: 'Inter', sans-serif;
-        }
-        .login-card input:focus {
-            outline: none;
-            border-color: #E30613;
-        }
-        .login-card button {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(95deg, #E30613, #b0020e);
-            color: white;
-            border: none;
-            border-radius: 60px;
-            font-weight: 700;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: transform 0.1s;
-        }
-        .login-card button:active { transform: scale(0.97); }
-        .login-error {
-            color: #E30613;
-            font-size: 0.75rem;
-            margin-top: 12px;
-            display: none;
-        }
-        .login-error.show { display: block; }
     </style>
 
     <!-- Styles for the imported flip card -->
@@ -665,18 +586,6 @@
     </div>
 </div>
 
-<!-- LOGIN MODAL -->
-<div id="loginModal" class="login-modal">
-    <div class="login-card">
-        <h3>Welcome Back</h3>
-        <p>Sign in to access your Vibe Pass</p>
-        <input type="email" id="loginEmail" placeholder="Email address" autocomplete="email">
-        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
-        <button id="loginButton">Login</button>
-        <div id="loginError" class="login-error">Invalid email or password</div>
-    </div>
-</div>
-
 <script>
     // ========== BARCODE GENERATION ==========
     const barcodeInner = document.getElementById('barcodeInner');
@@ -837,7 +746,7 @@
 
 <script src="assets/js/home.js"></script>
 
-<!-- Supabase Connection + Login Logic -->
+<!-- Supabase Connection -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
     // Your Supabase credentials
@@ -845,26 +754,13 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let isLoggedIn = false;
-
-    async function checkSessionAndShowLogin() {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) console.error("Session check error:", error);
-        if (!session) {
-            // Not logged in → show login modal
-            document.getElementById('loginModal').classList.add('active');
-            return false;
-        }
-        return true;
-    }
-
     async function loadUserData() {
         console.log("Loading user data...");
+        
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) { console.error("Session error:", error); return; }
-        if (!session) { console.log("Not logged in"); return; }
+        if (!session) { console.log("Not logged in - showing default"); return; }
         
-        isLoggedIn = true;
         console.log("✅ Logged in as:", session.user.email);
         
         const { data: profile, error: pErr } = await supabase
@@ -891,15 +787,18 @@
             document.getElementById('accountPhoneNumber').textContent = '—';
         }
         
+        // ✅ UPDATED: Uses session.user.id directly and maybeSingle()
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
             .select('balance')
-            .eq('user_id', profile.id)
+            .eq('user_id', session.user.id)
             .maybeSingle();
         
         const balanceEl = document.getElementById('realWalletBalance');
         const shishaBalance = document.getElementById('shishaWalletBalance');
+        
         if (wErr) console.error("❌ Wallet load error:", wErr);
+        
         const balanceNum = Number(wallet?.balance ?? 0);
         const formatted = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         if (balanceEl) balanceEl.textContent = formatted;
@@ -927,7 +826,7 @@
             document.getElementById('modalFullName').innerText = profile.name || '---';
             document.getElementById('modalEmail').innerText = session.user.email || '---';
             document.getElementById('modalPhone').innerText = profile.phone || '---';
-            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', profile.id).maybeSingle();
+            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).maybeSingle();
             const balanceVal = wallet ? wallet.balance : 0;
             document.getElementById('modalBalance').innerText = `R ${balanceVal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         }
@@ -940,10 +839,6 @@
     if (profileIcon) {
         profileIcon.addEventListener('click', async (e) => {
             e.stopPropagation();
-            if (!isLoggedIn) {
-                document.getElementById('loginModal').classList.add('active');
-                return;
-            }
             await updateProfileModal();
             profileModal.classList.add('active');
         });
@@ -957,8 +852,7 @@
     
     async function performLogout() {
         await supabase.auth.signOut();
-        isLoggedIn = false;
-        window.location.reload(); // reset UI
+        window.location.href = '../login.html';
     }
     
     const modalLogoutBtn = document.getElementById('modalLogoutBtn');
@@ -967,46 +861,8 @@
     const headerLogoutBtn = document.getElementById('logoutBtn');
     if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
     
-    // Login handler
-    const loginModal = document.getElementById('loginModal');
-    const loginBtn = document.getElementById('loginButton');
-    const loginEmail = document.getElementById('loginEmail');
-    const loginPassword = document.getElementById('loginPassword');
-    const loginError = document.getElementById('loginError');
-    
-    async function performLogin() {
-        const email = loginEmail.value.trim();
-        const password = loginPassword.value;
-        if (!email || !password) {
-            loginError.textContent = "Please enter email and password";
-            loginError.classList.add('show');
-            return;
-        }
-        loginError.classList.remove('show');
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-            loginError.textContent = error.message;
-            loginError.classList.add('show');
-            return;
-        }
-        // success
-        loginModal.classList.remove('active');
-        await loadUserData();
-        // Optionally reload page to ensure everything resets
-        window.location.reload();
-    }
-    
-    loginBtn.addEventListener('click', performLogin);
-    loginEmail.addEventListener('keypress', (e) => { if (e.key === 'Enter') performLogin(); });
-    loginPassword.addEventListener('keypress', (e) => { if (e.key === 'Enter') performLogin(); });
-    
-    // Initial check
-    (async () => {
-        const hasSession = await checkSessionAndShowLogin();
-        if (hasSession) {
-            await loadUserData();
-        }
-    })();
+    document.addEventListener('DOMContentLoaded', loadUserData);
+    setTimeout(loadUserData, 500);
 </script>
 </body>
 </html>
