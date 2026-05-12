@@ -208,6 +208,41 @@
             background: red;
             transform: scale(1.1);
         }
+        
+        .iframe-error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 500px;
+            background: rgba(0,0,0,0.5);
+            color: #ff6666;
+            font-family: monospace;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        /* Floating action button */
+        .fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #E30613, #b3000c);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+            z-index: 20;
+        }
+        
+        .fab:active {
+            transform: scale(0.92);
+        }
     </style>
 </head>
 <body class="bg-black overflow-hidden">
@@ -241,14 +276,12 @@
                     <div class="text-white font-bold text-sm">
                         <span class="text-red-500">●</span> {{ roleDisplayName }}
                     </div>
-                    <button @click="toggleGlobalFullscreen" class="text-white/40 text-sm">
-                        <i class="fas fa-expand"></i>
-                    </button>
+                    <div></div>
                 </div>
             </div>
             
-            <!-- Main content area -->
-            <div class="relative z-10 h-full overflow-y-auto pt-16 pb-28 px-4">
+            <!-- Main content area (no bottom nav, so reduced padding) -->
+            <div class="relative z-10 h-full overflow-y-auto pt-16 pb-6 px-4">
                 <!-- Role greeting -->
                 <div class="mb-6 slide-up">
                     <div class="text-red-500 text-xs font-mono tracking-wider">ACTIVE SHIFT</div>
@@ -272,7 +305,7 @@
                     </div>
                 </div>
                 
-                <!-- Module Carousel - YOUR EXTERNAL UI FILES LOAD HERE -->
+                <!-- Module Carousel - LOADS YOUR 8 HTML FILES -->
                 <div class="mb-6">
                     <div class="text-white/40 text-xs mb-3 px-2">ACTIVE MODULES ← swipe →</div>
                     <div class="overflow-x-auto hide-scrollbar snap-x snap-mandatory" style="scroll-snap-type: x mandatory;">
@@ -292,14 +325,22 @@
                                         
                                         <!-- Module Content: iFrame loading external UI -->
                                         <div class="module-frame relative">
-                                            <iframe :src="module.src" 
+                                            <div v-if="module.loadError" class="iframe-error">
+                                                <div>
+                                                    <i class="fas fa-exclamation-triangle text-3xl mb-2 block"></i>
+                                                    Failed to load {{ module.src }}<br>
+                                                    Check that the file exists in the same folder.
+                                                </div>
+                                            </div>
+                                            <iframe v-else
+                                                    :src="module.src" 
                                                     :title="module.title"
                                                     sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
                                                     referrerpolicy="no-referrer"
                                                     loading="lazy"
-                                                    @load="onIframeLoad(module.key)">
+                                                    @load="onIframeLoad(module.key, $event)"
+                                                    @error="onIframeError(module.key)">
                                             </iframe>
-                                            <!-- Fullscreen toggle button for this module -->
                                             <div class="fullscreen-btn" @click.stop="enterFullscreenModule(module)">
                                                 <i class="fas fa-expand"></i>
                                             </div>
@@ -332,27 +373,10 @@
                 </div>
             </div>
             
-            <!-- Floating Bottom Dock -->
-            <nav class="fixed bottom-4 left-4 right-4 z-20 glass-heavy rounded-3xl border border-red-500/20 shadow-2xl">
-                <div class="flex justify-around items-center h-20">
-                    <button @click="quickAction('shift')" class="flex flex-col items-center gap-1 text-white/70 active:text-red-500 transition-all">
-                        <i class="far fa-clock text-xl"></i>
-                        <span class="text-[10px] font-mono">SHIFT</span>
-                    </button>
-                    <button @click="refreshData" class="flex flex-col items-center gap-1 text-red-500">
-                        <i class="fas fa-chart-line text-xl" :class="{'animate-pulse': refreshing}"></i>
-                        <span class="text-[10px] font-mono">LIVE</span>
-                    </button>
-                    <button @click="toggleRadialMenu" class="flex flex-col items-center gap-1 text-white/70">
-                        <i class="fas fa-bolt text-xl"></i>
-                        <span class="text-[10px] font-mono">ACTIONS</span>
-                    </button>
-                    <button @click="showStaffInfo" class="flex flex-col items-center gap-1 text-white/70">
-                        <i class="far fa-user text-xl"></i>
-                        <span class="text-[10px] font-mono">ME</span>
-                    </button>
-                </div>
-            </nav>
+            <!-- Floating Action Button (FAB) to open radial menu -->
+            <div class="fab" @click="toggleRadialMenu">
+                <i class="fas fa-bolt text-xl"></i>
+            </div>
             
             <!-- Radial Action Menu -->
             <div v-if="showRadialMenu" class="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm" @click="showRadialMenu = false">
@@ -399,11 +423,9 @@
                     referrerpolicy="no-referrer"
                     allowfullscreen>
             </iframe>
-            <!-- Visible exit button (fallback) -->
             <div class="fullscreen-exit-btn" @click="exitFullscreen">
                 <i class="fas fa-compress"></i>
             </div>
-            <!-- Hint text -->
             <div class="fullscreen-exit-hint">
                 Double-tap anywhere or press Esc to exit fullscreen
             </div>
@@ -414,18 +436,18 @@
         const { createApp, ref, nextTick, onMounted, onUnmounted } = Vue;
         
         // ============================================
-        // CONFIGURE PATHS TO YOUR EXISTING UI FILES
+        // PATHS TO YOUR 8 HTML FILES (SAME FOLDER)
         // ============================================
         const UI_PATHS = {
-            box_office: '/box-office.html',
-            scanner: '/express-scanner.html',
-            shisha_pos: '/shisha-pos.html',
-            shisha_console: '/shisha-console.html',
-            vvip_tab: '/vvip-tab.html',
-            booze_lockers: '/vault.html',
-            register_locker: '/register-locker.html',
-            locker_kiosk: '/locker-kiosk.html',
-            pre_order_pos: '/pre-order-pos.html'
+            box_office: 'box-office.html',
+            scanner: 'express-scanner.html',
+            shisha_pos: 'shisha-pos.html',
+            shisha_console: 'shisha-console.html',
+            vvip_tab: 'vvip-tab.html',
+            booze_lockers: 'vault.html',
+            register_locker: 'register-locker.html',
+            locker_kiosk: 'locker-kiosk.html',
+            pre_order_pos: 'pre-order-pos.html'
         };
         
         const roleModules = {
@@ -483,7 +505,6 @@
                 
                 const isFullscreenActive = ref(false);
                 const fullscreenModule = ref(null);
-                const fullscreenContainer = ref(null);
                 
                 const currentTime = ref('');
                 const activeGuests = ref(347);
@@ -493,9 +514,7 @@
                 const toastMessage = ref('');
                 
                 const liveFeed = ref([
-                    { id: 1, message: 'John Smith entered (VIP) — Table VIP-1', time_ago: '2 min ago' },
-                    { id: 2, message: 'Shisha #4 needs coal in 2 min', time_ago: '5 min ago' },
-                    { id: 3, message: 'Queue wait: 12 min (78 people)', time_ago: '8 min ago' }
+                    { id: 1, message: 'System ready - 8 modules available', time_ago: 'Just now' }
                 ]);
                 
                 let toastTimeout = null;
@@ -521,7 +540,8 @@
                         key: key,
                         title: moduleMeta[key]?.title || key,
                         icon: moduleMeta[key]?.icon || 'fas fa-cog',
-                        src: moduleMeta[key]?.src || ''
+                        src: moduleMeta[key]?.src || '',
+                        loadError: false
                     }));
                     showToast(`Switched to ${roleDisplayName.value} mode`);
                 };
@@ -556,12 +576,6 @@
                     }
                 };
                 
-                const toggleGlobalFullscreen = () => {
-                    if (activeModules.value.length > 0) {
-                        enterFullscreenModule(activeModules.value[0]);
-                    }
-                };
-                
                 const onFullscreenChange = () => {
                     if (!document.fullscreenElement && isFullscreenActive.value) {
                         isFullscreenActive.value = false;
@@ -570,7 +584,17 @@
                 };
                 
                 const onIframeLoad = (moduleKey) => {
-                    console.log(`Module ${moduleKey} loaded`);
+                    const mod = activeModules.value.find(m => m.key === moduleKey);
+                    if (mod) mod.loadError = false;
+                    console.log(`✅ ${moduleKey} loaded`);
+                    showToast(`${moduleMeta[moduleKey]?.title} ready`, 'success');
+                };
+                
+                const onIframeError = (moduleKey) => {
+                    const mod = activeModules.value.find(m => m.key === moduleKey);
+                    if (mod) mod.loadError = true;
+                    console.error(`❌ Failed to load ${moduleKey}`);
+                    showToast(`Failed to load ${moduleMeta[moduleKey]?.title} - file missing`, 'error');
                 };
                 
                 const refreshData = () => {
@@ -601,7 +625,7 @@
                     actions[action]?.();
                 };
                 
-                const showToast = (message) => {
+                const showToast = (message, type = 'info') => {
                     toastMessage.value = message;
                     if (toastTimeout) clearTimeout(toastTimeout);
                     toastTimeout = setTimeout(() => {
@@ -618,6 +642,15 @@
                     mockInterval = setInterval(() => {
                         activeGuests.value = Math.floor(300 + Math.random() * 100);
                         walletVolume.value = Math.floor(25000 + Math.random() * 5000);
+                        if (Math.random() > 0.7) {
+                            const acts = ['Box Office ticket sold', 'Shisha session started', 'Locker registered', 'Pre-order fulfilled'];
+                            liveFeed.value.unshift({
+                                id: Date.now(),
+                                message: acts[Math.floor(Math.random() * acts.length)],
+                                time_ago: 'Just now'
+                            });
+                            if (liveFeed.value.length > 10) liveFeed.value.pop();
+                        }
                     }, 15000);
                 };
                 
@@ -646,7 +679,6 @@
                     activeModules,
                     isFullscreenActive,
                     fullscreenModule,
-                    fullscreenContainer,
                     currentTime,
                     activeGuests,
                     walletVolume,
@@ -657,8 +689,8 @@
                     switchRole,
                     enterFullscreenModule,
                     exitFullscreen,
-                    toggleGlobalFullscreen,
                     onIframeLoad,
+                    onIframeError,
                     refreshData,
                     showStaffInfo,
                     toggleRadialMenu,
