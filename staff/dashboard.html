@@ -113,11 +113,6 @@
             display: none;
         }
         
-        /* Fullscreen mode - hide everything except the fullscreen container */
-        body.fullscreen-active {
-            overflow: hidden;
-        }
-        
         .fullscreen-overlay {
             position: fixed;
             top: 0;
@@ -136,23 +131,6 @@
             border: none;
         }
         
-        /* Transparent double-tap catcher that sits on top of iframe but lets clicks pass through */
-        .double-tap-catcher {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: transparent;
-            z-index: 10001;
-            pointer-events: none; /* Let iframe receive all clicks/taps */
-        }
-        
-        /* But we need pointer-events: auto for double-tap detection? Actually, we want to detect double-tap without blocking iframe.
-           So we attach a second transparent overlay that captures taps but then passes them through? That's impossible.
-           Instead, we'll rely on document-level double-tap but also provide a visible exit button. Also listen for Esc key. */
-        
-        /* Better: Use a small exit button in bottom-right corner that is always visible */
         .fullscreen-exit-btn {
             position: fixed;
             bottom: 20px;
@@ -191,7 +169,6 @@
             z-index: 10001;
         }
         
-        /* Normal module container */
         .module-frame {
             width: 100%;
             height: auto;
@@ -434,47 +411,60 @@
     </div>
     
     <script>
-        const { createApp, ref, nextTick, onMounted, onUnmounted } = 
-// ============================================
-// CONFIGURE PATHS TO YOUR EXISTING UI FILES
-// ============================================
-const UI_PATHS = {
-    box_office: '/box-office.html',
-    scanner: '/express-scanner.html',
-    shisha_pos: '/shisha-pos.html',
-    shisha_console: '/shisha-console.html',
-    vvip_tab: '/vvip-tab.html',
-    booze_lockers: '/vault.html',
-    register_locker: '/register-locker.html',
-    locker_kiosk: '/locker-kiosk.html',        // fixed key name
-    pre_order_pos: '/pre-order-pos.html'
-};
-
-const roleModules = {
-    cashier: ['box_office'],
-    scanner: ['scanner'],
-    shisha_master: ['shisha_pos', 'shisha_console'],
-    vvip_concierge: ['vvip_tab'],
-    staff: [
-        'locker_kiosk', 'pre_order_pos',       // new modules first
-        'booze_lockers', 'register_locker',
-        'box_office', 'scanner',
-        'shisha_pos', 'shisha_console',
-        'vvip_tab'
-    ]
-};
-
-const moduleMeta = {
-    box_office: { title: '🎟️ BOX OFFICE', icon: 'fas fa-ticket-alt', src: UI_PATHS.box_office },
-    scanner: { title: '📱 MOBILE SCANNER', icon: 'fas fa-qrcode', src: UI_PATHS.scanner },
-    shisha_pos: { title: '💨 SHISHA POS', icon: 'fas fa-cash-register', src: UI_PATHS.shisha_pos },
-    shisha_console: { title: '🎮 SHISHA CONSOLE', icon: 'fas fa-gamepad', src: UI_PATHS.shisha_console },
-    vvip_tab: { title: '✨ VVIP TAB', icon: 'fas fa-star', src: UI_PATHS.vvip_tab },
-    booze_lockers: { title: '🍾 BOOZE LOCKERS', icon: 'fas fa-locker', src: UI_PATHS.booze_lockers },
-    register_locker: { title: '📝 REGISTER LOCKER', icon: 'fas fa-clipboard-list', src: UI_PATHS.register_locker },
-    locker_kiosk: { title: '🔐 LOCKER KIOSK', icon: 'fas fa-archive', src: UI_PATHS.locker_kiosk },
-    pre_order_pos: { title: '📦 PRE‑ORDER POS', icon: 'fas fa-shopping-cart', src: UI_PATHS.pre_order_pos }
-};
+        const { createApp, ref, nextTick, onMounted, onUnmounted } = Vue;
+        
+        // ============================================
+        // CONFIGURE PATHS TO YOUR EXISTING UI FILES
+        // ============================================
+        const UI_PATHS = {
+            box_office: '/box-office.html',
+            scanner: '/express-scanner.html',
+            shisha_pos: '/shisha-pos.html',
+            shisha_console: '/shisha-console.html',
+            vvip_tab: '/vvip-tab.html',
+            booze_lockers: '/vault.html',
+            register_locker: '/register-locker.html',
+            locker_kiosk: '/locker-kiosk.html',
+            pre_order_pos: '/pre-order-pos.html'
+        };
+        
+        const roleModules = {
+            cashier: ['box_office'],
+            scanner: ['scanner'],
+            shisha_master: ['shisha_pos', 'shisha_console'],
+            vvip_concierge: ['vvip_tab'],
+            staff: [
+                'locker_kiosk',
+                'pre_order_pos',
+                'booze_lockers',
+                'register_locker',
+                'box_office',
+                'scanner',
+                'shisha_pos',
+                'shisha_console',
+                'vvip_tab'
+            ]
+        };
+        
+        const moduleMeta = {
+            box_office: { title: '🎟️ BOX OFFICE', icon: 'fas fa-ticket-alt', src: UI_PATHS.box_office },
+            scanner: { title: '📱 MOBILE SCANNER', icon: 'fas fa-qrcode', src: UI_PATHS.scanner },
+            shisha_pos: { title: '💨 SHISHA POS', icon: 'fas fa-cash-register', src: UI_PATHS.shisha_pos },
+            shisha_console: { title: '🎮 SHISHA CONSOLE', icon: 'fas fa-gamepad', src: UI_PATHS.shisha_console },
+            vvip_tab: { title: '✨ VVIP TAB', icon: 'fas fa-star', src: UI_PATHS.vvip_tab },
+            booze_lockers: { title: '🍾 BOOZE LOCKERS', icon: 'fas fa-locker', src: UI_PATHS.booze_lockers },
+            register_locker: { title: '📝 REGISTER LOCKER', icon: 'fas fa-clipboard-list', src: UI_PATHS.register_locker },
+            locker_kiosk: { title: '🔐 LOCKER KIOSK', icon: 'fas fa-archive', src: UI_PATHS.locker_kiosk },
+            pre_order_pos: { title: '📦 PRE‑ORDER POS', icon: 'fas fa-shopping-cart', src: UI_PATHS.pre_order_pos }
+        };
+        
+        const roleNames = {
+            cashier: 'Cashier',
+            scanner: 'Scanner',
+            shisha_master: 'Shisha Master',
+            vvip_concierge: 'VVIP Concierge',
+            staff: 'Staff (Manager)'
+        };
         
         const staffNames = {
             cashier: 'Lisa',
@@ -491,12 +481,10 @@ const moduleMeta = {
                 const staffName = ref('Alex');
                 const activeModules = ref([]);
                 
-                // Fullscreen state
                 const isFullscreenActive = ref(false);
                 const fullscreenModule = ref(null);
                 const fullscreenContainer = ref(null);
                 
-                // UI state
                 const currentTime = ref('');
                 const activeGuests = ref(347);
                 const walletVolume = ref(28450);
@@ -513,13 +501,12 @@ const moduleMeta = {
                 let toastTimeout = null;
                 let timeInterval = null;
                 let mockInterval = null;
-                
-                // Double-tap detection for exit
                 let lastTap = 0;
+                
                 const onDoubleTap = (e) => {
                     if (!isFullscreenActive.value) return;
                     const now = Date.now();
-                    if (now - lastTap < 500) { // 500ms threshold
+                    if (now - lastTap < 500) {
                         e.preventDefault();
                         exitFullscreen();
                     }
@@ -543,7 +530,6 @@ const moduleMeta = {
                     fullscreenModule.value = module;
                     isFullscreenActive.value = true;
                     await nextTick();
-                    // Request fullscreen on the overlay container
                     const elem = document.querySelector('.fullscreen-overlay');
                     if (elem && elem.requestFullscreen) {
                         try {
@@ -578,7 +564,6 @@ const moduleMeta = {
                 
                 const onFullscreenChange = () => {
                     if (!document.fullscreenElement && isFullscreenActive.value) {
-                        // User exited via Esc or browser UI
                         isFullscreenActive.value = false;
                         fullscreenModule.value = null;
                     }
@@ -641,8 +626,6 @@ const moduleMeta = {
                     timeInterval = setInterval(updateTime, 1000);
                     startMockUpdates();
                     switchRole();
-                    
-                    // Attach double-tap listener to document (works even in fullscreen)
                     document.addEventListener('touchstart', onDoubleTap);
                     document.addEventListener('dblclick', onDoubleTap);
                     document.addEventListener('fullscreenchange', onFullscreenChange);
