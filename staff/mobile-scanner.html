@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0A0A0A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Rands Check-In | Premium PWA</title>
+    <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Rands%20Check-In%22,%22short_name%22:%22RandsCheck%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22%23000000%22,%22theme_color%22:%22%23ff2e2e%22,%22icons%22:[{%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ff2e2e'/%3E%3Ctext x='50' y='67' font-size='50' text-anchor='middle' fill='white'%3ER%3C/text%3E%3C/svg%3E%22,%22sizes%22:%22any%22,%22type%22:%22image/svg+xml%22}]}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #050505; overflow-x: hidden; }
+        .glass-panel { background: rgba(10,10,10,0.65); backdrop-filter: blur(16px); border: 1px solid rgba(255,45,45,0.25); border-radius: 2rem; }
+        .glass-card { background: rgba(15,15,20,0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,60,60,0.3); border-radius: 1.5rem; }
+        .scan-frame { position: absolute; top: 20%; left: 10%; width: 80%; height: 40%; border: 3px solid rgba(255,45,45,0.8); border-radius: 2rem; box-shadow: 0 0 30px rgba(255,0,0,0.5); animation: pulseScan 1.5s infinite; pointer-events: none; }
+        @keyframes pulseScan { 0% { opacity: 0.4; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1); } }
+        .vip-gold-border { border: 1px solid gold; background: linear-gradient(145deg, rgba(255,215,0,0.1), rgba(0,0,0,0.6)); box-shadow: 0 0 20px rgba(255,215,0,0.5); }
+        .vvip-cinematic { animation: vvipBurst 0.8s cubic-bezier(0.2,1.2,0.8,1); }
+        @keyframes vvipBurst { 0% { transform: scale(0.8); opacity: 0; filter: blur(4px); } 50% { transform: scale(1.05); box-shadow: 0 0 70px gold; } 100% { transform: scale(1); opacity: 1; } }
+        .shake-animation { animation: shakeErr 0.4s ease-in-out 0s 2; }
+        @keyframes shakeErr { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+        .sync-badge { background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); border-radius: 40px; padding: 6px 14px; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #ff2e2e; border-radius: 10px; }
+        button, .clickable { cursor: pointer; user-select: none; }
+    </style>
+</head>
+<body class="bg-black text-white">
+
+<div id="appView" class="relative pb-24">
+    <!-- Top bar with logo -->
+    <div class="fixed top-0 left-0 right-0 z-50 glass-panel rounded-none rounded-b-2xl px-5 py-3 flex justify-between items-center backdrop-blur-xl">
+        <div class="flex items-center gap-3">
+            <img src="../assets/images/rands-logo4.png" alt="Rands" class="h-8 w-auto" onerror="this.style.display='none'">
+            <span class="font-bold tracking-tight text-white">RANDS<span class="text-red-500">|OP</span></span>
+        </div>
+        <div class="flex gap-3 items-center">
+            <div id="syncStatusChip" class="sync-badge text-xs flex items-center gap-1"><i class="fas fa-cloud-arrow-up"></i> <span>Synced</span></div>
+            <i id="logoutIcon" class="fas fa-sign-out-alt text-red-400 text-xl cursor-pointer hover:text-red-300 transition"></i>
+        </div>
+    </div>
+
+    <div class="pt-20 px-4 md:px-6 pb-6">
+        <div class="glass-card p-4 mb-5 flex flex-wrap gap-3 justify-between items-center">
+            <div class="flex flex-col gap-1 w-full md:w-auto">
+                <label class="text-xs text-red-400 uppercase font-semibold">Active Event</label>
+                <select id="eventSelect" class="bg-black/60 border border-red-500/50 rounded-xl p-2 text-white"></select>
+            </div>
+            <div class="flex gap-3">
+                <div><label class="text-xs text-red-400">Gate</label><input id="gateInput" placeholder="Main Gate" class="bg-black/50 border border-red-400/40 rounded-xl p-2 w-28 text-sm"></div>
+                <div><label class="text-xs text-red-400">Shift</label><input id="shiftInput" placeholder="Evening" class="bg-black/50 border border-red-400/40 rounded-xl p-2 w-28 text-sm"></div>
+            </div>
+            <button id="refreshEventDataBtn" class="bg-red-600/30 hover:bg-red-600/60 p-2 rounded-xl transition"><i class="fas fa-sync-alt"></i></button>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="glass-card p-4 text-center"><i class="fas fa-user-check text-2xl text-red-400"></i><p class="text-2xl font-black" id="totalScanned">0</p><p class="text-xs">Scanned</p></div>
+            <div class="glass-card p-4 text-center"><i class="fas fa-users text-2xl text-white"></i><p class="text-2xl font-black" id="remainingGuests">0</p><p class="text-xs">Remaining</p></div>
+            <div class="glass-card p-4 text-center"><i class="fas fa-chart-line text-2xl text-red-400"></i><p class="text-2xl font-black" id="attPercent">0%</p><p class="text-xs">Attendance</p></div>
+            <div class="glass-card p-4 text-center"><i class="fas fa-hourglass-half text-2xl text-yellow-400"></i><p class="text-2xl font-black" id="pendingQueueCount">0</p><p class="text-xs">Pending Sync</p></div>
+        </div>
+        
+        <div class="glass-card p-4 mb-5">
+            <div class="flex justify-between border-b border-white/10 pb-2 mb-3"><span class="font-bold"><i class="fas fa-clock"></i> Live Activity Feed</span><span id="onlineStatusBadge" class="text-xs bg-green-800/60 px-2 py-1 rounded-full">🟢 Online</span></div>
+            <div id="recentScansList" class="space-y-2 max-h-48 overflow-y-auto text-sm"></div>
+        </div>
+
+        <div class="flex justify-center mt-2">
+            <button id="openScannerBtn" class="bg-red-600 hover:bg-red-700 text-white px-8 py-5 rounded-3xl shadow-2xl flex items-center gap-3 text-xl font-bold transition-all active:scale-95"><i class="fas fa-camera"></i> SCAN TICKET</button>
+        </div>
+        <div class="text-center text-gray-500 text-xs mt-4"><i class="fas fa-fingerprint"></i> offline-secure · instant validation</div>
+    </div>
+</div>
+
+<div id="scannerModal" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur-lg hidden flex-col items-center justify-center">
+    <div class="relative w-full h-full flex flex-col">
+        <div class="absolute top-5 right-5 z-20"><button id="closeScannerBtn" class="bg-red-500/70 w-12 h-12 rounded-full text-2xl"><i class="fas fa-times"></i></button></div>
+        <div class="absolute top-5 left-5 z-20 flex gap-2"><button id="torchToggle" class="bg-black/60 p-3 rounded-full"><i class="fas fa-lightbulb"></i></button><button id="switchCameraBtn" class="bg-black/60 p-3 rounded-full"><i class="fas fa-camera-retro"></i></button></div>
+        <div id="readerContainer" class="w-full h-full relative"></div>
+        <div class="absolute bottom-8 left-0 right-0 text-center"><input id="manualCodeInput" placeholder="Manual ticket code" class="glass-panel w-64 p-3 text-center text-sm rounded-full"><button id="manualSubmitBtn" class="bg-red-600 ml-2 px-5 py-3 rounded-full">ENTER</button></div>
+        <div class="scan-frame"></div>
+    </div>
+</div>
+
+<div id="resultModal" class="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md hidden items-center justify-center p-6">
+    <div id="resultCard" class="glass-card max-w-md w-full p-8 text-center transition-all"></div>
+</div>
+
+<script>
+    // ======================== SUPABASE CONFIG ========================
+    const supabaseUrl = 'https://fqbcidcezfprranfxhyj.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+    
+    // ======================== APP STATE ========================
+    let currentStaff = null;
+    let currentTenantId = null;
+    let currentEvent = null;
+    let syncQueueProcessing = false;
+    let html5QrScanner = null;
+    let db = null;
+    
+    // ======================== INDEXED DB (OFFLINE FIRST) ========================
+    const DB_NAME = 'RandsCheckInDB';
+    function initDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 3);
+            request.onupgradeneeded = (e) => {
+                const dbStore = e.target.result;
+                if (!dbStore.objectStoreNames.contains('tickets')) dbStore.createObjectStore('tickets', { keyPath: 'id' });
+                if (!dbStore.objectStoreNames.contains('syncQueue')) dbStore.createObjectStore('syncQueue', { keyPath: 'id', autoIncrement: true });
+                if (!dbStore.objectStoreNames.contains('scanHistory')) dbStore.createObjectStore('scanHistory', { keyPath: 'timestamp' });
+            };
+            request.onsuccess = () => { db = request.result; resolve(db); };
+            request.onerror = (err) => reject(err);
+        });
+    }
+    
+    async function storeTickets(eventId, ticketsArray) {
+        const tx = db.transaction('tickets', 'readwrite');
+        const store = tx.objectStore('tickets');
+        ticketsArray.forEach(t => store.put({ ...t, eventIdCache: eventId }));
+        return tx.done;
+    }
+    
+    async function getCachedTicketByCode(ticketCode, eventId) {
+        const tx = db.transaction('tickets', 'readonly');
+        const store = tx.objectStore('tickets');
+        return new Promise((resolve) => {
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result.find(t => t.ticket_code === ticketCode && t.event_id === eventId) || null);
+        });
+    }
+    
+    async function addToSyncQueue(scanData) {
+        const tx = db.transaction('syncQueue', 'readwrite');
+        const store = tx.objectStore('syncQueue');
+        await store.add({ ...scanData, synced: false, retries: 0, createdAt: Date.now() });
+        updateSyncBadge();
+    }
+    
+    async function getPendingSyncCount() {
+        const tx = db.transaction('syncQueue', 'readonly');
+        const store = tx.objectStore('syncQueue');
+        return new Promise((resolve) => {
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result.filter(i => !i.synced).length);
+        });
+    }
+    
+    async function processSyncQueue() {
+        if (!navigator.onLine || syncQueueProcessing) return;
+        syncQueueProcessing = true;
+        const tx = db.transaction('syncQueue', 'readwrite');
+        const store = tx.objectStore('syncQueue');
+        const all = await new Promise(resolve => { const req = store.getAll(); req.onsuccess = () => resolve(req.result); });
+        const pending = all.filter(i => !i.synced);
+        for (let item of pending) {
+            try {
+                await supabase.from('ticket_logs').insert({
+                    ticket_id: item.ticketId, event_id: item.eventId, status: 'checked_in',
+                    scanned_by: currentStaff?.id, gate: item.gate, scanned_at: item.scannedAt
+                });
+                await supabase.from('tickets').update({ status: 'used' }).eq('id', item.ticketId);
+                item.synced = true;
+                await store.put(item);
+            } catch (err) { console.error('sync fail', err); item.retries = (item.retries||0)+1; if(item.retries>5) item.synced=true; await store.put(item); }
+        }
+        syncQueueProcessing = false;
+        updateSyncBadge();
+        if(navigator.onLine && currentEvent) fetchEventAttendance(currentEvent.id);
+    }
+    
+    async function updateSyncBadge() {
+        const pending = await getPendingSyncCount();
+        document.getElementById('pendingQueueCount').innerText = pending;
+        const chip = document.getElementById('syncStatusChip');
+        if(pending>0 && !navigator.onLine) chip.innerHTML = '<i class="fas fa-database"></i> Offline Mode';
+        else if(pending>0 && navigator.onLine) chip.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Syncing...';
+        else chip.innerHTML = '<i class="fas fa-check-circle"></i> Synced';
+        document.getElementById('onlineStatusBadge').innerHTML = !navigator.onLine ? '🔴 Offline Mode' : '🟢 Live Sync';
+    }
+    
+    // ======================== LOAD EVENTS & TICKETS ========================
+    async function loadAssignedEvents() {
+        // If no tenant ID, try to fetch first tenant from tenants table (demo fallback)
+        if (!currentTenantId) {
+            const { data: tenants } = await supabase.from('tenants').select('id').limit(1);
+            if (tenants && tenants.length) {
+                currentTenantId = tenants[0].id;
+                console.warn('⚠️ No staff context – using first tenant:', currentTenantId);
+                // Create a dummy staff so sync works
+                currentStaff = { id: 'demo_staff', role: 'staff', tenantId: currentTenantId };
+            } else {
+                console.error('No tenants found in Supabase. Please set staff context via window.setStaffContext()');
+                return;
+            }
+        }
+        const { data: events, error } = await supabase.from('events').select('*').eq('tenant_id', currentTenantId);
+        if (error) { console.error('Failed to load events', error); return; }
+        const selectEl = document.getElementById('eventSelect');
+        selectEl.innerHTML = '<option disabled>Select event</option>';
+        events?.forEach(ev => { selectEl.innerHTML += `<option value="${ev.id}">${ev.name}</option>`; });
+        if(events?.length) {
+            currentEvent = events[0];
+            selectEl.value = events[0].id;
+            await cacheEventTickets(events[0].id);
+            await fetchEventAttendance(events[0].id);
+        }
+        selectEl.onchange = async (e) => {
+            currentEvent = events.find(ev => ev.id == e.target.value);
+            await cacheEventTickets(currentEvent.id);
+            await fetchEventAttendance(currentEvent.id);
+            updateDashboard();
+        };
+    }
+    
+    async function cacheEventTickets(eventId) {
+        const { data: tickets, error } = await supabase.from('tickets').select('id, ticket_code, status, customer_phone, ticket_type_id, event_id').eq('event_id', eventId);
+        if(!error && tickets) await storeTickets(eventId, tickets);
+        updateDashboard();
+    }
+    
+    async function fetchEventAttendance(eventId) {
+        if(!eventId) return;
+        const { count: usedCount } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', eventId).eq('status', 'used');
+        const { count: totalPaid } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', eventId).eq('status', 'paid');
+        const remaining = (totalPaid||0) - (usedCount||0);
+        document.getElementById('totalScanned').innerText = usedCount || 0;
+        document.getElementById('remainingGuests').innerText = remaining>=0?remaining:0;
+        const perc = totalPaid>0 ? Math.round(((usedCount||0)/totalPaid)*100) : 0;
+        document.getElementById('attPercent').innerText = `${perc}%`;
+    }
+    async function updateDashboard() { if(currentEvent) await fetchEventAttendance(currentEvent.id); updateSyncBadge(); }
+    
+    // ======================== TICKET VALIDATION & SCAN LOGIC ========================
+    async function processTicketScan(ticketCode) {
+        if(!currentEvent) { showResultModal('error', 'No event selected','Select an active event first'); return false; }
+        let ticket = await getCachedTicketByCode(ticketCode, currentEvent.id);
+        if(!ticket && navigator.onLine) {
+            const { data } = await supabase.from('tickets').select('*').eq('ticket_code', ticketCode).eq('event_id', currentEvent.id).single();
+            ticket = data;
+        }
+        if(!ticket) { showResultModal('invalid', 'Ticket not found','Invalid QR or wrong event'); return false; }
+        if(ticket.status === 'used') { showResultModal('used', 'Already Checked In', `Scanned earlier`); return false; }
+        if(ticket.status !== 'paid') { showResultModal('invalid', 'Ticket Invalid', `Status: ${ticket.status}. Requires paid reservation.`); return false; }
+        
+        let ticketType = 'Standard', isVip = false, isVvip = false;
+        if(ticket.ticket_type_id) {
+            const { data: tt } = await supabase.from('ticket_types').select('name,is_vip,is_vvip').eq('id', ticket.ticket_type_id).single();
+            if(tt) { ticketType = tt.name; isVip = tt.is_vip; isVvip = tt.is_vvip; }
+        }
+        const gateVal = document.getElementById('gateInput')?.value || 'Main';
+        const scannedAt = new Date().toISOString();
+        
+        // Immediate local update
+        const tx = db.transaction('tickets', 'readwrite');
+        const store = tx.objectStore('tickets');
+        await store.put({ ...ticket, status: 'used', localCheckedAt: scannedAt });
+        await addToSyncQueue({ ticketId: ticket.id, eventId: currentEvent.id, gate: gateVal, scannedAt, staffId: currentStaff?.id, ticketCode });
+        
+        const historyTx = db.transaction('scanHistory', 'readwrite');
+        await historyTx.objectStore('scanHistory').add({ ticketCode, guestName: ticket.customer_phone || 'Guest', ticketType, timestamp: Date.now(), vip: isVip, vvip: isVvip });
+        
+        showSuccessWithVIP(ticket, ticketType, isVip, isVvip, gateVal);
+        playSuccessSoundAndVibe(isVvip);
+        updateDashboard();
+        addRecentScanToFeed(ticketCode, ticketType, isVip);
+        if(navigator.onLine) processSyncQueue(); else updateSyncBadge();
+        return true;
+    }
+    
+    function showSuccessWithVIP(ticket, typeName, isVip, isVvip, gate) {
+        const vipClass = isVvip ? 'vvip-cinematic' : (isVip ? 'vip-gold-border' : '');
+        const content = `<div class="${vipClass} p-4 rounded-2xl"><i class="fas fa-check-circle text-6xl text-green-500 mb-3"></i><h2 class="text-3xl font-bold">CHECKED IN</h2><p class="text-xl">${ticket.ticket_code}</p><div class="mt-3 space-y-1"><p>🎟️ ${typeName} ${isVvip ? '👑 VVIP' : (isVip ? '✨ VIP' : 'Standard')}</p><p>⏱️ ${new Date().toLocaleTimeString()}</p><p>🚪 Gate: ${gate}</p><p>🛂 Staff: ${currentStaff?.id?.slice(-6) || 'demo'}</p></div>${isVvip ? '<div class="mt-3 text-gold text-sm">🌟 CINEMATIC ENTRANCE GRANTED</div>' : ''}</div>`;
+        document.getElementById('resultCard').innerHTML = content;
+        const modal = document.getElementById('resultModal');
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+        setTimeout(() => modal.classList.add('hidden'), isVvip ? 4000 : 2800);
+        if(isVvip) confettiBurst();
+    }
+    
+    function showResultModal(type, title, msg) {
+        const icon = type==='used' ? 'fa-circle-exclamation' : 'fa-times-circle';
+        document.getElementById('resultCard').innerHTML = `<i class="fas ${icon} text-7xl text-red-500 mb-4"></i><h2 class="text-3xl font-black">${title}</h2><p class="text-gray-300 mt-2">${msg}</p>`;
+        const modal = document.getElementById('resultModal');
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+        setTimeout(() => modal.classList.add('hidden'), 2000);
+        document.getElementById('resultCard')?.classList.add('shake-animation');
+        setTimeout(() => document.getElementById('resultCard')?.classList.remove('shake-animation'), 500);
+    }
+    
+    function playSuccessSoundAndVibe(isVvip) {
+        try { navigator.vibrate?.(isVvip ? [200,100,200] : 100); } catch(e){}
+        let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.frequency.value = isVvip ? 880 : 660;
+        gain.gain.value = 0.2;
+        osc.start(); gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
+        setTimeout(() => osc.stop(), 500);
+    }
+    
+    function confettiBurst() {
+        const canvas = document.createElement('canvas'); canvas.style.position='fixed'; canvas.style.top=0; canvas.style.left=0; canvas.style.pointerEvents='none'; canvas.style.zIndex=9999; document.body.appendChild(canvas);
+        if(typeof window.confetti === 'function') window.confetti({ particleCount: 300, spread: 120, origin: { y: 0.6 }, colors: ['#ff3333', '#ffffff', '#ffd700'] });
+        setTimeout(()=>canvas.remove(), 2000);
+    }
+    
+    function addRecentScanToFeed(code, type, vip) {
+        const feedDiv = document.getElementById('recentScansList');
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center border-b border-white/10 py-2';
+        item.innerHTML = `<div><span class="font-mono text-xs">${code.slice(-8)}</span><span class="ml-2 ${vip?'text-yellow-400':'text-white'}">${type}</span></div><span class="text-green-400 text-xs">✓ ${new Date().toLocaleTimeString()}</span>`;
+        feedDiv.prepend(item);
+        if(feedDiv.children.length > 12) feedDiv.removeChild(feedDiv.lastChild);
+    }
+    
+    // ======================== SCANNER MODULE ========================
+    async function initScanner() {
+        const readerContainer = document.getElementById('readerContainer');
+        if (!readerContainer) { alert("Scanner container missing"); return; }
+        if (html5QrScanner) {
+            try { await html5QrScanner.clear(); } catch(e) {}
+            html5QrScanner = null;
+        }
+        html5QrScanner = new Html5Qrcode("readerContainer");
+        const config = { fps: 10, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0 };
+        try {
+            await html5QrScanner.start({ facingMode: "environment" }, config, (decodedText) => {
+                if (decodedText) {
+                    closeScannerModal();
+                    processTicketScan(decodedText);
+                }
+            });
+        } catch (err) {
+            console.error("Scanner error:", err);
+            showResultModal('invalid', 'Camera Error', err.message || 'Could not access camera. Please check permissions.');
+            closeScannerModal();
+        }
+    }
+    
+    function closeScannerModal() {
+        document.getElementById('scannerModal').classList.add('hidden');
+        if (html5QrScanner) {
+            html5QrScanner.stop().catch(e => console.warn("Stop error", e));
+        }
+    }
+    
+    // ======================== EXTERNAL AUTH HOOK ========================
+    window.setStaffContext = (staffObject) => {
+        currentStaff = staffObject;
+        currentTenantId = staffObject.tenantId;
+        localStorage.setItem('staffContext', JSON.stringify(staffObject));
+        loadAssignedEvents();
+        updateDashboard();
+    };
+    
+    // ======================== WAKE LOCK & INIT ========================
+    let wakeLock = null;
+    const requestWakeLock = async () => { try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} };
+    document.addEventListener('visibilitychange', () => { if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock(); });
+    
+    window.addEventListener('load', async () => {
+        await initDB();
+        window.addEventListener('online', () => { updateSyncBadge(); processSyncQueue(); if(currentEvent) fetchEventAttendance(currentEvent.id); });
+        window.addEventListener('offline', () => updateSyncBadge());
+        
+        // Try to load stored staff, otherwise fallback to demo mode
+        const storedStaff = localStorage.getItem('staffContext');
+        if (storedStaff) {
+            const parsed = JSON.parse(storedStaff);
+            currentStaff = parsed;
+            currentTenantId = parsed.tenantId;
+            await loadAssignedEvents();
+        } else {
+            console.log("No staff context – attempting to load first tenant automatically (demo mode)");
+            await loadAssignedEvents(); // will fetch first tenant if needed
+        }
+        
+        // Attach button handlers
+        document.getElementById('openScannerBtn').onclick = () => {
+            document.getElementById('scannerModal').classList.remove('hidden');
+            initScanner();
+        };
+        document.getElementById('closeScannerBtn').onclick = closeScannerModal;
+        document.getElementById('manualSubmitBtn').onclick = () => {
+            const code = document.getElementById('manualCodeInput').value.trim();
+            if (code) { closeScannerModal(); processTicketScan(code); }
+        };
+        
+        // === LOGOUT: Redirect to login.html ===
+        document.getElementById('logoutIcon').onclick = () => {
+            localStorage.removeItem('staffContext');
+            currentStaff = null;
+            window.location.href = 'login.html';
+        };
+        
+        document.getElementById('refreshEventDataBtn').onclick = async () => {
+            if (currentEvent) await cacheEventTickets(currentEvent.id);
+            await fetchEventAttendance(currentEvent.id);
+        };
+        document.getElementById('torchToggle').onclick = () => alert("Torch supported only in some browsers. Use system flashlight if needed.");
+        document.getElementById('switchCameraBtn').onclick = async () => {
+            if (html5QrScanner) {
+                await html5QrScanner.stop();
+                await html5QrScanner.start({ facingMode: "user" }, { fps: 10, qrbox: 250 }, (txt) => processTicketScan(txt));
+            }
+        };
+        
+        setInterval(processSyncQueue, 15000);
+        requestWakeLock();
+    });
+</script>
+
+<!-- Simple confetti polyfill (optional) -->
+<script>
+    if (!window.confetti) {
+        window.confetti = () => console.log("Confetti would fire here");
+    }
+</script>
+
+<!-- Service Worker for offline caching -->
+<script>
+    if('serviceWorker' in navigator) {
+        const swCode = `self.addEventListener('install', e=>e.waitUntil(skipWaiting())); self.addEventListener('fetch', e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));`;
+        const blob = new Blob([swCode], {type: 'application/javascript'});
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.log);
+    }
+</script>
+</body>
+</html>
