@@ -1,1243 +1,669 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<title>Box Office POS - Linked with Event Manager</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<style>
-:root {
-  --primary: #E30613;
-  --primary-dark: #b3000c;
-  --success: #28a745;
-  --white: #ffffff;
-  --light-bg: #fef2f2;
-  --gray: #666;
-  --dark: #1a1a1a;
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-body {
-  background: linear-gradient(135deg, #E30613 0%, #ffffff 50%, #E30613 100%);
-  min-height: 100vh;
-  padding: 20px;
-}
-
-/* Connection Status Bar */
-.connection-bar {
-  background: var(--white);
-  border-radius: 30px;
-  padding: 12px 25px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 15px;
-  border: 1px solid rgba(227,6,19,0.2);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-}
-
-.connection-status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--success);
-  animation: pulse 1.5s infinite;
-}
-
-.status-text {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--dark);
-}
-
-.event-count {
-  background: var(--light-bg);
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 13px;
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.sync-btn {
-  background: var(--light-bg);
-  border: 1px solid var(--primary);
-  padding: 6px 15px;
-  border-radius: 30px;
-  cursor: pointer;
-  color: var(--primary);
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.sync-btn:hover {
-  background: var(--primary);
-  color: white;
-}
-
-@keyframes pulse {
-  0% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.9); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.ticketing-container {
-  width: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
-  gap: 25px;
-}
-
-/* Left Panel */
-.event-panel {
-  background: var(--white);
-  border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-  border: 1px solid rgba(227,6,19,0.2);
-}
-
-.event-selector {
-  margin-bottom: 25px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid rgba(227,6,19,0.2);
-}
-
-.event-selector label {
-  display: block;
-  font-weight: 600;
-  color: var(--dark);
-  margin-bottom: 8px;
-  font-size: 14px;
-}
-
-.event-selector select {
-  width: 100%;
-  padding: 12px 15px;
-  border: 2px solid #e0e0e0;
-  border-radius: 12px;
-  font-size: 16px;
-  background: white;
-  cursor: pointer;
-}
-
-.event-header {
-  margin-bottom: 25px;
-}
-
-.event-header h1 {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--primary);
-  margin-bottom: 8px;
-}
-
-.event-meta {
-  display: flex;
-  gap: 20px;
-  color: var(--gray);
-  font-size: 14px;
-  flex-wrap: wrap;
-}
-
-.event-image {
-  width: 100%;
-  height: 180px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  border-radius: 16px;
-  margin-bottom: 25px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 48px;
-  background-size: cover;
-  background-position: center;
-}
-
-.ticket-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-  margin-bottom: 30px;
-}
-
-.ticket-card {
-  background: var(--light-bg);
-  border-radius: 16px;
-  padding: 20px 15px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 2px solid transparent;
-}
-
-.ticket-card.selected {
-  border-color: var(--primary);
-  background: var(--white);
-  box-shadow: 0 10px 25px rgba(227,6,19,0.1);
-}
-
-.ticket-card.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.ticket-icon {
-  font-size: 32px;
-  margin-bottom: 12px;
-}
-
-.ticket-card h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--primary);
-  margin-bottom: 6px;
-}
-
-.ticket-price {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--primary);
-  margin: 10px 0;
-}
-
-.ticket-available {
-  font-size: 11px;
-  color: var(--primary);
-  background: var(--light-bg);
-  padding: 3px 10px;
-  border-radius: 30px;
-  display: inline-block;
-}
-
-.quantity-section {
-  background: var(--light-bg);
-  border-radius: 16px;
-  padding: 20px;
-}
-
-.quantity-controls {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  justify-content: center;
-  margin-top: 10px;
-}
-
-.quantity-btn {
-  width: 48px;
-  height: 48px;
-  border: 1px solid #ddd;
-  background: white;
-  border-radius: 12px;
-  font-size: 24px;
-  cursor: pointer;
-}
-
-.quantity-btn:hover:not(:disabled) {
-  background: var(--primary);
-  color: white;
-}
-
-.quantity-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.quantity-display {
-  font-size: 28px;
-  font-weight: 600;
-  min-width: 60px;
-  text-align: center;
-  color: var(--primary);
-}
-
-/* Right Panel */
-.checkout-panel {
-  background: var(--white);
-  border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-  position: sticky;
-  top: 20px;
-  border: 1px solid rgba(227,6,19,0.2);
-}
-
-.checkout-panel h2 {
-  color: var(--primary);
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 2px solid rgba(227,6,19,0.2);
-}
-
-.order-summary {
-  background: var(--light-bg);
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 30px;
-}
-
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px dashed rgba(227,6,19,0.2);
-}
-
-.summary-total {
-  display: flex;
-  justify-content: space-between;
-  padding: 15px 0 5px;
-  margin-top: 10px;
-  border-top: 2px solid var(--primary);
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--primary);
-}
-
-.auto-checkin-badge {
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  color: white;
-  padding: 12px 15px;
-  border-radius: 12px;
-  margin-bottom: 20px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.payment-section, .channel-section {
-  margin-bottom: 25px;
-}
-
-.payment-section h3, .channel-section h3 {
-  color: var(--dark);
-  font-size: 16px;
-  margin-bottom: 10px;
-}
-
-.payment-options, .channel-options {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.payment-option, .channel-option {
-  background: var(--light-bg);
-  border: 2px solid #eee;
-  border-radius: 12px;
-  padding: 12px;
-  text-align: center;
-  cursor: pointer;
-}
-
-.payment-option.selected, .channel-option.selected {
-  border-color: var(--primary);
-  background: var(--white);
-}
-
-.purchase-btn {
-  width: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  color: white;
-  border: none;
-  border-radius: 50px;
-  font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  margin-top: 15px;
-}
-
-.purchase-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Modal Styles */
-.modal {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.8);
-  z-index: 1000;
-  justify-content: center;
-  align-items: center;
-  backdrop-filter: blur(5px);
-}
-
-.modal.show {
-  display: flex;
-}
-
-.modal-container {
-  background: var(--white);
-  border-radius: 24px;
-  padding: 30px;
-  max-width: 400px;
-  width: 90%;
-  text-align: center;
-  border: 2px solid var(--primary);
-}
-
-.modal-container h3 {
-  font-size: 24px;
-  color: var(--primary);
-  margin-bottom: 10px;
-}
-
-.wallet-input-group {
-  margin-bottom: 20px;
-  text-align: left;
-}
-
-.wallet-input-group label {
-  display: block;
-  font-weight: 600;
-  color: var(--dark);
-  margin-bottom: 8px;
-}
-
-.wallet-input-group input {
-  width: 100%;
-  padding: 14px;
-  border: 2px solid #e0e0e0;
-  border-radius: 12px;
-  font-size: 16px;
-}
-
-.pin-display {
-  background: var(--light-bg);
-  padding: 15px;
-  border-radius: 12px;
-  margin: 15px 0;
-  text-align: center;
-}
-
-.pin-digits {
-  font-size: 32px;
-  letter-spacing: 12px;
-  font-weight: bold;
-  font-family: monospace;
-  color: var(--primary);
-}
-
-.pin-keypad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.pin-key {
-  padding: 15px;
-  background: var(--light-bg);
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-.modal-buttons {
-  display: flex;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.modal-btn {
-  flex: 1;
-  padding: 14px;
-  border: none;
-  border-radius: 30px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.modal-btn.confirm {
-  background: var(--primary);
-  color: white;
-}
-
-.modal-btn.cancel {
-  background: var(--light-bg);
-  color: var(--dark);
-}
-
-/* Wristband Modal */
-.wristband-modal {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.8);
-  z-index: 1000;
-  justify-content: center;
-  align-items: center;
-}
-
-.wristband-modal.show {
-  display: flex;
-}
-
-.wristband {
-  background: var(--white);
-  border-radius: 24px;
-  padding: 30px;
-  max-width: 450px;
-  width: 90%;
-  text-align: center;
-  position: relative;
-  border: 2px solid var(--primary);
-}
-
-.wristband-preview {
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  border-radius: 20px;
-  padding: 30px;
-  margin: 20px 0;
-  color: white;
-}
-
-.wristband-number {
-  font-size: 28px;
-  font-weight: 700;
-  margin: 15px 0;
-  font-family: monospace;
-  letter-spacing: 3px;
-}
-
-.checked-badge {
-  background: var(--success);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 30px;
-  display: inline-block;
-  font-size: 14px;
-  font-weight: 600;
-  margin-top: 15px;
-}
-
-.print-btn {
-  width: 100%;
-  padding: 14px;
-  background: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 30px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 15px;
-}
-
-.close-wristband {
-  position: absolute;
-  top: 15px;
-  right: 20px;
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--gray);
-}
-
-.toast {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  background: var(--white);
-  padding: 12px 20px;
-  border-radius: 50px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transform: translateX(400px);
-  transition: transform 0.3s;
-  z-index: 1100;
-  border-left: 4px solid var(--primary);
-}
-
-.toast.show {
-  transform: translateX(0);
-}
-
-@media (max-width: 900px) {
-  .ticketing-container { grid-template-columns: 1fr; }
-  .ticket-grid { grid-template-columns: 1fr; }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Box Office · Embedded Module</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    /* ---------- EMBEDDED MODULE BASE (identical to Pre-Order POS design system) ---------- */
+    :root {
+      --red: #E30613;
+      --red-dark: #a0010e;
+      --red-deep: #8A0009;
+      --red-glow: rgba(227,6,19,0.18);
+      --red-subtle: rgba(227,6,19,0.06);
+      --ink: #1e293b;
+      --ink-muted: #334155;
+      --slate: #475569;
+      --mist: #94a3b8;
+      --bone: #f8fafd;
+      --white: #ffffff;
+      --card-bg: #ffffff;
+      --border: rgba(0,0,0,0.07);
+      --border-strong: #eef2f8;
+      --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.12);
+      --shadow-card: 0 4px 24px rgba(0,0,0,0.08);
+      --shadow-float: 0 16px 48px rgba(0,0,0,0.14);
+      --radius-sm: 12px;
+      --radius-md: 20px;
+      --radius-lg: 28px;
+      --radius-xl: 32px;
+      --radius-full: 9999px;
+      --transition: all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* CRITICAL: iframe-ready body – no outer margins, transparent base, scroll only on demand */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      overflow-x: hidden;
+      background: var(--bone);   /* matches Staff Console background continuity */
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      min-height: 100%;
+      padding: 24px;            /* breathing space inside iframe – identical to Pre-Order POS */
+    }
+
+    /* consistent container pattern: dashboard grid (flexible columns) */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* card styling – matches Pre-Order POS exactly */
+    .card {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-soft);
+      transition: var(--transition);
+    }
+
+    .card-header {
+      padding: 20px 24px;
+      background: var(--white);
+      border-bottom: 2px solid var(--border-strong);
+      font-weight: 700;
+      font-size: 1.1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--ink);
+    }
+
+    .card-header i {
+      color: var(--red);
+      margin-right: 8px;
+    }
+
+    .card-body {
+      padding: 24px;
+    }
+
+    /* unified buttons (mirror pre-order POS) */
+    .btn-sm {
+      background: var(--bone);
+      border: 1px solid var(--border-strong);
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      color: var(--slate);
+    }
+
+    .btn-sm:hover {
+      background: var(--red-subtle);
+      border-color: var(--red);
+    }
+
+    .btn-primary {
+      background: var(--red);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: var(--radius-full);
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ticket grid – like POS items grid but for events */
+    .ticket-grid-embedded {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
+      margin-top: 8px;
+    }
+
+    .ticket-card-embedded {
+      background: var(--white);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 18px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .ticket-card-embedded:hover {
+      border-color: var(--red);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card);
+    }
+
+    .ticket-card-embedded.selected {
+      border: 2px solid var(--red);
+      background: var(--red-subtle);
+    }
+
+    .ticket-card-embedded.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .ticket-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .ticket-card-embedded h4 {
+      font-weight: 700;
+      margin: 8px 0 6px;
+      color: var(--ink);
+    }
+
+    .ticket-price {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--red);
+    }
+
+    .ticket-available {
+      font-size: 0.7rem;
+      background: var(--bone);
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      display: inline-block;
+      margin-top: 8px;
+    }
+
+    /* quantity selector same as POS style */
+    .quantity-section {
+      background: var(--bone);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .quantity-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 12px;
+    }
+
+    .quantity-btn {
+      width: 44px;
+      height: 44px;
+      background: var(--white);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-full);
+      font-size: 24px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition);
+      color: var(--red);
+    }
+
+    .quantity-btn:active { transform: scale(0.96); }
+    .quantity-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .quantity-display {
+      font-size: 28px;
+      font-weight: 800;
+      min-width: 60px;
+      color: var(--ink);
+    }
+
+    /* checkout panel summary */
+    .order-summary {
+      background: var(--bone);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px dashed var(--border-strong);
+      font-size: 0.9rem;
+    }
+
+    .summary-total {
+      display: flex;
+      justify-content: space-between;
+      padding: 16px 0 8px;
+      margin-top: 8px;
+      border-top: 2px solid var(--red);
+      font-weight: 800;
+      color: var(--red);
+      font-size: 1.1rem;
+    }
+
+    .payment-option-group, .channel-option-group {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .option-card {
+      background: var(--bone);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      font-weight: 500;
+    }
+
+    .option-card.selected {
+      border-color: var(--red);
+      background: var(--white);
+      box-shadow: 0 2px 8px var(--red-glow);
+    }
+
+    /* unified modal system (matching pre-order POS stunning popup style) */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .modal-card {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      max-width: 480px;
+      width: 90%;
+      padding: 32px 28px;
+      border: 2px solid var(--red);
+      box-shadow: var(--shadow-float);
+      animation: slideUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+
+    .pin-keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .pin-key {
+      background: var(--bone);
+      border: 1px solid var(--border-strong);
+      padding: 14px;
+      border-radius: var(--radius-full);
+      font-size: 1.4rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .wristband-preview {
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      text-align: center;
+      color: white;
+      margin: 20px 0;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .toast-embedded {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--ink);
+      color: white;
+      padding: 12px 20px;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 10001;
+      transform: translateX(400px);
+      transition: transform 0.25s ease;
+      font-size: 0.85rem;
+    }
+    .toast-embedded.show { transform: translateX(0); }
+
+    @media (max-width: 900px) {
+      .dashboard-grid { grid-template-columns: 1fr; gap: 20px; }
+      body { padding: 16px; }
+      .ticket-grid-embedded { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
 
-<!-- Connection Status Bar -->
-<div class="connection-bar">
-  <div class="connection-status">
-    <div class="status-dot"></div>
-    <div class="status-text">🔗 Connected Successfully)</div>
-    <div class="event-count" id="eventCountDisplay">0 events</div>
-  </div>
-  <button class="sync-btn" onclick="manualSync()">
-    <i class="fas fa-sync-alt"></i> Sync Now
-  </button>
-</div>
+<div class="dashboard-grid">
+  <!-- LEFT CARD: Event selector & ticket studio -->
+  <div class="card">
+    <div class="card-header">
+      <span><i class="fas fa-ticket-alt"></i> Event & Tickets</span>
+      <button class="btn-sm" id="syncEventsBtn"><i class="fas fa-sync-alt"></i> Sync</button>
+    </div>
+    <div class="card-body">
+      <div style="margin-bottom: 20px;">
+        <label style="font-weight:600; color:var(--ink); display:block; margin-bottom:8px;">📅 Select Event</label>
+        <select id="eventSelector" style="width:100%; padding:12px; border-radius:var(--radius-md); border:1px solid var(--border-strong); font-family:inherit;"></select>
+      </div>
 
-<div class="ticketing-container">
-  <!-- Left Panel -->
-  <div class="event-panel">
-    <div class="event-selector">
-      <label>Select Event</label>
-      <select id="eventSelector">
-        <option value="">Loading events...</option>
-      </select>
-    </div>
-    
-    <div class="event-header">
-      <h1 id="eventName">Select an Event</h1>
-      <div class="event-meta" id="eventMeta">
-        <span>📅 Select date</span>
-        <span>⏰ Select time</span>
-        <span>📍 Rands Cape Town</span>
+      <div id="eventDetails">
+        <div id="eventName" style="font-size:1.4rem; font-weight:800; color:var(--red); margin-bottom:6px;">—</div>
+        <div id="eventMeta" style="display:flex; gap:16px; flex-wrap:wrap; color:var(--slate); margin-bottom:20px;"></div>
       </div>
-    </div>
-    
-    <div class="event-image" id="eventImage">
-      <i class="fas fa-calendar-alt" style="font-size: 48px;"></i>
-    </div>
-    
-    <div class="ticket-grid" id="ticketGrid"></div>
-    
-    <div class="quantity-section">
-      <div style="text-align: center; margin-bottom: 10px; font-weight: 500;">Number of wristbands</div>
-      <div class="quantity-controls">
-        <button class="quantity-btn" id="decrementBtn">−</button>
-        <span class="quantity-display" id="quantityDisplay">1</span>
-        <button class="quantity-btn" id="incrementBtn">+</button>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Right Panel -->
-  <div class="checkout-panel">
-    <h2>Checkout</h2>
-    
-    <div class="auto-checkin-badge">
-      <i class="fas fa-check-circle"></i>
-      <span>Auto Check-in: Wristbands are automatically checked-in at purchase</span>
-    </div>
-    
-    <div class="order-summary">
-      <div class="summary-item"><span>Wristband Type:</span><span id="summaryTicket">-</span></div>
-      <div class="summary-item"><span>Price per wristband:</span><span id="summaryPrice">R0</span></div>
-      <div class="summary-item"><span>Quantity:</span><span id="summaryQuantity">1</span></div>
-      <div class="summary-total"><span>Total:</span><span id="summaryTotal">R0</span></div>
-    </div>
-    
-    <div class="payment-section">
-      <h3>Payment Method</h3>
-      <div class="payment-options">
-        <div class="payment-option" data-method="card"><div class="payment-icon">💳</div><div class="payment-name">Card</div></div>
-        <div class="payment-option" data-method="cash"><div class="payment-icon">💰</div><div class="payment-name">Cash</div></div>
-        <div class="payment-option selected" data-method="randswallet"><div class="payment-icon">👛</div><div class="payment-name">Rands Wallet</div></div>
-        <div class="payment-option" data-method="1voucher"><div class="payment-icon">🎫</div><div class="payment-name">1Voucher</div></div>
-      </div>
-    </div>
-    
-    <div class="channel-section">
-      <h3>Ticket Channel</h3>
-      <div class="channel-options">
-        <div class="channel-option" data-channel="online"><div class="channel-icon">💻</div><div class="channel-name">Online</div></div>
-        <div class="channel-option selected" data-channel="boxoffice"><div class="channel-icon">🏢</div><div class="channel-name">Box Office</div></div>
-        <div class="channel-option" data-channel="whatsapp"><div class="channel-icon">💬</div><div class="channel-name">WhatsApp</div></div>
-        <div class="channel-option" data-channel="sms"><div class="channel-icon">📱</div><div class="channel-name">SMS</div></div>
-      </div>
-    </div>
-    
-    <button class="purchase-btn" id="purchaseBtn">👛 Pay with Rands Wallet</button>
-  </div>
-</div>
 
-<!-- Rands Wallet Modal -->
-<div class="modal" id="walletModal">
-  <div class="modal-container">
-    <h3>👛 Rands Wallet</h3>
-    <p style="color: var(--gray); margin-bottom: 20px;">Enter your wallet credentials</p>
-    
-    <div class="wallet-input-group">
-      <label>Account ID</label>
-      <input type="text" id="walletAccountId" placeholder="e.g., Paradise, Wonderland">
-    </div>
-    
-    <div class="wallet-input-group">
-      <label>PIN (4 digits)</label>
-      <div class="pin-display">
-        <div class="pin-digits" id="pinDisplay">●●●●</div>
-      </div>
-      <div class="pin-keypad">
-        <button class="pin-key" data-digit="1">1</button><button class="pin-key" data-digit="2">2</button><button class="pin-key" data-digit="3">3</button>
-        <button class="pin-key" data-digit="4">4</button><button class="pin-key" data-digit="5">5</button><button class="pin-key" data-digit="6">6</button>
-        <button class="pin-key" data-digit="7">7</button><button class="pin-key" data-digit="8">8</button><button class="pin-key" data-digit="9">9</button>
-        <button class="pin-key" data-digit="0">0</button><button class="pin-key" id="pinClearBtn">⌫</button><button class="pin-key" id="pinClearAllBtn">C</button>
+      <div id="ticketGridContainer" class="ticket-grid-embedded"></div>
+
+      <div class="quantity-section">
+        <div style="font-weight:600;">🎟️ Number of wristbands</div>
+        <div class="quantity-controls">
+          <button class="quantity-btn" id="decrementQty">−</button>
+          <span class="quantity-display" id="quantityDisplay">1</span>
+          <button class="quantity-btn" id="incrementQty">+</button>
+        </div>
       </div>
     </div>
-    
-    <div class="wallet-balance" id="walletBalanceInfo" style="display: none;">
-      <div style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; padding: 12px; border-radius: 12px; margin: 10px 0;">
-        <div style="font-size: 12px;">Available Balance</div>
-        <div style="font-size: 24px; font-weight: 800;" id="walletBalanceAmount">R0.00</div>
-        <div style="font-size: 11px;" id="walletAccountName"></div>
-      </div>
+  </div>
+
+  <!-- RIGHT CARD: Checkout (mirror Pre-Order POS cart style) -->
+  <div class="card">
+    <div class="card-header">
+      <span><i class="fas fa-cash-register"></i> Checkout</span>
+      <span class="badge" style="background:var(--red-subtle); color:var(--red); padding:4px 12px; border-radius:var(--radius-full); font-size:0.7rem;">Auto check-in ✓</span>
     </div>
-    
-    <div class="modal-buttons">
-      <button class="modal-btn cancel" id="cancelWalletBtn">Cancel</button>
-      <button class="modal-btn confirm" id="confirmWalletBtn">Pay R<span id="paymentTotal">0</span></button>
+    <div class="card-body">
+      <div class="order-summary">
+        <div class="summary-item"><span>Wristband type:</span><span id="summaryTicketType">—</span></div>
+        <div class="summary-item"><span>Price each:</span><span id="summaryPrice">R0</span></div>
+        <div class="summary-item"><span>Quantity:</span><span id="summaryQty">1</span></div>
+        <div class="summary-total"><span>Total:</span><span id="summaryTotal">R0</span></div>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h4 style="margin-bottom: 12px; font-size:0.9rem;">💳 Payment method</h4>
+        <div class="payment-option-group" id="paymentMethodsGroup">
+          <div class="option-card" data-method="card">💳 Card</div>
+          <div class="option-card" data-method="cash">💰 Cash</div>
+          <div class="option-card selected" data-method="randswallet">👛 Rands Wallet</div>
+          <div class="option-card" data-method="1voucher">🎫 1Voucher</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 28px;">
+        <h4 style="margin-bottom: 12px; font-size:0.9rem;">📡 Channel</h4>
+        <div class="channel-option-group" id="channelGroup">
+          <div class="option-card" data-channel="online">💻 Online</div>
+          <div class="option-card selected" data-channel="boxoffice">🏢 Box Office</div>
+          <div class="option-card" data-channel="whatsapp">💬 WhatsApp</div>
+          <div class="option-card" data-channel="sms">📱 SMS</div>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="purchaseBtn" style="width:100%;">👛 Pay with Rands Wallet</button>
     </div>
   </div>
 </div>
 
-<!-- Wristband Modal -->
-<div class="wristband-modal" id="wristbandModal">
-  <div class="wristband">
-    <button class="close-wristband" id="closeWristbandBtn">&times;</button>
-    <div class="wristband-header">
-      <h2 id="modalEventName" style="color: var(--primary);">Event Name</h2>
-      <p id="modalEventDate" style="color: var(--gray);">Event Date</p>
+<!-- WALLET MODAL (stunning match) -->
+<div id="walletModal" style="display:none;" class="modal-overlay">
+  <div class="modal-card">
+    <h3 style="color:var(--red); margin-bottom:8px;">👛 Rands Wallet</h3>
+    <p style="color:var(--slate); margin-bottom:20px;">Enter credentials</p>
+    <div style="margin-bottom:16px;">
+      <label style="font-weight:600;">Account ID</label>
+      <input type="text" id="walletAccountId" placeholder="Paradise, Wonderland..." style="width:100%; padding:12px; border-radius:var(--radius-md); border:1px solid var(--border-strong); margin-top:6px;">
     </div>
-    <div class="wristband-preview" id="wristbandPreview">
-      <div class="wristband-logo" id="wristbandLogo" style="font-size: 48px;">🎫</div>
-      <div class="wristband-title" id="wristbandTitle" style="font-size: 20px; font-weight: 700;">RANDS EVENT</div>
-      <div class="wristband-number" id="wristbandNumber">RND0001</div>
+    <div>
+      <label style="font-weight:600;">PIN (4 digits)</label>
+      <div class="pin-display" style="background:var(--bone); padding:12px; border-radius:var(--radius-md); text-align:center; font-size:24px; letter-spacing:8px; margin:12px 0;" id="pinDisplay">••••</div>
+      <div class="pin-keypad" id="pinKeypad"></div>
+    </div>
+    <div id="walletBalanceInfo" style="display:none; background:var(--red-subtle); padding:12px; border-radius:var(--radius-md); margin:12px 0;">
+      <div>Available: <strong id="walletBalanceAmount">R0.00</strong></div>
+      <div id="walletAccountName" style="font-size:0.75rem;"></div>
+    </div>
+    <div style="display:flex; gap:12px; margin-top:12px;">
+      <button class="btn-sm" id="cancelWalletBtn" style="flex:1;">Cancel</button>
+      <button class="btn-primary" id="confirmWalletPaymentBtn" style="flex:1;">Pay R<span id="modalPaymentTotal">0</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- WRISTBAND MODAL -->
+<div id="wristbandModal" style="display:none;" class="modal-overlay">
+  <div class="modal-card" style="max-width:500px; text-align:center;">
+    <button id="closeWristbandBtn" style="float:right; background:none; border:none; font-size:24px; cursor:pointer;">&times;</button>
+    <div style="clear:both;"></div>
+    <h2 id="modalEventName" style="color:var(--red);">Rands Event</h2>
+    <p id="modalEventDate" style="color:var(--slate); margin-bottom:12px;"></p>
+    <div class="wristband-preview">
+      <div id="wristbandLogo" style="font-size:48px;">🎫</div>
+      <div id="wristbandTitle" style="font-weight:800; font-size:1.2rem;">RANDS</div>
+      <div id="wristbandNumber" style="font-size:28px; font-family:monospace; letter-spacing:2px; margin:12px 0;">RND0000</div>
       <div id="wristbandDetails"></div>
-      <div class="checked-badge"><i class="fas fa-check-circle"></i> CHECKED IN</div>
+      <div><i class="fas fa-check-circle"></i> CHECKED IN</div>
     </div>
-    <button class="print-btn" id="printWristbandBtn">🖨️ Print Wristband</button>
+    <button class="btn-primary" id="printWristbandBtn" style="width:100%; margin-top:16px;">🖨️ Print Wristband</button>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toastMsg" class="toast-embedded"></div>
 
 <script>
-// ========== SUPABASE CONFIGURATION ==========
-const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
-const TENANT_ID = '2059fdaf-27d1-499f-9045-5823137d33a2';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ========== RANDS WALLET (unchanged) ==========
-const WALLET_STORAGE_KEY = 'rands_bands';
-let walletAccounts = {
-  "Paradise": { balance: 1250.50, pin: "1234", name: "MZONKE BUYAPHI" },
-  "Wonderland": { balance: 3450.75, pin: "5678", name: "WONDERLAND VIP" },
-  "#SeeYourVibe": { balance: 5000, pin: "9012", name: "SEE YOUR VIBE" },
-  "KingKhanya": { balance: 2000, pin: "1989", name: "KING KHANYA" }
-};
-
-function loadWalletAccounts() {
-  const stored = localStorage.getItem(WALLET_STORAGE_KEY);
-  if (stored) walletAccounts = JSON.parse(stored);
-  else localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts));
-}
-
-function verifyWallet(accountId, pin) {
-  const account = walletAccounts[accountId];
-  if (!account) return { success: false, error: 'Account not found' };
-  if (account.pin !== pin) return { success: false, error: 'Incorrect PIN' };
-  return { success: true, account: account };
-}
-
-function processPayment(accountId, amount) {
-  const account = walletAccounts[accountId];
-  if (!account) return { success: false, error: 'Account not found' };
-  if (account.balance < amount) return { success: false, error: 'Insufficient balance' };
-  account.balance -= amount;
-  localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts));
-  return { success: true, newBalance: account.balance };
-}
-
-// ========== EVENT SYSTEM - SUPABASE DRIVEN ==========
-let events = [];
-let selectedEvent = null;
-let selectedTicketType = null;
-let ticketQuantity = 1;
-let selectedPaymentMethod = 'randswallet';
-let selectedChannel = 'boxoffice';
-let wristbandCounter = 1000;
-let currentPin = "";
-let pendingAmount = 0;
-
-const TICKET_TYPE_NAMES = {
-  earlyBird: { name: 'Early Bird', icon: '🐦' },
-  general: { name: 'General Admission', icon: '🎫' },
-  vip: { name: 'VIP Experience', icon: '⭐' }
-};
-
-// Fetch events from Supabase
-async function loadEventsFromSupabase() {
-  try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('tenant_id', TENANT_ID)
-      .order('date', { ascending: true });
+  (function() {
+    // ========== ORIGINAL BUSINESS LOGIC (PRESERVED) ==========
+    const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
+    const TENANT_ID = '2059fdaf-27d1-499f-9045-5823137d33a2';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
-    if (error) throw error;
-    events = data || [];
-    console.log(`✅ Loaded ${events.length} events from Supabase`);
-    saveEventsToLocalCache();
-    populateEventSelector();
-    updateEventCountDisplay();
+    // Wallet accounts (local)
+    const WALLET_STORAGE_KEY = 'rands_bands';
+    let walletAccounts = {
+      "Paradise": { balance: 1250.50, pin: "1234", name: "MZONKE BUYAPHI" },
+      "Wonderland": { balance: 3450.75, pin: "5678", name: "WONDERLAND VIP" },
+      "#SeeYourVibe": { balance: 5000, pin: "9012", name: "SEE YOUR VIBE" },
+      "KingKhanya": { balance: 2000, pin: "1989", name: "KING KHANYA" }
+    };
+    function loadWalletAccounts() { const stored = localStorage.getItem(WALLET_STORAGE_KEY); if (stored) walletAccounts = JSON.parse(stored); else localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts)); }
+    function verifyWallet(accountId, pin) { const acc = walletAccounts[accountId]; if (!acc) return { success: false, error: 'Account not found' }; if (acc.pin !== pin) return { success: false, error: 'Incorrect PIN' }; return { success: true, account: acc }; }
+    function processPayment(accountId, amount) { const acc = walletAccounts[accountId]; if (!acc) return { success: false, error: 'Account not found' }; if (acc.balance < amount) return { success: false, error: 'Insufficient balance' }; acc.balance -= amount; localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts)); return { success: true, newBalance: acc.balance }; }
     
-    // If an event was selected previously, try to reselect it
-    if (selectedEvent) {
-      const stillExists = events.find(e => e.id === selectedEvent.id);
-      if (stillExists) {
-        selectedEvent = stillExists;
-        loadEventDetails();
-      } else {
-        resetDisplay();
-        selectedEvent = null;
-        document.getElementById('eventSelector').value = '';
-      }
+    let events = [];
+    let selectedEvent = null, selectedTicketType = null, ticketQuantity = 1, selectedPaymentMethod = 'randswallet', selectedChannel = 'boxoffice';
+    let wristbandCounter = 1000;
+    let currentPinInput = "", pendingAmount = 0;
+    const TICKET_TYPE_NAMES = { earlyBird: { name: 'Early Bird', icon: '🐦' }, general: { name: 'General Admission', icon: '🎫' }, vip: { name: 'VIP Experience', icon: '⭐' } };
+    
+    function formatDate(dateStr) { if(!dateStr) return ''; return new Date(dateStr).toLocaleDateString('en-ZA', { year:'numeric', month:'short', day:'numeric' }); }
+    function showToast(msg, type='info') { const toast = document.getElementById('toastMsg'); toast.innerHTML = `<i class="fas ${type==='success'?'fa-check-circle':'fa-exclamation-circle'}"></i> ${msg}`; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3000); }
+    
+    async function loadEventsFromSupabase() {
+      try {
+        const { data, error } = await supabase.from('events').select('*').eq('tenant_id', TENANT_ID).order('date', { ascending: true });
+        if (error) throw error;
+        events = data || [];
+        localStorage.setItem('rands_events_cache', JSON.stringify(events));
+        populateEventSelector();
+        document.getElementById('eventCountDisplay') && (document.getElementById('eventCountDisplay').textContent = `${events.length} events`);
+        if (selectedEvent) { const still = events.find(e=>e.id===selectedEvent.id); if(still) { selectedEvent=still; loadEventDetails(); } else resetDisplay(); }
+        else resetDisplay();
+      } catch(err) { console.error(err); showToast('Failed to load events', 'error'); const cached = localStorage.getItem('rands_events_cache'); if(cached) { events=JSON.parse(cached); populateEventSelector(); } }
     }
-  } catch (err) {
-    console.error('Supabase fetch error:', err);
-    showToast('❌ Failed to load events from database', 'error');
-    // Fallback to local cache if available
-    const cached = localStorage.getItem('rands_events_cache');
-    if (cached) {
-      events = JSON.parse(cached);
-      populateEventSelector();
-      updateEventCountDisplay();
-      showToast('⚠️ Using cached events (offline mode)', 'info');
+    
+    function populateEventSelector() {
+      const selector = document.getElementById('eventSelector');
+      selector.innerHTML = '<option value="">Select an event</option>';
+      events.forEach(ev => { const opt = document.createElement('option'); opt.value=ev.id; opt.textContent = `${ev.status==='active'?'✅':'📅'} ${ev.name} - ${formatDate(ev.date)}`; selector.appendChild(opt); });
     }
-  }
-}
-
-// Cache events locally for offline fallback
-function saveEventsToLocalCache() {
-  localStorage.setItem('rands_events_cache', JSON.stringify(events));
-}
-
-function updateEventCountDisplay() {
-  const activeCount = events.filter(e => e.status === 'active').length;
-  const totalCount = events.length;
-  document.getElementById('eventCountDisplay').textContent = `${totalCount} events (${activeCount} active)`;
-}
-
-function manualSync() {
-  loadEventsFromSupabase();
-  showToast('🔄 Syncing events from Supabase...', 'info');
-}
-
-function populateEventSelector() {
-  const selector = document.getElementById('eventSelector');
-  selector.innerHTML = '<option value="">Select an event</option>';
-  
-  events.forEach(event => {
-    const option = document.createElement('option');
-    option.value = event.id;
-    const statusIcon = event.status === 'active' ? '✅' : '📅';
-    option.textContent = `${statusIcon} ${event.name} - ${formatDate(event.date)}`;
-    selector.appendChild(option);
-  });
-}
-
-function formatDate(dateString) {
-  if (!dateString) return '';
-  return new Date(dateString).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-document.getElementById('eventSelector').addEventListener('change', (e) => {
-  const eventId = e.target.value;
-  if (eventId) {
-    selectedEvent = events.find(ev => ev.id === eventId);
-    loadEventDetails();
-  } else {
-    selectedEvent = null;
-    resetDisplay();
-  }
-});
-
-function loadEventDetails() {
-  if (!selectedEvent) return;
-  
-  document.getElementById('eventName').textContent = selectedEvent.name;
-  document.getElementById('eventMeta').innerHTML = `
-    <span>📅 ${formatDate(selectedEvent.date)} at ${selectedEvent.time || '--:--'}</span>
-    <span>📍 ${selectedEvent.location || 'Rands Cape Town'}</span>
-    <span>🎫 ${selectedEvent.status === 'active' ? 'On Sale Now' : 'Past Event'}</span>
-  `;
-  
-  renderTickets();
-}
-
-function renderTickets() {
-  const grid = document.getElementById('ticketGrid');
-  const types = ['earlyBird', 'general', 'vip'];
-  
-  grid.innerHTML = types.map(key => {
-    const ticket = selectedEvent.ticketTypes?.[key] || { price: 0, capacity: 0, sold: 0 };
-    const available = ticket.capacity - (ticket.sold || 0);
-    const isAvailable = available > 0 && selectedEvent.status === 'active';
-    const typeInfo = TICKET_TYPE_NAMES[key];
     
-    return `
-      <div class="ticket-card ${!isAvailable ? 'disabled' : ''}" 
-           data-type="${key}" 
-           data-name="${typeInfo.name}" 
-           data-price="${ticket.price}" 
-           data-available="${available}">
-        <div class="ticket-icon">${typeInfo.icon}</div>
-        <h3>${typeInfo.name}</h3>
-        <div class="ticket-price">R${ticket.price}</div>
-        <span class="ticket-available">${available} left</span>
-      </div>
-    `;
-  }).join('');
-  
-  document.querySelectorAll('.ticket-card:not(.disabled)').forEach(card => {
-    card.addEventListener('click', () => selectTicket(card));
-  });
-  
-  const firstAvailable = document.querySelector('.ticket-card:not(.disabled)');
-  if (firstAvailable) {
-    selectTicket(firstAvailable);
-  } else {
-    document.getElementById('purchaseBtn').disabled = true;
-  }
-}
-
-function selectTicket(card) {
-  document.querySelectorAll('.ticket-card').forEach(c => c.classList.remove('selected'));
-  card.classList.add('selected');
-  
-  selectedTicketType = {
-    key: card.dataset.type,
-    name: card.dataset.name,
-    price: parseInt(card.dataset.price),
-    available: parseInt(card.dataset.available)
-  };
-  
-  updateSummary();
-  updateQuantityLimit();
-  document.getElementById('purchaseBtn').disabled = false;
-}
-
-function updateQuantityLimit() {
-  const max = selectedTicketType ? selectedTicketType.available : 0;
-  document.getElementById('incrementBtn').disabled = ticketQuantity >= max;
-  document.getElementById('decrementBtn').disabled = ticketQuantity <= 1;
-}
-
-function updateSummary() {
-  if (!selectedTicketType) return;
-  document.getElementById('summaryTicket').textContent = selectedTicketType.name;
-  document.getElementById('summaryPrice').textContent = `R${selectedTicketType.price}`;
-  document.getElementById('summaryQuantity').textContent = ticketQuantity;
-  document.getElementById('summaryTotal').textContent = `R${selectedTicketType.price * ticketQuantity}`;
-}
-
-document.getElementById('incrementBtn').addEventListener('click', () => {
-  if (selectedTicketType && ticketQuantity < selectedTicketType.available) {
-    ticketQuantity++;
-    document.getElementById('quantityDisplay').textContent = ticketQuantity;
-    updateSummary();
-    updateQuantityLimit();
-  }
-});
-
-document.getElementById('decrementBtn').addEventListener('click', () => {
-  if (ticketQuantity > 1) {
-    ticketQuantity--;
-    document.getElementById('quantityDisplay').textContent = ticketQuantity;
-    updateSummary();
-    updateQuantityLimit();
-  }
-});
-
-// Payment method selection
-document.querySelectorAll('.payment-option').forEach(opt => {
-  opt.addEventListener('click', () => {
-    document.querySelectorAll('.payment-option').forEach(o => o.classList.remove('selected'));
-    opt.classList.add('selected');
-    selectedPaymentMethod = opt.dataset.method;
-    const btn = document.getElementById('purchaseBtn');
-    if (selectedPaymentMethod === 'randswallet') btn.innerHTML = '👛 Pay with Rands Wallet';
-    else if (selectedPaymentMethod === 'card') btn.innerHTML = '💳 Pay with Card';
-    else if (selectedPaymentMethod === 'cash') btn.innerHTML = '💰 Pay with Cash';
-    else btn.innerHTML = '🎫 Pay with 1Voucher';
-  });
-});
-
-// Channel selection
-document.querySelectorAll('.channel-option').forEach(opt => {
-  opt.addEventListener('click', () => {
-    document.querySelectorAll('.channel-option').forEach(o => o.classList.remove('selected'));
-    opt.classList.add('selected');
-    selectedChannel = opt.dataset.channel;
-  });
-});
-
-// Wallet Modal handlers
-let currentPinInput = "";
-
-function showWalletModal() {
-  pendingAmount = selectedTicketType.price * ticketQuantity;
-  document.getElementById('paymentTotal').textContent = pendingAmount.toFixed(2);
-  document.getElementById('walletAccountId').value = '';
-  currentPinInput = '';
-  updatePinDisplay();
-  document.getElementById('walletBalanceInfo').style.display = 'none';
-  document.getElementById('walletModal').classList.add('show');
-}
-
-function updatePinDisplay() {
-  const display = document.getElementById('pinDisplay');
-  let text = '';
-  for (let i = 0; i < 4; i++) text += i < currentPinInput.length ? '●' : '○';
-  display.textContent = text;
-}
-
-function addPinDigit(d) { if (currentPinInput.length < 4) { currentPinInput += d; updatePinDisplay(); } }
-function clearPin() { currentPinInput = currentPinInput.slice(0, -1); updatePinDisplay(); }
-function clearAllPin() { currentPinInput = ''; updatePinDisplay(); }
-
-document.querySelectorAll('.pin-key[data-digit]').forEach(btn => {
-  btn.addEventListener('click', () => addPinDigit(btn.dataset.digit));
-});
-document.getElementById('pinClearBtn').addEventListener('click', clearPin);
-document.getElementById('pinClearAllBtn').addEventListener('click', clearAllPin);
-document.getElementById('cancelWalletBtn').addEventListener('click', () => {
-  document.getElementById('walletModal').classList.remove('show');
-});
-
-document.getElementById('walletAccountId').addEventListener('input', function() {
-  const id = this.value.trim();
-  if (id && walletAccounts[id]) {
-    document.getElementById('walletBalanceInfo').style.display = 'block';
-    document.getElementById('walletBalanceAmount').textContent = `R${walletAccounts[id].balance.toFixed(2)}`;
-    document.getElementById('walletAccountName').textContent = `Account: ${walletAccounts[id].name}`;
-  } else {
-    document.getElementById('walletBalanceInfo').style.display = 'none';
-  }
-});
-
-function generateWristbandNumber() {
-  wristbandCounter++;
-  return `RND${wristbandCounter.toString().padStart(4, '0')}`;
-}
-
-function showToast(msg, type) {
-  const toast = document.getElementById('toast');
-  toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i><span>${msg}</span>`;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3000);
-}
-
-// Update Supabase with new sold count
-async function updateEventSoldInSupabase(eventId, ticketTypeKey, additionalSold) {
-  try {
-    // Fetch fresh event data to avoid race conditions
-    const { data: currentEvent, error: fetchError } = await supabase
-      .from('events')
-      .select('ticketTypes')
-      .eq('id', eventId)
-      .single();
-    
-    if (fetchError) throw fetchError;
-    
-    const updatedTicketTypes = { ...currentEvent.ticketTypes };
-    updatedTicketTypes[ticketTypeKey].sold = (updatedTicketTypes[ticketTypeKey].sold || 0) + additionalSold;
-    
-    const { error: updateError } = await supabase
-      .from('events')
-      .update({ ticketTypes: updatedTicketTypes })
-      .eq('id', eventId);
-    
-    if (updateError) throw updateError;
-    
-    // Also update local events array for immediate UI
-    const localEvent = events.find(e => e.id === eventId);
-    if (localEvent) {
-      localEvent.ticketTypes[ticketTypeKey].sold += additionalSold;
+    function loadEventDetails() {
+      if(!selectedEvent) return;
+      document.getElementById('eventName').textContent = selectedEvent.name;
+      document.getElementById('eventMeta').innerHTML = `<span>📅 ${formatDate(selectedEvent.date)} at ${selectedEvent.time||'--:--'}</span><span>📍 ${selectedEvent.location||'Rands Cape Town'}</span>`;
+      renderTicketGrid();
     }
-    saveEventsToLocalCache();
-    return true;
-  } catch (err) {
-    console.error('Failed to update event in Supabase:', err);
-    showToast('❌ Could not update ticket count. Please try again.', 'error');
-    return false;
-  }
-}
-
-async function completePurchase() {
-  const btn = document.getElementById('purchaseBtn');
-  const original = btn.innerHTML;
-  btn.innerHTML = 'Processing...';
-  btn.disabled = true;
-  
-  // First update Supabase with the sold tickets
-  const updateSuccess = await updateEventSoldInSupabase(selectedEvent.id, selectedTicketType.key, ticketQuantity);
-  if (!updateSuccess) {
-    btn.innerHTML = original;
-    btn.disabled = false;
-    return;
-  }
-  
-  // Generate wristbands
-  const wristbands = [];
-  for (let i = 0; i < ticketQuantity; i++) wristbands.push(generateWristbandNumber());
-  
-  // Show wristband
-  document.getElementById('wristbandNumber').textContent = wristbands[0];
-  document.getElementById('modalEventName').textContent = selectedEvent.name;
-  document.getElementById('modalEventDate').textContent = `${formatDate(selectedEvent.date)} at ${selectedEvent.time || '--:--'}`;
-  
-  const typeInfo = TICKET_TYPE_NAMES[selectedTicketType.key];
-  document.getElementById('wristbandLogo').textContent = typeInfo.icon;
-  document.getElementById('wristbandTitle').textContent = selectedEvent.name.toUpperCase().substring(0, 15);
-  
-  let details = `<div style="display:flex; justify-content:center; gap:20px; margin-top:10px; flex-wrap:wrap;">
-    <div><span style="opacity:0.8;">Type:</span><br><strong>${typeInfo.name}</strong></div>
-    <div><span style="opacity:0.8;">Qty:</span><br><strong>${ticketQuantity}</strong></div>
-    <div><span style="opacity:0.8;">Channel:</span><br><strong>${selectedChannel === 'boxoffice' ? 'Box Office' : selectedChannel}</strong></div>`;
-  if (ticketQuantity > 1) details += `<div><span style="opacity:0.8;">IDs:</span><br><strong>${wristbands.join(', ')}</strong></div>`;
-  details += `</div>`;
-  document.getElementById('wristbandDetails').innerHTML = details;
-  
-  document.getElementById('wristbandModal').classList.add('show');
-  
-  const methodNames = { card: 'Card', cash: 'Cash', randswallet: 'Rands Wallet', '1voucher': '1Voucher' };
-  showToast(`✅ ${methodNames[selectedPaymentMethod]} payment successful! ${ticketQuantity} × ${typeInfo.name}`, 'success');
-  
-  btn.innerHTML = original;
-  btn.disabled = false;
-  
-  // Refresh event details to show updated availability
-  await loadEventsFromSupabase(); // this will refresh the entire list
-  if (selectedEvent) {
-    const updatedEvent = events.find(e => e.id === selectedEvent.id);
-    if (updatedEvent) {
-      selectedEvent = updatedEvent;
-      loadEventDetails();
+    
+    function renderTicketGrid() {
+      const grid = document.getElementById('ticketGridContainer');
+      const types = ['earlyBird','general','vip'];
+      grid.innerHTML = types.map(key => {
+        const ticket = selectedEvent.ticketTypes?.[key] || { price:0, capacity:0, sold:0 };
+        const available = ticket.capacity - (ticket.sold||0);
+        const isActive = available>0 && selectedEvent.status==='active';
+        const info = TICKET_TYPE_NAMES[key];
+        return `<div class="ticket-card-embedded ${!isActive?'disabled':''}" data-type="${key}" data-price="${ticket.price}" data-available="${available}" data-name="${info.name}">
+          <div class="ticket-icon">${info.icon}</div>
+          <h4>${info.name}</h4>
+          <div class="ticket-price">R${ticket.price}</div>
+          <span class="ticket-available">${available} left</span>
+        </div>`;
+      }).join('');
+      document.querySelectorAll('.ticket-card-embedded:not(.disabled)').forEach(card => card.addEventListener('click', ()=>selectTicket(card)));
+      const firstAvail = document.querySelector('.ticket-card-embedded:not(.disabled)');
+      if(firstAvail) selectTicket(firstAvail);
+      else { selectedTicketType=null; updateSummary(); document.getElementById('purchaseBtn').disabled=true; }
     }
-  }
-  
-  // Reset quantity
-  ticketQuantity = 1;
-  document.getElementById('quantityDisplay').textContent = '1';
-  updateQuantityLimit();
-}
-
-function processRandsPayment() {
-  const accountId = document.getElementById('walletAccountId').value.trim();
-  const pin = currentPinInput;
-  
-  if (!accountId) { showToast('Enter Account ID', 'error'); return; }
-  if (pin.length !== 4) { showToast('Enter 4-digit PIN', 'error'); return; }
-  
-  const verify = verifyWallet(accountId, pin);
-  if (!verify.success) { showToast(`❌ ${verify.error}`, 'error'); clearAllPin(); return; }
-  
-  if (verify.account.balance < pendingAmount) {
-    showToast(`❌ Insufficient balance. Need R${pendingAmount.toFixed(2)}`, 'error');
-    return;
-  }
-  
-  const payment = processPayment(accountId, pendingAmount);
-  if (payment.success) {
-    document.getElementById('walletModal').classList.remove('show');
-    completePurchase();
-  } else {
-    showToast(`❌ ${payment.error}`, 'error');
-  }
-}
-
-document.getElementById('confirmWalletBtn').addEventListener('click', processRandsPayment);
-
-function processPurchase() {
-  if (!selectedEvent) { showToast('❌ Select an event', 'error'); return; }
-  if (selectedEvent.status !== 'active') { showToast('❌ Event is not active', 'error'); return; }
-  if (!selectedTicketType) { showToast('❌ Select a ticket type', 'error'); return; }
-  if (ticketQuantity > selectedTicketType.available) { showToast(`❌ Only ${selectedTicketType.available} tickets left`, 'error'); return; }
-  
-  if (selectedPaymentMethod === 'randswallet') {
-    showWalletModal();
-  } else {
-    if (confirm(`Pay R${selectedTicketType.price * ticketQuantity} with ${selectedPaymentMethod.toUpperCase()}?`)) {
-      completePurchase();
+    
+    function selectTicket(card) {
+      document.querySelectorAll('.ticket-card-embedded').forEach(c=>c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedTicketType = { key: card.dataset.type, name: card.dataset.name, price: parseInt(card.dataset.price), available: parseInt(card.dataset.available) };
+      updateSummary();
+      updateQuantityLimit();
+      document.getElementById('purchaseBtn').disabled=false;
     }
-  }
-}
-
-document.getElementById('purchaseBtn').addEventListener('click', processPurchase);
-document.getElementById('closeWristbandBtn').addEventListener('click', () => document.getElementById('wristbandModal').classList.remove('show'));
-document.getElementById('printWristbandBtn').addEventListener('click', () => window.print());
-
-window.addEventListener('click', (e) => {
-  if (e.target === document.getElementById('wristbandModal')) document.getElementById('wristbandModal').classList.remove('show');
-  if (e.target === document.getElementById('walletModal')) document.getElementById('walletModal').classList.remove('show');
-});
-
-function resetDisplay() {
-  document.getElementById('eventName').textContent = 'Select an Event';
-  document.getElementById('eventMeta').innerHTML = `<span>📅 Select date</span><span>⏰ Select time</span><span>📍 Rands Cape Town</span>`;
-  document.getElementById('eventImage').style.background = '';
-  document.getElementById('eventImage').innerHTML = '<i class="fas fa-calendar-alt" style="font-size: 48px;"></i>';
-  document.getElementById('ticketGrid').innerHTML = `<div class="ticket-card disabled"><div class="ticket-icon">🎟️</div><h3>Select an event</h3></div>`;
-  selectedTicketType = null;
-  document.getElementById('purchaseBtn').disabled = true;
-}
-
-// Real-time subscription for events table
-function subscribeToEvents() {
-  const channel = supabase
-    .channel('events-changes')
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'events',
-      filter: `tenant_id=eq.${TENANT_ID}`
-    }, (payload) => {
-      console.log('Real-time event update:', payload);
-      loadEventsFromSupabase(); // full refresh on any change
-    })
-    .subscribe();
-  return channel;
-}
-
-// Initialise everything
-loadWalletAccounts();
-loadEventsFromSupabase();
-subscribeToEvents();
+    
+    function updateQuantityLimit() {
+      const max = selectedTicketType ? selectedTicketType.available : 0;
+      document.getElementById('incrementQty').disabled = ticketQuantity >= max;
+      document.getElementById('decrementQty').disabled = ticketQuantity <= 1;
+    }
+    
+    function updateSummary() {
+      if(!selectedTicketType) { document.getElementById('summaryTicketType').textContent='—'; document.getElementById('summaryPrice').textContent='R0'; document.getElementById('summaryTotal').textContent='R0'; return; }
+      const total = selectedTicketType.price * ticketQuantity;
+      document.getElementById('summaryTicketType').textContent = selectedTicketType.name;
+      document.getElementById('summaryPrice').textContent = `R${selectedTicketType.price}`;
+      document.getElementById('summaryQty').textContent = ticketQuantity;
+      document.getElementById('summaryTotal').textContent = `R${total}`;
+    }
+    
+    document.getElementById('incrementQty').addEventListener('click',()=>{ if(selectedTicketType && ticketQuantity<selectedTicketType.available){ ticketQuantity++; document.getElementById('quantityDisplay').textContent=ticketQuantity; updateSummary(); updateQuantityLimit(); } });
+    document.getElementById('decrementQty').addEventListener('click',()=>{ if(ticketQuantity>1){ ticketQuantity--; document.getElementById('quantityDisplay').textContent=ticketQuantity; updateSummary(); updateQuantityLimit(); } });
+    
+    // payment/channel selection
+    document.querySelectorAll('#paymentMethodsGroup .option-card').forEach(opt=>opt.addEventListener('click',()=>{
+      document.querySelectorAll('#paymentMethodsGroup .option-card').forEach(o=>o.classList.remove('selected'));
+      opt.classList.add('selected'); selectedPaymentMethod = opt.dataset.method;
+      const btn = document.getElementById('purchaseBtn'); btn.innerHTML = selectedPaymentMethod==='randswallet'?'👛 Pay with Rands Wallet': selectedPaymentMethod==='card'?'💳 Pay with Card':'💰 Pay with '+selectedPaymentMethod;
+    }));
+    document.querySelectorAll('#channelGroup .option-card').forEach(opt=>opt.addEventListener('click',()=>{
+      document.querySelectorAll('#channelGroup .option-card').forEach(o=>o.classList.remove('selected'));
+      opt.classList.add('selected'); selectedChannel = opt.dataset.channel;
+    }));
+    
+    // Wallet modal
+    let walletModal = document.getElementById('walletModal');
+    function buildPinPad() { const pad = document.getElementById('pinKeypad'); const digits = ['1','2','3','4','5','6','7','8','9','0','⌫','C']; pad.innerHTML = digits.map(d => `<button class="pin-key" data-digit="${d}">${d}</button>`).join(''); }
+    function updatePinDisplayUI() { let txt=''; for(let i=0;i<4;i++) txt += i<currentPinInput.length?'●':'○'; document.getElementById('pinDisplay').textContent=txt; }
+    buildPinPad(); document.querySelectorAll('#pinKeypad .pin-key').forEach(btn=>btn.addEventListener('click',()=>{ const val=btn.dataset.digit; if(val==='⌫') currentPinInput=currentPinInput.slice(0,-1); else if(val==='C') currentPinInput=''; else if(currentPinInput.length<4) currentPinInput+=val; updatePinDisplayUI(); }));
+    document.getElementById('walletAccountId').addEventListener('input',function(){ const id=this.value.trim(); if(id && walletAccounts[id]){ document.getElementById('walletBalanceInfo').style.display='block'; document.getElementById('walletBalanceAmount').innerHTML=`R${walletAccounts[id].balance.toFixed(2)}`; document.getElementById('walletAccountName').innerHTML=walletAccounts[id].name; } else document.getElementById('walletBalanceInfo').style.display='none'; });
+    document.getElementById('cancelWalletBtn').addEventListener('click',()=>walletModal.style.display='none');
+    document.getElementById('confirmWalletPaymentBtn').addEventListener('click',()=>{ const accId=document.getElementById('walletAccountId').value.trim(); const pin=currentPinInput; if(!accId){ showToast('Enter Account ID','error');return; } if(pin.length!==4){ showToast('Enter 4-digit PIN','error');return; } const verify=verifyWallet(accId,pin); if(!verify.success){ showToast(verify.error,'error'); currentPinInput=''; updatePinDisplayUI(); return; } if(verify.account.balance<pendingAmount){ showToast(`Insufficient balance. Need R${pendingAmount.toFixed(2)}`,'error'); return; } const payment=processPayment(accId,pendingAmount); if(payment.success){ walletModal.style.display='none'; completePurchase(); } else showToast(payment.error,'error'); });
+    
+    async function updateEventSoldInSupabase(eventId,ticketTypeKey,additionalSold){
+      try{
+        const {data:curr,error:fetchErr}=await supabase.from('events').select('ticketTypes').eq('id',eventId).single();
+        if(fetchErr) throw fetchErr;
+        const updated={...curr.ticketTypes}; updated[ticketTypeKey].sold=(updated[ticketTypeKey].sold||0)+additionalSold;
+        await supabase.from('events').update({ticketTypes:updated}).eq('id',eventId);
+        const localEv=events.find(e=>e.id===eventId); if(localEv) localEv.ticketTypes[ticketTypeKey].sold+=additionalSold;
+        localStorage.setItem('rands_events_cache',JSON.stringify(events));
+        return true;
+      } catch(e){ showToast('Failed to update ticket count','error'); return false; }
+    }
+    
+    function generateWristbandNumber(){ wristbandCounter++; return `RND${wristbandCounter.toString().padStart(4,'0')}`; }
+    
+    async function completePurchase() {
+      if(!selectedEvent || !selectedTicketType) return;
+      const updateOk = await updateEventSoldInSupabase(selectedEvent.id, selectedTicketType.key, ticketQuantity);
+      if(!updateOk) return;
+      const wristbands = []; for(let i=0;i<ticketQuantity;i++) wristbands.push(generateWristbandNumber());
+      document.getElementById('wristbandNumber').textContent = wristbands[0];
+      document.getElementById('modalEventName').textContent = selectedEvent.name;
+      document.getElementById('modalEventDate').textContent = `${formatDate(selectedEvent.date)} at ${selectedEvent.time||'--:--'}`;
+      const typeIcon = TICKET_TYPE_NAMES[selectedTicketType.key].icon;
+      document.getElementById('wristbandLogo').textContent = typeIcon;
+      document.getElementById('wristbandTitle').textContent = selectedEvent.name.toUpperCase().substring(0,15);
+      let details = `<div style="display:flex; justify-content:center; gap:20px; margin-top:10px; flex-wrap:wrap;"><div><strong>${selectedTicketType.name}</strong></div><div>Qty: ${ticketQuantity}</div><div>${selectedChannel}</div>`;
+      if(ticketQuantity>1) details += `<div>IDs: ${wristbands.join(', ')}</div>`;
+      details += `</div>`;
+      document.getElementById('wristbandDetails').innerHTML = details;
+      document.getElementById('wristbandModal').style.display = 'flex';
+      showToast(`✅ ${selectedPaymentMethod.toUpperCase()} payment successful! ${ticketQuantity} × ${selectedTicketType.name}`, 'success');
+      await loadEventsFromSupabase();
+      if(selectedEvent){ const refreshed = events.find(e=>e.id===selectedEvent.id); if(refreshed){ selectedEvent=refreshed; loadEventDetails(); } }
+      ticketQuantity=1; document.getElementById('quantityDisplay').textContent='1'; updateSummary(); updateQuantityLimit();
+    }
+    
+    function showWalletModalFlow() { if(!selectedTicketType){ showToast('Select ticket type first','error'); return; } pendingAmount = selectedTicketType.price * ticketQuantity; document.getElementById('modalPaymentTotal').textContent=pendingAmount.toFixed(2); currentPinInput=''; updatePinDisplayUI(); document.getElementById('walletAccountId').value=''; document.getElementById('walletBalanceInfo').style.display='none'; walletModal.style.display='flex'; }
+    
+    document.getElementById('purchaseBtn').addEventListener('click', ()=>{
+      if(!selectedEvent){ showToast('Select an event','error'); return; }
+      if(selectedEvent.status!=='active'){ showToast('Event not active','error'); return; }
+      if(!selectedTicketType){ showToast('Select a ticket type','error'); return; }
+      if(ticketQuantity > selectedTicketType.available){ showToast(`Only ${selectedTicketType.available} tickets left`,'error'); return; }
+      if(selectedPaymentMethod === 'randswallet') showWalletModalFlow();
+      else if(confirm(`Pay R${selectedTicketType.price * ticketQuantity} with ${selectedPaymentMethod.toUpperCase()}?`)) completePurchase();
+    });
+    
+    document.getElementById('syncEventsBtn').addEventListener('click',()=>{ loadEventsFromSupabase(); showToast('Syncing events...','info'); });
+    document.getElementById('closeWristbandBtn').addEventListener('click',()=>document.getElementById('wristbandModal').style.display='none');
+    document.getElementById('printWristbandBtn').addEventListener('click',()=>window.print());
+    window.addEventListener('click',(e)=>{ if(e.target===document.getElementById('wristbandModal')) document.getElementById('wristbandModal').style.display='none'; if(e.target===walletModal) walletModal.style.display='none'; });
+    
+    document.getElementById('eventSelector').addEventListener('change',(e)=>{ const id=e.target.value; if(id){ selectedEvent=events.find(ev=>ev.id===id); loadEventDetails(); } else { selectedEvent=null; resetDisplay(); } });
+    function resetDisplay(){ document.getElementById('eventName').textContent='—'; document.getElementById('eventMeta').innerHTML=''; document.getElementById('ticketGridContainer').innerHTML='<div class="ticket-card-embedded disabled">Select an event first</div>'; selectedTicketType=null; updateSummary(); document.getElementById('purchaseBtn').disabled=true; }
+    
+    loadWalletAccounts();
+    loadEventsFromSupabase();
+    const eventChannel = supabase.channel('events-changes').on('postgres_changes',{event:'*',schema:'public',table:'events',filter:`tenant_id=eq.${TENANT_ID}`},()=>loadEventsFromSupabase()).subscribe();
+  })();
 </script>
 </body>
 </html>
