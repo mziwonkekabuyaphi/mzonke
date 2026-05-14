@@ -7,7 +7,464 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Supabase is now imported from local config file -->
+    <script type="module">
+        import { createClient } from '../config/supabase.js';
+        window.supabase = createClient();
+        // Then load the rest of the script (which uses window.supabase)
+        const script = document.createElement('script');
+        script.src = 'data:application/javascript,' + encodeURIComponent(`
+            // ========== SUPABASE CLIENT IS ALREADY SET ==========
+            const supabase = window.supabase;
+
+            // ========== GLOBAL STATE ==========
+            let currentUser = null;
+            let currentProfile = null;
+            let events = [];
+            let selectedEventId = null;
+            let foundWalletProfile = null;
+            let phoneDebounceTimer = null;
+            let isLoggedIn = false;
+
+            // ========== UTILITIES ==========
+            function showToast(msg, isError = false) {
+                const toast = document.getElementById('toastMsg');
+                if (!toast) return;
+                toast.textContent = msg;
+                toast.style.background = isError ? '#ef4444' : '#1e293b';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2600);
+            }
+
+            function generateTicketId() {
+                return 'TK' + Math.random().toString(36).substring(2, 10).toUpperCase();
+            }
+
+            function setIssueBtn(loading) {
+                const btn = document.getElementById('confirmIssueBtn');
+                if (!btn) return;
+                if (loading) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner"></span> Issuing…';
+                } else {
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> Issue to Wallet';
+                    btn.disabled = !foundWalletProfile;
+                }
+            }
+
+            // ========== AUTH & CUSTOMER STATS ==========
+            async function loadSession() {
+                console.log('🔐 Loading session...');
+                try {
+                    const { data: { session }, error } = await supabase.auth.getSession();
+                    if (error || !session) {
+                        console.warn('No active session');
+                        return false;
+                    }
+                    currentUser = session.user;
+                    isLoggedIn = true;
+                    console.log('✅ Logged in:', currentUser.email);
+
+                    // Fetch profile for customer name and phone
+                    const { data: profile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', currentUser.id)
+                        .single();
+                    if (!profileError && profile) {
+                        currentProfile = profile;
+                        document.getElementById('userNameStat').textContent = profile.name || profile.phone || currentUser.email;
+                    } else {
+                        document.getElementById('userNameStat').textContent = currentUser.email || 'Customer';
+                    }
+                    return true;
+                } catch (err) {
+                    console.error('❌ loadSession crash:', err);
+                    return false;
+                }
+            }
+
+            // Count tickets for the current customer only
+            async function refreshMyTicketCount() {
+                if (!currentProfile || !currentProfile.phone) {
+                    document.getElementById('myTicketCountStat').textContent = '0';
+                    return;
+                }
+                try {
+                    const { count, error } = await supabase
+                        .from('tickets')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('customer_phone', currentProfile.phone);
+                    if (!error) {
+                        document.getElementById('myTicketCountStat').textContent = count || 0;
+                    }
+                } catch (err) { console.error(err); }
+            }
+
+            // ========== LOAD EVENTS (global, no tenant) ==========
+            async function loadEvents() {
+                console.log('📅 Fetching events...');
+                const eventSelect = document.getElementById('eventSelectStore');
+                const modalEventSelect = document.getElementById('modalEventSelect');
+                const ticketsContainer = document.getElementById('ticketsContainerStore');
+
+                try {
+                    const { data, error } = await supabase
+                        .from('events')
+                        .select('*')
+                        .order('created_at', { ascending: false });
+
+                    if (error) throw error;
+                    events = data || [];
+                    console.log('✅ EVENTS LOADED (global):', events);
+
+                    document.getElementById('eventsCountStat').textContent = events.length;
+
+                    if (!events.length) {
+                        if (eventSelect) eventSelect.innerHTML = '<option value="">No events found</option>';
+                        if (modalEventSelect) modalEventSelect.innerHTML = '<option value="">No events found</option>';
+                        ticketsContainer.innerHTML = \`<div class="empty-state"><i class="fas fa-calendar-times"></i> No events</div>\`;
+                        return;
+                    }
+
+                    const optionsHtml = events.map(event => {
+                        const dateText = event.start_time ? new Date(event.start_time).toLocaleDateString() : 'TBA';
+                        return \`<option value="\${event.id}">\${event.name} — \${dateText}</option>\`;
+                    }).join('');
+
+                    if (eventSelect) {
+                        eventSelect.innerHTML = optionsHtml;
+                        eventSelect.disabled = false;
+                    }
+                    if (modalEventSelect) {
+                        modalEventSelect.innerHTML = '<option value="">Select event…</option>' + optionsHtml;
+                    }
+
+                    selectedEventId = events[0].id;
+                    if (eventSelect) eventSelect.value = selectedEventId;
+                    eventSelect.onchange = (e) => {
+                        selectedEventId = e.target.value;
+                        renderStoreTickets();
+                    };
+
+                    document.getElementById('issueTicketBtn').disabled = false;
+                    await renderStoreTickets();
+                } catch (err) {
+                    console.error('❌ loadEvents crash:', err);
+                    ticketsContainer.innerHTML = '<div class="empty-state">Failed to load events</div>';
+                }
+            }
+
+            // ========== TICKET TYPES ==========
+            async function loadTicketTypesForEvent(eventId) {
+                const select = document.getElementById('modalTicketTypeSelect');
+                if (!select) return;
+                if (!eventId) {
+                    select.innerHTML = '<option value="">Select event first…</option>';
+                    select.disabled = true;
+                    return;
+                }
+                select.disabled = true;
+                select.innerHTML = '<option>Loading…</option>';
+                try {
+                    const { data, error } = await supabase
+                        .from('ticket_types')
+                        .select('*')
+                        .eq('event_id', eventId)
+                        .order('price');
+                    if (error) throw error;
+                    const types = data || [];
+                    if (!types.length) {
+                        select.innerHTML = '<option value="">No ticket types</option>';
+                        select.disabled = true;
+                        return;
+                    }
+                    select.innerHTML = '<option value="">Select ticket type…</option>' +
+                        types.map(t => {
+                            const remaining = (t.capacity || 0) - (t.sold || 0);
+                            const soldOut = remaining <= 0;
+                            return \`<option value="\${t.id}" \${soldOut ? 'disabled' : ''}>\${t.name} — R\${Number(t.price).toLocaleString()} (\${remaining} left)</option>\`;
+                        }).join('');
+                    select.disabled = false;
+                } catch (err) {
+                    console.error(err);
+                    select.innerHTML = '<option value="">Error loading types</option>';
+                }
+            }
+
+            // ========== RENDER STORE ==========
+            async function renderStoreTickets() {
+                const container = document.getElementById('ticketsContainerStore');
+                if (!container) return;
+                if (!selectedEventId) {
+                    container.innerHTML = '<div class="empty-state">Select event</div>';
+                    return;
+                }
+                container.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading tickets...</div>';
+                try {
+                    const { data, error } = await supabase
+                        .from('ticket_types')
+                        .select('*')
+                        .eq('event_id', selectedEventId)
+                        .order('price');
+                    if (error) throw error;
+                    const types = data || [];
+                    if (!types.length) {
+                        container.innerHTML = '<div class="empty-state">No ticket types for this event</div>';
+                        return;
+                    }
+                    const html = types.map(tt => {
+                        const remaining = (tt.capacity || 0) - (tt.sold || 0);
+                        const soldOut = remaining <= 0;
+                        return \`
+                            <div class="ticket-card">
+                                <div class="ticket-header">
+                                    <div class="ticket-type">\${tt.name}</div>
+                                    <div class="ticket-price">R\${Number(tt.price).toLocaleString()}</div>
+                                    <div class="ticket-desc">Remaining: \${remaining}</div>
+                                </div>
+                                <div class="ticket-body">
+                                    <button type="button" class="buy-btn issue-type-btn" data-type-id="\${tt.id}" \${soldOut ? 'disabled' : ''}>
+                                        \${soldOut ? 'Sold Out' : 'Issue Ticket'}
+                                    </button>
+                                </div>
+                            </div>
+                        \`;
+                    }).join('');
+                    container.innerHTML = html;
+                    document.querySelectorAll('.issue-type-btn:not(:disabled)').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const typeId = btn.getAttribute('data-type-id');
+                            openIssueModal(selectedEventId, typeId);
+                        });
+                    });
+                } catch (err) {
+                    console.error(err);
+                    container.innerHTML = '<div class="empty-state">System crashed</div>';
+                }
+            }
+
+            // ========== LOOKUP CUSTOMER ==========
+            async function lookupCustomerByPhone(rawPhone) {
+                const status = document.getElementById('phoneLookupStatus');
+                const infoBox = document.getElementById('walletOwnerInfo');
+                const display = document.getElementById('walletOwnerDisplay');
+                const confirmBtn = document.getElementById('confirmIssueBtn');
+                foundWalletProfile = null;
+                if (confirmBtn) confirmBtn.disabled = true;
+                const phone = rawPhone.trim().replace(/\\s+/g, '');
+                if (phone.length < 7) {
+                    status.className = 'lookup-status';
+                    infoBox.style.display = 'none';
+                    return;
+                }
+                status.className = 'lookup-status loading';
+                status.textContent = '🔍 Looking up customer...';
+                try {
+                    const { data, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('phone', phone)
+                        .limit(1);
+                    if (error) console.error(error);
+                    if (!data || !data.length) {
+                        status.className = 'lookup-status notfound';
+                        status.textContent = '❌ Customer not found';
+                        return;
+                    }
+                    const profile = data[0];
+                    foundWalletProfile = profile;
+                    status.className = 'lookup-status found';
+                    status.textContent = '✅ Customer found';
+                    display.innerHTML = \`<strong>\${profile.name || 'Unnamed'}</strong><br><span>\${profile.phone || ''}</span>\`;
+                    infoBox.style.display = 'block';
+                    if (confirmBtn) confirmBtn.disabled = false;
+                } catch (err) { console.error(err); }
+            }
+
+            // ========== ISSUE MODAL ==========
+            function openIssueModal(presetEventId = null, presetTypeId = null) {
+                const modal = document.getElementById('issueTicketModal');
+                const modalEventSelect = document.getElementById('modalEventSelect');
+                const modalTypeSelect = document.getElementById('modalTicketTypeSelect');
+                const phoneInput = document.getElementById('customerPhone');
+                const status = document.getElementById('phoneLookupStatus');
+                const infoBox = document.getElementById('walletOwnerInfo');
+                const confirmBtn = document.getElementById('confirmIssueBtn');
+                foundWalletProfile = null;
+                if (phoneInput) phoneInput.value = '';
+                if (status) { status.className = 'lookup-status'; status.textContent = ''; }
+                if (infoBox) infoBox.style.display = 'none';
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Issue to Wallet';
+                }
+                if (presetEventId && modalEventSelect) {
+                    modalEventSelect.value = presetEventId;
+                    loadTicketTypesForEvent(presetEventId).then(() => {
+                        if (presetTypeId && modalTypeSelect) modalTypeSelect.value = presetTypeId;
+                    });
+                }
+                modal.classList.add('show');
+            }
+
+            function closeIssueModal() {
+                document.getElementById('issueTicketModal')?.classList.remove('show');
+                foundWalletProfile = null;
+            }
+
+            // ========== ISSUE TICKET ==========
+            async function issueTicketToWallet() {
+                const eventId = document.getElementById('modalEventSelect').value;
+                const typeId = document.getElementById('modalTicketTypeSelect').value;
+                const phone = document.getElementById('customerPhone').value.trim().replace(/\\s+/g, '');
+                if (!eventId) { showToast('Select event', true); return; }
+                if (!typeId) { showToast('Select ticket type', true); return; }
+                if (!foundWalletProfile) { showToast('Customer required', true); return; }
+                setIssueBtn(true);
+                try {
+                    const { error } = await supabase.from('tickets').insert({
+                        event_id: eventId,
+                        ticket_type_id: typeId,
+                        customer_phone: phone,
+                        status: 'issued',
+                        issued_by: currentUser?.id || null,
+                        issued_at: new Date().toISOString()
+                    });
+                    if (error) throw error;
+                    showToast('✅ Ticket issued');
+                    closeIssueModal();
+                    await renderStoreTickets();
+                    await refreshMyTicketCount();
+                } catch (err) {
+                    console.error(err);
+                    showToast('Failed: ' + err.message, true);
+                    setIssueBtn(false);
+                }
+            }
+
+            // ========== MY TICKETS MODAL (shows all tickets – admin view) ==========
+            async function renderMyTicketsModal() {
+                const container = document.getElementById('myTicketsList');
+                if (!container) return;
+                container.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+                try {
+                    const { data, error } = await supabase
+                        .from('tickets')
+                        .select(\`*, ticket_types(name, price)\`)
+                        .order('issued_at', { ascending: false });
+                    if (error) throw error;
+                    const tickets = data || [];
+                    if (!tickets.length) {
+                        container.innerHTML = '<div class="empty-state">No issued tickets</div>';
+                        return;
+                    }
+                    container.innerHTML = tickets.map(t => {
+                        const eventName = events.find(e => e.id === t.event_id)?.name || 'Unknown Event';
+                        return \`
+                            <div class="ticket-card-wallet">
+                                <div class="ticket-header-wallet">
+                                    <div class="event-name-tag">\${eventName}</div>
+                                    <div class="ticket-title">\${t.ticket_types?.name || 'Ticket'}</div>
+                                </div>
+                                <div class="qr-section">
+                                    <div style="font-size:0.8rem;">📱 \${t.customer_phone || ''}</div>
+                                    <div style="margin-top:10px;">\${t.status || 'issued'}</div>
+                                </div>
+                            </div>
+                        \`;
+                    }).join('');
+                } catch (err) {
+                    console.error(err);
+                    container.innerHTML = '<div class="empty-state">Failed loading tickets</div>';
+                }
+            }
+
+            function openMyTicketsModal() {
+                const modal = document.getElementById('myTicketsModal');
+                if (!modal) return;
+                renderMyTicketsModal();
+                modal.classList.add('show');
+            }
+
+            // ========== DELETE EVENT (ADMIN ONLY) ==========
+            async function deleteSelectedEvent() {
+                if (!selectedEventId) {
+                    showToast('No event selected', true);
+                    return;
+                }
+                const eventToDelete = events.find(e => e.id == selectedEventId);
+                if (!eventToDelete) return;
+                const confirmed = confirm(\`Delete event "\${eventToDelete.name}" and ALL its ticket types?\\n\\nTickets already issued for this event will prevent deletion unless your database has CASCADE DELETE.\`);
+                if (!confirmed) return;
+
+                try {
+                    // First delete ticket types (they have foreign key to events)
+                    const { error: typesError } = await supabase
+                        .from('ticket_types')
+                        .delete()
+                        .eq('event_id', selectedEventId);
+                    if (typesError) throw typesError;
+
+                    // Then delete the event
+                    const { error: eventError } = await supabase
+                        .from('events')
+                        .delete()
+                        .eq('id', selectedEventId);
+                    if (eventError) throw eventError;
+
+                    showToast('✅ Event and ticket types deleted');
+                    // Reload events and refresh UI
+                    await loadEvents();
+                    await refreshMyTicketCount();
+                } catch (err) {
+                    console.error(err);
+                    if (err.message.includes('foreign key')) {
+                        showToast('Cannot delete: there are issued tickets for this event. Remove tickets first or set up CASCADE.', true);
+                    } else {
+                        showToast('Delete failed: ' + err.message, true);
+                    }
+                }
+            }
+
+            // ========== EVENT LISTENERS ==========
+            function wireEvents() {
+                document.getElementById('myTicketsHeaderBtn')?.addEventListener('click', openMyTicketsModal);
+                document.getElementById('closeMyTicketsModal')?.addEventListener('click', () => {
+                    document.getElementById('myTicketsModal')?.classList.remove('show');
+                });
+                document.getElementById('issueTicketBtn')?.addEventListener('click', () => openIssueModal(selectedEventId));
+                document.getElementById('closeIssueModal')?.addEventListener('click', closeIssueModal);
+                document.getElementById('cancelIssueBtn')?.addEventListener('click', closeIssueModal);
+                document.getElementById('modalEventSelect')?.addEventListener('change', async e => {
+                    await loadTicketTypesForEvent(e.target.value);
+                    foundWalletProfile = null;
+                    document.getElementById('confirmIssueBtn').disabled = true;
+                });
+                document.getElementById('customerPhone')?.addEventListener('input', e => {
+                    clearTimeout(phoneDebounceTimer);
+                    foundWalletProfile = null;
+                    document.getElementById('confirmIssueBtn').disabled = true;
+                    phoneDebounceTimer = setTimeout(() => lookupCustomerByPhone(e.target.value), 600);
+                });
+                document.getElementById('confirmIssueBtn')?.addEventListener('click', issueTicketToWallet);
+                document.getElementById('deleteEventBtn')?.addEventListener('click', deleteSelectedEvent);
+            }
+
+            // ========== INIT ==========
+            async function init() {
+                console.log('🚀 Initializing (imported supabase from ../config/supabase.js)');
+                wireEvents();
+                const loggedIn = await loadSession();
+                if (loggedIn) {
+                    await refreshMyTicketCount();
+                }
+                await loadEvents();
+            }
+            init();
+        `);
+        document.body.appendChild(script);
+    </script>
     <style>
         /* ========== YOUR FULL STYLES (unchanged) ========== */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,15 +493,19 @@
         .stat-icon { width: 48px; height: 48px; background: var(--red-subtle); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--red); }
         .stat-info h3 { font-size: 0.75rem; font-weight: 600; color: var(--mist); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .stat-number { font-size: 1.4rem; font-weight: 800; color: var(--ink); line-height: 1.2; }
-        .stat-card.delete-card .stat-number { font-size: 0.9rem; display: flex; align-items: center; gap: 6px; color: var(--red); }
         .tabs-container { display: flex; gap: 10px; background: var(--white); padding: 5px; border-radius: 60px; margin: 0 16px 20px 16px; border: 1px solid var(--border-strong); }
         .tab-btn { flex: 1; padding: 10px 0; border-radius: 50px; border: none; font-weight: 700; font-size: 0.8rem; cursor: pointer; background: transparent; color: var(--slate); transition: var(--transition); font-family: 'Inter', sans-serif; }
         .tab-btn.active { background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; box-shadow: 0 2px 8px var(--red-glow); }
-        /* Removed store-header styles because we no longer have a dropdown */
+        .store-header { margin: 0 16px 16px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
+        .event-selector { background: var(--white); border: 1px solid var(--border-strong); border-radius: 60px; padding: 4px 12px; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+        .event-selector label { font-size: 0.7rem; font-weight: 600; color: var(--slate); white-space: nowrap; }
+        #eventSelectStore { background: var(--bone); border: none; padding: 8px 0; font-weight: 500; font-family: 'Inter', sans-serif; flex: 1; outline: none; font-size: 0.75rem; min-width: 0; width: auto; }
+        .delete-event-btn { background: rgba(227,6,19,0.1); border: 1px solid var(--red); color: var(--red); border-radius: 60px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition); flex-shrink: 0; }
+        .delete-event-btn:active { transform: scale(0.94); }
+        .issue-btn { background: linear-gradient(135deg, var(--red), var(--red-dark)); border: none; height: 44px; border-radius: 60px; color: white; font-size: 0.75rem; font-weight: 700; cursor: pointer; padding: 0 14px; white-space: nowrap; box-shadow: 0 2px 8px var(--red-glow); transition: var(--transition); flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+        .issue-btn:active { transform: scale(0.94); }
         .tickets-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 16px 20px 16px; }
-        .event-section { margin-bottom: 32px; }
-        .event-title { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 800; margin-bottom: 12px; padding-left: 4px; color: var(--ink); border-left: 4px solid var(--red); }
-        .ticket-card { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; border: 1px solid var(--border-strong); transition: var(--transition); box-shadow: var(--shadow-card); width: 100%; margin-bottom: 12px; }
+        .ticket-card { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; border: 1px solid var(--border-strong); transition: var(--transition); box-shadow: var(--shadow-card); width: 100%; }
         .ticket-card:active { transform: scale(0.99); }
         .ticket-header { padding: 16px; position: relative; }
         .ticket-header.early-bird { background: linear-gradient(135deg, #0ea5e9, #3b82f6); }
@@ -99,7 +560,7 @@
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .dropdown-loading { color: var(--mist); font-style: italic; font-size: 0.75rem; padding: 8px 0; }
-        @media (max-width: 480px) { .event-title { font-size: 1.2rem; } }
+        @media (max-width: 480px) { .event-selector label { font-size: 0.65rem; } #eventSelectStore { font-size: 0.7rem; } .issue-btn { padding: 0 10px; font-size: 0.7rem; } }
     </style>
 </head>
 <body>
@@ -121,23 +582,23 @@
 
 <div class="wallet-stats">
     <div class="stat-card">
-        <div class="stat-icon"><i class="fas fa-user-shield"></i></div>
+        <div class="stat-icon"><i class="fas fa-user"></i></div>
         <div class="stat-info">
-            <h3>Admin</h3>
-            <div class="stat-number" id="adminNameStat" style="font-size:1rem;">Demo Mode</div>
+            <h3>Customer</h3>
+            <div class="stat-number" id="userNameStat" style="font-size:1rem;">Loading...</div>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon"><i class="fas fa-ticket-alt"></i></div>
         <div class="stat-info">
-            <h3>Tickets Issued</h3>
-            <div class="stat-number" id="ticketCountStat">—</div>
+            <h3>My Tickets</h3>
+            <div class="stat-number" id="myTicketCountStat">—</div>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
         <div class="stat-info">
-            <h3>Events</h3>
+            <h3>All Events</h3>
             <div class="stat-number" id="eventsCountStat">—</div>
         </div>
     </div>
@@ -148,7 +609,20 @@
 </div>
 
 <div id="storePanel">
-    <!-- Removed event selector dropdown and global issue button -->
+    <div class="store-header">
+        <div class="event-selector">
+            <label><i class="fas fa-calendar-alt"></i> Event:</label>
+            <select id="eventSelectStore" disabled>
+                <option>Loading events…</option>
+            </select>
+        </div>
+        <div class="delete-event-btn" id="deleteEventBtn" title="Delete selected event (admin only)">
+            <i class="fas fa-trash-alt"></i>
+        </div>
+        <button class="issue-btn" id="issueTicketBtn" disabled>
+            <i class="fas fa-plus-circle"></i> Issue Ticket
+        </button>
+    </div>
     <div id="ticketsContainerStore" class="tickets-grid">
         <div class="empty-state"><i class="fas fa-calendar-alt" style="font-size:2rem;display:block;margin-bottom:10px;"></i>Loading events…</div>
     </div>
@@ -158,7 +632,7 @@
 <div class="modal-overlay" id="myTicketsModal">
     <div class="modal-card" style="padding:0;">
         <div style="padding: 16px; background: linear-gradient(135deg, var(--red), var(--red-dark)); border-radius: 28px 28px 0 0; display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="color: white; font-size: 1.1rem;"><i class="fas fa-ticket-alt"></i> Issued Tickets</h3>
+            <h3 style="color: white; font-size: 1.1rem;"><i class="fas fa-ticket-alt"></i> Issued Tickets (All)</h3>
             <button id="closeMyTicketsModal" style="background: rgba(255,255,255,0.2); border: none; width: 32px; height: 32px; border-radius: 50%; color: white; cursor: pointer; font-size: 1.2rem; line-height:1;">&times;</button>
         </div>
         <div id="myTicketsList" style="padding: 16px;"></div>
@@ -205,493 +679,5 @@
 </div>
 
 <div id="toastMsg" class="toast-msg"></div>
-
-<script>
-// ========== SUPABASE CONNECTION ==========
-const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-const supabase = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY
-);
-
-// ========== GLOBAL STATE ==========
-let currentUser = null;
-let currentProfile = null;
-let events = [];
-let foundWalletProfile = null;
-let phoneDebounceTimer = null;
-let isLoggedIn = false;
-
-// ========== UTILITIES ==========
-function showToast(msg, isError = false) {
-    const toast = document.getElementById('toastMsg');
-    if (!toast) return;
-
-    toast.textContent = msg;
-    toast.style.background = isError ? '#ef4444' : '#1e293b';
-    toast.classList.add('show');
-
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 2600);
-}
-
-function generateTicketId() {
-    return 'TK' + Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-function setIssueBtn(loading) {
-    const btn = document.getElementById('confirmIssueBtn');
-    if (!btn) return;
-
-    if (loading) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Issuing…';
-    } else {
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Issue to Wallet';
-        btn.disabled = !foundWalletProfile;
-    }
-}
-
-// ========== AUTH ==========
-async function loadSession() {
-    console.log('🔐 Loading session...');
-
-    try {
-        const {
-            data: { session },
-            error
-        } = await supabase.auth.getSession();
-
-        if (error) {
-            console.error('❌ Session error:', error);
-            return false;
-        }
-
-        if (!session) {
-            console.warn('⚠️ No active session');
-            return false;
-        }
-
-        currentUser = session.user;
-        isLoggedIn = true;
-
-        console.log('✅ Logged in:', currentUser.email);
-
-        const adminStat = document.getElementById('adminNameStat');
-        if (adminStat) {
-            adminStat.textContent =
-                currentUser.email || 'Admin';
-        }
-
-        return true;
-
-    } catch (err) {
-        console.error('❌ loadSession crash:', err);
-        return false;
-    }
-}
-
-// ========== LOAD EVENTS (no dropdown, just store events & render) ==========
-async function loadEvents() {
-    console.log('📅 Fetching events...');
-
-    const ticketsContainer = document.getElementById('ticketsContainerStore');
-
-    try {
-        const { data, error } = await supabase
-            .from('events')
-            .select('*')
-            .order('start_time', { ascending: false, nullsLast: true }) // latest event first, fallback to created_at? we keep start_time
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.error('❌ Events fetch error:', error);
-            ticketsContainer.innerHTML = `
-                <div class="empty-state">
-                    Failed to load events
-                    <br><br>
-                    ${error.message}
-                </div>
-            `;
-            return;
-        }
-
-        events = data || [];
-        console.log('✅ EVENTS LOADED:', events);
-
-        // Update events count stat
-        const countEl = document.getElementById('eventsCountStat');
-        if (countEl) countEl.textContent = events.length;
-
-        // Populate modal event select (needed for issuing from modal)
-        const modalEventSelect = document.getElementById('modalEventSelect');
-        if (modalEventSelect) {
-            if (!events.length) {
-                modalEventSelect.innerHTML = '<option value="">No events found</option>';
-            } else {
-                const optionsHtml = events.map(event => {
-                    const dateText = event.start_time ? new Date(event.start_time).toLocaleDateString() : 'TBA';
-                    return `<option value="${event.id}">${event.name} — ${dateText}</option>`;
-                }).join('');
-                modalEventSelect.innerHTML = '<option value="">Select event…</option>' + optionsHtml;
-            }
-        }
-
-        // Render all events with their ticket types
-        await renderAllEventsTickets();
-
-    } catch (err) {
-        console.error('❌ loadEvents crash:', err);
-        ticketsContainer.innerHTML = `<div class="empty-state">System crashed while loading events</div>`;
-    }
-}
-
-// ========== RENDER ALL EVENTS (latest first) ==========
-async function renderAllEventsTickets() {
-    const container = document.getElementById('ticketsContainerStore');
-    if (!container) return;
-
-    if (!events.length) {
-        container.innerHTML = `<div class="empty-state"><i class="fas fa-calendar-times" style="font-size:2rem;display:block;margin-bottom:10px;"></i>No events in database</div>`;
-        return;
-    }
-
-    container.innerHTML = `<div class="empty-state"><span class="spinner"></span> Loading tickets...</div>`;
-
-    try {
-        let allHtml = '';
-
-        for (const event of events) {
-            // Fetch ticket types for this event
-            const { data: ticketTypes, error } = await supabase
-                .from('ticket_types')
-                .select('*')
-                .eq('event_id', event.id)
-                .order('price', { ascending: true });
-
-            if (error) {
-                console.error(`❌ Error fetching ticket types for event ${event.id}:`, error);
-                continue;
-            }
-
-            if (!ticketTypes || ticketTypes.length === 0) {
-                // still show event section with a message
-                allHtml += `
-                    <div class="event-section">
-                        <div class="event-title">${escapeHtml(event.name)}</div>
-                        <div class="empty-state" style="padding:20px;">No ticket types available for this event.</div>
-                    </div>
-                `;
-                continue;
-            }
-
-            // Generate ticket cards for this event
-            const ticketsHtml = ticketTypes.map(tt => {
-                const remaining = (tt.capacity || 0) - (tt.sold || 0);
-                const soldOut = remaining <= 0;
-                return `
-                    <div class="ticket-card">
-                        <div class="ticket-header">
-                            <div class="ticket-type">${escapeHtml(tt.name)}</div>
-                            <div class="ticket-price">R${Number(tt.price || 0).toLocaleString()}</div>
-                            <div class="ticket-desc">Remaining: ${remaining}</div>
-                        </div>
-                        <div class="ticket-body">
-                            <button type="button" class="buy-btn issue-type-btn" data-event-id="${event.id}" data-type-id="${tt.id}" ${soldOut ? 'disabled' : ''}>
-                                ${soldOut ? 'Sold Out' : 'Issue Ticket'}
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            allHtml += `
-                <div class="event-section">
-                    <div class="event-title">${escapeHtml(event.name)}</div>
-                    ${ticketsHtml}
-                </div>
-            `;
-        }
-
-        container.innerHTML = allHtml;
-
-        // Attach event listeners to all "Issue Ticket" buttons
-        document.querySelectorAll('.issue-type-btn:not(:disabled)').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const eventId = btn.getAttribute('data-event-id');
-                const typeId = btn.getAttribute('data-type-id');
-                openIssueModal(eventId, typeId);
-            });
-        });
-
-    } catch (err) {
-        console.error('❌ renderAllEventsTickets crash:', err);
-        container.innerHTML = `<div class="empty-state">System crashed while loading tickets</div>`;
-    }
-}
-
-// Simple escape to prevent XSS
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-// ========== LOAD TICKET TYPES FOR MODAL ==========
-async function loadTicketTypesForEvent(eventId) {
-    const select = document.getElementById('modalTicketTypeSelect');
-    if (!select) return;
-
-    if (!eventId) {
-        select.innerHTML = '<option value="">Select event first…</option>';
-        select.disabled = true;
-        return;
-    }
-
-    select.disabled = true;
-    select.innerHTML = '<option>Loading ticket types…</option>';
-
-    try {
-        const { data, error } = await supabase
-            .from('ticket_types')
-            .select('*')
-            .eq('event_id', eventId)
-            .order('price', { ascending: true });
-
-        if (error) throw error;
-
-        const types = data || [];
-        if (!types.length) {
-            select.innerHTML = '<option value="">No ticket types</option>';
-            select.disabled = true;
-            return;
-        }
-
-        select.innerHTML = '<option value="">Select ticket type…</option>' +
-            types.map(t => {
-                const remaining = (t.capacity || 0) - (t.sold || 0);
-                const soldOut = remaining <= 0;
-                return `<option value="${t.id}" ${soldOut ? 'disabled' : ''}>${escapeHtml(t.name)} — R${Number(t.price || 0).toLocaleString()} (${remaining} left)</option>`;
-            }).join('');
-        select.disabled = false;
-    } catch (err) {
-        console.error('❌ loadTicketTypesForEvent error:', err);
-        select.innerHTML = '<option value="">Error loading types</option>';
-    }
-}
-
-// ========== LOOKUP CUSTOMER ==========
-async function lookupCustomerByPhone(rawPhone) {
-    const status = document.getElementById('phoneLookupStatus');
-    const infoBox = document.getElementById('walletOwnerInfo');
-    const display = document.getElementById('walletOwnerDisplay');
-    const confirmBtn = document.getElementById('confirmIssueBtn');
-
-    foundWalletProfile = null;
-    if (confirmBtn) confirmBtn.disabled = true;
-
-    const phone = rawPhone.trim().replace(/\s+/g, '');
-    if (phone.length < 7) {
-        status.className = 'lookup-status';
-        infoBox.style.display = 'none';
-        return;
-    }
-
-    status.className = 'lookup-status loading';
-    status.textContent = '🔍 Looking up customer...';
-
-    try {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('phone', phone)
-            .limit(1);
-
-        if (error) console.error(error);
-        if (!data || !data.length) {
-            status.className = 'lookup-status notfound';
-            status.textContent = '❌ Customer not found';
-            return;
-        }
-
-        const profile = data[0];
-        foundWalletProfile = profile;
-        status.className = 'lookup-status found';
-        status.textContent = '✅ Customer found';
-        display.innerHTML = `<strong>${escapeHtml(profile.name || 'Unnamed')}</strong><br><span>${escapeHtml(profile.phone || '')}</span>`;
-        infoBox.style.display = 'block';
-        if (confirmBtn) confirmBtn.disabled = false;
-    } catch (err) {
-        console.error('❌ lookup crash:', err);
-    }
-}
-
-// ========== ISSUE MODAL ==========
-function openIssueModal(presetEventId = null, presetTypeId = null) {
-    const modal = document.getElementById('issueTicketModal');
-    const modalEventSelect = document.getElementById('modalEventSelect');
-    const modalTypeSelect = document.getElementById('modalTicketTypeSelect');
-    const phoneInput = document.getElementById('customerPhone');
-    const status = document.getElementById('phoneLookupStatus');
-    const infoBox = document.getElementById('walletOwnerInfo');
-    const confirmBtn = document.getElementById('confirmIssueBtn');
-
-    foundWalletProfile = null;
-    if (phoneInput) phoneInput.value = '';
-    if (status) { status.className = 'lookup-status'; status.textContent = ''; }
-    if (infoBox) infoBox.style.display = 'none';
-    if (confirmBtn) {
-        confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Issue to Wallet';
-    }
-
-    if (presetEventId && modalEventSelect) {
-        modalEventSelect.value = presetEventId;
-        loadTicketTypesForEvent(presetEventId).then(() => {
-            if (presetTypeId && modalTypeSelect) modalTypeSelect.value = presetTypeId;
-        });
-    }
-
-    modal.classList.add('show');
-}
-
-function closeIssueModal() {
-    document.getElementById('issueTicketModal')?.classList.remove('show');
-    foundWalletProfile = null;
-}
-
-// ========== ISSUE TICKET ==========
-async function issueTicketToWallet() {
-    const eventId = document.getElementById('modalEventSelect').value;
-    const typeId = document.getElementById('modalTicketTypeSelect').value;
-    const phone = document.getElementById('customerPhone').value.trim().replace(/\s+/g, '');
-
-    if (!eventId) { showToast('Select event', true); return; }
-    if (!typeId) { showToast('Select ticket type', true); return; }
-    if (!foundWalletProfile) { showToast('Customer required', true); return; }
-
-    setIssueBtn(true);
-    try {
-        const { error } = await supabase.from('tickets').insert({
-            event_id: eventId,
-            ticket_type_id: typeId,
-            customer_phone: phone,
-            status: 'issued',
-            issued_by: currentUser?.id || null,
-            issued_at: new Date().toISOString()
-        });
-
-        if (error) throw error;
-
-        showToast('✅ Ticket issued');
-        closeIssueModal();
-        await renderAllEventsTickets(); // refresh the store view
-        await refreshTicketCount();
-    } catch (err) {
-        console.error(err);
-        showToast('Failed: ' + err.message, true);
-        setIssueBtn(false);
-    }
-}
-
-// ========== TICKET COUNT ==========
-async function refreshTicketCount() {
-    try {
-        const { count, error } = await supabase.from('tickets').select('id', { count: 'exact', head: true });
-        if (!error) {
-            const el = document.getElementById('ticketCountStat');
-            if (el) el.textContent = count || 0;
-        }
-    } catch (err) { console.error(err); }
-}
-
-// ========== MY TICKETS MODAL ==========
-async function renderMyTicketsModal() {
-    const container = document.getElementById('myTicketsList');
-    if (!container) return;
-    container.innerHTML = `<div class="empty-state"><span class="spinner"></span></div>`;
-
-    try {
-        const { data, error } = await supabase
-            .from('tickets')
-            .select(`*, ticket_types(name, price)`)
-            .order('issued_at', { ascending: false });
-
-        if (error) throw error;
-
-        const tickets = data || [];
-        if (!tickets.length) {
-            container.innerHTML = `<div class="empty-state">No issued tickets</div>`;
-            return;
-        }
-
-        container.innerHTML = tickets.map(t => {
-            const eventName = events.find(e => e.id === t.event_id)?.name || 'Unknown Event';
-            return `
-                <div class="ticket-card-wallet">
-                    <div class="ticket-header-wallet">
-                        <div class="event-name-tag">${escapeHtml(eventName)}</div>
-                        <div class="ticket-title">${escapeHtml(t.ticket_types?.name || 'Ticket')}</div>
-                    </div>
-                    <div class="qr-section">
-                        <div style="font-size:0.8rem;">📱 ${escapeHtml(t.customer_phone || '')}</div>
-                        <div style="margin-top:10px;">${escapeHtml(t.status || 'issued')}</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<div class="empty-state">Failed loading tickets</div>`;
-    }
-}
-
-function openMyTicketsModal() {
-    const modal = document.getElementById('myTicketsModal');
-    if (!modal) return;
-    renderMyTicketsModal();
-    modal.classList.add('show');
-}
-
-// ========== EVENT LISTENERS ==========
-function wireEvents() {
-    document.getElementById('myTicketsHeaderBtn')?.addEventListener('click', openMyTicketsModal);
-    document.getElementById('closeMyTicketsModal')?.addEventListener('click', () => {
-        document.getElementById('myTicketsModal')?.classList.remove('show');
-    });
-    document.getElementById('closeIssueModal')?.addEventListener('click', closeIssueModal);
-    document.getElementById('cancelIssueBtn')?.addEventListener('click', closeIssueModal);
-    document.getElementById('modalEventSelect')?.addEventListener('change', async e => {
-        await loadTicketTypesForEvent(e.target.value);
-        foundWalletProfile = null;
-        document.getElementById('confirmIssueBtn').disabled = true;
-    });
-    document.getElementById('customerPhone')?.addEventListener('input', e => {
-        clearTimeout(phoneDebounceTimer);
-        foundWalletProfile = null;
-        document.getElementById('confirmIssueBtn').disabled = true;
-        phoneDebounceTimer = setTimeout(() => lookupCustomerByPhone(e.target.value), 600);
-    });
-    document.getElementById('confirmIssueBtn')?.addEventListener('click', issueTicketToWallet);
-}
-
-// ========== INIT ==========
-async function init() {
-    console.log('🚀 Initializing...');
-    wireEvents();
-    await loadSession();
-    await loadEvents();
-    await refreshTicketCount();
-    console.log('✅ Ready');
-}
-
-init();
-</script>
 </body>
 </html>
