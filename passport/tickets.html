@@ -6,6 +6,7 @@
     <title>Ticket Store | Digital Wallet</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script type="importmap">
         {
             "imports": {
@@ -14,7 +15,7 @@
         }
     </script>
     <style>
-        /* ========== STYLES (unchanged – same as original) ========== */
+        /* ========== STYLES (enhanced with QR modal) ========== */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
             --red: #E30613; --red-dark: #a0010e; --red-deep: #8A0009; --red-glow: rgba(227,6,19,0.18);
@@ -32,6 +33,9 @@
         .brand-logo { width: 36px; height: 36px; background: rgba(255,255,255,0.2); backdrop-filter: blur(8px); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; }
         .brand-text h1 { font-family: 'Inter', sans-serif; font-size: 1.1rem; font-weight: 800; color: white; letter-spacing: -0.2px; line-height: 1.2; }
         .brand-text p { font-size: 0.6rem; color: rgba(255,255,255,0.8); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; display: block; }
+        .header-right { display: flex; gap: 8px; }
+        .my-tickets-pill { background: rgba(255,255,255,0.2); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; transition: var(--transition); padding: 0 14px; height: 36px; gap: 6px; font-weight: 600; font-size: 0.75rem; white-space: nowrap; }
+        .my-tickets-pill:active { transform: scale(0.94); }
         .wallet-stats { display: flex; flex-direction: column; gap: 10px; margin: 16px 16px 20px 16px; }
         .stat-card { background: var(--white); border-radius: var(--radius-lg); padding: 12px 16px; display: flex; align-items: center; gap: 14px; border: 1px solid var(--border-strong); box-shadow: var(--shadow-card); transition: var(--transition); width: 100%; }
         .stat-icon { width: 48px; height: 48px; background: var(--red-subtle); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--red); }
@@ -57,7 +61,8 @@
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 500; display: none; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
         .modal-card { background: var(--white); border-radius: var(--radius-xl); max-width: 500px; width: 92%; max-height: 85vh; overflow-y: auto; border: 2px solid var(--red); }
-        .issue-modal-body { padding: 20px; }
+        .modal-card-large { max-width: 600px; width: 95%; }
+        .issue-modal-body, .tickets-modal-body { padding: 20px; }
         .issue-field { margin-bottom: 16px; }
         .issue-field label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--slate); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
         .issue-field input, .issue-field select { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 10px 14px; font-family: 'Inter', sans-serif; font-size: 0.8rem; outline: none; background: var(--bone); transition: border 0.18s; }
@@ -65,16 +70,24 @@
         .lookup-status.found { background: #dcfce7; color: #166534; display: block; }
         .lookup-status.notfound { background: #fee2e2; color: #991b1b; display: block; }
         .lookup-status.loading { background: #f1f5f9; color: var(--slate); display: block; }
-        .issue-actions { display: flex; gap: 10px; margin-top: 20px; }
-        .issue-actions button { flex: 1; padding: 12px; border-radius: var(--radius-full); font-weight: 700; font-size: 0.8rem; cursor: pointer; border: none; font-family: 'Inter', sans-serif; transition: var(--transition); }
+        .issue-actions, .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
         .btn-cancel { background: var(--bone); color: var(--slate); border: 1px solid var(--border-strong) !important; }
-        .btn-issue { background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; }
-        .btn-issue:disabled { background: var(--mist); cursor: not-allowed; }
+        .btn-issue, .btn-find { background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; }
+        .btn-find { padding: 10px 20px; border-radius: 60px; font-weight: 700; border: none; cursor: pointer; }
+        .ticket-card-wallet { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; border: 1px solid var(--border-strong); margin-bottom: 16px; box-shadow: var(--shadow-card); }
+        .ticket-header-wallet { padding: 14px; background: linear-gradient(135deg, var(--red), var(--red-dark)); }
+        .event-name-tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.9); }
+        .ticket-title { font-family: 'Playfair Display', serif; font-size: 1rem; font-weight: 800; color: white; margin: 6px 0; }
+        .qr-section { padding: 14px; text-align: center; background: var(--bone); border-top: 1px solid var(--border-strong); }
+        .qr-container { background: white; padding: 12px; border-radius: 16px; display: inline-block; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .ticket-footer-wallet { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; background: var(--white); border-top: 1px solid var(--border-strong); font-size: 0.7rem; color: var(--slate); }
         .toast-msg { position: fixed; bottom: 90px; left: 20px; right: 20px; background: var(--ink); color: white; padding: 10px 16px; border-radius: 60px; text-align: center; z-index: 600; display: none; font-weight: 500; font-size: 0.8rem; }
         .toast-msg.show { display: block; animation: fadeUp 0.2s ease; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .phone-search-row { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+        .phone-search-row input { flex: 1; padding: 10px 14px; border-radius: 60px; border: 1px solid var(--border-strong); background: var(--bone); font-size: 0.85rem; }
         @media (max-width: 480px) { .event-selector label { font-size: 0.65rem; } #eventSelectStore { font-size: 0.7rem; } .issue-btn { padding: 0 10px; font-size: 0.7rem; } }
     </style>
 </head>
@@ -86,6 +99,11 @@
         <div class="brand-text">
             <h1>Ticket Store</h1>
             <p>Digital Wallet</p>
+        </div>
+    </div>
+    <div class="header-right">
+        <div class="my-tickets-pill" id="myTicketsHeaderBtn">
+            <i class="fas fa-qrcode"></i> My Tickets
         </div>
     </div>
 </header>
@@ -163,6 +181,28 @@
     </div>
 </div>
 
+<!-- My Tickets Modal (with QR codes) -->
+<div class="modal-overlay" id="myTicketsModal">
+    <div class="modal-card modal-card-large">
+        <div style="padding: 16px; background: linear-gradient(135deg, var(--red), var(--red-dark)); border-radius: 28px 28px 0 0; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="color: white; font-size: 1.1rem;"><i class="fas fa-qrcode"></i> My Tickets</h3>
+            <button type="button" id="closeMyTicketsModal" style="background: rgba(255,255,255,0.2); border: none; width: 32px; height: 32px; border-radius: 50%; color: white; cursor: pointer; font-size: 1.2rem; line-height:1;">&times;</button>
+        </div>
+        <div class="tickets-modal-body">
+            <div class="phone-search-row">
+                <input type="tel" id="ticketPhoneSearch" placeholder="Enter your phone number to find tickets" autocomplete="off">
+                <button class="btn-find" id="findTicketsBtn">Find Tickets</button>
+            </div>
+            <div id="myTicketsList" style="max-height: 500px; overflow-y: auto;">
+                <div class="empty-state">Enter your phone number to see your tickets with QR codes.</div>
+            </div>
+        </div>
+        <div class="modal-actions" style="padding: 0 20px 20px 20px;">
+            <button class="btn-cancel" style="width:100%;" id="closeMyTicketsFooterBtn">Close</button>
+        </div>
+    </div>
+</div>
+
 <div id="toastMsg" class="toast-msg"></div>
 
 <script type="module">
@@ -173,7 +213,7 @@
     let selectedEventId = null;
     let foundWalletProfile = null;
     let phoneDebounceTimer = null;
-    let currentTicketTypes = []; // store for counts
+    let currentTicketTypes = [];
 
     // ---------- UTILITIES ----------
     function showToast(msg, isError = false) {
@@ -183,6 +223,13 @@
         toast.style.background = isError ? '#ef4444' : '#1e293b';
         toast.classList.add('show');
         setTimeout(() => toast.classList.remove('show'), 2600);
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     function setIssueBtn(loading) {
@@ -197,9 +244,8 @@
         }
     }
 
-    // ---------- LOAD EVENTS (public, no login) ----------
+    // ---------- LOAD EVENTS (public) ----------
     async function loadEvents() {
-        console.log('📅 Fetching events (public)...');
         const eventSelect = document.getElementById('eventSelectStore');
         const modalEventSelect = document.getElementById('modalEventSelect');
         const ticketsContainer = document.getElementById('ticketsContainerStore');
@@ -209,11 +255,8 @@
                 .from('events')
                 .select('*')
                 .order('created_at', { ascending: false });
-
             if (error) throw error;
             events = data || [];
-            console.log(`✅ Loaded ${events.length} events`);
-
             document.getElementById('eventsCountStat').textContent = events.length;
 
             if (!events.length) {
@@ -247,7 +290,7 @@
             await renderStoreTickets();
             await updateTicketTypesCount();
         } catch (err) {
-            console.error('❌ loadEvents crash:', err);
+            console.error(err);
             ticketsContainer.innerHTML = '<div class="empty-state">Failed to load events</div>';
         }
     }
@@ -258,13 +301,11 @@
                 .from('ticket_types')
                 .select('id', { count: 'exact', head: true });
             if (!error) document.getElementById('ticketTypesCount').textContent = count || 0;
-        } catch(e) { console.warn(e); }
+        } catch(e) {}
     }
 
-    // ---------- RENDER STORE TICKETS ----------
     async function renderStoreTickets() {
         const container = document.getElementById('ticketsContainerStore');
-        if (!container) return;
         if (!selectedEventId) {
             container.innerHTML = '<div class="empty-state">Select an event</div>';
             return;
@@ -309,7 +350,6 @@
                 });
             });
         } catch (err) {
-            console.error(err);
             container.innerHTML = '<div class="empty-state">Failed to load tickets</div>';
         }
     }
@@ -336,10 +376,10 @@
                 .select('*')
                 .eq('phone', phone)
                 .limit(1);
-            if (error) console.error(error);
+            if (error) throw error;
             if (!data || !data.length) {
                 status.className = 'lookup-status notfound';
-                status.textContent = '❌ Customer not found (no wallet profile)';
+                status.textContent = '❌ Customer not found';
                 infoBox.style.display = 'none';
                 return;
             }
@@ -350,13 +390,14 @@
             display.innerHTML = `<strong>${escapeHtml(profile.name || 'Unnamed')}</strong><br><span>${escapeHtml(profile.phone || '')}</span>`;
             infoBox.style.display = 'block';
             if (confirmBtn) confirmBtn.disabled = false;
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     // ---------- LOAD TICKET TYPES FOR MODAL ----------
     async function loadTicketTypesForEvent(eventId) {
         const select = document.getElementById('modalTicketTypeSelect');
-        if (!select) return;
         if (!eventId) {
             select.innerHTML = '<option value="">Select event first…</option>';
             select.disabled = true;
@@ -385,12 +426,46 @@
                 }).join('');
             select.disabled = false;
         } catch (err) {
-            console.error(err);
             select.innerHTML = '<option value="">Error loading types</option>';
         }
     }
 
-    // ---------- ISSUE MODAL ----------
+    // ---------- ISSUE TICKET ----------
+    async function issueTicketToWallet() {
+        const eventId = document.getElementById('modalEventSelect').value;
+        const typeId = document.getElementById('modalTicketTypeSelect').value;
+        const phone = document.getElementById('customerPhone').value.trim().replace(/\s+/g, '');
+        if (!eventId) { showToast('Select event', true); return; }
+        if (!typeId) { showToast('Select ticket type', true); return; }
+        if (!foundWalletProfile) { showToast('Customer not found', true); return; }
+        setIssueBtn(true);
+        try {
+            const { error } = await supabase.from('tickets').insert({
+                event_id: eventId,
+                ticket_type_id: typeId,
+                customer_phone: phone,
+                status: 'issued',
+                issued_by: null,
+                issued_at: new Date().toISOString()
+            });
+            if (error) throw error;
+
+            const { data: tt } = await supabase.from('ticket_types').select('sold').eq('id', typeId).single();
+            if (tt) {
+                await supabase.from('ticket_types').update({ sold: (tt.sold || 0) + 1 }).eq('id', typeId);
+            }
+
+            showToast('✅ Ticket issued successfully');
+            closeIssueModal();
+            await renderStoreTickets();
+            await updateTicketTypesCount();
+        } catch (err) {
+            showToast('Failed: ' + err.message, true);
+            setIssueBtn(false);
+        }
+    }
+
+    // ---------- MODAL CONTROLS ----------
     function openIssueModal(presetEventId = null, presetTypeId = null) {
         const modal = document.getElementById('issueTicketModal');
         const modalEventSelect = document.getElementById('modalEventSelect');
@@ -421,49 +496,97 @@
         foundWalletProfile = null;
     }
 
-    // ---------- ISSUE TICKET (no login required) ----------
-    async function issueTicketToWallet() {
-        const eventId = document.getElementById('modalEventSelect').value;
-        const typeId = document.getElementById('modalTicketTypeSelect').value;
-        const phone = document.getElementById('customerPhone').value.trim().replace(/\s+/g, '');
-        if (!eventId) { showToast('Select event', true); return; }
-        if (!typeId) { showToast('Select ticket type', true); return; }
-        if (!foundWalletProfile) { showToast('Customer not found or not selected', true); return; }
-        setIssueBtn(true);
+    // ========== MY TICKETS MODAL WITH QR CODES ==========
+    async function loadTicketsByPhone(phone) {
+        if (!phone || phone.length < 7) {
+            document.getElementById('myTicketsList').innerHTML = '<div class="empty-state">Please enter a valid phone number.</div>';
+            return;
+        }
+        const container = document.getElementById('myTicketsList');
+        container.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading your tickets...</div>';
         try {
-            const { error } = await supabase.from('tickets').insert({
-                event_id: eventId,
-                ticket_type_id: typeId,
-                customer_phone: phone,
-                status: 'issued',
-                issued_by: null,          // no logged-in user – public issue
-                issued_at: new Date().toISOString()
-            });
+            // Fetch tickets for this phone number, joined with ticket_types and events
+            const { data: tickets, error } = await supabase
+                .from('tickets')
+                .select(`
+                    id,
+                    issued_at,
+                    status,
+                    event_id,
+                    ticket_type_id,
+                    ticket_types (name, price),
+                    events (name, start_time, location)
+                `)
+                .eq('customer_phone', phone)
+                .order('issued_at', { ascending: false });
             if (error) throw error;
 
-            // Also increment sold count in ticket_types
-            const { data: tt } = await supabase.from('ticket_types').select('sold').eq('id', typeId).single();
-            if (tt) {
-                await supabase.from('ticket_types').update({ sold: (tt.sold || 0) + 1 }).eq('id', typeId);
+            if (!tickets || tickets.length === 0) {
+                container.innerHTML = '<div class="empty-state">No tickets found for this phone number.</div>';
+                return;
             }
 
-            showToast('✅ Ticket issued successfully');
-            closeIssueModal();
-            await renderStoreTickets();   // refresh remaining counts
-            await updateTicketTypesCount();
+            // Render each ticket with a QR code
+            container.innerHTML = '';
+            for (const ticket of tickets) {
+                const ticketId = ticket.id;
+                const eventName = ticket.events?.name || 'Unknown Event';
+                const ticketTypeName = ticket.ticket_types?.name || 'Ticket';
+                const ticketPrice = ticket.ticket_types?.price || 0;
+                const issuedDate = ticket.issued_at ? new Date(ticket.issued_at).toLocaleDateString() : 'Unknown';
+                
+                const ticketDiv = document.createElement('div');
+                ticketDiv.className = 'ticket-card-wallet';
+                ticketDiv.innerHTML = `
+                    <div class="ticket-header-wallet">
+                        <div class="event-name-tag">${escapeHtml(eventName)}</div>
+                        <div class="ticket-title">${escapeHtml(ticketTypeName)}</div>
+                        <div style="font-size:0.7rem; color:rgba(255,255,255,0.8);">R${Number(ticketPrice).toLocaleString()}</div>
+                    </div>
+                    <div class="qr-section">
+                        <div id="qr-${ticketId}" class="qr-container"></div>
+                        <div style="font-size:0.7rem; margin-top:5px;">Ticket ID: ${ticketId.slice(0,8)}...</div>
+                        <div style="font-size:0.65rem; color:var(--mist);">Issued: ${issuedDate}</div>
+                    </div>
+                    <div class="ticket-footer-wallet">
+                        <span><i class="fas fa-check-circle" style="color:#10b981;"></i> Valid</span>
+                        <span><i class="fas fa-qrcode"></i> Scan for entry</span>
+                    </div>
+                `;
+                container.appendChild(ticketDiv);
+                
+                // Generate QR code
+                const qrContainer = document.getElementById(`qr-${ticketId}`);
+                if (qrContainer && window.QRCode) {
+                    new QRCode(qrContainer, {
+                        text: ticketId,
+                        width: 120,
+                        height: 120,
+                        colorDark: "#000000",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                } else {
+                    qrContainer.innerHTML = `<div style="font-size:0.7rem;">QR code error</div>`;
+                }
+            }
         } catch (err) {
             console.error(err);
-            showToast('Failed: ' + err.message, true);
-            setIssueBtn(false);
+            container.innerHTML = '<div class="empty-state">Failed to load tickets. Please try again.</div>';
         }
     }
 
-    // ---------- HELPER: escape HTML ----------
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    function openMyTicketsModal() {
+        const modal = document.getElementById('myTicketsModal');
+        const phoneInput = document.getElementById('ticketPhoneSearch');
+        const listDiv = document.getElementById('myTicketsList');
+        if (phoneInput) phoneInput.value = '';
+        listDiv.innerHTML = '<div class="empty-state">Enter your phone number to see your tickets with QR codes.</div>';
+        modal.classList.add('show');
+    }
+
+    function closeMyTicketsModal() {
+        document.getElementById('myTicketsModal')?.classList.remove('show');
     }
 
     // ---------- WIRE EVENT LISTENERS ----------
@@ -471,6 +594,13 @@
         document.getElementById('issueTicketBtn')?.addEventListener('click', () => openIssueModal(selectedEventId));
         document.getElementById('closeIssueModal')?.addEventListener('click', closeIssueModal);
         document.getElementById('cancelIssueBtn')?.addEventListener('click', closeIssueModal);
+        document.getElementById('myTicketsHeaderBtn')?.addEventListener('click', openMyTicketsModal);
+        document.getElementById('closeMyTicketsModal')?.addEventListener('click', closeMyTicketsModal);
+        document.getElementById('closeMyTicketsFooterBtn')?.addEventListener('click', closeMyTicketsModal);
+        document.getElementById('findTicketsBtn')?.addEventListener('click', () => {
+            const phone = document.getElementById('ticketPhoneSearch').value.trim().replace(/\s+/g, '');
+            loadTicketsByPhone(phone);
+        });
         const modalEventSelect = document.getElementById('modalEventSelect');
         if (modalEventSelect) {
             modalEventSelect.addEventListener('change', async e => {
@@ -493,7 +623,6 @@
 
     // ---------- INIT ----------
     async function init() {
-        console.log('🚀 Initializing Ticket Store (public, no login)');
         wireEvents();
         await loadEvents();
     }
