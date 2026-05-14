@@ -569,7 +569,7 @@
     <div class="toast-message">Static demo: JS removed</div>
 </div>
 
-<!-- FULLSCREEN PROFILE MODAL (added) -->
+<!-- FULLSCREEN PROFILE MODAL -->
 <div id="fullProfileModal" class="full-profile-modal">
     <div class="full-profile-content">
         <div class="profile-modal-header">
@@ -586,29 +586,16 @@
     </div>
 </div>
 
-<!-- SINGLE SUPABASE CLIENT (ES module import, no CDN duplication) -->
-<script type="importmap">
-    {
-        "imports": {
-            "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
-        }
-    }
-</script>
-
+<!-- SINGLE SUPABASE CLIENT: imported from config file (no inline CDN) -->
 <script type="module">
-    import { createClient } from '@supabase/supabase-js';
+    import { supabase } from '../config/supabase.js';
     
-    // ========== SUPABASE SINGLETON ==========
-    const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    // Expose globally for legacy inline scripts and home.js
+    // Expose globally for any legacy inline scripts that expect window.supabase
     window.supabase = supabase;
     
-    // ========== CORE DATA FUNCTIONS (single load, safe fallback) ==========
+    // ========== CORE DATA FUNCTIONS (full_name, safe wallet fallback) ==========
     async function loadUserData() {
-        console.log("Loading user data (single client)...");
+        console.log("Loading user data (imported supabase)");
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
             console.error("Session error:", error);
@@ -623,16 +610,14 @@
         
         console.log("✅ Logged in as:", session.user.email);
         
-        // Fetch profile using full_name
+        // Fetch profile using 'full_name' (not 'name')
         const { data: profile, error: pErr } = await supabase
             .from('profiles')
             .select('full_name, phone, account_type')
             .eq('id', session.user.id)
             .maybeSingle();
         
-        if (pErr) {
-            console.error("Profile fetch error:", pErr);
-        }
+        if (pErr) console.error("Profile fetch error:", pErr);
         
         const fullName = profile?.full_name || session.user.user_metadata?.full_name || "Member";
         document.getElementById('userNameDisplay').textContent = fullName;
@@ -643,16 +628,14 @@
         if (phone.match(/^\d+$/)) formattedPhone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
         document.getElementById('accountPhoneNumber').textContent = formattedPhone || "—";
         
-        // Fetch wallet with safe fallback
+        // Safe wallet fetch
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
             .select('balance')
             .eq('user_id', session.user.id)
             .maybeSingle();
         
-        if (wErr) {
-            console.warn("Wallet query error:", wErr);
-        }
+        if (wErr) console.warn("Wallet query error:", wErr);
         
         const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         const formattedBalance = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
@@ -665,7 +648,6 @@
         console.log("✅ Balance loaded:", balanceNum);
     }
     
-    // Helper to update UI balance after transactions
     window.updateUserBalance = async function(newBalance) {
         const formatted = `R ${newBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         const balanceEl = document.getElementById('realWalletBalance');
