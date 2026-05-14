@@ -6,7 +6,6 @@
   <title>Box Office · Embedded Module</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     /* ---------- EMBEDDED MODULE BASE (identical to Pre-Order POS design system) ---------- */
     :root {
@@ -48,13 +47,13 @@
       padding: 0;
       width: 100%;
       overflow-x: hidden;
-      background: var(--bone);   /* matches Staff Console background continuity */
+      background: var(--bone);
       font-family: 'Inter', sans-serif;
     }
 
     body {
       min-height: 100%;
-      padding: 24px;            /* breathing space inside iframe – identical to Pre-Order POS */
+      padding: 24px;
     }
 
     /* consistent container pattern: dashboard grid (flexible columns) */
@@ -99,7 +98,7 @@
       padding: 24px;
     }
 
-    /* unified buttons (mirror pre-order POS) */
+    /* unified buttons */
     .btn-sm {
       background: var(--bone);
       border: 1px solid var(--border-strong);
@@ -132,7 +131,7 @@
     .btn-primary:active { transform: scale(0.97); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* ticket grid – like POS items grid but for events */
+    /* ticket grid */
     .ticket-grid-embedded {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -193,7 +192,7 @@
       margin-top: 8px;
     }
 
-    /* quantity selector same as POS style */
+    /* quantity selector */
     .quantity-section {
       background: var(--bone);
       border-radius: var(--radius-md);
@@ -284,7 +283,7 @@
       box-shadow: 0 2px 8px var(--red-glow);
     }
 
-    /* unified modal system (matching pre-order POS stunning popup style) */
+    /* modals */
     .modal-overlay {
       position: fixed;
       top: 0;
@@ -368,20 +367,16 @@
 <body>
 
 <div class="dashboard-grid">
-  <!-- LEFT CARD: Event selector & ticket studio -->
+  <!-- LEFT CARD: Event display & tickets (no dropdown) -->
   <div class="card">
     <div class="card-header">
-      <span><i class="fas fa-ticket-alt"></i> Event & Tickets</span>
+      <span><i class="fas fa-ticket-alt"></i> Latest Event & Tickets</span>
       <button class="btn-sm" id="syncEventsBtn"><i class="fas fa-sync-alt"></i> Sync</button>
     </div>
     <div class="card-body">
-      <div style="margin-bottom: 20px;">
-        <label style="font-weight:600; color:var(--ink); display:block; margin-bottom:8px;">📅 Select Event</label>
-        <select id="eventSelector" style="width:100%; padding:12px; border-radius:var(--radius-md); border:1px solid var(--border-strong); font-family:inherit;"></select>
-      </div>
-
+      <!-- Removed dropdown – we always show the latest event -->
       <div id="eventDetails">
-        <div id="eventName" style="font-size:1.4rem; font-weight:800; color:var(--red); margin-bottom:6px;">—</div>
+        <div id="eventName" style="font-size:1.4rem; font-weight:800; color:var(--red); margin-bottom:6px;">Loading...</div>
         <div id="eventMeta" style="display:flex; gap:16px; flex-wrap:wrap; color:var(--slate); margin-bottom:20px;"></div>
       </div>
 
@@ -398,7 +393,7 @@
     </div>
   </div>
 
-  <!-- RIGHT CARD: Checkout (mirror Pre-Order POS cart style) -->
+  <!-- RIGHT CARD: Checkout -->
   <div class="card">
     <div class="card-header">
       <span><i class="fas fa-cash-register"></i> Checkout</span>
@@ -437,7 +432,7 @@
   </div>
 </div>
 
-<!-- WALLET MODAL (stunning match) -->
+<!-- WALLET MODAL -->
 <div id="walletModal" style="display:none;" class="modal-overlay">
   <div class="modal-card">
     <h3 style="color:var(--red); margin-bottom:8px;">👛 Rands Wallet</h3>
@@ -482,188 +477,319 @@
 
 <div id="toastMsg" class="toast-embedded"></div>
 
-<script>
-  (function() {
-    // ========== ORIGINAL BUSINESS LOGIC (PRESERVED) ==========
-    const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
-    const TENANT_ID = '2059fdaf-27d1-499f-9045-5823137d33a2';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    // Wallet accounts (local)
-    const WALLET_STORAGE_KEY = 'rands_bands';
-    let walletAccounts = {
-      "Paradise": { balance: 1250.50, pin: "1234", name: "MZONKE BUYAPHI" },
-      "Wonderland": { balance: 3450.75, pin: "5678", name: "WONDERLAND VIP" },
-      "#SeeYourVibe": { balance: 5000, pin: "9012", name: "SEE YOUR VIBE" },
-      "KingKhanya": { balance: 2000, pin: "1989", name: "KING KHANYA" }
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  // ========== BUSINESS LOGIC – MULTI‑TENANCY REMOVED, NO DROPDOWN, AUTO LATEST EVENT ==========
+  // Wallet accounts (local storage) – unchanged
+  const WALLET_STORAGE_KEY = 'rands_bands';
+  let walletAccounts = {
+    "Paradise": { balance: 1250.50, pin: "1234", name: "MZONKE BUYAPHI" },
+    "Wonderland": { balance: 3450.75, pin: "5678", name: "WONDERLAND VIP" },
+    "#SeeYourVibe": { balance: 5000, pin: "9012", name: "SEE YOUR VIBE" },
+    "KingKhanya": { balance: 2000, pin: "1989", name: "KING KHANYA" }
+  };
+  function loadWalletAccounts() { const stored = localStorage.getItem(WALLET_STORAGE_KEY); if (stored) walletAccounts = JSON.parse(stored); else localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts)); }
+  function verifyWallet(accountId, pin) { const acc = walletAccounts[accountId]; if (!acc) return { success: false, error: 'Account not found' }; if (acc.pin !== pin) return { success: false, error: 'Incorrect PIN' }; return { success: true, account: acc }; }
+  function processPayment(accountId, amount) { const acc = walletAccounts[accountId]; if (!acc) return { success: false, error: 'Account not found' }; if (acc.balance < amount) return { success: false, error: 'Insufficient balance' }; acc.balance -= amount; localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts)); return { success: true, newBalance: acc.balance }; }
+
+  let events = [];
+  let selectedEvent = null;
+  let selectedTicketType = null;
+  let ticketQuantity = 1;
+  let selectedPaymentMethod = 'randswallet';
+  let selectedChannel = 'boxoffice';
+  let wristbandCounter = 1000;
+  let currentPinInput = "";
+  let pendingAmount = 0;
+  const TICKET_TYPE_NAMES = { earlyBird: { name: 'Early Bird', icon: '🐦' }, general: { name: 'General Admission', icon: '🎫' }, vip: { name: 'VIP Experience', icon: '⭐' } };
+
+  function formatDate(dateStr) { if (!dateStr) return ''; return new Date(dateStr).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }); }
+  function showToast(msg, type = 'info') { const toast = document.getElementById('toastMsg'); toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${msg}`; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
+
+  // Load events from Supabase – no tenant filter, order by date descending, pick latest
+  async function loadEventsFromSupabase() {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('date', { ascending: false }); // newest first
+      if (error) throw error;
+      events = data || [];
+      localStorage.setItem('rands_events_cache', JSON.stringify(events));
+      // Select the latest event (first in array after descending sort)
+      if (events.length > 0) {
+        selectedEvent = events[0];
+        loadEventDetails();
+      } else {
+        selectedEvent = null;
+        resetDisplay();
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load events', 'error');
+      const cached = localStorage.getItem('rands_events_cache');
+      if (cached) {
+        events = JSON.parse(cached);
+        if (events.length > 0) {
+          selectedEvent = events[0];
+          loadEventDetails();
+        } else {
+          resetDisplay();
+        }
+      } else {
+        resetDisplay();
+      }
+    }
+  }
+
+  function loadEventDetails() {
+    if (!selectedEvent) return;
+    document.getElementById('eventName').textContent = selectedEvent.name;
+    document.getElementById('eventMeta').innerHTML = `<span>📅 ${formatDate(selectedEvent.date)} at ${selectedEvent.time || '--:--'}</span><span>📍 ${selectedEvent.location || 'Rands Cape Town'}</span>`;
+    renderTicketGrid();
+  }
+
+  function renderTicketGrid() {
+    const grid = document.getElementById('ticketGridContainer');
+    const types = ['earlyBird', 'general', 'vip'];
+    grid.innerHTML = types.map(key => {
+      const ticket = selectedEvent.ticketTypes?.[key] || { price: 0, capacity: 0, sold: 0 };
+      const available = ticket.capacity - (ticket.sold || 0);
+      const isActive = available > 0 && selectedEvent.status === 'active';
+      const info = TICKET_TYPE_NAMES[key];
+      return `<div class="ticket-card-embedded ${!isActive ? 'disabled' : ''}" data-type="${key}" data-price="${ticket.price}" data-available="${available}" data-name="${info.name}">
+        <div class="ticket-icon">${info.icon}</div>
+        <h4>${info.name}</h4>
+        <div class="ticket-price">R${ticket.price}</div>
+        <span class="ticket-available">${available} left</span>
+      </div>`;
+    }).join('');
+    document.querySelectorAll('.ticket-card-embedded:not(.disabled)').forEach(card => card.addEventListener('click', () => selectTicket(card)));
+    const firstAvail = document.querySelector('.ticket-card-embedded:not(.disabled)');
+    if (firstAvail) selectTicket(firstAvail);
+    else {
+      selectedTicketType = null;
+      updateSummary();
+      document.getElementById('purchaseBtn').disabled = true;
+    }
+  }
+
+  function selectTicket(card) {
+    document.querySelectorAll('.ticket-card-embedded').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedTicketType = {
+      key: card.dataset.type,
+      name: card.dataset.name,
+      price: parseInt(card.dataset.price),
+      available: parseInt(card.dataset.available)
     };
-    function loadWalletAccounts() { const stored = localStorage.getItem(WALLET_STORAGE_KEY); if (stored) walletAccounts = JSON.parse(stored); else localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts)); }
-    function verifyWallet(accountId, pin) { const acc = walletAccounts[accountId]; if (!acc) return { success: false, error: 'Account not found' }; if (acc.pin !== pin) return { success: false, error: 'Incorrect PIN' }; return { success: true, account: acc }; }
-    function processPayment(accountId, amount) { const acc = walletAccounts[accountId]; if (!acc) return { success: false, error: 'Account not found' }; if (acc.balance < amount) return { success: false, error: 'Insufficient balance' }; acc.balance -= amount; localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletAccounts)); return { success: true, newBalance: acc.balance }; }
-    
-    let events = [];
-    let selectedEvent = null, selectedTicketType = null, ticketQuantity = 1, selectedPaymentMethod = 'randswallet', selectedChannel = 'boxoffice';
-    let wristbandCounter = 1000;
-    let currentPinInput = "", pendingAmount = 0;
-    const TICKET_TYPE_NAMES = { earlyBird: { name: 'Early Bird', icon: '🐦' }, general: { name: 'General Admission', icon: '🎫' }, vip: { name: 'VIP Experience', icon: '⭐' } };
-    
-    function formatDate(dateStr) { if(!dateStr) return ''; return new Date(dateStr).toLocaleDateString('en-ZA', { year:'numeric', month:'short', day:'numeric' }); }
-    function showToast(msg, type='info') { const toast = document.getElementById('toastMsg'); toast.innerHTML = `<i class="fas ${type==='success'?'fa-check-circle':'fa-exclamation-circle'}"></i> ${msg}`; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3000); }
-    
-    async function loadEventsFromSupabase() {
-      try {
-        const { data, error } = await supabase.from('events').select('*').eq('tenant_id', TENANT_ID).order('date', { ascending: true });
-        if (error) throw error;
-        events = data || [];
-        localStorage.setItem('rands_events_cache', JSON.stringify(events));
-        populateEventSelector();
-        document.getElementById('eventCountDisplay') && (document.getElementById('eventCountDisplay').textContent = `${events.length} events`);
-        if (selectedEvent) { const still = events.find(e=>e.id===selectedEvent.id); if(still) { selectedEvent=still; loadEventDetails(); } else resetDisplay(); }
-        else resetDisplay();
-      } catch(err) { console.error(err); showToast('Failed to load events', 'error'); const cached = localStorage.getItem('rands_events_cache'); if(cached) { events=JSON.parse(cached); populateEventSelector(); } }
+    updateSummary();
+    updateQuantityLimit();
+    document.getElementById('purchaseBtn').disabled = false;
+  }
+
+  function updateQuantityLimit() {
+    const max = selectedTicketType ? selectedTicketType.available : 0;
+    document.getElementById('incrementQty').disabled = ticketQuantity >= max;
+    document.getElementById('decrementQty').disabled = ticketQuantity <= 1;
+  }
+
+  function updateSummary() {
+    if (!selectedTicketType) {
+      document.getElementById('summaryTicketType').textContent = '—';
+      document.getElementById('summaryPrice').textContent = 'R0';
+      document.getElementById('summaryTotal').textContent = 'R0';
+      return;
     }
-    
-    function populateEventSelector() {
-      const selector = document.getElementById('eventSelector');
-      selector.innerHTML = '<option value="">Select an event</option>';
-      events.forEach(ev => { const opt = document.createElement('option'); opt.value=ev.id; opt.textContent = `${ev.status==='active'?'✅':'📅'} ${ev.name} - ${formatDate(ev.date)}`; selector.appendChild(opt); });
-    }
-    
-    function loadEventDetails() {
-      if(!selectedEvent) return;
-      document.getElementById('eventName').textContent = selectedEvent.name;
-      document.getElementById('eventMeta').innerHTML = `<span>📅 ${formatDate(selectedEvent.date)} at ${selectedEvent.time||'--:--'}</span><span>📍 ${selectedEvent.location||'Rands Cape Town'}</span>`;
-      renderTicketGrid();
-    }
-    
-    function renderTicketGrid() {
-      const grid = document.getElementById('ticketGridContainer');
-      const types = ['earlyBird','general','vip'];
-      grid.innerHTML = types.map(key => {
-        const ticket = selectedEvent.ticketTypes?.[key] || { price:0, capacity:0, sold:0 };
-        const available = ticket.capacity - (ticket.sold||0);
-        const isActive = available>0 && selectedEvent.status==='active';
-        const info = TICKET_TYPE_NAMES[key];
-        return `<div class="ticket-card-embedded ${!isActive?'disabled':''}" data-type="${key}" data-price="${ticket.price}" data-available="${available}" data-name="${info.name}">
-          <div class="ticket-icon">${info.icon}</div>
-          <h4>${info.name}</h4>
-          <div class="ticket-price">R${ticket.price}</div>
-          <span class="ticket-available">${available} left</span>
-        </div>`;
-      }).join('');
-      document.querySelectorAll('.ticket-card-embedded:not(.disabled)').forEach(card => card.addEventListener('click', ()=>selectTicket(card)));
-      const firstAvail = document.querySelector('.ticket-card-embedded:not(.disabled)');
-      if(firstAvail) selectTicket(firstAvail);
-      else { selectedTicketType=null; updateSummary(); document.getElementById('purchaseBtn').disabled=true; }
-    }
-    
-    function selectTicket(card) {
-      document.querySelectorAll('.ticket-card-embedded').forEach(c=>c.classList.remove('selected'));
-      card.classList.add('selected');
-      selectedTicketType = { key: card.dataset.type, name: card.dataset.name, price: parseInt(card.dataset.price), available: parseInt(card.dataset.available) };
+    const total = selectedTicketType.price * ticketQuantity;
+    document.getElementById('summaryTicketType').textContent = selectedTicketType.name;
+    document.getElementById('summaryPrice').textContent = `R${selectedTicketType.price}`;
+    document.getElementById('summaryQty').textContent = ticketQuantity;
+    document.getElementById('summaryTotal').textContent = `R${total}`;
+  }
+
+  document.getElementById('incrementQty').addEventListener('click', () => {
+    if (selectedTicketType && ticketQuantity < selectedTicketType.available) {
+      ticketQuantity++;
+      document.getElementById('quantityDisplay').textContent = ticketQuantity;
       updateSummary();
       updateQuantityLimit();
-      document.getElementById('purchaseBtn').disabled=false;
     }
-    
-    function updateQuantityLimit() {
-      const max = selectedTicketType ? selectedTicketType.available : 0;
-      document.getElementById('incrementQty').disabled = ticketQuantity >= max;
-      document.getElementById('decrementQty').disabled = ticketQuantity <= 1;
+  });
+  document.getElementById('decrementQty').addEventListener('click', () => {
+    if (ticketQuantity > 1) {
+      ticketQuantity--;
+      document.getElementById('quantityDisplay').textContent = ticketQuantity;
+      updateSummary();
+      updateQuantityLimit();
     }
-    
-    function updateSummary() {
-      if(!selectedTicketType) { document.getElementById('summaryTicketType').textContent='—'; document.getElementById('summaryPrice').textContent='R0'; document.getElementById('summaryTotal').textContent='R0'; return; }
-      const total = selectedTicketType.price * ticketQuantity;
-      document.getElementById('summaryTicketType').textContent = selectedTicketType.name;
-      document.getElementById('summaryPrice').textContent = `R${selectedTicketType.price}`;
-      document.getElementById('summaryQty').textContent = ticketQuantity;
-      document.getElementById('summaryTotal').textContent = `R${total}`;
+  });
+
+  // Payment / channel selection (unchanged)
+  document.querySelectorAll('#paymentMethodsGroup .option-card').forEach(opt => opt.addEventListener('click', () => {
+    document.querySelectorAll('#paymentMethodsGroup .option-card').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedPaymentMethod = opt.dataset.method;
+    const btn = document.getElementById('purchaseBtn');
+    btn.innerHTML = selectedPaymentMethod === 'randswallet' ? '👛 Pay with Rands Wallet' : (selectedPaymentMethod === 'card' ? '💳 Pay with Card' : '💰 Pay with ' + selectedPaymentMethod);
+  }));
+  document.querySelectorAll('#channelGroup .option-card').forEach(opt => opt.addEventListener('click', () => {
+    document.querySelectorAll('#channelGroup .option-card').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedChannel = opt.dataset.channel;
+  }));
+
+  // Wallet modal (unchanged)
+  let walletModal = document.getElementById('walletModal');
+  function buildPinPad() { const pad = document.getElementById('pinKeypad'); const digits = ['1','2','3','4','5','6','7','8','9','0','⌫','C']; pad.innerHTML = digits.map(d => `<button class="pin-key" data-digit="${d}">${d}</button>`).join(''); }
+  function updatePinDisplayUI() { let txt = ''; for (let i = 0; i < 4; i++) txt += i < currentPinInput.length ? '●' : '○'; document.getElementById('pinDisplay').textContent = txt; }
+  buildPinPad();
+  document.querySelectorAll('#pinKeypad .pin-key').forEach(btn => btn.addEventListener('click', () => {
+    const val = btn.dataset.digit;
+    if (val === '⌫') currentPinInput = currentPinInput.slice(0, -1);
+    else if (val === 'C') currentPinInput = '';
+    else if (currentPinInput.length < 4) currentPinInput += val;
+    updatePinDisplayUI();
+  }));
+  document.getElementById('walletAccountId').addEventListener('input', function () {
+    const id = this.value.trim();
+    if (id && walletAccounts[id]) {
+      document.getElementById('walletBalanceInfo').style.display = 'block';
+      document.getElementById('walletBalanceAmount').innerHTML = `R${walletAccounts[id].balance.toFixed(2)}`;
+      document.getElementById('walletAccountName').innerHTML = walletAccounts[id].name;
+    } else {
+      document.getElementById('walletBalanceInfo').style.display = 'none';
     }
-    
-    document.getElementById('incrementQty').addEventListener('click',()=>{ if(selectedTicketType && ticketQuantity<selectedTicketType.available){ ticketQuantity++; document.getElementById('quantityDisplay').textContent=ticketQuantity; updateSummary(); updateQuantityLimit(); } });
-    document.getElementById('decrementQty').addEventListener('click',()=>{ if(ticketQuantity>1){ ticketQuantity--; document.getElementById('quantityDisplay').textContent=ticketQuantity; updateSummary(); updateQuantityLimit(); } });
-    
-    // payment/channel selection
-    document.querySelectorAll('#paymentMethodsGroup .option-card').forEach(opt=>opt.addEventListener('click',()=>{
-      document.querySelectorAll('#paymentMethodsGroup .option-card').forEach(o=>o.classList.remove('selected'));
-      opt.classList.add('selected'); selectedPaymentMethod = opt.dataset.method;
-      const btn = document.getElementById('purchaseBtn'); btn.innerHTML = selectedPaymentMethod==='randswallet'?'👛 Pay with Rands Wallet': selectedPaymentMethod==='card'?'💳 Pay with Card':'💰 Pay with '+selectedPaymentMethod;
-    }));
-    document.querySelectorAll('#channelGroup .option-card').forEach(opt=>opt.addEventListener('click',()=>{
-      document.querySelectorAll('#channelGroup .option-card').forEach(o=>o.classList.remove('selected'));
-      opt.classList.add('selected'); selectedChannel = opt.dataset.channel;
-    }));
-    
-    // Wallet modal
-    let walletModal = document.getElementById('walletModal');
-    function buildPinPad() { const pad = document.getElementById('pinKeypad'); const digits = ['1','2','3','4','5','6','7','8','9','0','⌫','C']; pad.innerHTML = digits.map(d => `<button class="pin-key" data-digit="${d}">${d}</button>`).join(''); }
-    function updatePinDisplayUI() { let txt=''; for(let i=0;i<4;i++) txt += i<currentPinInput.length?'●':'○'; document.getElementById('pinDisplay').textContent=txt; }
-    buildPinPad(); document.querySelectorAll('#pinKeypad .pin-key').forEach(btn=>btn.addEventListener('click',()=>{ const val=btn.dataset.digit; if(val==='⌫') currentPinInput=currentPinInput.slice(0,-1); else if(val==='C') currentPinInput=''; else if(currentPinInput.length<4) currentPinInput+=val; updatePinDisplayUI(); }));
-    document.getElementById('walletAccountId').addEventListener('input',function(){ const id=this.value.trim(); if(id && walletAccounts[id]){ document.getElementById('walletBalanceInfo').style.display='block'; document.getElementById('walletBalanceAmount').innerHTML=`R${walletAccounts[id].balance.toFixed(2)}`; document.getElementById('walletAccountName').innerHTML=walletAccounts[id].name; } else document.getElementById('walletBalanceInfo').style.display='none'; });
-    document.getElementById('cancelWalletBtn').addEventListener('click',()=>walletModal.style.display='none');
-    document.getElementById('confirmWalletPaymentBtn').addEventListener('click',()=>{ const accId=document.getElementById('walletAccountId').value.trim(); const pin=currentPinInput; if(!accId){ showToast('Enter Account ID','error');return; } if(pin.length!==4){ showToast('Enter 4-digit PIN','error');return; } const verify=verifyWallet(accId,pin); if(!verify.success){ showToast(verify.error,'error'); currentPinInput=''; updatePinDisplayUI(); return; } if(verify.account.balance<pendingAmount){ showToast(`Insufficient balance. Need R${pendingAmount.toFixed(2)}`,'error'); return; } const payment=processPayment(accId,pendingAmount); if(payment.success){ walletModal.style.display='none'; completePurchase(); } else showToast(payment.error,'error'); });
-    
-    async function updateEventSoldInSupabase(eventId,ticketTypeKey,additionalSold){
-      try{
-        const {data:curr,error:fetchErr}=await supabase.from('events').select('ticketTypes').eq('id',eventId).single();
-        if(fetchErr) throw fetchErr;
-        const updated={...curr.ticketTypes}; updated[ticketTypeKey].sold=(updated[ticketTypeKey].sold||0)+additionalSold;
-        await supabase.from('events').update({ticketTypes:updated}).eq('id',eventId);
-        const localEv=events.find(e=>e.id===eventId); if(localEv) localEv.ticketTypes[ticketTypeKey].sold+=additionalSold;
-        localStorage.setItem('rands_events_cache',JSON.stringify(events));
-        return true;
-      } catch(e){ showToast('Failed to update ticket count','error'); return false; }
+  });
+  document.getElementById('cancelWalletBtn').addEventListener('click', () => walletModal.style.display = 'none');
+  document.getElementById('confirmWalletPaymentBtn').addEventListener('click', () => {
+    const accId = document.getElementById('walletAccountId').value.trim();
+    const pin = currentPinInput;
+    if (!accId) { showToast('Enter Account ID', 'error'); return; }
+    if (pin.length !== 4) { showToast('Enter 4-digit PIN', 'error'); return; }
+    const verify = verifyWallet(accId, pin);
+    if (!verify.success) { showToast(verify.error, 'error'); currentPinInput = ''; updatePinDisplayUI(); return; }
+    if (verify.account.balance < pendingAmount) { showToast(`Insufficient balance. Need R${pendingAmount.toFixed(2)}`, 'error'); return; }
+    const payment = processPayment(accId, pendingAmount);
+    if (payment.success) {
+      walletModal.style.display = 'none';
+      completePurchase();
+    } else showToast(payment.error, 'error');
+  });
+
+  // Update sold tickets – no tenant filter
+  async function updateEventSoldInSupabase(eventId, ticketTypeKey, additionalSold) {
+    try {
+      const { data: curr, error: fetchErr } = await supabase
+        .from('events')
+        .select('ticketTypes')
+        .eq('id', eventId)
+        .single();
+      if (fetchErr) throw fetchErr;
+      const updated = { ...curr.ticketTypes };
+      updated[ticketTypeKey].sold = (updated[ticketTypeKey].sold || 0) + additionalSold;
+      const { error: updateErr } = await supabase
+        .from('events')
+        .update({ ticketTypes: updated })
+        .eq('id', eventId);
+      if (updateErr) throw updateErr;
+      const localEv = events.find(e => e.id === eventId);
+      if (localEv) localEv.ticketTypes[ticketTypeKey].sold += additionalSold;
+      localStorage.setItem('rands_events_cache', JSON.stringify(events));
+      return true;
+    } catch (e) {
+      showToast('Failed to update ticket count', 'error');
+      return false;
     }
-    
-    function generateWristbandNumber(){ wristbandCounter++; return `RND${wristbandCounter.toString().padStart(4,'0')}`; }
-    
-    async function completePurchase() {
-      if(!selectedEvent || !selectedTicketType) return;
-      const updateOk = await updateEventSoldInSupabase(selectedEvent.id, selectedTicketType.key, ticketQuantity);
-      if(!updateOk) return;
-      const wristbands = []; for(let i=0;i<ticketQuantity;i++) wristbands.push(generateWristbandNumber());
-      document.getElementById('wristbandNumber').textContent = wristbands[0];
-      document.getElementById('modalEventName').textContent = selectedEvent.name;
-      document.getElementById('modalEventDate').textContent = `${formatDate(selectedEvent.date)} at ${selectedEvent.time||'--:--'}`;
-      const typeIcon = TICKET_TYPE_NAMES[selectedTicketType.key].icon;
-      document.getElementById('wristbandLogo').textContent = typeIcon;
-      document.getElementById('wristbandTitle').textContent = selectedEvent.name.toUpperCase().substring(0,15);
-      let details = `<div style="display:flex; justify-content:center; gap:20px; margin-top:10px; flex-wrap:wrap;"><div><strong>${selectedTicketType.name}</strong></div><div>Qty: ${ticketQuantity}</div><div>${selectedChannel}</div>`;
-      if(ticketQuantity>1) details += `<div>IDs: ${wristbands.join(', ')}</div>`;
-      details += `</div>`;
-      document.getElementById('wristbandDetails').innerHTML = details;
-      document.getElementById('wristbandModal').style.display = 'flex';
-      showToast(`✅ ${selectedPaymentMethod.toUpperCase()} payment successful! ${ticketQuantity} × ${selectedTicketType.name}`, 'success');
-      await loadEventsFromSupabase();
-      if(selectedEvent){ const refreshed = events.find(e=>e.id===selectedEvent.id); if(refreshed){ selectedEvent=refreshed; loadEventDetails(); } }
-      ticketQuantity=1; document.getElementById('quantityDisplay').textContent='1'; updateSummary(); updateQuantityLimit();
-    }
-    
-    function showWalletModalFlow() { if(!selectedTicketType){ showToast('Select ticket type first','error'); return; } pendingAmount = selectedTicketType.price * ticketQuantity; document.getElementById('modalPaymentTotal').textContent=pendingAmount.toFixed(2); currentPinInput=''; updatePinDisplayUI(); document.getElementById('walletAccountId').value=''; document.getElementById('walletBalanceInfo').style.display='none'; walletModal.style.display='flex'; }
-    
-    document.getElementById('purchaseBtn').addEventListener('click', ()=>{
-      if(!selectedEvent){ showToast('Select an event','error'); return; }
-      if(selectedEvent.status!=='active'){ showToast('Event not active','error'); return; }
-      if(!selectedTicketType){ showToast('Select a ticket type','error'); return; }
-      if(ticketQuantity > selectedTicketType.available){ showToast(`Only ${selectedTicketType.available} tickets left`,'error'); return; }
-      if(selectedPaymentMethod === 'randswallet') showWalletModalFlow();
-      else if(confirm(`Pay R${selectedTicketType.price * ticketQuantity} with ${selectedPaymentMethod.toUpperCase()}?`)) completePurchase();
-    });
-    
-    document.getElementById('syncEventsBtn').addEventListener('click',()=>{ loadEventsFromSupabase(); showToast('Syncing events...','info'); });
-    document.getElementById('closeWristbandBtn').addEventListener('click',()=>document.getElementById('wristbandModal').style.display='none');
-    document.getElementById('printWristbandBtn').addEventListener('click',()=>window.print());
-    window.addEventListener('click',(e)=>{ if(e.target===document.getElementById('wristbandModal')) document.getElementById('wristbandModal').style.display='none'; if(e.target===walletModal) walletModal.style.display='none'; });
-    
-    document.getElementById('eventSelector').addEventListener('change',(e)=>{ const id=e.target.value; if(id){ selectedEvent=events.find(ev=>ev.id===id); loadEventDetails(); } else { selectedEvent=null; resetDisplay(); } });
-    function resetDisplay(){ document.getElementById('eventName').textContent='—'; document.getElementById('eventMeta').innerHTML=''; document.getElementById('ticketGridContainer').innerHTML='<div class="ticket-card-embedded disabled">Select an event first</div>'; selectedTicketType=null; updateSummary(); document.getElementById('purchaseBtn').disabled=true; }
-    
-    loadWalletAccounts();
-    loadEventsFromSupabase();
-    const eventChannel = supabase.channel('events-changes').on('postgres_changes',{event:'*',schema:'public',table:'events',filter:`tenant_id=eq.${TENANT_ID}`},()=>loadEventsFromSupabase()).subscribe();
-  })();
+  }
+
+  function generateWristbandNumber() { wristbandCounter++; return `RND${wristbandCounter.toString().padStart(4, '0')}`; }
+
+  async function completePurchase() {
+    if (!selectedEvent || !selectedTicketType) return;
+    const updateOk = await updateEventSoldInSupabase(selectedEvent.id, selectedTicketType.key, ticketQuantity);
+    if (!updateOk) return;
+    const wristbands = [];
+    for (let i = 0; i < ticketQuantity; i++) wristbands.push(generateWristbandNumber());
+    document.getElementById('wristbandNumber').textContent = wristbands[0];
+    document.getElementById('modalEventName').textContent = selectedEvent.name;
+    document.getElementById('modalEventDate').textContent = `${formatDate(selectedEvent.date)} at ${selectedEvent.time || '--:--'}`;
+    const typeIcon = TICKET_TYPE_NAMES[selectedTicketType.key].icon;
+    document.getElementById('wristbandLogo').textContent = typeIcon;
+    document.getElementById('wristbandTitle').textContent = selectedEvent.name.toUpperCase().substring(0, 15);
+    let details = `<div style="display:flex; justify-content:center; gap:20px; margin-top:10px; flex-wrap:wrap;"><div><strong>${selectedTicketType.name}</strong></div><div>Qty: ${ticketQuantity}</div><div>${selectedChannel}</div>`;
+    if (ticketQuantity > 1) details += `<div>IDs: ${wristbands.join(', ')}</div>`;
+    details += `</div>`;
+    document.getElementById('wristbandDetails').innerHTML = details;
+    document.getElementById('wristbandModal').style.display = 'flex';
+    showToast(`✅ ${selectedPaymentMethod.toUpperCase()} payment successful! ${ticketQuantity} × ${selectedTicketType.name}`, 'success');
+    // Refresh events (reload and select latest again)
+    await loadEventsFromSupabase();
+    // Reset quantity
+    ticketQuantity = 1;
+    document.getElementById('quantityDisplay').textContent = '1';
+    updateSummary();
+    updateQuantityLimit();
+  }
+
+  function showWalletModalFlow() {
+    if (!selectedTicketType) { showToast('Select ticket type first', 'error'); return; }
+    pendingAmount = selectedTicketType.price * ticketQuantity;
+    document.getElementById('modalPaymentTotal').textContent = pendingAmount.toFixed(2);
+    currentPinInput = '';
+    updatePinDisplayUI();
+    document.getElementById('walletAccountId').value = '';
+    document.getElementById('walletBalanceInfo').style.display = 'none';
+    walletModal.style.display = 'flex';
+  }
+
+  document.getElementById('purchaseBtn').addEventListener('click', () => {
+    if (!selectedEvent) { showToast('No event available', 'error'); return; }
+    if (selectedEvent.status !== 'active') { showToast('Event not active', 'error'); return; }
+    if (!selectedTicketType) { showToast('Select a ticket type', 'error'); return; }
+    if (ticketQuantity > selectedTicketType.available) { showToast(`Only ${selectedTicketType.available} tickets left`, 'error'); return; }
+    if (selectedPaymentMethod === 'randswallet') showWalletModalFlow();
+    else if (confirm(`Pay R${selectedTicketType.price * ticketQuantity} with ${selectedPaymentMethod.toUpperCase()}?`)) completePurchase();
+  });
+
+  document.getElementById('syncEventsBtn').addEventListener('click', () => { loadEventsFromSupabase(); showToast('Syncing events...', 'info'); });
+  document.getElementById('closeWristbandBtn').addEventListener('click', () => document.getElementById('wristbandModal').style.display = 'none');
+  document.getElementById('printWristbandBtn').addEventListener('click', () => window.print());
+  window.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('wristbandModal')) document.getElementById('wristbandModal').style.display = 'none';
+    if (e.target === walletModal) walletModal.style.display = 'none';
+  });
+
+  function resetDisplay() {
+    document.getElementById('eventName').textContent = '—';
+    document.getElementById('eventMeta').innerHTML = '';
+    document.getElementById('ticketGridContainer').innerHTML = '<div class="ticket-card-embedded disabled">No events available</div>';
+    selectedTicketType = null;
+    updateSummary();
+    document.getElementById('purchaseBtn').disabled = true;
+  }
+
+  // Real-time subscription – no tenant filter
+  function subscribeToEvents() {
+    const channel = supabase
+      .channel('events-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'events'
+      }, (payload) => {
+        console.log('Real-time event update:', payload);
+        loadEventsFromSupabase(); // full refresh – will re-select latest event
+      })
+      .subscribe();
+    return channel;
+  }
+
+  // Initialize
+  loadWalletAccounts();
+  loadEventsFromSupabase();
+  subscribeToEvents();
 </script>
 </body>
 </html>
