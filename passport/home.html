@@ -495,7 +495,7 @@
                             <div class="card-bottom">
                                 <div>
                                     <div class="card-holder-label">Card Holder</div>
-                                    <div class="card-holder-name" id="cardHolderName">MZIWONKE</div>
+                                    <div class="card-holder-name" id="cardHolderName">MEMBER</div>
                                 </div>
                                 <div>
                                     <div class="card-holder-label">Expires</div>
@@ -586,8 +586,159 @@
     </div>
 </div>
 
+<!-- SINGLE SUPABASE CLIENT (ES module import, no CDN duplication) -->
+<script type="importmap">
+    {
+        "imports": {
+            "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+        }
+    }
+</script>
+
+<script type="module">
+    import { createClient } from '@supabase/supabase-js';
+    
+    // ========== SUPABASE SINGLETON ==========
+    const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Expose globally for legacy inline scripts and home.js
+    window.supabase = supabase;
+    
+    // ========== CORE DATA FUNCTIONS (single load, safe fallback) ==========
+    async function loadUserData() {
+        console.log("Loading user data (single client)...");
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+            console.error("Session error:", error);
+            return;
+        }
+        if (!session) {
+            console.log("No active session – showing defaults");
+            document.getElementById('userNameDisplay').textContent = "Guest";
+            document.getElementById('cardHolderName').textContent = "GUEST";
+            return;
+        }
+        
+        console.log("✅ Logged in as:", session.user.email);
+        
+        // Fetch profile using full_name
+        const { data: profile, error: pErr } = await supabase
+            .from('profiles')
+            .select('full_name, phone, account_type')
+            .eq('id', session.user.id)
+            .maybeSingle();
+        
+        if (pErr) {
+            console.error("Profile fetch error:", pErr);
+        }
+        
+        const fullName = profile?.full_name || session.user.user_metadata?.full_name || "Member";
+        document.getElementById('userNameDisplay').textContent = fullName;
+        document.getElementById('cardHolderName').textContent = fullName.toUpperCase();
+        
+        const phone = profile?.phone || session.user.user_metadata?.phone || "—";
+        let formattedPhone = phone;
+        if (phone.match(/^\d+$/)) formattedPhone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
+        document.getElementById('accountPhoneNumber').textContent = formattedPhone || "—";
+        
+        // Fetch wallet with safe fallback
+        const { data: wallet, error: wErr } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+        
+        if (wErr) {
+            console.warn("Wallet query error:", wErr);
+        }
+        
+        const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
+        const formattedBalance = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        
+        const balanceEl = document.getElementById('realWalletBalance');
+        const shishaBalance = document.getElementById('shishaWalletBalance');
+        if (balanceEl) balanceEl.textContent = formattedBalance;
+        if (shishaBalance) shishaBalance.textContent = formattedBalance;
+        
+        console.log("✅ Balance loaded:", balanceNum);
+    }
+    
+    // Helper to update UI balance after transactions
+    window.updateUserBalance = async function(newBalance) {
+        const formatted = `R ${newBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        const balanceEl = document.getElementById('realWalletBalance');
+        const shishaBalance = document.getElementById('shishaWalletBalance');
+        if (balanceEl) balanceEl.textContent = formatted;
+        if (shishaBalance) shishaBalance.textContent = formatted;
+    };
+    
+    async function updateProfileModal() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('full_name, phone')
+            .eq('id', session.user.id)
+            .maybeSingle();
+        if (!error && profile) {
+            document.getElementById('modalFullName').innerText = profile.full_name || '—';
+            document.getElementById('modalEmail').innerText = session.user.email || '—';
+            document.getElementById('modalPhone').innerText = profile.phone || '—';
+        } else if (session.user.user_metadata) {
+            document.getElementById('modalFullName').innerText = session.user.user_metadata.full_name || '—';
+            document.getElementById('modalEmail').innerText = session.user.email || '—';
+            document.getElementById('modalPhone').innerText = session.user.user_metadata.phone || '—';
+        }
+        const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).maybeSingle();
+        const balanceVal = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
+        document.getElementById('modalBalance').innerText = `R ${balanceVal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+    }
+    
+    async function performLogout() {
+        await supabase.auth.signOut();
+        window.location.href = '../login.html';
+    }
+    
+    // ========== EVENT LISTENERS ==========
+    const profileModal = document.getElementById('fullProfileModal');
+    const profileIcon = document.getElementById('profileIconBtn');
+    const closeProfile = document.querySelector('.close-profile-modal');
+    
+    if (profileIcon) {
+        profileIcon.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await updateProfileModal();
+            profileModal.classList.add('active');
+        });
+    }
+    if (closeProfile) {
+        closeProfile.addEventListener('click', () => profileModal.classList.remove('active'));
+    }
+    if (profileModal) {
+        profileModal.addEventListener('click', (e) => {
+            if (e.target === profileModal) profileModal.classList.remove('active');
+        });
+    }
+    
+    const modalLogoutBtn = document.getElementById('modalLogoutBtn');
+    if (modalLogoutBtn) modalLogoutBtn.addEventListener('click', performLogout);
+    
+    const headerLogoutBtn = document.getElementById('logoutBtn');
+    if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
+    
+    // Single load on DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', () => {
+        loadUserData();
+    });
+</script>
+
+<!-- ========== NON-SUPABASE UI SCRIPTS (barcode, flip, color randomizer) ========== -->
+<script src="assets/js/home.js"></script>
+
 <script>
-    // ========== BARCODE GENERATION ==========
+    // ========== BARCODE GENERATION (preserved) ==========
     const barcodeInner = document.getElementById('barcodeInner');
     if (barcodeInner) {
         const seed = [1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,0,0,1,0,0,1,1,0,1,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,1,0,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,0,0,1];
@@ -619,7 +770,7 @@
         });
     }
 
-    // ========== COLOR PERSISTENCE (ONLY localStorage allowed) ==========
+    // ========== COLOR PERSISTENCE (unchanged) ==========
     const STORAGE_KEY_FRONT = 'rvp_card_front_gradient';
     const STORAGE_KEY_BACK = 'rvp_card_back_gradient';
     const DEFAULT_FRONT_GRADIENT = "linear-gradient(135deg, #8B0000 0%, #C41E3A 15%, #DC143C 30%, #B22222 50%, #8B0000 70%, #5C0A0A 85%, #3D0000 100%)";
@@ -641,7 +792,7 @@
         if (backGradient) localStorage.setItem(STORAGE_KEY_BACK, backGradient);
     }
 
-    // ========== FLIP LOGIC ==========
+    // FLIP LOGIC
     const cardStage = document.getElementById('cardStage');
     let flipped = false;
     if (cardStage) {
@@ -659,7 +810,7 @@
         });
     }
 
-    // ========== TILT EFFECT ==========
+    // TILT EFFECT
     const flipperElem = document.getElementById('cardFlipper');
     if (cardStage && flipperElem) {
         cardStage.addEventListener('pointermove', (e) => {
@@ -677,7 +828,7 @@
         });
     }
 
-    // ========== LONG PRESS COLOR RANDOMIZER ==========
+    // LONG PRESS COLOR RANDOMIZER
     const cardFront = document.getElementById('cardFront');
     const cardBack = document.getElementById('cardBack');
     let pressTimer = null;
@@ -742,127 +893,6 @@
     }
     
     loadSavedColors();
-</script>
-
-<script src="assets/js/home.js"></script>
-
-<!-- Supabase Connection -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-    // Your Supabase credentials
-    const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    async function loadUserData() {
-        console.log("Loading user data...");
-        
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) { console.error("Session error:", error); return; }
-        if (!session) { console.log("Not logged in - showing default"); return; }
-        
-        console.log("✅ Logged in as:", session.user.email);
-        
-        const { data: profile, error: pErr } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-        
-        if (pErr) { console.error("Profile error:", pErr); return; }
-        if (!profile) { console.warn("No profile row found for user", session.user.id); return; }
-        
-        console.log("✅ Profile found:", profile);
-        
-        if (profile.name) {
-            document.getElementById('userNameDisplay').textContent = profile.name;
-            document.getElementById('cardHolderName').textContent = profile.name.toUpperCase();
-        }
-        
-        if (profile.phone) {
-            let phone = profile.phone;
-            if (phone.match(/^\d+$/)) phone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
-            document.getElementById('accountPhoneNumber').textContent = phone;
-        } else {
-            document.getElementById('accountPhoneNumber').textContent = '—';
-        }
-        
-        // ✅ UPDATED: Uses session.user.id directly and maybeSingle()
-        const { data: wallet, error: wErr } = await supabase
-            .from('wallets')
-            .select('balance')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-        
-        const balanceEl = document.getElementById('realWalletBalance');
-        const shishaBalance = document.getElementById('shishaWalletBalance');
-        
-        if (wErr) console.error("❌ Wallet load error:", wErr);
-        
-        const balanceNum = Number(wallet?.balance ?? 0);
-        const formatted = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
-        if (balanceEl) balanceEl.textContent = formatted;
-        if (shishaBalance) shishaBalance.textContent = formatted;
-        console.log("✅ Balance loaded:", wallet ? wallet.balance : "(no wallet row)", "->", formatted);
-    }
-    
-    window.updateUserBalance = async function(newBalance) {
-        const balanceEl = document.getElementById('realWalletBalance');
-        const shishaBalance = document.getElementById('shishaWalletBalance');
-        const formatted = `R ${newBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
-        if (balanceEl) balanceEl.textContent = formatted;
-        if (shishaBalance) shishaBalance.textContent = formatted;
-    };
-    
-    async function updateProfileModal() {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-        if (!error && profile) {
-            document.getElementById('modalFullName').innerText = profile.name || '---';
-            document.getElementById('modalEmail').innerText = session.user.email || '---';
-            document.getElementById('modalPhone').innerText = profile.phone || '---';
-            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).maybeSingle();
-            const balanceVal = wallet ? wallet.balance : 0;
-            document.getElementById('modalBalance').innerText = `R ${balanceVal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
-        }
-    }
-    
-    const profileModal = document.getElementById('fullProfileModal');
-    const profileIcon = document.getElementById('profileIconBtn');
-    const closeProfile = document.querySelector('.close-profile-modal');
-    
-    if (profileIcon) {
-        profileIcon.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            await updateProfileModal();
-            profileModal.classList.add('active');
-        });
-    }
-    if (closeProfile) {
-        closeProfile.addEventListener('click', () => profileModal.classList.remove('active'));
-    }
-    profileModal.addEventListener('click', (e) => {
-        if (e.target === profileModal) profileModal.classList.remove('active');
-    });
-    
-    async function performLogout() {
-        await supabase.auth.signOut();
-        window.location.href = '../login.html';
-    }
-    
-    const modalLogoutBtn = document.getElementById('modalLogoutBtn');
-    if (modalLogoutBtn) modalLogoutBtn.addEventListener('click', performLogout);
-    
-    const headerLogoutBtn = document.getElementById('logoutBtn');
-    if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
-    
-    document.addEventListener('DOMContentLoaded', loadUserData);
-    setTimeout(loadUserData, 500);
 </script>
 </body>
 </html>
