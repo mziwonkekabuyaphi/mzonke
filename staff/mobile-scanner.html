@@ -10,7 +10,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+            }
+        }
+    </script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         * { font-family: 'Inter', sans-serif; }
@@ -92,15 +98,12 @@
     <div id="resultCard" class="glass-card max-w-md w-full p-8 text-center transition-all"></div>
 </div>
 
-<script>
-    // ======================== SUPABASE CONFIG ========================
-    const supabaseUrl = 'https://fqbcidcezfprranfxhyj.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-    const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
-    
+<script type="module">
+    // ======================== YOUR SUPABASE CONFIG ========================
+    import { supabase } from '../config/supabase.js';
+
     // ======================== APP STATE ========================
     let currentStaff = null;
-    let currentTenantId = null;
     let currentEvent = null;
     let syncQueueProcessing = false;
     let html5QrScanner = null;
@@ -129,12 +132,12 @@
         return tx.done;
     }
     
-    async function getCachedTicketByCode(ticketCode, eventId) {
+    async function getCachedTicketById(ticketId, eventId) {
         const tx = db.transaction('tickets', 'readonly');
         const store = tx.objectStore('tickets');
         return new Promise((resolve) => {
             const request = store.getAll();
-            request.onsuccess = () => resolve(request.result.find(t => t.ticket_code === ticketCode && t.event_id === eventId) || null);
+            request.onsuccess = () => resolve(request.result.find(t => t.id === ticketId && t.event_id === eventId) || null);
         });
     }
     
@@ -163,11 +166,16 @@
         const pending = all.filter(i => !i.synced);
         for (let item of pending) {
             try {
-                await supabase.from('ticket_logs').insert({
-                    ticket_id: item.ticketId, event_id: item.eventId, status: 'checked_in',
-                    scanned_by: currentStaff?.id, gate: item.gate, scanned_at: item.scannedAt
+                // Insert into checkins table (your actual schema)
+                await supabase.from('checkins').insert({
+                    ticket_id: item.ticketId,
+                    event_id: item.eventId,
+                    scanned_by: currentStaff?.id || null,
+                    scanned_at: item.scannedAt,
+                    status: 'valid'
                 });
-                await supabase.from('tickets').update({ status: 'used' }).eq('id', item.ticketId);
+                // Update ticket status to checked_in (your tickets table has checked_in boolean)
+                await supabase.from('tickets').update({ checked_in: true, checked_in_at: item.scannedAt }).eq('id', item.ticketId);
                 item.synced = true;
                 await store.put(item);
             } catch (err) { console.error('sync fail', err); item.retries = (item.retries||0)+1; if(item.retries>5) item.synced=true; await store.put(item); }
@@ -187,22 +195,9 @@
         document.getElementById('onlineStatusBadge').innerHTML = !navigator.onLine ? '🔴 Offline Mode' : '🟢 Live Sync';
     }
     
-    // ======================== LOAD EVENTS & TICKETS ========================
-    async function loadAssignedEvents() {
-        // If no tenant ID, try to fetch first tenant from tenants table (demo fallback)
-        if (!currentTenantId) {
-            const { data: tenants } = await supabase.from('tenants').select('id').limit(1);
-            if (tenants && tenants.length) {
-                currentTenantId = tenants[0].id;
-                console.warn('⚠️ No staff context – using first tenant:', currentTenantId);
-                // Create a dummy staff so sync works
-                currentStaff = { id: 'demo_staff', role: 'staff', tenantId: currentTenantId };
-            } else {
-                console.error('No tenants found in Supabase. Please set staff context via window.setStaffContext()');
-                return;
-            }
-        }
-        const { data: events, error } = await supabase.from('events').select('*').eq('tenant_id', currentTenantId);
+    // ======================== LOAD EVENTS & TICKETS (NO TENANT FILTER) ========================
+    async function loadEvents() {
+        const { data: events, error } = await supabase.from('events').select('*').order('start_time', { ascending: false });
         if (error) { console.error('Failed to load events', error); return; }
         const selectEl = document.getElementById('eventSelect');
         selectEl.innerHTML = '<option disabled>Select event</option>';
@@ -222,15 +217,16 @@
     }
     
     async function cacheEventTickets(eventId) {
-        const { data: tickets, error } = await supabase.from('tickets').select('id, ticket_code, status, customer_phone, ticket_type_id, event_id').eq('event_id', eventId);
+        // Fetch all tickets for this event (ticket code is the ticket's UUID)
+        const { data: tickets, error } = await supabase.from('tickets').select('id, checked_in, customer_phone, ticket_type_id, event_id').eq('event_id', eventId);
         if(!error && tickets) await storeTickets(eventId, tickets);
         updateDashboard();
     }
     
     async function fetchEventAttendance(eventId) {
         if(!eventId) return;
-        const { count: usedCount } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', eventId).eq('status', 'used');
-        const { count: totalPaid } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', eventId).eq('status', 'paid');
+        const { count: usedCount } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', eventId).eq('checked_in', true);
+        const { count: totalPaid } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', eventId);
         const remaining = (totalPaid||0) - (usedCount||0);
         document.getElementById('totalScanned').innerText = usedCount || 0;
         document.getElementById('remainingGuests').innerText = remaining>=0?remaining:0;
@@ -240,45 +236,57 @@
     async function updateDashboard() { if(currentEvent) await fetchEventAttendance(currentEvent.id); updateSyncBadge(); }
     
     // ======================== TICKET VALIDATION & SCAN LOGIC ========================
-    async function processTicketScan(ticketCode) {
+    async function processTicketScan(ticketId) {
         if(!currentEvent) { showResultModal('error', 'No event selected','Select an active event first'); return false; }
-        let ticket = await getCachedTicketByCode(ticketCode, currentEvent.id);
-        if(!ticket && navigator.onLine) {
-            const { data } = await supabase.from('tickets').select('*').eq('ticket_code', ticketCode).eq('event_id', currentEvent.id).single();
+        
+        // First try to fetch ticket from Supabase (online) or from cache
+        let ticket = null;
+        if (navigator.onLine) {
+            const { data } = await supabase.from('tickets').select('*').eq('id', ticketId).eq('event_id', currentEvent.id).maybeSingle();
             ticket = data;
         }
+        if (!ticket) {
+            ticket = await getCachedTicketById(ticketId, currentEvent.id);
+        }
         if(!ticket) { showResultModal('invalid', 'Ticket not found','Invalid QR or wrong event'); return false; }
-        if(ticket.status === 'used') { showResultModal('used', 'Already Checked In', `Scanned earlier`); return false; }
-        if(ticket.status !== 'paid') { showResultModal('invalid', 'Ticket Invalid', `Status: ${ticket.status}. Requires paid reservation.`); return false; }
         
-        let ticketType = 'Standard', isVip = false, isVvip = false;
+        if(ticket.checked_in === true) { showResultModal('used', 'Already Checked In', `Scanned earlier`); return false; }
+        
+        // Optional: if you want to restrict to only 'issued' status (your tickets have status column)
+        if (ticket.status && ticket.status !== 'issued') {
+            showResultModal('invalid', 'Ticket Invalid', `Status: ${ticket.status}. Cannot check in.`);
+            return false;
+        }
+        
+        let ticketType = 'Standard';
+        let isVip = false, isVvip = false;
         if(ticket.ticket_type_id) {
-            const { data: tt } = await supabase.from('ticket_types').select('name,is_vip,is_vvip').eq('id', ticket.ticket_type_id).single();
-            if(tt) { ticketType = tt.name; isVip = tt.is_vip; isVvip = tt.is_vvip; }
+            const { data: tt } = await supabase.from('ticket_types').select('name, is_vip, is_vvip').eq('id', ticket.ticket_type_id).single();
+            if(tt) { ticketType = tt.name; isVip = tt.is_vip || false; isVvip = tt.is_vvip || false; }
         }
         const gateVal = document.getElementById('gateInput')?.value || 'Main';
         const scannedAt = new Date().toISOString();
         
-        // Immediate local update
+        // Immediate local update (mark as checked in)
         const tx = db.transaction('tickets', 'readwrite');
         const store = tx.objectStore('tickets');
-        await store.put({ ...ticket, status: 'used', localCheckedAt: scannedAt });
-        await addToSyncQueue({ ticketId: ticket.id, eventId: currentEvent.id, gate: gateVal, scannedAt, staffId: currentStaff?.id, ticketCode });
+        await store.put({ ...ticket, checked_in: true, localCheckedAt: scannedAt });
+        await addToSyncQueue({ ticketId: ticket.id, eventId: currentEvent.id, gate: gateVal, scannedAt, staffId: currentStaff?.id });
         
         const historyTx = db.transaction('scanHistory', 'readwrite');
-        await historyTx.objectStore('scanHistory').add({ ticketCode, guestName: ticket.customer_phone || 'Guest', ticketType, timestamp: Date.now(), vip: isVip, vvip: isVvip });
+        await historyTx.objectStore('scanHistory').add({ ticketId, guestName: ticket.customer_phone || 'Guest', ticketType, timestamp: Date.now(), vip: isVip, vvip: isVvip });
         
         showSuccessWithVIP(ticket, ticketType, isVip, isVvip, gateVal);
         playSuccessSoundAndVibe(isVvip);
         updateDashboard();
-        addRecentScanToFeed(ticketCode, ticketType, isVip);
+        addRecentScanToFeed(ticket.id, ticketType, isVip);
         if(navigator.onLine) processSyncQueue(); else updateSyncBadge();
         return true;
     }
     
     function showSuccessWithVIP(ticket, typeName, isVip, isVvip, gate) {
         const vipClass = isVvip ? 'vvip-cinematic' : (isVip ? 'vip-gold-border' : '');
-        const content = `<div class="${vipClass} p-4 rounded-2xl"><i class="fas fa-check-circle text-6xl text-green-500 mb-3"></i><h2 class="text-3xl font-bold">CHECKED IN</h2><p class="text-xl">${ticket.ticket_code}</p><div class="mt-3 space-y-1"><p>🎟️ ${typeName} ${isVvip ? '👑 VVIP' : (isVip ? '✨ VIP' : 'Standard')}</p><p>⏱️ ${new Date().toLocaleTimeString()}</p><p>🚪 Gate: ${gate}</p><p>🛂 Staff: ${currentStaff?.id?.slice(-6) || 'demo'}</p></div>${isVvip ? '<div class="mt-3 text-gold text-sm">🌟 CINEMATIC ENTRANCE GRANTED</div>' : ''}</div>`;
+        const content = `<div class="${vipClass} p-4 rounded-2xl"><i class="fas fa-check-circle text-6xl text-green-500 mb-3"></i><h2 class="text-3xl font-bold">CHECKED IN</h2><p class="text-xl">${ticket.id.slice(-8)}</p><div class="mt-3 space-y-1"><p>🎟️ ${typeName} ${isVvip ? '👑 VVIP' : (isVip ? '✨ VIP' : 'Standard')}</p><p>⏱️ ${new Date().toLocaleTimeString()}</p><p>🚪 Gate: ${gate}</p><p>🛂 Staff: ${currentStaff?.id?.slice(-6) || 'demo'}</p></div>${isVvip ? '<div class="mt-3 text-gold text-sm">🌟 CINEMATIC ENTRANCE GRANTED</div>' : ''}</div>`;
         document.getElementById('resultCard').innerHTML = content;
         const modal = document.getElementById('resultModal');
         modal.classList.remove('hidden'); modal.classList.add('flex');
@@ -313,11 +321,11 @@
         setTimeout(()=>canvas.remove(), 2000);
     }
     
-    function addRecentScanToFeed(code, type, vip) {
+    function addRecentScanToFeed(id, type, vip) {
         const feedDiv = document.getElementById('recentScansList');
         const item = document.createElement('div');
         item.className = 'flex justify-between items-center border-b border-white/10 py-2';
-        item.innerHTML = `<div><span class="font-mono text-xs">${code.slice(-8)}</span><span class="ml-2 ${vip?'text-yellow-400':'text-white'}">${type}</span></div><span class="text-green-400 text-xs">✓ ${new Date().toLocaleTimeString()}</span>`;
+        item.innerHTML = `<div><span class="font-mono text-xs">${id.slice(-8)}</span><span class="ml-2 ${vip?'text-yellow-400':'text-white'}">${type}</span></div><span class="text-green-400 text-xs">✓ ${new Date().toLocaleTimeString()}</span>`;
         feedDiv.prepend(item);
         if(feedDiv.children.length > 12) feedDiv.removeChild(feedDiv.lastChild);
     }
@@ -353,12 +361,12 @@
         }
     }
     
-    // ======================== EXTERNAL AUTH HOOK ========================
+    // ======================== STAFF CONTEXT (optional) ========================
     window.setStaffContext = (staffObject) => {
         currentStaff = staffObject;
-        currentTenantId = staffObject.tenantId;
         localStorage.setItem('staffContext', JSON.stringify(staffObject));
-        loadAssignedEvents();
+        // No tenant filter – just reload events
+        loadEvents();
         updateDashboard();
     };
     
@@ -372,17 +380,8 @@
         window.addEventListener('online', () => { updateSyncBadge(); processSyncQueue(); if(currentEvent) fetchEventAttendance(currentEvent.id); });
         window.addEventListener('offline', () => updateSyncBadge());
         
-        // Try to load stored staff, otherwise fallback to demo mode
-        const storedStaff = localStorage.getItem('staffContext');
-        if (storedStaff) {
-            const parsed = JSON.parse(storedStaff);
-            currentStaff = parsed;
-            currentTenantId = parsed.tenantId;
-            await loadAssignedEvents();
-        } else {
-            console.log("No staff context – attempting to load first tenant automatically (demo mode)");
-            await loadAssignedEvents(); // will fetch first tenant if needed
-        }
+        // No login required – load events directly (public)
+        await loadEvents();
         
         // Attach button handlers
         document.getElementById('openScannerBtn').onclick = () => {
@@ -395,7 +394,7 @@
             if (code) { closeScannerModal(); processTicketScan(code); }
         };
         
-        // === LOGOUT: Redirect to login.html ===
+        // Logout (redirect to login.html if you have one)
         document.getElementById('logoutIcon').onclick = () => {
             localStorage.removeItem('staffContext');
             currentStaff = null;
