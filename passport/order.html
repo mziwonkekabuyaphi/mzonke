@@ -556,7 +556,7 @@
       searchQuery: '',
       activeCategory: 'all',
       activeSub: 'rum',
-      products: [],          // will be loaded from Supabase
+      products: [],          // will be loaded from Supabase 'products' table
       loadingProducts: true,
       cart: [],
       pendingQtys: {},
@@ -617,24 +617,27 @@
       window.addEventListener('storage', (e) => { if (e.key === 'globalOrders' && this.trackModalVisible) this.renderTrackModal(); });
     },
     methods: {
-      // ---------- PRODUCTS FROM SUPABASE ----------
+      // ---------- PRODUCTS FROM SUPABASE (using 'products' table) ----------
       async loadProductsFromSupabase() {
         this.loadingProducts = true;
         try {
+          if (!supabase) throw new Error('Supabase client not loaded');
           const { data, error } = await supabase
-            .from('menu_items')
+            .from('products')
             .select('*')
-            .order('created_at', { ascending: true });
+            .eq('is_available', true)   // only show available products
+            .order('name', { ascending: true });
+          
           if (error) throw error;
+          
           if (data && data.length) {
             this.products = data;
           } else {
-            // If no products in Supabase, show an empty state (user must add via admin panel)
             this.products = [];
-            this.showToast('No products found. Please add some in the admin panel.');
+            this.showToast('No products found. Please add some in the admin panel.', 'info');
           }
         } catch (err) {
-          console.error(err);
+          console.error('Supabase error:', err);
           this.showToast('Failed to load menu: ' + err.message, 'error');
           this.products = [];
         } finally {
@@ -643,7 +646,7 @@
       },
       
       getProductImage(product) {
-        if (product.image_url && product.image_url.trim()) return product.image_url;
+        if (product.image && product.image.trim()) return product.image;
         return 'https://placehold.co/300x200?text=No+Image';
       },
       handleImageError(event, product) {
