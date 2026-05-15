@@ -329,25 +329,28 @@
     localStorage.setItem('lastTrackingUrl', trackingUrl);
   }
 
-  // ========== LOAD BUTCHER PRODUCTS FROM SUPABASE ==========
+  // ========== LOAD BUTCHER PRODUCTS FROM SUPABASE 'products' TABLE ==========
   async function loadButcherMenu() {
     try {
       const { data, error } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('category', 'butcher');
+        .from('products')
+        .select('id, name, price, description, image, category, alcohol, is_available')
+        .eq('category', 'butcher')
+        .eq('is_available', true);
+      
       if (error) throw error;
+      
       if (data && data.length) {
         butcherMenuItems = data.map(item => ({
           id: item.id,
           name: item.name,
           price: item.price,
-          description: item.description,
-          image: item.image_url
+          description: item.description || 'House special',
+          image: item.image
         }));
-        console.log(`Loaded ${butcherMenuItems.length} Butcher items from Supabase.`);
+        console.log(`Loaded ${butcherMenuItems.length} butcher items from products table.`);
       } else {
-        // Fallback only if absolute emergency
+        // Emergency fallback (only if no products exist in Supabase)
         butcherMenuItems = [
           { id: "ribeye", name: "🥩 Ribeye Steak", price: 159 },
           { id: "beef_sausage", name: "🌭 Beef Sausage", price: 89 },
@@ -363,7 +366,7 @@
           { id: "water", name: "💧 Still Water", price: 12 },
           { id: "beer", name: "🍺 Castle Lager", price: 28 }
         ];
-        console.warn("No butcher products in Supabase, using fallback menu.");
+        console.warn("No butcher products found in Supabase. Using fallback menu.");
       }
     } catch (err) {
       console.error("Failed to load butcher menu from Supabase:", err);
