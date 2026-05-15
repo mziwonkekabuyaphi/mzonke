@@ -99,6 +99,13 @@
       overflow: hidden;
     }
 
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: var(--radius-md);
+    }
+
     .brand-logo::after {
       content: '';
       position: absolute;
@@ -108,6 +115,7 @@
       height: 200%;
       background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%);
       animation: shimmer 3s infinite;
+      pointer-events: none;
     }
 
     @keyframes shimmer {
@@ -224,6 +232,29 @@
     .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--mist); }
     .empty-state { text-align: center; padding: 80px 24px; color: var(--mist); }
 
+    /* Payment Options */
+    .pay-option { border: 2px solid var(--border-strong); border-radius: var(--radius-xl); padding: 16px; margin-bottom: 14px; cursor: pointer; transition: all 0.2s; }
+    .pay-option.selected { border-color: var(--red); background: var(--red-subtle); }
+    .pay-option-header { display: flex; gap: 14px; align-items: center; }
+    .pay-icon-wrap { width: 48px; height: 48px; background: var(--bone); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--red); }
+    .pay-option-title { font-weight: 800; font-size: 0.9rem; }
+    .pay-option-desc { font-size: 0.7rem; color: var(--mist); }
+    .order-summary-box { background: var(--bone); border-radius: 20px; padding: 16px; margin-bottom: 20px; }
+    .order-summary-title { font-weight: 700; margin-bottom: 10px; font-size: 0.85rem; }
+    .order-summary-row { display: flex; justify-content: space-between; font-size: 0.8rem; padding: 4px 0; }
+    .order-summary-row.total { border-top: 1px solid var(--border-strong); margin-top: 6px; padding-top: 10px; font-size: 1rem; font-weight: 800; }
+    .alcohol-notice { display: flex; gap: 8px; background: var(--red-subtle); padding: 8px 12px; border-radius: 16px; margin-top: 10px; font-size: 0.75rem; align-items: center; }
+    .fp-circle { width: 80px; height: 80px; background: var(--red-subtle); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; transition: all 0.2s; }
+    .fp-circle.scanning { animation: pulse 0.8s infinite; }
+    .fp-circle.success-fp { background: #059669; color: white; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+    .waiting-dot { width: 10px; height: 10px; background: var(--red); border-radius: 50%; animation: bounce 1s infinite; }
+    .waiting-dot:nth-child(2) { animation-delay: 0.2s; }
+    .waiting-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .timer-display { font-family: monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.1em; }
+    .timer-display.warn { color: #e67e22; }
+
     @media (max-width: 900px) {
       .main-body { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; padding: 14px 16px; gap: 6px; flex-wrap: nowrap; }
@@ -245,7 +276,7 @@
   <div class="app-shell">
     <header class="site-header">
       <div class="brand" @click="goHome">
-        <div class="brand-logo">🍽️</div>
+        <div class="brand-logo"><img src="../assets/images/rands-logo.png" alt="Rands"></div>
         <div class="brand-text">
           <h1>Rands</h1>
           <p>Premium Bar & The Butcher</p>
@@ -273,7 +304,6 @@
       </nav>
 
       <main class="products-area">
-        <!-- Normal Kiosk View (no admin mode) -->
         <div class="search-wrap">
           <i class="fas fa-search search-icon"></i>
           <input class="search-input" type="text" v-model="searchQuery" placeholder="Search items…" />
@@ -294,7 +324,7 @@
         <div class="products-grid" v-else>
           <div v-for="product in filteredProducts" :key="product.id" class="product-card">
             <div class="product-image-wrap">
-              <img class="product-image" :src="product.image_url || getFallbackImage(product)" :alt="product.name" loading="lazy" @error="handleImageError($event, product)" />
+              <img class="product-image" :src="product.image || getFallbackImage(product)" :alt="product.name" loading="lazy" @error="handleImageError($event, product)" />
               <div class="product-image-overlay"></div>
               <div class="product-badges">
                 <span v-if="product.alcohol" class="badge badge-alcohol"><i class="fas fa-wine-bottle"></i> Alcohol</span>
@@ -303,7 +333,7 @@
             </div>
             <div class="product-body">
               <div class="product-name">{{ product.name }}</div>
-              <div class="product-desc">{{ product.description }}</div>
+              <div class="product-desc">{{ product.description || 'House special' }}</div>
               <div class="product-footer">
                 <div class="product-price"><span>R</span> {{ formatPrice(product.price) }}</div>
                 <div class="qty-control">
@@ -338,7 +368,7 @@
 
   <div class="toast" :class="[toast.type, { show: toast.visible }]"><i :class="toast.icon"></i> {{ toast.text }}</div>
 
-  <!-- Payment Modal (unchanged) -->
+  <!-- Payment Modal -->
   <div class="modal-backdrop" :class="{ open: paymentModalOpen }" @click.self="closePaymentModal">
     <div class="modal-box">
       <div class="modal-header"><div class="modal-emblem"><i class="fas fa-credit-card"></i></div><h2 class="modal-title">Select Payment</h2><p class="modal-subtitle">Choose how you'd like to pay</p></div>
@@ -468,14 +498,15 @@
       openPaymentModal() { if (this.cartItemCount === 0) return; this.paymentModalOpen = true; },
       closePaymentModal() { if (!this.waitingModalOpen) this.paymentModalOpen = false; },
 
-      // === Supabase product loading ===
+      // ========== SUPABASE: load products from 'products' table ==========
       async loadProductsFromSupabase() {
         this.loadingProducts = true;
         try {
           const { data, error } = await supabase
-            .from('menu_items')
+            .from('products')
             .select('*')
-            .order('created_at', { ascending: true });
+            .eq('is_available', true)
+            .order('name', { ascending: true });
           if (error) throw error;
           if (data && data.length) {
             this.products = data;
@@ -492,12 +523,12 @@
         }
       },
 
-      // === Fallback images ===
+      // Fallback images based on category
       getFallbackImage(product) {
-        const nameLower = (product.name || '').toLowerCase();
         const cat = (product.category || '').toLowerCase();
-        if (cat === 'beer' || nameLower.includes('beer')) return 'https://picsum.photos/seed/beer-glass/300/200';
-        if (cat === 'wine' || nameLower.includes('wine')) return 'https://picsum.photos/seed/wine-bottle/300/200';
+        const name = (product.name || '').toLowerCase();
+        if (cat === 'beer' || name.includes('beer')) return 'https://picsum.photos/seed/beer-glass/300/200';
+        if (cat === 'wine' || name.includes('wine')) return 'https://picsum.photos/seed/wine-bottle/300/200';
         if (cat === 'whisky') return 'https://picsum.photos/seed/whisky-glass/300/200';
         if (cat === 'vodka') return 'https://picsum.photos/seed/vodka-cocktail/300/200';
         if (cat === 'rum') return 'https://picsum.photos/seed/rum-drink/300/200';
@@ -511,7 +542,7 @@
         event.target.src = this.getFallbackImage(product);
       },
 
-      // === Payment methods (unchanged) ===
+      // ========== Payment methods (unchanged) ==========
       sendWalletRequest() {
         if (this.walletId.trim().length < 10) { this.showToast('Enter valid wallet ID', 'error'); return; }
         this.paymentModalOpen = false;
