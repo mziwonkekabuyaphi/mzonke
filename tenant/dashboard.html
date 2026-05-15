@@ -14,7 +14,8 @@
         body { font-family: 'Inter', sans-serif; background: #f5f7fb; overflow-x: hidden; }
         .sidebar { position: fixed; left: 0; top: 0; width: 270px; height: 100%; background: #ffffff; box-shadow: 0 0 20px rgba(0,0,0,0.05); z-index: 100; transition: all 0.3s ease; overflow-y: auto; border-right: 1px solid #edf2f7; }
         .sidebar-header { padding: 24px 20px; border-bottom: 1px solid #eff3f8; display: flex; align-items: center; gap: 12px; }
-        .tenant-logo { width: 42px; height: 42px; background: #E30613; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem; }
+        .tenant-logo { width: 42px; height: 42px; background: #E30613; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem; overflow: hidden; }
+        .tenant-logo img { width: 100%; height: 100%; object-fit: cover; }
         .tenant-info h3 { font-size: 1rem; font-weight: 700; color: #1e293b; }
         .tenant-info p { font-size: 0.7rem; color: #6c7a8e; }
         .nav-menu { padding: 20px 0; }
@@ -82,16 +83,18 @@
         @media (max-width: 768px) { .sidebar { transform: translateX(-100%); width: 260px; } .sidebar.open { transform: translateX(0); } .main-content { margin-left: 0; } .dashboard-container { padding: 20px; } .menu-toggle { display: block; margin-right: 16px; } }
         @media (min-width: 769px) { .menu-toggle { display: none; } }
         .menu-toggle { font-size: 1.3rem; cursor: pointer; color: #1e293b; }
-        .external-module { margin-top: 20px; }
-        .external-back-btn { margin-bottom: 20px; }
-        .external-iframe { width: 100%; height: 80vh; border: none; background: white; border-radius: 24px; }
+        .external-module { margin-top: 0; }
+        .external-iframe { width: 100%; height: calc(100vh - 70px); border: none; background: white; border-radius: 24px; }
     </style>
 </head>
 <body>
 <div id="app">
     <aside class="sidebar" :class="{ open: sidebarOpen }">
         <div class="sidebar-header">
-            <div class="tenant-logo" :style="{ backgroundColor: branding.primaryColor }">{{ tenantInitial }}</div>
+            <div class="tenant-logo" :style="{ backgroundColor: branding.primaryColor }">
+                <img src="../assets/images/rands-logo2.png" alt="Rands" @error="e => e.target.style.display='none'">
+                <span v-if="!logoLoaded" style="display:none">{{ tenantInitial }}</span>
+            </div>
             <div class="tenant-info">
                 <h3>{{ tenantName }}</h3>
                 <p>Venue Dashboard</p>
@@ -104,7 +107,7 @@
             </div>
             <div class="nav-divider" v-if="enabledModulesList.length > 0"></div>
             <div class="nav-section-title" v-if="enabledModulesList.length > 0"><i class="fas fa-puzzle-piece"></i> ACTIVE MODULES</div>
-            <div v-for="module in enabledModulesList" :key="'module_' + module.id" class="nav-item" :class="{ active: currentSection === 'module_' + module.id }" @click="goToModuleSection(module)">
+            <div v-for="module in sortedModules" :key="'module_' + module.id" class="nav-item" :class="{ active: currentSection === 'module_' + module.id }" @click="goToModuleSection(module)">
                 <i :class="getModuleIcon(module.name)"></i>
                 <span>{{ getModuleDisplayName(module.name) }}</span>
                 <span class="module-badge-enabled" style="font-size: 0.6rem; padding: 2px 6px; margin-left: auto; background: #10b981; color: white; border-radius: 30px;">Live</span>
@@ -148,7 +151,7 @@
                 </div>
                 <div v-else class="settings-panel" style="text-align:center; padding:20px;"><i class="fas fa-user-clock" style="font-size:32px; color:#cbd5e1;"></i><p style="margin-top:8px;">No staff currently on shift</p></div>
                 <div class="section-header"><h2>Recent Staff Activity</h2></div>
-                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td><tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
             </div>
 
             <!-- PRIVATE LABEL (internal) -->
@@ -257,13 +260,8 @@
                 </div>
             </div>
 
-            <!-- EXTERNAL MODULE CONTENT (iframe) -->
+            <!-- EXTERNAL MODULE CONTENT (iframe) - Back button REMOVED -->
             <div v-if="currentSection === 'external'" class="external-module">
-                <div class="external-back-btn">
-                    <button class="btn-outline" @click="currentSection = 'dashboard'">
-                        <i class="fas fa-arrow-left"></i> Back to Dashboard
-                    </button>
-                </div>
                 <iframe :src="externalUrl" class="external-iframe" title="External Module"></iframe>
             </div>
         </div>
@@ -343,6 +341,9 @@ const moduleFileMap = {
   'Tenant Settings': '/tenant-admin.html'
 };
 
+// Define custom order for modules
+const MODULE_ORDER = ['Event Management', 'Passports', 'Staff Management', 'Workforce'];
+
 new Vue({
     el: '#app',
     data: {
@@ -370,7 +371,8 @@ new Vue({
         avgHoursPerStaff: 0,
         staffModuleTab: 'accounts',
         currentUserTenantId: null,
-        externalUrl: ''
+        externalUrl: '',
+        logoLoaded: true
     },
     computed: {
         tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
@@ -388,6 +390,19 @@ new Vue({
         enabledModulesList() {
             return this.tenantModules.filter(m => m.enabled === true);
         },
+        // Sorted modules according to custom order, then alphabetically
+        sortedModules() {
+            const modules = [...this.enabledModulesList];
+            modules.sort((a, b) => {
+                const idxA = MODULE_ORDER.indexOf(a.name);
+                const idxB = MODULE_ORDER.indexOf(b.name);
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            return modules;
+        },
         activeShiftsList() {
             return this.shifts.filter(s => s.status === 'active' && s.tenant_id === this.tenantId).map(s => {
                 const staff = this.staffList.find(st => st.id === s.staff_id);
@@ -396,8 +411,27 @@ new Vue({
         }
     },
     methods: {
-        getModuleDisplayName(name) { if(name === 'Private Label') return 'Venue Branding'; return name; },
-        getModuleIcon(name) { if(name === 'Private Label') return 'fas fa-palette'; if(name === 'Staff Management') return 'fas fa-users'; return 'fas fa-cube'; },
+        getModuleDisplayName(name) { 
+            if(name === 'Private Label') return 'Venue Branding'; 
+            if(name === 'Staff Management') return 'Staff Management';
+            return name; 
+        },
+        getModuleIcon(name) { 
+            const icons = {
+                'Event Management': 'fas fa-calendar-alt',
+                'Passports': 'fas fa-passport',
+                'Staff Management': 'fas fa-users',
+                'Workforce': 'fas fa-hard-hat',
+                'Private Label': 'fas fa-palette',
+                'VVIP Console': 'fas fa-crown',
+                'Sales & Orders Engine': 'fas fa-chart-line',
+                'Booze Lockers': 'fas fa-locker',
+                'Shisha Lounge System': 'fas fa-smoking',
+                'Tenant Revenue': 'fas fa-chart-pie',
+                'Tenant Settings': 'fas fa-cog'
+            };
+            return icons[name] || 'fas fa-cube';
+        },
         getRoleDisplay(r) { const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security' }; return map[r] || r; },
         formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
         formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
