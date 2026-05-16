@@ -1,18 +1,16 @@
 /**
- * assets/js/login.js — Rands Vibe Login Controller
+ * assets/js/login.js — Rands Vibe Login Controller (FIXED)
  */
 
-import { signIn, getUserRole, redirectByRole } from '../../config/auth.js';
+import { signIn, getUserRole, getRoleRedirectUrl } from '../../config/auth.js';
 
-// DOM
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const loginBtn = document.getElementById('loginBtn');
 const loginBtnLabel = document.getElementById('loginBtnLabel');
 const authError = document.getElementById('authError');
-const registerLink = document.getElementById('registerLink'); // added
+const registerLink = document.getElementById('registerLink');
 
-// ========== UI HELPERS ==========
 function showAuthError(message) {
   if (!authError) return;
   authError.textContent = message;
@@ -25,13 +23,11 @@ function hideAuthError() {
 
 function setLoading(state) {
   if (!loginBtn || !loginBtnLabel) return;
-
   loginBtn.disabled = state;
   loginBtn.classList.toggle('loading', state);
   loginBtnLabel.textContent = state ? 'SIGNING IN...' : 'SIGN IN';
 }
 
-// ========== LOGIN ==========
 async function handleLogin() {
   hideAuthError();
 
@@ -47,35 +43,44 @@ async function handleLogin() {
 
   try {
     const { user, error } = await signIn(email, password);
-
     if (error || !user) {
       throw new Error(error || 'Login failed');
     }
 
-    // IMPORTANT: keep your role system intact
-    const { role } = await getUserRole(user.id);
+    const { role, error: roleError } = await getUserRole(user.id);
 
-    redirectByRole(role);
+    if (roleError === 'NO_ROLE' || !role) {
+      throw new Error('Your account is not fully configured. Please contact support.');
+    }
+    if (roleError) {
+      throw new Error('Unable to verify account permissions. Please try again.');
+    }
 
+    const redirectUrl = getRoleRedirectUrl(role);
+    if (!redirectUrl) {
+      console.error('Unknown role in database:', role);
+      throw new Error(`Unknown role "${role}". Please contact support.`);
+    }
+
+    console.log(`✅ Login successful, redirecting to ${redirectUrl}`);
+    window.location.href = redirectUrl;
   } catch (err) {
+    console.error('Login error:', err);
     showAuthError(err.message);
   } finally {
     setLoading(false);
   }
 }
 
-// ========== REGISTRATION REDIRECT (fix for non-clickable link) ==========
 if (registerLink) {
   registerLink.addEventListener('click', (e) => {
-    e.preventDefault();          // stop any other handlers from blocking
+    e.preventDefault();
     window.location.href = 'register.html';
   });
 }
 
-// ========== EVENTS ==========
 loginBtn?.addEventListener('click', handleLogin);
 
-// FIX: Enter key only when inputs are focused
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' &&
       (document.activeElement === emailInput || document.activeElement === passwordInput)) {
