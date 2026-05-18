@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <title>Rands Vibe | Offline Mode</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #0a0a0f;
+      background-image: radial-gradient(circle at 25% 0%, rgba(255, 43, 43, 0.08) 0%, rgba(0, 0, 0, 0.98) 70%);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "Satoshi", "General Sans", system-ui, sans-serif;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* ambient animated glow background */
+    .ambient-glow {
+      position: fixed;
+      top: -20%;
+      left: -20%;
+      width: 140%;
+      height: 140%;
+      background: radial-gradient(ellipse at 50% 40%, rgba(255, 43, 43, 0.2), transparent 70%);
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+      animation: slowDrift 18s infinite alternate ease-in-out;
+    }
+
+    @keyframes slowDrift {
+      0% { transform: translate(0, 0) scale(1); opacity: 0.6; }
+      100% { transform: translate(3%, 2%) scale(1.08); opacity: 1; }
+    }
+
+    /* canvas particles */
+    #particle-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.5;
+    }
+
+    /* main container */
+    .offline-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      backdrop-filter: blur(2px);
+    }
+
+    /* logo section with image asset */
+    .logo-section {
+      text-align: center;
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .glow-ring {
+      position: relative;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .logo-image {
+      width: 80px;
+      height: auto;
+      max-width: 100%;
+      display: block;
+      filter: drop-shadow(0 0 12px rgba(255, 43, 43, 0.6));
+      animation: pulseLogo 2.2s infinite ease;
+      transition: filter 0.2s;
+    }
+    @keyframes pulseLogo {
+      0% { filter: drop-shadow(0 0 5px rgba(255, 43, 43, 0.4)); opacity: 0.92; transform: scale(1);}
+      50% { filter: drop-shadow(0 0 24px rgba(255, 43, 43, 0.9)); opacity: 1; transform: scale(1.02);}
+      100% { filter: drop-shadow(0 0 5px rgba(255, 43, 43, 0.4)); opacity: 0.92; transform: scale(1);}
+    }
+    .logo-glow-bg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 120px;
+      height: 120px;
+      background: radial-gradient(circle, rgba(255, 43, 43, 0.4) 0%, rgba(255, 43, 43, 0) 75%);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      filter: blur(20px);
+      z-index: -1;
+      animation: softGlow 3s infinite alternate;
+    }
+    @keyframes softGlow {
+      0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8);}
+      100% { opacity: 0.9; transform: translate(-50%, -50%) scale(1.4);}
+    }
+
+    /* main visual card / disconnected illustration */
+    .visual-card {
+      background: rgba(10, 10, 18, 0.55);
+      backdrop-filter: blur(12px);
+      border-radius: 64px;
+      width: 140px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 8px;
+      border: 1px solid rgba(255, 43, 43, 0.4);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+      transition: all 0.3s ease;
+    }
+    .broken-signal-svg {
+      width: 88px;
+      height: 88px;
+      filter: drop-shadow(0 0 8px #ff2b2b);
+    }
+    .signal-path {
+      stroke: #ff2b2b;
+      stroke-width: 5;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 6px rgba(255,43,43,0.6));
+    }
+
+    /* headline */
+    .headline {
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.9rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(to right, #fff, #ffc2c2);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-bottom: 12px;
+    }
+    .subhead {
+      font-size: 1rem;
+      font-weight: 400;
+      color: rgba(255,255,240,0.75);
+      max-width: 280px;
+      margin: 0 auto;
+      line-height: 1.4;
+    }
+
+    /* glass cache card */
+    .glass-card {
+      background: rgba(20, 20, 28, 0.65);
+      backdrop-filter: blur(16px);
+      border-radius: 40px;
+      padding: 20px 24px;
+      width: 100%;
+      border: 1px solid rgba(255, 43, 43, 0.25);
+      box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.5), inset 0 0 0 0.5px rgba(255, 255, 255, 0.05);
+      transition: transform 0.2s ease;
+    }
+    .glass-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 43, 43, 0.5);
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #ff5e5e;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .offline-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border-bottom: 1px dashed rgba(255,255,255,0.15);
+      padding-bottom: 8px;
+    }
+    .stat-label {
+      opacity: 0.7;
+    }
+    .stat-value {
+      font-weight: 700;
+      color: #ffc5c5;
+    }
+    .sync-badge {
+      margin-top: 12px;
+      font-size: 0.7rem;
+      text-align: right;
+      color: rgba(255,255,240,0.5);
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* button group */
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      width: 100%;
+    }
+    .btn {
+      border: none;
+      padding: 16px 0;
+      border-radius: 60px;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -0.2px;
+      font-family: inherit;
+      transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      cursor: pointer;
+      text-align: center;
+      backdrop-filter: blur(4px);
+    }
+    .btn-primary {
+      background: linear-gradient(105deg, #ff2b2b, #b51212);
+      color: white;
+      box-shadow: 0 8px 20px rgba(255, 43, 43, 0.4), 0 0 0 1px rgba(255,255,255,0.1) inset;
+      text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+    }
+    .btn-primary:active {
+      transform: scale(0.97);
+      box-shadow: 0 4px 12px rgba(255, 43, 43, 0.6);
+    }
+    .btn-secondary {
+      background: rgba(20, 20, 35, 0.8);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 43, 43, 0.5);
+      color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .btn-secondary:active {
+      transform: scale(0.97);
+      background: rgba(255, 43, 43, 0.2);
+      border-color: #ff2b2b;
+    }
+
+    /* bottom status */
+    .status-footer {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 0.7rem;
+      letter-spacing: 0.3px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .signal-bars {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .bar {
+      width: 5px;
+      background: #ff4d4d;
+      border-radius: 3px;
+      transition: height 0.2s;
+      animation: pulseBar 1.2s infinite alternate;
+    }
+    .bar:nth-child(1) { height: 8px; animation-delay: 0s; }
+    .bar:nth-child(2) { height: 12px; animation-delay: 0.15s; }
+    .bar:nth-child(3) { height: 6px; animation-delay: 0.3s; }
+    .bar:nth-child(4) { height: 10px; animation-delay: 0.45s; }
+    @keyframes pulseBar {
+      0% { opacity: 0.4; background: #ff7b7b; height: 5px; }
+      100% { opacity: 1; background: #ff2b2b; height: 16px; }
+    }
+    .reconnect-text {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+      background: rgba(0,0,0,0.5);
+      padding: 6px 14px;
+      border-radius: 50px;
+      backdrop-filter: blur(4px);
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #ff2b2b;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #ff2b2b;
+      animation: pulseRed 1s infinite;
+    }
+    @keyframes pulseRed {
+      0% { opacity: 0.4; transform: scale(0.8);}
+      100% { opacity: 1; transform: scale(1.2);}
+    }
+
+    /* toast */
+    .toast-message {
+      position: fixed;
+      bottom: 30px;
+      left: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(20px);
+      padding: 14px 20px;
+      border-radius: 60px;
+      color: white;
+      font-weight: 600;
+      text-align: center;
+      z-index: 200;
+      border-left: 4px solid #ff2b2b;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      animation: slideUp 0.3s ease forwards;
+      font-size: 0.9rem;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* modal passport */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      visibility: hidden;
+      opacity: 0;
+      transition: all 0.25s ease;
+      padding: 20px;
+    }
+    .modal.active {
+      visibility: visible;
+      opacity: 1;
+    }
+    .modal-card {
+      background: rgba(12, 12, 20, 0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 48px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 340px;
+      border: 1px solid rgba(255, 43, 43, 0.7);
+      box-shadow: 0 30px 40px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.1) inset;
+      text-align: center;
+    }
+    .modal-card h3 {
+      font-size: 1.6rem;
+      margin-bottom: 16px;
+    }
+    .passport-detail {
+      margin: 20px 0;
+      text-align: left;
+      background: rgba(0,0,0,0.4);
+      padding: 14px;
+      border-radius: 28px;
+    }
+    .close-modal {
+      background: #ff2b2b30;
+      border: 1px solid #ff2b2b;
+      padding: 12px;
+      border-radius: 40px;
+      width: 100%;
+      font-weight: bold;
+      margin-top: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="ambient-glow"></div>
+<canvas id="particle-canvas"></canvas>
+
+<div class="offline-container">
+  <!-- top animated logo with image asset -->
+  <div class="logo-section">
+    <div class="glow-ring">
+      <div class="logo-glow-bg"></div>
+      <img src="assets/images/rands-logo.png" alt="Rands Vibe" class="logo-image">
+    </div>
+  </div>
+
+  <!-- main visual / disruption icon -->
+  <div class="visual-card">
+    <svg class="broken-signal-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M20 70 L35 50 L50 65 L65 40 L80 58" class="signal-path" stroke="#ff2b2b" stroke-width="5.5" stroke-linecap="round" stroke-dasharray="4 6"/>
+      <circle cx="80" cy="58" r="5" fill="#ff2b2b" stroke="white" stroke-width="2" opacity="0.9"/>
+      <line x1="68" y1="44" x2="84" y2="36" stroke="#ff2b2b" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 4" />
+      <path d="M20 70 L32 54" stroke="#ff5e5e" stroke-width="4" stroke-linecap="round"/>
+      <path d="M15 78 L85 78" stroke="rgba(255,43,43,0.4)" stroke-width="2" stroke-dasharray="2 4"/>
+    </svg>
+  </div>
+
+  <!-- headline -->
+  <div class="headline">
+    <h1>You’re Offline</h1>
+    <div class="subhead">Your vibe is stored safely.<br>Reconnect to continue.</div>
+  </div>
+
+  <!-- offline cached data card -->
+  <div class="glass-card" id="cacheCard">
+    <div class="card-title">
+      <span>⚡ OFFLINE PASSPORT VAULT</span>
+    </div>
+    <div class="offline-stats" id="statsContainer">
+      <!-- dynamic js data -->
+    </div>
+    <div class="sync-badge" id="syncTimeDisplay">
+      <span>🔄 last sync: --</span>
+    </div>
+  </div>
+
+  <!-- buttons -->
+  <div class="button-group">
+    <button class="btn btn-primary" id="retryBtn">⟳ Retry Connection</button>
+    <button class="btn btn-secondary" id="offlinePassportBtn">🎟️ Open Offline Passport</button>
+  </div>
+
+  <!-- footer status -->
+  <div class="status-footer">
+    <div class="signal-bars">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+    <div class="reconnect-text">
+      <span class="pulse-dot"></span>
+      <span>Rands services are temporarily unreachable</span>
+    </div>
+  </div>
+</div>
+
+<!-- modal for passport offline -->
+<div id="passportModal" class="modal">
+  <div class="modal-card">
+    <h3>✨ OFFLINE PASSPORT</h3>
+    <div class="passport-detail" id="modalDetailContent">
+      <!-- dynamic -->
+    </div>
+    <button class="close-modal" id="closeModalBtn">Close</button>
+  </div>
+</div>
+
+<script>
+  // -------------------- CACHED DATA MANAGEMENT (localStorage) --------------------
+  function initCachedData() {
+    if (!localStorage.getItem('rands_vibe_cache')) {
+      const mockCache = {
+        lastSync: new Date().toLocaleString(),
+        ticketsCached: 3,
+        walletBalance: "R 2,450.00",
+        passportId: "RVC·'24·9H8K",
+        vibePoints: 1280,
+        events: ["Neon Rooftop", "Midnight Vibe Fest"]
+      };
+      localStorage.setItem('rands_vibe_cache', JSON.stringify(mockCache));
+    }
+  }
+
+  function getCachedData() {
+    const raw = localStorage.getItem('rands_vibe_cache');
+    if (raw) return JSON.parse(raw);
+    return null;
+  }
+
+  function updateCacheUI() {
+    const data = getCachedData();
+    if (!data) return;
+    const statsContainer = document.getElementById('statsContainer');
+    statsContainer.innerHTML = `
+      <div class="stat-row"><span class="stat-label">🎫 Cached tickets</span><span class="stat-value">${data.ticketsCached} premium events</span></div>
+      <div class="stat-row"><span class="stat-label">💳 Offline wallet</span><span class="stat-value">${data.walletBalance}</span></div>
+      <div class="stat-row"><span class="stat-label">🪪 Passport ID</span><span class="stat-value">${data.passportId}</span></div>
+    `;
+    document.getElementById('syncTimeDisplay').innerHTML = `<span>🕒 last sync: ${data.lastSync || 'recent'}</span>`;
+  }
+
+  function showToast(message, duration = 3000) {
+    const existingToast = document.querySelector('.toast-message');
+    if(existingToast) existingToast.remove();
+    const toast = document.createElement('div');
+    toast.className = 'toast-message';
+    toast.innerText = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  // ---------- connection monitoring & auto redirect ----------
+  let redirectScheduled = false;
+
+  function handleConnectionRestored() {
+    if (redirectScheduled) return;
+    redirectScheduled = true;
+    showToast("✨ Connection restored! Redirecting to Rands Vibe...", 1800);
+    setTimeout(() => {
+      window.location.reload();
+    }, 1700);
+  }
+
+  function checkOnlineAndRedirect() {
+    if (navigator.onLine) {
+      fetch('https://www.google.com/generate_204', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' })
+        .then(() => {
+          if (navigator.onLine) handleConnectionRestored();
+        })
+        .catch(() => {});
+    }
+  }
+
+  window.addEventListener('online', () => {
+    checkOnlineAndRedirect();
+  });
+
+  // manual retry connection with loading & ping
+  const retryBtn = document.getElementById('retryBtn');
+  retryBtn.addEventListener('click', async () => {
+    retryBtn.innerText = "⟳ CHECKING...";
+    retryBtn.disabled = true;
+    const isOnline = navigator.onLine;
+    let alive = false;
+    if (isOnline) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        await fetch('https://www.google.com/generate_204', { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
+        clearTimeout(timeoutId);
+        alive = true;
+      } catch(e) { alive = false; }
+    }
+    if (alive || (isOnline && !alive)) {
+      if (navigator.onLine) {
+        handleConnectionRestored();
+      } else {
+        showToast("❌ Still offline. Check network & try again.", 2000);
+        retryBtn.innerText = "⟳ Retry Connection";
+        retryBtn.disabled = false;
+      }
+    } else {
+      showToast("📡 No internet yet. Keep your vibe ready.", 2000);
+      retryBtn.innerText = "⟳ Retry Connection";
+      retryBtn.disabled = false;
+    }
+    if (!navigator.onLine) {
+      showToast("⚠️ No active connection. Please enable Wi-Fi/Cellular.", 2000);
+      retryBtn.innerText = "⟳ Retry Connection";
+      retryBtn.disabled = false;
+    }
+  });
+
+  // ---- Offline Passport Modal (Cinematic) ----
+  const modal = document.getElementById('passportModal');
+  const openPassportBtn = document.getElementById('offlinePassportBtn');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+
+  function renderPassportModal() {
+    const cache = getCachedData();
+    if (!cache) return;
+    const modalContent = document.getElementById('modalDetailContent');
+    modalContent.innerHTML = `
+      <p style="margin-bottom: 12px;"><strong>${cache.passportId}</strong><br><span style="font-size:0.8rem; opacity:0.8;">Vibe Member since 2024</span></p>
+      <p>💎 Vibe Points: ${cache.vibePoints}</p>
+      <p>🎟️ Active cached tickets: ${cache.ticketsCached}</p>
+      <p>💰 Wallet offline balance: ${cache.walletBalance}</p>
+      <p>📅 Last sync: ${cache.lastSync}</p>
+      <hr style="border-color:#ff2b2b30; margin:12px 0;">
+      <p style="font-size:0.75rem;">✨ Upcoming cached events:<br> ${cache.events.join(' • ')}</p>
+      <p style="margin-top:12px; font-size:0.7rem;">🔒 Offline access — ready for entry scan</p>
+    `;
+  }
+
+  openPassportBtn.addEventListener('click', () => {
+    renderPassportModal();
+    modal.classList.add('active');
+  });
+  closeModalBtn.addEventListener('click', () => {
+    modal.classList.remove('active');
+  });
+  modal.addEventListener('click', (e) => {
+    if(e.target === modal) modal.classList.remove('active');
+  });
+
+  // ---- particles background ----
+  const canvas = document.getElementById('particle-canvas');
+  let ctx = canvas.getContext('2d');
+  let particles = [];
+  let animationId = null;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function initParticles(count = 35) {
+    particles = [];
+    for(let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: Math.random() * 3 + 1.2,
+        alpha: Math.random() * 0.5 + 0.2,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.2 + 0.1,
+        color: `rgba(255, 65, 65, ${Math.random() * 0.5 + 0.2})`
+      });
+    }
+  }
+
+  function drawParticles() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let p of particles) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "#ff2b2b";
+      ctx.fill();
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+    }
+    animationId = requestAnimationFrame(drawParticles);
+  }
+
+  function startParticles() {
+    resizeCanvas();
+    initParticles(45);
+    drawParticles();
+  }
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    initParticles(45);
+  });
+  startParticles();
+
+  // additional offline detection
+  window.addEventListener('offline', () => {
+    showToast("📴 Connection lost. Your offline vault is ready.", 2000);
+  });
+
+  // init cached data & UI
+  initCachedData();
+  updateCacheUI();
+
+  // subtle online check on load
+  if (navigator.onLine) {
+    setTimeout(() => {
+      if (navigator.onLine && !redirectScheduled) {
+        showToast("✨ You're online! Tap Retry to resume.", 3000);
+      }
+    }, 800);
+  }
+</script>
+</body>
+</html>

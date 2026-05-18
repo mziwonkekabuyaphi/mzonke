@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>Rands Vibe Pass | Session Expired</title>
+  <!-- Google Fonts: Satoshi + Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=Satoshi:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #050308;
+      font-family: "Inter", "Satoshi", -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* animated gradient bg + noise texture */
+    .dynamic-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 30% 20%, #1a0306 0%, #000000 100%);
+      z-index: -3;
+    }
+    .ambient-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 70% 80%, rgba(255, 35, 35, 0.25), transparent 65%);
+      animation: breatheGlow 10s infinite alternate;
+      z-index: -2;
+      pointer-events: none;
+    }
+    @keyframes breatheGlow {
+      0% { opacity: 0.3; transform: scale(1);}
+      100% { opacity: 0.8; transform: scale(1.08);}
+    }
+    /* digital noise */
+    .noise-texture {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: -1;
+      opacity: 0.25;
+    }
+
+    /* floating red orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: -1;
+      animation: floatOrb 22s infinite alternate ease-in-out;
+    }
+    .orb-1 { width: 350px; height: 350px; background: #ff2b2b; top: -120px; left: -80px; }
+    .orb-2 { width: 450px; height: 450px; background: #c20f0f; bottom: -150px; right: -100px; animation-duration: 18s; opacity: 0.25; }
+    .orb-3 { width: 250px; height: 250px; background: #ff6363; top: 40%; right: 5%; animation-duration: 15s; }
+    @keyframes floatOrb {
+      0% { transform: translate(0, 0) scale(1);}
+      100% { transform: translate(30px, -25px) scale(1.2);}
+    }
+
+    /* canvas particles */
+    #particleCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    /* main glass container */
+    .session-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 560px;
+      margin: 1.5rem;
+      animation: fadeSlideUp 0.8s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(35px);}
+      to { opacity: 1; transform: translateY(0);}
+    }
+
+    .glass-card {
+      background: rgba(8, 8, 16, 0.65);
+      backdrop-filter: blur(18px);
+      border-radius: 60px;
+      padding: 2rem 1.8rem 2.2rem;
+      border: 1px solid rgba(255, 43, 43, 0.55);
+      box-shadow: 0 35px 55px -20px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      transition: all 0.3s;
+    }
+
+    /* logo area with image */
+    .brand {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .logo-glow {
+      display: inline-block;
+      position: relative;
+    }
+    .brand-logo {
+      width: 70px;
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 0 12px rgba(255, 43, 43, 0.7));
+      animation: pulseLogo 2.2s infinite ease;
+      transition: filter 0.2s;
+    }
+    @keyframes pulseLogo {
+      0% { filter: drop-shadow(0 0 4px rgba(255,43,43,0.4)); transform: scale(1);}
+      50% { filter: drop-shadow(0 0 22px rgba(255,43,43,0.9)); transform: scale(1.02);}
+      100% { filter: drop-shadow(0 0 4px rgba(255,43,43,0.4)); transform: scale(1);}
+    }
+    .brand-name {
+      font-size: 1.3rem;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      background: linear-gradient(135deg, #fff, #ffb8b8);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-top: 6px;
+    }
+
+    /* headline */
+    .headline-area {
+      text-align: center;
+      margin-bottom: 1.6rem;
+    }
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -1.2px;
+      background: linear-gradient(145deg, #ff5e5e, #ff2b2b);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .subhead {
+      font-size: 0.9rem;
+      opacity: 0.85;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+    .protection-message {
+      font-size: 0.85rem;
+      background: rgba(0,0,0,0.4);
+      border-radius: 36px;
+      padding: 8px 16px;
+      display: inline-block;
+      margin-top: 8px;
+      backdrop-filter: blur(4px);
+      border: 0.5px solid rgba(255,43,43,0.3);
+    }
+
+    /* security status panel */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.8rem;
+      margin: 1.8rem 0 2rem;
+    }
+    .status-pill {
+      background: rgba(12, 12, 22, 0.6);
+      backdrop-filter: blur(8px);
+      border-radius: 30px;
+      padding: 12px 8px;
+      text-align: center;
+      border: 1px solid rgba(255, 43, 43, 0.3);
+      transition: all 0.2s;
+    }
+    .status-pill:hover {
+      border-color: #ff2b2b;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(255,43,43,0.2);
+    }
+    .status-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+      opacity: 0.8;
+    }
+    .status-value {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #2ecc71;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #2ecc71;
+      animation: blinkSafe 1.4s infinite;
+    }
+    .pulse-warning {
+      background: #ff2b2b;
+      box-shadow: 0 0 6px #ff2b2b;
+    }
+    @keyframes blinkSafe {
+      0% { opacity: 0.5; transform: scale(0.8);}
+      100% { opacity: 1; transform: scale(1.2);}
+    }
+
+    /* centerpiece: holographic shield */
+    .visual-shield {
+      display: flex;
+      justify-content: center;
+      margin: 1rem 0 1.5rem;
+    }
+    .holographic-shield {
+      position: relative;
+      width: 100px;
+      height: 100px;
+    }
+    .shield-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 43, 43, 0.7);
+      border-top: 2px solid #ffb8b8;
+      border-right: 2px solid #ff2b2b;
+      box-shadow: 0 0 18px #ff2b2b;
+      animation: spinShield 5s linear infinite;
+    }
+    .shield-icon {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 40px;
+      filter: drop-shadow(0 0 10px #ff2b2b);
+      animation: floatIcon 3s ease-in-out infinite;
+    }
+    @keyframes spinShield {
+      0% { transform: rotate(0deg);}
+      100% { transform: rotate(360deg);}
+    }
+    @keyframes floatIcon {
+      0% { transform: translate(-50%, -50%) translateY(0px);}
+      50% { transform: translate(-50%, -50%) translateY(-5px);}
+      100% { transform: translate(-50%, -50%) translateY(0px);}
+    }
+
+    /* countdown & progress */
+    .auto-redirect {
+      margin: 1rem 0 1.5rem;
+      text-align: center;
+    }
+    .countdown-text {
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: rgba(0,0,0,0.5);
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 30px;
+      backdrop-filter: blur(4px);
+    }
+    .progress-line {
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      height: 3px;
+      width: 100%;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .progress-timer-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #ff2b2b, #ff7b7b);
+      animation: shrinkWidth 10s linear forwards;
+    }
+    @keyframes shrinkWidth {
+      0% { width: 100%;}
+      100% { width: 0%;}
+    }
+    .last-activity {
+      font-size: 0.7rem;
+      margin-top: 10px;
+      opacity: 0.6;
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    /* buttons */
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      margin: 26px 0 20px;
+    }
+    .btn {
+      padding: 12px 24px;
+      border-radius: 60px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      background: rgba(20, 20, 30, 0.8);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 43, 43, 0.6);
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1.1);
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(105deg, #ff2b2b, #b51212);
+      border: none;
+      box-shadow: 0 6px 14px rgba(255, 43, 43, 0.4);
+    }
+    .btn-primary:active, .btn:active {
+      transform: scale(0.96);
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      border-color: #ff7b7b;
+      box-shadow: 0 12px 22px rgba(255, 43, 43, 0.3);
+    }
+
+    /* footer */
+    .footer-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.65rem;
+      padding-top: 18px;
+      border-top: 1px dashed rgba(255,255,255,0.15);
+      margin-top: 8px;
+      opacity: 0.7;
+    }
+    .server-time, .session-id {
+      font-family: monospace;
+    }
+
+    @media (max-width: 550px) {
+      .glass-card { padding: 1.5rem; border-radius: 48px; }
+      h1 { font-size: 2.2rem; }
+      .brand-logo { width: 55px; }
+      .status-grid { gap: 0.6rem; }
+      .btn { padding: 10px 18px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="dynamic-bg"></div>
+<div class="ambient-overlay"></div>
+<div class="noise-texture"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<canvas id="particleCanvas"></canvas>
+
+<div class="session-container">
+  <div class="glass-card">
+    <!-- Brand with logo image -->
+    <div class="brand">
+      <div class="logo-glow">
+        <img src="../assets/images/rands-logo.png" alt="Rands Vibe Pass" class="brand-logo">
+      </div>
+      <div class="brand-name">Rands Vibe Pass</div>
+    </div>
+
+    <!-- Headline -->
+    <div class="headline-area">
+      <h1>Session Expired</h1>
+      <div class="subhead">For your security, your vibe session timed out.</div>
+      <div class="protection-message">
+        🔒 We temporarily paused your access to keep your wallet, tickets, and personal experience protected.
+      </div>
+    </div>
+
+    <!-- security status -->
+    <div class="status-grid">
+      <div class="status-pill">
+        <div class="status-title">Wallet Security</div>
+        <div class="status-value"><span class="pulse-dot"></span> Protected</div>
+      </div>
+      <div class="status-pill">
+        <div class="status-title">Login Session</div>
+        <div class="status-value"><span class="pulse-dot pulse-warning"></span> Expired</div>
+      </div>
+      <div class="status-pill">
+        <div class="status-title">Account Data</div>
+        <div class="status-value"><span class="pulse-dot"></span> Safe</div>
+      </div>
+      <div class="status-pill">
+        <div class="status-title">Reconnect Service</div>
+        <div class="status-value"><span class="pulse-dot"></span> Ready</div>
+      </div>
+    </div>
+
+    <!-- holographic shield -->
+    <div class="visual-shield">
+      <div class="holographic-shield">
+        <div class="shield-ring"></div>
+        <div class="shield-icon">🛡️</div>
+      </div>
+    </div>
+
+    <!-- auto-redirect countdown -->
+    <div class="auto-redirect">
+      <div class="countdown-text" id="countdownMessage">Redirecting to login in 10s</div>
+      <div class="progress-line" id="progressLine">
+        <div class="progress-timer-fill" id="progressFillAnim"></div>
+      </div>
+      <div class="last-activity">
+        <span id="lastActivityTime">Last activity: a few minutes ago</span>
+        <span>⏱️ session locked</span>
+      </div>
+    </div>
+
+    <!-- action buttons -->
+    <div class="button-group">
+      <button class="btn btn-primary" id="reconnectBtn">⟳ Reconnect Now</button>
+      <button class="btn" id="loginBtn">🔐 Back to Login</button>
+      <button class="btn" id="refreshBtn">🔄 Refresh Session</button>
+      <button class="btn" id="supportBtn">🎧 Contact Support</button>
+    </div>
+
+    <!-- footer -->
+    <div class="footer-info">
+      <div class="server-time" id="serverTime">--:--:--</div>
+      <div class="session-id">Session ID: RVP·<span id="sessionId">SEC_EXP</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    // ---------- COUNTDOWN REDIRECT (10 seconds) ----------
+    let countdownSeconds = 10;
+    const countdownEl = document.getElementById('countdownMessage');
+    let redirectTimer = null;
+    let countdownInterval = null;
+    
+    function stopRedirectTimer() {
+      if (redirectTimer) clearTimeout(redirectTimer);
+      if (countdownInterval) clearInterval(countdownInterval);
+    }
+    
+    function startCountdown() {
+      stopRedirectTimer();
+      countdownSeconds = 10;
+      // reset progress animation
+      const progressContainer = document.getElementById('progressLine');
+      const oldFill = document.getElementById('progressFillAnim');
+      if (oldFill) oldFill.remove();
+      const newFill = document.createElement('div');
+      newFill.className = 'progress-timer-fill';
+      newFill.id = 'progressFillAnim';
+      progressContainer.appendChild(newFill);
+      
+      countdownInterval = setInterval(() => {
+        if (countdownSeconds <= 0) {
+          clearInterval(countdownInterval);
+          countdownEl.innerText = `Redirecting now...`;
+          window.location.href = "login.html";
+        } else {
+          countdownEl.innerText = `Redirecting to login in ${countdownSeconds}s`;
+          countdownSeconds--;
+        }
+      }, 1000);
+      redirectTimer = setTimeout(() => {
+        window.location.href = "login.html";
+      }, 10000);
+    }
+    
+    function cancelRedirectAndGo(target) {
+      stopRedirectTimer();
+      if (target === 'reconnect') {
+        window.location.href = "login.html";
+      } else if (target === 'login') {
+        window.location.href = "login.html";
+      } else if (target === 'refresh') {
+        window.location.reload();
+      } else if (target === 'support') {
+        alert("📞 Rands Vibe Support: vibe@randspass.com or live chat — we’re here 24/7.");
+        startCountdown(); // resume countdown after alert
+      }
+    }
+    
+    const reconnectBtn = document.getElementById('reconnectBtn');
+    const loginBtn = document.getElementById('loginBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const supportBtn = document.getElementById('supportBtn');
+    
+    reconnectBtn.addEventListener('click', () => cancelRedirectAndGo('reconnect'));
+    loginBtn.addEventListener('click', () => cancelRedirectAndGo('login'));
+    refreshBtn.addEventListener('click', () => cancelRedirectAndGo('refresh'));
+    supportBtn.addEventListener('click', () => cancelRedirectAndGo('support'));
+    
+    startCountdown();
+    
+    // ---------- SERVER TIME ----------
+    function updateServerTime() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute:'2-digit', second:'2-digit' });
+      const serverSpan = document.getElementById('serverTime');
+      if (serverSpan) serverSpan.innerText = timeStr;
+    }
+    setInterval(updateServerTime, 1000);
+    updateServerTime();
+    
+    // last activity mock
+    const lastActivitySpan = document.getElementById('lastActivityTime');
+    const lastActive = localStorage.getItem('rvp_last_activity');
+    if (lastActivitySpan) {
+      if (lastActive) {
+        const diffMins = Math.floor((Date.now() - parseInt(lastActive)) / 60000);
+        if (diffMins < 2) lastActivitySpan.innerText = `Last activity: just now`;
+        else if (diffMins < 60) lastActivitySpan.innerText = `Last activity: ${diffMins} minutes ago`;
+        else lastActivitySpan.innerText = `Last activity: more than an hour ago`;
+      } else {
+        lastActivitySpan.innerText = `Last activity: a few minutes ago`;
+      }
+    }
+    // random session ID
+    const sessionSpan = document.getElementById('sessionId');
+    if (sessionSpan) sessionSpan.innerText = 'EXP_' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    // ---------- PARTICLES ----------
+    const canvas = document.getElementById('particleCanvas');
+    let ctx = canvas.getContext('2d');
+    let particles = [];
+    let animFrame;
+    
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    
+    function initParticles() {
+      const count = 75;
+      particles = [];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 2.8 + 0.8,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.2,
+          color: `rgba(255, ${70 + Math.random() * 80}, ${50 + Math.random() * 60}, ${Math.random() * 0.5 + 0.3})`
+        });
+      }
+    }
+    
+    function drawParticles() {
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let p of particles) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = "#ff2b2b";
+        ctx.fill();
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+      }
+      animFrame = requestAnimationFrame(drawParticles);
+    }
+    
+    function setupCanvas() {
+      resizeCanvas();
+      initParticles();
+      drawParticles();
+    }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      initParticles();
+    });
+    setupCanvas();
+    
+    // button ripple effect
+    const allBtns = document.querySelectorAll('.btn');
+    allBtns.forEach(btn => {
+      btn.addEventListener('mousedown', function(e) {
+        const ripple = document.createElement('span');
+        ripple.classList.add('ripple-effect');
+        const rect = btn.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        ripple.style.width = ripple.style.height = `${size}px`;
+        ripple.style.left = `${e.clientX - rect.left - size/2}px`;
+        ripple.style.top = `${e.clientY - rect.top - size/2}px`;
+        ripple.style.position = 'absolute';
+        ripple.style.borderRadius = '50%';
+        ripple.style.background = 'rgba(255,255,255,0.3)';
+        ripple.style.transform = 'scale(0)';
+        ripple.style.transition = 'transform 0.4s ease-out';
+        ripple.style.pointerEvents = 'none';
+        btn.style.position = 'relative';
+        btn.style.overflow = 'hidden';
+        btn.appendChild(ripple);
+        setTimeout(() => {
+          ripple.style.transform = 'scale(4)';
+          setTimeout(() => ripple.remove(), 400);
+        }, 10);
+      });
+    });
+    
+    // glass tilt effect
+    const glassCard = document.querySelector('.glass-card');
+    if (glassCard) {
+      glassCard.addEventListener('mousemove', (e) => {
+        const rect = glassCard.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = (e.clientY - rect.top) / rect.height;
+        const tiltX = (x - 0.5) * 4;
+        const tiltY = (y - 0.5) * 4;
+        glassCard.style.transform = `perspective(1000px) rotateX(${tiltY}deg) rotateY(${tiltX}deg)`;
+      });
+      glassCard.addEventListener('mouseleave', () => {
+        glassCard.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg)`;
+      });
+    }
+    
+    // floating lock icon
+    const addFloatingLock = () => {
+      const floatingDiv = document.createElement('div');
+      floatingDiv.innerHTML = '🔐';
+      floatingDiv.style.position = 'fixed';
+      floatingDiv.style.bottom = '15px';
+      floatingDiv.style.left = '15px';
+      floatingDiv.style.fontSize = '20px';
+      floatingDiv.style.opacity = '0.5';
+      floatingDiv.style.filter = 'drop-shadow(0 0 4px red)';
+      floatingDiv.style.animation = 'floatIcon 3s infinite';
+      floatingDiv.style.pointerEvents = 'none';
+      document.body.appendChild(floatingDiv);
+    };
+    addFloatingLock();
+  })();
+</script>
+</body>
+</html>

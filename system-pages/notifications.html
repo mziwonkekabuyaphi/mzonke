@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>Rands Vibe Pass | Notifications Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=Satoshi:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #050308;
+      font-family: "Inter", "Satoshi", -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+      color: #ffffff;
+      overflow-x: hidden;
+      position: relative;
+      scroll-behavior: smooth;
+    }
+
+    /* ---------- CINEMATIC BACKGROUND ---------- */
+    .dynamic-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 30% 20%, #1a0306 0%, #000000 100%);
+      z-index: -5;
+    }
+    .ambient-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 70% 70%, rgba(255, 35, 35, 0.2), transparent 70%);
+      animation: breatheGlow 14s infinite alternate;
+      z-index: -4;
+      pointer-events: none;
+    }
+    @keyframes breatheGlow {
+      0% { opacity: 0.2; transform: scale(1);}
+      100% { opacity: 0.8; transform: scale(1.05);}
+    }
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: -3;
+      animation: floatOrb 25s infinite alternate ease-in-out;
+    }
+    .orb-1 { width: 450px; height: 450px; background: #ff2b2b; top: -150px; left: -120px; }
+    .orb-2 { width: 550px; height: 550px; background: #b81212; bottom: -200px; right: -140px; animation-duration: 20s; opacity: 0.2; }
+    .orb-3 { width: 300px; height: 300px; background: #ff6363; top: 45%; right: -5%; animation-duration: 18s; }
+    @keyframes floatOrb {
+      0% { transform: translate(0, 0) scale(1);}
+      100% { transform: translate(50px, -40px) scale(1.15);}
+    }
+    .digital-grid {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: linear-gradient(rgba(255,43,43,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,43,43,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: -2;
+    }
+
+    /* particles canvas */
+    #particleCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      opacity: 0.45;
+    }
+
+    /* main container */
+    .notify-container {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 1.5rem 1.2rem 3rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* header */
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-icon {
+      width: 48px;
+      filter: drop-shadow(0 0 8px #ff2b2b);
+      animation: softPulse 2.5s infinite;
+    }
+    @keyframes softPulse {
+      0% { filter: drop-shadow(0 0 2px #ff2b2b80); transform: scale(1);}
+      50% { filter: drop-shadow(0 0 16px #ff2b2b); transform: scale(1.02);}
+      100% { filter: drop-shadow(0 0 2px #ff2b2b80); transform: scale(1);}
+    }
+    .title h1 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff, #ffb8b8);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .sub {
+      font-size: 0.75rem;
+      opacity: 0.7;
+    }
+    .counter-pulse {
+      background: rgba(255,43,43,0.15);
+      backdrop-filter: blur(8px);
+      border-radius: 40px;
+      padding: 6px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255,43,43,0.5);
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: #ff2b2b;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #ff2b2b;
+      animation: pulseRed 1.2s infinite;
+    }
+    @keyframes pulseRed {
+      0% { opacity: 0.4; transform: scale(0.8);}
+      100% { opacity: 1; transform: scale(1.2);}
+    }
+    .notif-count {
+      font-weight: 800;
+      font-size: 1.2rem;
+    }
+
+    /* action bar */
+    .action-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 2rem;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .action-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .glass-btn {
+      background: rgba(20,20,32,0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,43,43,0.4);
+      padding: 8px 16px;
+      border-radius: 40px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .glass-btn:hover {
+      background: rgba(255,43,43,0.25);
+      border-color: #ff2b2b;
+      transform: translateY(-2px);
+    }
+    .glass-btn:active {
+      transform: scale(0.97);
+    }
+    .search-box {
+      background: rgba(20,20,32,0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,43,43,0.4);
+      border-radius: 40px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-box input {
+      background: transparent;
+      border: none;
+      color: white;
+      font-size: 0.75rem;
+      outline: none;
+      width: 140px;
+    }
+    .search-box input::placeholder {
+      color: rgba(255,255,255,0.5);
+    }
+    .search-box input:focus {
+      width: 180px;
+    }
+
+    /* category pills */
+    .categories {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 1.8rem;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: thin;
+    }
+    .pill {
+      background: rgba(20,20,32,0.6);
+      backdrop-filter: blur(8px);
+      border-radius: 40px;
+      padding: 6px 18px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid rgba(255,43,43,0.3);
+      white-space: nowrap;
+    }
+    .pill.active {
+      background: #ff2b2b;
+      border-color: #ff7b7b;
+      box-shadow: 0 0 12px #ff2b2b;
+      color: white;
+    }
+    .pill:hover:not(.active) {
+      background: rgba(255,43,43,0.3);
+      transform: translateY(-2px);
+    }
+
+    /* featured priority card */
+    .featured-card {
+      background: linear-gradient(125deg, rgba(20,10,20,0.85), rgba(0,0,0,0.7));
+      backdrop-filter: blur(16px);
+      border-radius: 44px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 1.8rem;
+      border: 1px solid rgba(255,43,43,0.7);
+      box-shadow: 0 20px 35px -10px rgba(0,0,0,0.5), inset 0 0 20px rgba(255,43,43,0.1);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      animation: borderGlow 3s infinite alternate;
+    }
+    @keyframes borderGlow {
+      0% { border-color: rgba(255,43,43,0.5); box-shadow: 0 0 6px rgba(255,43,43,0.3);}
+      100% { border-color: #ff5e5e; box-shadow: 0 0 18px rgba(255,43,43,0.6);}
+    }
+    .featured-card:hover {
+      transform: scale(1.01);
+      background: linear-gradient(125deg, rgba(30,15,25,0.9), rgba(0,0,0,0.75));
+    }
+    .featured-badge {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #ff7b7b;
+      margin-bottom: 6px;
+    }
+    .featured-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .featured-desc {
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
+
+    /* notification feed */
+    .feed {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 2rem;
+    }
+    .notif-card {
+      background: rgba(12,12,20,0.6);
+      backdrop-filter: blur(12px);
+      border-radius: 32px;
+      padding: 1rem;
+      border: 1px solid rgba(255,43,43,0.25);
+      transition: all 0.25s ease;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      cursor: pointer;
+    }
+    .notif-card.unread {
+      background: rgba(30,15,20,0.75);
+      border-left: 3px solid #ff2b2b;
+    }
+    .notif-card:hover {
+      transform: translateX(4px);
+      border-color: rgba(255,43,43,0.6);
+      background: rgba(20,15,25,0.8);
+    }
+    .notif-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(255,43,43,0.2);
+      border-radius: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+    .notif-content {
+      flex: 1;
+    }
+    .notif-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+    }
+    .notif-desc {
+      font-size: 0.7rem;
+      opacity: 0.7;
+    }
+    .notif-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
+      font-size: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .badge {
+      background: rgba(255,43,43,0.3);
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 0.6rem;
+      font-weight: 600;
+    }
+    .timestamp {
+      opacity: 0.5;
+    }
+    .unread-dot {
+      width: 8px;
+      height: 8px;
+      background: #ff2b2b;
+      border-radius: 50%;
+      margin-left: 8px;
+      box-shadow: 0 0 4px #ff2b2b;
+    }
+
+    /* live activity panel */
+    .live-panel {
+      background: rgba(5,5,12,0.7);
+      backdrop-filter: blur(20px);
+      border-radius: 44px;
+      padding: 1.2rem;
+      margin-top: 1.2rem;
+      border: 1px solid rgba(255,43,43,0.3);
+    }
+    .panel-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .live-updates {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .update-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      border-bottom: 1px dashed rgba(255,255,255,0.1);
+      padding-bottom: 8px;
+    }
+
+    /* empty state */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      background: rgba(0,0,0,0.3);
+      border-radius: 48px;
+      margin: 1rem 0;
+    }
+    .empty-emoji {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      filter: drop-shadow(0 0 8px #ff2b2b);
+    }
+    .empty-state h3 {
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* footer */
+    .footer-note {
+      text-align: center;
+      font-size: 0.7rem;
+      opacity: 0.5;
+      margin-top: 2rem;
+    }
+
+    /* mobile optimizations */
+    @media (max-width: 600px) {
+      .notify-container { padding: 1rem; }
+      .action-bar { flex-direction: column; align-items: stretch; }
+      .action-group { justify-content: space-between; }
+      .search-box input { width: 100px; }
+      .search-box input:focus { width: 140px; }
+      .featured-title { font-size: 1.1rem; }
+      .featured-card { padding: 1rem; }
+      .notif-card { padding: 0.8rem; gap: 10px; }
+      .notif-icon { width: 38px; height: 38px; font-size: 1.2rem; }
+      .title h1 { font-size: 1.5rem; }
+      .logo-icon { width: 40px; }
+    }
+
+    /* smooth scrolling for feed */
+    .feed {
+      scroll-margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+<div class="dynamic-bg"></div>
+<div class="ambient-overlay"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="digital-grid"></div>
+<canvas id="particleCanvas"></canvas>
+
+<div class="notify-container">
+  <!-- header -->
+  <div class="header-section">
+    <div class="logo-area">
+      <img src="../assets/images/rands-logo.png" alt="Rands Vibe Pass" class="logo-icon">
+      <div class="title">
+        <h1>Notifications</h1>
+        <div class="sub">Your vibe activity in real time.</div>
+      </div>
+    </div>
+    <div class="counter-pulse">
+      <span class="live-dot"></span>
+      <span>Live</span>
+      <span class="notif-count" id="unreadCount">0</span>
+    </div>
+  </div>
+
+  <!-- action bar -->
+  <div class="action-bar">
+    <div class="action-group">
+      <button class="glass-btn" id="markAllReadBtn">📖 Mark all read</button>
+      <button class="glass-btn" id="filterBtn">🔍 Filter</button>
+      <button class="glass-btn" id="settingsBtn">⚙️ Settings</button>
+    </div>
+    <div class="search-box">
+      <span>🔎</span>
+      <input type="text" id="searchInput" placeholder="Search notifications">
+    </div>
+  </div>
+
+  <!-- category pills -->
+  <div class="categories" id="categoryPills">
+    <div class="pill active" data-cat="all">All</div>
+    <div class="pill" data-cat="payments">Payments</div>
+    <div class="pill" data-cat="events">Events</div>
+    <div class="pill" data-cat="tickets">Tickets</div>
+    <div class="pill" data-cat="security">Security</div>
+    <div class="pill" data-cat="promotions">Promotions</div>
+    <div class="pill" data-cat="wallet">Wallet</div>
+  </div>
+
+  <!-- featured priority card -->
+  <div class="featured-card" id="featuredCard">
+    <div class="featured-badge">⭐ SPOTLIGHT</div>
+    <div class="featured-title">🎫 Neon Rooftop Festival</div>
+    <div class="featured-desc">Starts tonight at 8 PM • VIP access ready. Tap to view digital ticket.</div>
+  </div>
+
+  <!-- notification feed container -->
+  <div id="feedContainer" class="feed"></div>
+
+  <!-- live activity panel -->
+  <div class="live-panel">
+    <div class="panel-title">
+      <span>⚡ LIVE ACTIVITY</span>
+      <span class="live-dot"></span>
+    </div>
+    <div class="live-updates" id="liveUpdates"></div>
+  </div>
+  <div class="footer-note">Secured by Rands Vibe • Always synced</div>
+</div>
+
+<script>
+  // ------------------- MOCK NOTIFICATION DATA (unchanged) -------------------
+  const notificationsData = [
+    { id: 1, type: "tickets", title: "Ticket Confirmed", desc: "Your VIP ticket for Neon Rooftop is ready.", time: "2 min ago", unread: true, icon: "🎟️", badge: "Ticket" },
+    { id: 2, type: "payments", title: "Payment Received", desc: "+R 1,250.00 from Thabo M.", time: "15 min ago", unread: true, icon: "💸", badge: "Payment" },
+    { id: 3, type: "events", title: "Event Reminder", desc: "AfroTech 2025 starts in 2 hours.", time: "45 min ago", unread: false, icon: "📅", badge: "Event" },
+    { id: 4, type: "security", title: "New Login Detected", desc: "Samsung S23 • Johannesburg, SA", time: "1 hour ago", unread: true, icon: "🔐", badge: "Security" },
+    { id: 5, type: "wallet", title: "Wallet Top-up", desc: "+R 5,000 added to your vibe wallet", time: "3 hours ago", unread: false, icon: "💳", badge: "Wallet" },
+    { id: 6, type: "promotions", title: "Exclusive Offer", desc: "Double vibe points on all event tickets", time: "5 hours ago", unread: false, icon: "🎁", badge: "Promo" },
+    { id: 7, type: "tickets", title: "QR Ticket Generated", desc: "Entry pass for Midnight Cruise", time: "Yesterday", unread: false, icon: "📱", badge: "Ticket" },
+    { id: 8, type: "events", title: "Friend Joined", desc: "Zoe is attending the same festival as you", time: "Yesterday", unread: true, icon: "👥", badge: "Social" },
+    { id: 9, type: "payments", title: "Refund Processed", desc: "R 349.00 refunded for cancelled event", time: "2 days ago", unread: false, icon: "🔄", badge: "Refund" }
+  ];
+
+  let notifications = [...notificationsData];
+  let currentFilter = "all";
+  let searchQuery = "";
+
+  function updateUnreadCount() {
+    const unread = notifications.filter(n => n.unread === true).length;
+    document.getElementById("unreadCount").innerText = unread;
+  }
+
+  function renderNotifications() {
+    let filtered = notifications;
+    if (currentFilter !== "all") {
+      filtered = filtered.filter(n => n.type === currentFilter);
+    }
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(n => n.title.toLowerCase().includes(query) || n.desc.toLowerCase().includes(query));
+    }
+    const container = document.getElementById("feedContainer");
+    if (filtered.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-emoji">🌀</div><h3>You're all caught up</h3><p style="opacity:0.6;">No notifications match.</p></div>`;
+      return;
+    }
+    container.innerHTML = filtered.map(notif => `
+      <div class="notif-card ${notif.unread ? 'unread' : ''}" data-id="${notif.id}">
+        <div class="notif-icon">${notif.icon}</div>
+        <div class="notif-content">
+          <div class="notif-title">${notif.title}</div>
+          <div class="notif-desc">${notif.desc}</div>
+          <div class="notif-meta">
+            <span class="badge">${notif.badge}</span>
+            <span class="timestamp">${notif.time}</span>
+            ${notif.unread ? '<span class="unread-dot"></span>' : ''}
+          </div>
+        </div>
+      </div>
+    `).join("");
+    attachCardEvents(); // re-attach after re-render
+  }
+
+  function markAllRead() {
+    notifications = notifications.map(n => ({ ...n, unread: false }));
+    updateUnreadCount();
+    renderNotifications();
+  }
+
+  function attachCardEvents() {
+    document.querySelectorAll('.notif-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = parseInt(card.dataset.id);
+        const notif = notifications.find(n => n.id === id);
+        if (notif && notif.unread) {
+          notif.unread = false;
+          updateUnreadCount();
+          renderNotifications();
+        }
+      });
+    });
+  }
+
+  function updateLivePanel() {
+    const liveContainer = document.getElementById("liveUpdates");
+    const mockUpdates = [
+      { label: "Last transaction", value: "R 849.00 • Neon Fest" },
+      { label: "Upcoming event", value: "Neon Rooftop (Tonight)" },
+      { label: "Wallet status", value: "Premium active" },
+      { label: "System sync", value: "Real-time" }
+    ];
+    liveContainer.innerHTML = mockUpdates.map(up => `<div class="update-item"><span>${up.label}</span><span style="color:#ff7b7b;">${up.value}</span></div>`).join('');
+  }
+
+  function updateFeatured() {
+    const featured = document.getElementById("featuredCard");
+    featured.addEventListener("click", () => {
+      alert("🎫 Your VIP ticket details: Neon Rooftop Festival, Section A, Row 4. Enjoy the vibe!");
+    });
+  }
+
+  function initFilters() {
+    const pills = document.querySelectorAll(".pill");
+    pills.forEach(pill => {
+      pill.addEventListener("click", () => {
+        pills.forEach(p => p.classList.remove("active"));
+        pill.classList.add("active");
+        currentFilter = pill.dataset.cat;
+        renderNotifications();
+      });
+    });
+  }
+
+  const searchInput = document.getElementById("searchInput");
+  searchInput.addEventListener("input", (e) => {
+    searchQuery = e.target.value;
+    renderNotifications();
+  });
+
+  document.getElementById("markAllReadBtn").addEventListener("click", markAllRead);
+  document.getElementById("filterBtn").addEventListener("click", () => {
+    alert("✨ Advanced filters coming soon — use category pills or search.");
+  });
+  document.getElementById("settingsBtn").addEventListener("click", () => {
+    alert("⚙️ Notification preferences, quiet hours, and theme toggles (premium).");
+  });
+
+  // initial render
+  renderNotifications();
+  updateUnreadCount();
+  updateLivePanel();
+  updateFeatured();
+  initFilters();
+
+  // ---------- CINEMATIC PARTICLES (unchanged) ----------
+  const canvas = document.getElementById('particleCanvas');
+  let ctx = canvas.getContext('2d');
+  let particles = [];
+  let animFrame;
+  function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+  function initParticles() {
+    particles = [];
+    for (let i = 0; i < 100; i++) {
+      particles.push({
+        x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+        radius: Math.random() * 2.5 + 0.6,
+        vx: (Math.random() - 0.5) * 0.2, vy: (Math.random() - 0.5) * 0.15,
+        color: `rgba(255, ${70 + Math.random() * 80}, ${60 + Math.random() * 60}, ${Math.random() * 0.4 + 0.2})`
+      });
+    }
+  }
+  function drawParticles() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let p of particles) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = "#ff2b2b";
+      ctx.fill();
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+    }
+    animFrame = requestAnimationFrame(drawParticles);
+  }
+  window.addEventListener('resize', () => { resizeCanvas(); initParticles(); });
+  resizeCanvas();
+  initParticles();
+  drawParticles();
+
+  // ripple effect on buttons (pure CSS, no logic change)
+  document.querySelectorAll('.glass-btn, .pill, .featured-card').forEach(el => {
+    el.addEventListener('mousedown', function(e) {
+      const ripple = document.createElement('span');
+      const rect = this.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height);
+      ripple.style.cssText = `position:absolute; border-radius:50%; background:rgba(255,255,255,0.25); transform:scale(0); transition:transform 0.4s; pointer-events:none; width:${size}px; height:${size}px; left:${e.clientX - rect.left - size/2}px; top:${e.clientY - rect.top - size/2}px;`;
+      this.style.position = 'relative';
+      this.style.overflow = 'hidden';
+      this.appendChild(ripple);
+      setTimeout(() => ripple.style.transform = 'scale(4)', 10);
+      setTimeout(() => ripple.remove(), 500);
+    });
+  });
+</script>
+</body>
+</html>
