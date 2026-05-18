@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Staff Management · Rands Vibe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f5f7fb;
+            padding: 0;
+            margin: 0;
+        }
+        .staff-module-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px 28px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 28px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            border: 1px solid #edf2f7;
+            transition: transform 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); }
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #E30613;
+            margin-top: 8px;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #6c7a8e;
+            text-transform: uppercase;
+        }
+        .tabs-container {
+            display: flex;
+            gap: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+        .tab-button {
+            padding: 10px 24px;
+            background: transparent;
+            border: none;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 40px;
+        }
+        .tab-button:hover {
+            background: #fff0f0;
+            color: #E30613;
+        }
+        .tab-button.active {
+            background: #E30613;
+            color: white;
+            box-shadow: 0 4px 10px rgba(227,6,19,0.2);
+        }
+        .table-wrapper {
+            overflow-x: auto;
+            background: white;
+            border-radius: 24px;
+            border: 1px solid #edf2f7;
+            margin-bottom: 24px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 750px;
+        }
+        .data-table th, .data-table td {
+            padding: 14px 20px;
+            text-align: left;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.85rem;
+        }
+        .data-table th {
+            background: #fafcff;
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .role-badge {
+            background: #e0e7ff;
+            color: #4f46e5;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 40px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .status-active { background: #e6f7e6; color: #10b981; }
+        .status-inactive { background: #fee2e2; color: #E30613; }
+        .action-icons i {
+            margin: 0 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.1s;
+        }
+        .action-icons i:active { transform: scale(0.9); }
+        .fa-edit { color: #f59e0b; }
+        .fa-toggle-on { color: #10b981; }
+        .fa-toggle-off { color: #94a3b8; }
+        .fa-trash-alt { color: #dc2626; }
+        .modules-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .module-card-item {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid #edf2f7;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .active-staff-card {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border-left: 4px solid #10b981;
+        }
+        .force-logout-btn {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: #E30613;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #e2e8f0;
+            padding: 8px 16px;
+            border-radius: 40px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #e2e8f0;
+            border-radius: 40px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #1e293b;
+        }
+        .modal-mask {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.25s;
+        }
+        .modal-mask.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .modal-container {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 48px;
+            padding: 32px 28px;
+            box-shadow: 0 30px 50px -20px rgba(0,0,0,0.3);
+            animation: modalPop 0.3s cubic-bezier(0.34,1.2,0.64,1) forwards;
+        }
+        @keyframes modalPop {
+            0% { transform: scale(0.92); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .modal-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(145deg, #fff0f0, #ffe6e6);
+            border-radius: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 34px;
+            color: #E30613;
+        }
+        .modal-container h3 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+            text-align: center;
+            color: #1e293b;
+        }
+        .modal-container p {
+            color: #475569;
+            line-height: 1.5;
+            margin: 16px 0 24px;
+            text-align: center;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .modal-btn {
+            background: #E30613;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+            color: white;
+            width: 100%;
+        }
+        .pin-hint {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-top: -10px;
+            margin-bottom: 12px;
+        }
+        @media (max-width: 768px) {
+            .staff-module-container { padding: 16px; }
+            .stats-grid { gap: 12px; }
+            .stat-number { font-size: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+<div id="staffApp">
+    <div class="staff-module-container">
+        <!-- Stats row -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Staff</div>
+                <div class="stat-number">{{ staffList.length }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Staff</div>
+                <div class="stat-number">{{ staffList.filter(s => s.status === 'Active').length }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">On Shift Now</div>
+                <div class="stat-number">{{ activeShiftsList.length }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Hours Today</div>
+                <div class="stat-number">{{ totalHoursToday.toFixed(1) }}h</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-container">
+            <button class="tab-button" :class="{ active: activeTab === 'accounts' }" @click="activeTab = 'accounts'">
+                <i class="fas fa-id-card"></i> Staff Accounts
+            </button>
+            <button class="tab-button" :class="{ active: activeTab === 'attendance' }" @click="activeTab = 'attendance'">
+                <i class="fas fa-clock"></i> Attendance
+            </button>
+            <button class="tab-button" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'">
+                <i class="fas fa-chart-line"></i> Activity
+            </button>
+            <button class="tab-button" :class="{ active: activeTab === 'reports' }" @click="activeTab = 'reports'">
+                <i class="fas fa-file-alt"></i> Reports
+            </button>
+        </div>
+
+        <!-- Staff Accounts Tab -->
+        <div v-if="activeTab === 'accounts'">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+                <button class="btn-primary" @click="openCreateStaffModal">
+                    <i class="fas fa-plus"></i> Add Staff
+                </button>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Name</th><th>Role</th><th>Phone</th><th>Hourly Rate</th><th>Clock‑in PIN</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="staff in staffList" :key="staff.id">
+                            <td><strong>{{ staff.name }} {{ staff.surname }}</strong></td>
+                            <td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td>
+                            <td>{{ staff.phone || '—' }}</td>
+                            <td>R{{ parseFloat(staff.hourly_rate || 0).toFixed(2) }}</td>
+                            <td><span class="status-badge" :class="staff.clock_in_pin ? 'status-active' : 'status-inactive'">{{ staff.clock_in_pin || 'Not set' }}</span></td>
+                            <td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td>
+                            <td>{{ formatDate(staff.created_at) }}</td>
+                            <td><div class="action-icons">
+                                <i class="fas fa-edit" @click="editStaff(staff)"></i>
+                                <i class="fas" :class="staff.status === 'Active' ? 'fa-toggle-on' : 'fa-toggle-off'" @click="toggleStaffStatus(staff.id)"></i>
+                                <i class="fas fa-trash-alt" @click="deleteStaff(staff.id)"></i>
+                            </div></td>
+                        </tr>
+                        <tr v-if="staffList.length === 0"><td colspan="8" style="text-align:center;">No staff members found</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Attendance Tab -->
+        <div v-if="activeTab === 'attendance'">
+            <div class="stats-grid" style="margin-bottom: 24px;">
+                <div class="stat-card"><div class="stat-number">{{ activeShiftsList.length }}</div><div class="stat-label">On Shift</div></div>
+                <div class="stat-card"><div class="stat-number">{{ totalHoursToday.toFixed(1) }}h</div><div class="stat-label">Total Hours Today</div></div>
+                <div class="stat-card"><div class="stat-number">{{ avgHoursPerStaff.toFixed(1) }}h</div><div class="stat-label">Avg Hours/Staff</div></div>
+            </div>
+            <h3 style="margin-bottom: 16px; font-size: 1rem;">Currently Active Shifts</h3>
+            <div class="modules-container">
+                <div v-for="shift in activeShiftsList" :key="shift.id" class="module-card-item active-staff-card">
+                    <div>
+                        <h4><i class="fas fa-user-circle"></i> {{ shift.staff_name }}</h4>
+                        <p style="font-size:0.75rem;">Started: {{ formatDateTime(shift.login_time) }} | Duration: {{ calculateDuration(shift.login_time) }}</p>
+                        <p style="font-size:0.7rem;">Role: {{ getRoleDisplay(shift.staff_role) }}</p>
+                    </div>
+                    <button class="force-logout-btn" @click="forceLogout(shift)">Force Logout</button>
+                </div>
+                <div v-if="activeShiftsList.length === 0" class="stat-card" style="text-align:center; padding:32px;">No active shifts</div>
+            </div>
+        </div>
+
+        <!-- Activity Tab (placeholder) -->
+        <div v-if="activeTab === 'activity'" class="stat-card" style="text-align:center; padding: 60px;">
+            <i class="fas fa-chart-line fa-3x" style="color:#E30613;"></i>
+            <h3 style="margin-top:12px;">Real‑time Activity</h3>
+            <p>Staff actions will appear here soon.</p>
+        </div>
+
+        <!-- Reports Tab -->
+        <div v-if="activeTab === 'reports'" class="stat-card" style="text-align:center; padding: 60px;">
+            <button class="btn-primary" @click="exportAttendanceReport"><i class="fas fa-download"></i> Export Attendance Report</button>
+        </div>
+    </div>
+
+    <!-- Staff Form Modal (with Clock‑in PIN field) -->
+    <div class="modal-mask" :class="{ active: showStaffModal }">
+        <div class="modal-container">
+            <h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3>
+            <div class="form-group"><label>Name *</label><input class="form-control" v-model="staffForm.name" placeholder="First name"></div>
+            <div class="form-group"><label>Surname *</label><input class="form-control" v-model="staffForm.surname" placeholder="Last name"></div>
+            <div class="form-group"><label>Email *</label><input class="form-control" v-model="staffForm.email" type="email"></div>
+            <div class="form-group" v-if="!isEditing"><label>Password *</label><input class="form-control" v-model="staffForm.password" type="password" placeholder="Min 6 characters"></div>
+            <div class="form-group"><label>Role *</label>
+                <select class="form-control" v-model="staffForm.role">
+                    <option value="staff">General Worker</option>
+                    <option value="security">Security</option>
+                    <option value="cleaner">Cleaner</option>
+                    <option value="scanner">Scanner</option>
+                    <option value="shisha">Shisha Master</option>
+                    <option value="cashier">Cashier</option>
+                    <option value="vvip">VVIP Concierge</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Hourly Rate (ZAR) *</label><input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50"></div>
+            <div class="form-group"><label>Clock‑in PIN (4‑6 digits) *</label><input class="form-control" v-model="staffForm.clock_in_pin" type="text" maxlength="6" pattern="[0-9]+" placeholder="e.g., 1234"></div>
+            <div class="pin-hint"><i class="fas fa-info-circle"></i> Staff will use this PIN to clock in at the gate kiosk.</div>
+            <div class="modal-buttons">
+                <button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button>
+                <button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div class="modal-mask" :class="{ active: showInfoModal }">
+        <div class="modal-container">
+            <div class="modal-icon"><i :class="infoIcon"></i></div>
+            <h3>{{ infoTitle }}</h3>
+            <p>{{ infoMessage }}</p>
+            <button class="modal-btn" @click="showInfoModal = false">Got it</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Supabase config (single venue)
+    const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlenZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    new Vue({
+        el: '#staffApp',
+        data: {
+            activeTab: 'accounts',
+            staffList: [],
+            shifts: [],       // all shifts from Supabase
+            showStaffModal: false,
+            showInfoModal: false,
+            isEditing: false,
+            editingStaffId: null,
+            staffForm: { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0, clock_in_pin: '' },
+            saving: false,
+            infoTitle: '',
+            infoMessage: '',
+            infoIcon: 'fas fa-check-circle'
+        },
+        computed: {
+            activeShiftsList() {
+                // filter active shifts, join staff names
+                const active = this.shifts.filter(s => s.status === 'active');
+                return active.map(shift => {
+                    const staff = this.staffList.find(st => st.id === shift.staff_id);
+                    return {
+                        ...shift,
+                        staff_name: staff ? `${staff.name} ${staff.surname}` : 'Unknown',
+                        staff_role: staff?.role || 'unknown'
+                    };
+                });
+            },
+            totalHoursToday() {
+                let total = 0;
+                const today = new Date().toISOString().split('T')[0];
+                this.shifts.forEach(s => {
+                    const shiftDate = new Date(s.login_time).toISOString().split('T')[0];
+                    if (shiftDate === today) {
+                        if (s.hours_worked) total += s.hours_worked;
+                        else if (s.status === 'active' && s.login_time) {
+                            const hours = (new Date() - new Date(s.login_time)) / (1000*60*60);
+                            total += hours;
+                        } else if (s.logout_time && s.hours_worked) {
+                            total += s.hours_worked;
+                        }
+                    }
+                });
+                return total;
+            },
+            avgHoursPerStaff() {
+                return this.staffList.length ? this.totalHoursToday / this.staffList.length : 0;
+            }
+        },
+        methods: {
+            getRoleDisplay(role) {
+                const map = {
+                    staff: 'General Worker',
+                    security: 'Security',
+                    cleaner: 'Cleaner',
+                    scanner: 'Scanner',
+                    shisha: 'Shisha Master',
+                    cashier: 'Cashier',
+                    vvip: 'VVIP Concierge'
+                };
+                return map[role] || role;
+            },
+            formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
+            formatDateTime(d) { return d ? new Date(d).toLocaleString() : '-'; },
+            calculateDuration(loginTime) {
+                const diff = Math.floor((new Date() - new Date(loginTime)) / 60000);
+                return `${Math.floor(diff/60)}h ${diff%60}m`;
+            },
+            showAlert(title, msg, icon = 'fas fa-info-circle') {
+                this.infoTitle = title;
+                this.infoMessage = msg;
+                this.infoIcon = icon;
+                this.showInfoModal = true;
+            },
+
+            // Load all staff (no tenant filter)
+            async loadStaff() {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, name, surname, email, role, phone, hourly_rate, status, created_at, clock_in_pin')
+                    .in('role', ['staff', 'security', 'cleaner', 'scanner', 'shisha', 'cashier', 'vvip'])
+                    .order('created_at', { ascending: false });
+                if (error) {
+                    console.error(error);
+                    this.showAlert('Error', 'Failed to load staff', 'fas fa-exclamation-triangle');
+                    return;
+                }
+                this.staffList = data || [];
+            },
+
+            // Load all shifts from Supabase
+            async loadShifts() {
+                const { data, error } = await supabase
+                    .from('staff_shifts')
+                    .select('*')
+                    .order('login_time', { ascending: false });
+                if (error) {
+                    console.error('Error loading shifts:', error);
+                    // If table doesn't exist, show warning but don't break
+                    if (error.code === '42P01') {
+                        console.warn('staff_shifts table does not exist yet');
+                        this.shifts = [];
+                    } else {
+                        this.showAlert('Error', 'Failed to load shift data', 'fas fa-exclamation-triangle');
+                    }
+                    return;
+                }
+                this.shifts = data || [];
+            },
+
+            // Force logout: update shift record in Supabase
+            async forceLogout(shift) {
+                if (!confirm(`Force logout ${shift.staff_name}?`)) return;
+                const now = new Date();
+                const hours = (now - new Date(shift.login_time)) / (1000 * 60 * 60);
+                const { error } = await supabase
+                    .from('staff_shifts')
+                    .update({
+                        logout_time: now.toISOString(),
+                        status: 'completed',
+                        hours_worked: hours
+                    })
+                    .eq('id', shift.id);
+                if (error) {
+                    this.showAlert('Error', 'Failed to update shift', 'fas fa-exclamation-triangle');
+                    return;
+                }
+                await this.loadShifts();
+                this.showAlert('Force Logout', `${shift.staff_name} logged out. Hours: ${hours.toFixed(2)}h`, 'fas fa-sign-out-alt');
+            },
+
+            openCreateStaffModal() {
+                this.isEditing = false;
+                this.editingStaffId = null;
+                this.staffForm = { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0, clock_in_pin: '' };
+                this.showStaffModal = true;
+            },
+            editStaff(staff) {
+                this.isEditing = true;
+                this.editingStaffId = staff.id;
+                this.staffForm = {
+                    name: staff.name,
+                    surname: staff.surname,
+                    email: staff.email,
+                    password: '',
+                    role: staff.role,
+                    hourly_rate: staff.hourly_rate,
+                    clock_in_pin: staff.clock_in_pin || ''
+                };
+                this.showStaffModal = true;
+            },
+            closeStaffModal() {
+                this.showStaffModal = false;
+                this.staffForm = { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0, clock_in_pin: '' };
+                this.saving = false;
+            },
+            async saveStaff() {
+                if (!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) {
+                    return this.showAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation-triangle');
+                }
+                if (!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) {
+                    return this.showAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock');
+                }
+                if (!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) {
+                    return this.showAlert('Invalid', 'Hourly rate must be > 0', 'fas fa-exclamation-triangle');
+                }
+                if (!this.staffForm.clock_in_pin || !/^\d{4,6}$/.test(this.staffForm.clock_in_pin)) {
+                    return this.showAlert('Invalid', 'Clock‑in PIN must be 4‑6 digits', 'fas fa-exclamation-triangle');
+                }
+                this.saving = true;
+                try {
+                    if (this.isEditing) {
+                        const { error } = await supabase
+                            .from('profiles')
+                            .update({
+                                name: this.staffForm.name,
+                                surname: this.staffForm.surname,
+                                email: this.staffForm.email,
+                                role: this.staffForm.role,
+                                hourly_rate: parseFloat(this.staffForm.hourly_rate),
+                                clock_in_pin: this.staffForm.clock_in_pin
+                            })
+                            .eq('id', this.editingStaffId);
+                        if (error) throw new Error(error.message);
+                        this.showAlert('Success', 'Staff updated successfully', 'fas fa-check-circle');
+                    } else {
+                        // Create via edge function
+                        const payload = {
+                            email: this.staffForm.email,
+                            password: this.staffForm.password,
+                            name: this.staffForm.name,
+                            surname: this.staffForm.surname,
+                            role: this.staffForm.role,
+                            hourly_rate: parseFloat(this.staffForm.hourly_rate),
+                            clock_in_pin: this.staffForm.clock_in_pin
+                        };
+                        const { data, error } = await supabase.functions.invoke('create-staff', { body: payload });
+                        if (error) throw new Error(error.message);
+                        if (data && data.error) throw new Error(data.error);
+                        this.showAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check');
+                    }
+                    this.closeStaffModal();
+                    await this.loadStaff();
+                    await this.loadShifts(); // refresh shifts (new staff may have shifts already)
+                } catch (err) {
+                    console.error(err);
+                    this.showAlert('Creation failed', err.message, 'fas fa-exclamation-triangle');
+                } finally {
+                    this.saving = false;
+                }
+            },
+            async toggleStaffStatus(id) {
+                const staff = this.staffList.find(s => s.id === id);
+                if (!staff) return;
+                const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
+                const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', id);
+                if (error) {
+                    this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation-triangle');
+                    return;
+                }
+                await this.loadStaff();
+                this.showAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on');
+            },
+            async deleteStaff(id) {
+                const staff = this.staffList.find(s => s.id === id);
+                if (!staff) return;
+                if (!confirm(`Delete ${staff.name} ${staff.surname} permanently?`)) return;
+                const { error } = await supabase.from('profiles').delete().eq('id', id);
+                if (error) {
+                    this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation-triangle');
+                    return;
+                }
+                await this.loadStaff();
+                await this.loadShifts(); // shifts remain but will show unknown staff
+                this.showAlert('Deleted', 'Staff profile removed', 'fas fa-trash-alt');
+            },
+            exportAttendanceReport() {
+                this.showAlert('Report Ready', 'Attendance data exported (CSV placeholder)', 'fas fa-download');
+            }
+        },
+        async mounted() {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error || !user) {
+                this.showAlert('Session required', 'Please log in to continue', 'fas fa-exclamation-triangle');
+                setTimeout(() => { window.location.href = '../login.html'; }, 2000);
+                return;
+            }
+            await this.loadStaff();
+            await this.loadShifts();
+            // Refresh shifts every 10 seconds to keep active status up to date
+            setInterval(() => this.loadShifts(), 10000);
+        }
+    });
+</script>
+</body>
+</html>
