@@ -231,7 +231,7 @@
             margin-bottom: 0 !important;
         }
 
-        /* New styles for Request Funds modal and incoming popup (if any) - preserved */
+        /* New styles for Request Funds modal and incoming popup - preserved */
         .funds-request-modal .form-group .error-text {
             color: #E30613;
             font-size: 0.7rem;
@@ -322,7 +322,7 @@
         </div>
         <div class="quick-actions">
             <div class="action-row-primary">
-                <!-- Changed: "Instant Top-Up" → "Top-Up", description "Add funds instantly" → "instant deposit" -->
+                <!-- Top-Up and Pay Now buttons (unchanged) -->
                 <div class="action-card-primary" id="instantTopUpBtn">
                     <div class="action-icon-bg"><i class="fas fa-arrow-down"></i></div>
                     <div class="action-text">
@@ -396,7 +396,7 @@
         </div>
     </div>
 
-    <!-- Incoming request popup -->
+    <!-- Incoming request popup (preserved) -->
     <div id="incomingRequestPopup" class="incoming-request-popup">
         <div class="popup-header">
             <h4><i class="fas fa-bell"></i> New Fund Request</h4>
@@ -418,7 +418,7 @@
     <div class="modal-overlay"><div class="transaction-modal"><div class="modal-header"><h3>Pay Now</h3></div><input type="number" class="transaction-amount-input" placeholder="Amount"><div class="modal-buttons"><button class="modal-btn btn-decline">Cancel</button><button class="modal-btn btn-primary">Pay Now</button></div></div></div>
     <div class="modal-overlay"><div class="booze-modal"><div class="modal-header"><h3>Booze Lockers</h3></div><div class="booze-options"><div class="booze-option"><div class="booze-icon"><i class="fas fa-wine-bottle"></i></div><div class="booze-info"><h4>Keep Booze</h4></div></div><div class="booze-option"><div class="booze-icon"><i class="fas fa-hand-holding-heart"></i></div><div class="booze-info"><h4>Collect Booze</h4></div></div></div></div></div>
     
-    <!-- REFUND MODAL – Cancel button fix: added id and dedicated listener later -->
+    <!-- REFUND MODAL (preserved) -->
     <div class="modal-overlay" id="refundModalOverlay">
         <div class="refund-modal">
             <div class="modal-header"><h3>Request Refund</h3></div>
@@ -528,10 +528,9 @@
     document.addEventListener('DOMContentLoaded', async function() { await new Promise(r => setTimeout(r, 200)); if (!window.supabase) return; async function fetchVibeFromTickets() { try { const today = new Date().toISOString().split('T')[0]; const { data, error } = await window.supabase.from('tickets').select('id').eq('status', 'used').gte('updated_at', today); if (error) throw error; const usedToday = data?.length || 0; const maxVibe = 150; let percent = Math.min(100, (usedToday / maxVibe) * 100); const fill = document.querySelector('.vibe-bar-fill'); if (fill) fill.style.width = percent + '%'; const statsSpan = document.querySelector('.vibe-stats span'); if (statsSpan) statsSpan.innerHTML = `🔥 Crowd Energy · ${usedToday} check‑ins today`; } catch (err) { console.error('Vibe meter error:', err); } } await fetchVibeFromTickets(); setInterval(fetchVibeFromTickets, 30000); const checkinBtn = document.querySelector('.vibe-action-btn'); if (checkinBtn) { checkinBtn.addEventListener('click', async () => { setTimeout(() => fetchVibeFromTickets(), 800); }); } });
 </script>
 <script>
-    // ========== P2P FUNDS REQUEST SYSTEM (RPC + realtime) ==========
+    // ========== P2P FUNDS REQUEST SYSTEM (UNIFIED process_fund_request RPC) ==========
     (function initP2PRequests() {
         let currentRequestId = null;
-        let currentReceiverWalletId = null;
         
         function showToast(message, isError = false) {
             const toast = document.getElementById('customToast');
@@ -621,7 +620,10 @@
                     const receiverWalletId = await resolveReceiverWalletId(receiverRaw);
                     if (!receiverWalletId) throw new Error('Receiver not found');
                     if (senderWalletId === receiverWalletId) throw new Error('Cannot request funds from yourself');
-                    const { error } = await window.supabase.rpc('request_funds', {
+                    
+                    // UNIFIED RPC: process_fund_request with p_action = 'create'
+                    const { error } = await window.supabase.rpc('process_fund_request', {
+                        p_action: 'create',
                         p_sender_wallet_id: senderWalletId,
                         p_receiver_wallet_id: receiverWalletId,
                         p_amount: amount,
@@ -685,13 +687,17 @@
                 .subscribe();
         }
         
+        // Accept handler using unified RPC with p_action = 'accept'
         if (acceptBtn) {
             acceptBtn.addEventListener('click', async () => {
                 if (!currentRequestId) return;
                 acceptBtn.disabled = true;
                 acceptBtn.textContent = 'Processing...';
                 try {
-                    const { error } = await window.supabase.rpc('accept_fund_request', { p_request_id: currentRequestId });
+                    const { error } = await window.supabase.rpc('process_fund_request', {
+                        p_action: 'accept',
+                        p_request_id: currentRequestId
+                    });
                     if (error) throw error;
                     showToast('✅ Request accepted! Funds transferred.');
                     popup.classList.remove('active');
@@ -710,13 +716,18 @@
                 }
             });
         }
+        
+        // Reject handler using unified RPC with p_action = 'reject'
         if (rejectBtn) {
             rejectBtn.addEventListener('click', async () => {
                 if (!currentRequestId) return;
                 rejectBtn.disabled = true;
                 rejectBtn.textContent = 'Rejecting...';
                 try {
-                    const { error } = await window.supabase.rpc('reject_fund_request', { p_request_id: currentRequestId });
+                    const { error } = await window.supabase.rpc('process_fund_request', {
+                        p_action: 'reject',
+                        p_request_id: currentRequestId
+                    });
                     if (error) throw error;
                     showToast('❌ Request rejected');
                     popup.classList.remove('active');
@@ -762,7 +773,6 @@
             const submitBtn = document.getElementById('refundSubmitBtn');
             const cancelBtn = document.getElementById('refundCancelBtn');
             
-            // Cancel button handler
             if (cancelBtn && !cancelBtn.hasAttribute('data-refund-cancel')) {
                 cancelBtn.addEventListener('click', (e) => {
                     e.preventDefault();
