@@ -16,7 +16,6 @@
         }
     </script>
     <style>
-        /* pure pay styles (same as original – no header/nav) */
         * {
             margin: 0;
             padding: 0;
@@ -40,7 +39,28 @@
             border-radius: 40px;
             box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.08);
             overflow: hidden;
+            position: relative;
         }
+        .close-pay-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: #f8fafc;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid rgba(227,6,19,0.15);
+            color: #E30613;
+            font-size: 1.1rem;
+            z-index: 10;
+        }
+        .close-pay-btn:active { transform: scale(0.94); background: #ffffff; }
         .pay-content {
             padding: 24px 20px 32px;
         }
@@ -92,6 +112,32 @@
             border-radius: 60px;
             display: inline-block;
         }
+        .amount-input-group {
+            margin: 28px 0 16px;
+        }
+        .amount-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .amount-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border: 2px solid #eef2f8;
+            border-radius: 60px;
+            text-align: center;
+            background: #f8fafd;
+            transition: 0.2s;
+        }
+        .amount-input:focus {
+            outline: none;
+            border-color: #E30613;
+            background: white;
+        }
         .action-btn {
             border: none;
             padding: 14px 12px;
@@ -105,12 +151,16 @@
             cursor: pointer;
             transition: all 0.2s ease;
             width: 100%;
-            margin-top: 28px;
             background: linear-gradient(135deg, #E30613 0%, #b71c1c 100%);
             color: white;
             box-shadow: 0 6px 14px rgba(227, 6, 19, 0.25);
         }
         .action-btn:active { transform: scale(0.96); }
+        .action-btn:disabled {
+            opacity: 0.6;
+            transform: none;
+            cursor: not-allowed;
+        }
         .modal {
             display: none;
             position: fixed;
@@ -169,11 +219,15 @@
         @media (max-width: 480px) {
             .pay-content { padding: 20px 16px; }
             .pay-heading { font-size: 1.3rem; }
+            .close-pay-btn { top: 12px; right: 12px; width: 36px; height: 36px; font-size: 1rem; }
         }
     </style>
 </head>
 <body>
 <div class="pay-standalone">
+    <div class="close-pay-btn" id="closePayBtn">
+        <i class="fas fa-times"></i>
+    </div>
     <div class="pay-content">
         <div class="pay-heading">
             <i class="fas fa-qrcode" style="margin-right: 8px;"></i> Scan to Pay
@@ -187,14 +241,21 @@
                 <i class="fas fa-wallet"></i> Rands Account: <span id="qrAccountLabel"></span>
             </p>
         </div>
+
+        <!-- Dynamic amount input -->
+        <div class="amount-input-group">
+            <label class="amount-label">Enter amount (ZAR)</label>
+            <input type="number" id="paymentAmount" class="amount-input" placeholder="0.00" step="0.01" min="0.01" value="150.00">
+        </div>
+
         <button class="action-btn" id="payNowBtn">
-            <i class="fas fa-bolt"></i> Pay Now (R150)
+            <i class="fas fa-bolt"></i> Pay Now
         </button>
-        <p style="font-size: 0.7rem; color: #94a3b8; margin-top: 20px; text-align: center;">Tap to authorise a R150 payment</p>
+        <p style="font-size: 0.7rem; color: #94a3b8; margin-top: 20px; text-align: center;">Enter amount and tap to authorise payment</p>
     </div>
 </div>
 
-<!-- payment approval modal (same as original) -->
+<!-- payment approval modal -->
 <div id="paymentApprovalModal" class="modal">
     <div class="modal-card">
         <h3 style="color:#E30613;"><i class="fas fa-shield-alt"></i> 💰 Payment Request</h3>
@@ -217,7 +278,6 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    // DOM elements
     const toast = document.getElementById('globalToast');
     const qrLabel = document.getElementById('qrAccountLabel');
     const barcodeCanvas = document.getElementById('barcodeCanvas');
@@ -228,6 +288,8 @@
     const approvalDesc = document.getElementById('approvalDesc');
     const acceptBtn = document.getElementById('acceptPaymentBtn');
     const rejectBtn = document.getElementById('rejectPaymentBtn');
+    const closePayBtn = document.getElementById('closePayBtn');
+    const amountInput = document.getElementById('paymentAmount');
 
     let currentUserId = null;
     let currentUserPhone = null;
@@ -241,31 +303,33 @@
         setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
-    // fetch user profile & balance from Supabase
     async function loadUserData() {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) {
             showToastMsg("Please log in first");
-            window.location.href = 'login.html';
+            window.location.href = '../login.html';
             return false;
         }
-        currentUserId = user.id;
+        currentUserId = session.user.id;
 
-        // get account details from 'accounts' table
-        const { data: account, error: accError } = await supabase
-            .from('accounts')
-            .select('phone, balance, name')
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('phone')
+            .eq('id', currentUserId)
+            .maybeSingle();
+
+        if (profileErr) console.warn("Profile fetch error:", profileErr);
+        currentUserPhone = profile?.phone || session.user.user_metadata?.phone || session.user.email?.split('@')[0] || "MEMBER";
+        
+        const { data: wallet, error: walletErr } = await supabase
+            .from('wallets')
+            .select('balance')
             .eq('user_id', currentUserId)
-            .single();
+            .maybeSingle();
 
-        if (accError || !account) {
-            showToastMsg("Account not found. Please contact support.");
-            return false;
-        }
+        if (walletErr) console.warn("Wallet error:", walletErr);
+        currentBalance = wallet?.balance || 0;
 
-        currentUserPhone = account.phone;
-        currentBalance = account.balance;
-        // update QR / barcode with user phone (same as original used phone as ID)
         if (qrLabel) qrLabel.innerText = currentUserPhone;
         generateBarcode(currentUserPhone);
         generateQRCode(currentUserPhone);
@@ -289,13 +353,15 @@
         }
     }
 
-    // create a new payment request (R150)
-    async function createPaymentRequest() {
+    async function createPaymentRequest(amount) {
         if (!currentUserId) {
             showToastMsg("User not authenticated");
             return;
         }
-        const amount = 150;
+        if (!amount || amount <= 0) {
+            showToastMsg("Please enter a valid amount greater than 0");
+            return;
+        }
         if (currentBalance < amount) {
             showToastMsg(`Insufficient balance. Current: R${currentBalance.toFixed(2)}`);
             return;
@@ -306,7 +372,7 @@
             .insert({
                 user_id: currentUserId,
                 amount: amount,
-                description: "Payment to Rands Kiosk · POS Terminal",
+                description: `Payment to Rands Kiosk · POS Terminal (R${amount.toFixed(2)})`,
                 status: 'pending',
                 created_at: new Date().toISOString()
             })
@@ -318,36 +384,32 @@
             showToastMsg("Failed to create payment request");
             return;
         }
-        showToastMsg(`Payment request R${amount} sent – awaiting approval`);
-        // No need to call show modal – realtime subscription will trigger it
+        showToastMsg(`Payment request R${amount.toFixed(2)} sent – awaiting approval`);
     }
 
-    // accept payment: deduct balance, update request status, add transaction
     async function acceptPaymentRequest(requestId, amount, description) {
         if (!currentUserId) return false;
 
-        // Check current balance again
-        const { data: account, error: fetchError } = await supabase
-            .from('accounts')
+        const { data: wallet, error: fetchError } = await supabase
+            .from('wallets')
             .select('balance')
             .eq('user_id', currentUserId)
-            .single();
+            .maybeSingle();
 
-        if (fetchError || !account) {
-            showToastMsg("Error fetching account");
+        if (fetchError || !wallet) {
+            showToastMsg("Error fetching wallet");
             return false;
         }
 
-        if (account.balance < amount) {
-            showToastMsg(`Insufficient balance. You have R${account.balance.toFixed(2)}`);
+        if (wallet.balance < amount) {
+            showToastMsg(`Insufficient balance. You have R${wallet.balance.toFixed(2)}`);
             return false;
         }
 
-        const newBalance = account.balance - amount;
+        const newBalance = wallet.balance - amount;
 
-        // Start a transaction (update balance, update request, insert transaction record)
         const { error: updateBalanceError } = await supabase
-            .from('accounts')
+            .from('wallets')
             .update({ balance: newBalance })
             .eq('user_id', currentUserId);
 
@@ -362,19 +424,18 @@
             .eq('id', requestId);
 
         if (updateRequestError) {
-            // Rollback balance? For simplicity we log error but still consider payment done
             console.error("Request update failed", updateRequestError);
         }
 
-        // Insert transaction record
-        await supabase.from('transactions').insert({
-            user_id: currentUserId,
-            description: description,
+        await supabase.from('wallet_transactions').insert({
+            wallet_id: currentUserId,
             amount: -amount,
-            date: new Date().toISOString().slice(0,10)
+            type: 'payment',
+            description: description,
+            status: 'completed',
+            created_at: new Date().toISOString()
         });
 
-        // Update local balance
         currentBalance = newBalance;
         showToastMsg(`✅ Payment of R${amount.toFixed(2)} completed.`);
         return true;
@@ -389,7 +450,6 @@
         showToastMsg("Payment rejected");
     }
 
-    // Show modal for a given payment request
     function showPaymentModal(request) {
         if (!modal || modal.classList.contains('active')) return;
         approvalAmount.innerHTML = `R${request.amount.toFixed(2)}`;
@@ -399,7 +459,6 @@
         modal.classList.add('active');
     }
 
-    // Set up realtime subscription for new/updated pending requests
     async function subscribeToPaymentRequests() {
         if (realtimeSubscription) {
             await realtimeSubscription.unsubscribe();
@@ -424,7 +483,6 @@
                 filter: `user_id=eq.${currentUserId}`
             }, (payload) => {
                 const updated = payload.new;
-                // If modal is open and request was updated externally, close modal if completed/rejected
                 if (modal.classList.contains('active') && activeRequestId === updated.id && updated.status !== 'pending') {
                     modal.classList.remove('active');
                     activeRequestId = null;
@@ -438,14 +496,12 @@
             .subscribe();
     }
 
-    // handle accept button click
     async function handleAccept() {
         const requestId = modal.getAttribute('data-request-id');
         if (!requestId) {
             modal.classList.remove('active');
             return;
         }
-        // fetch the request details to get amount and description
         const { data: request, error } = await supabase
             .from('payment_requests')
             .select('amount, description')
@@ -462,11 +518,9 @@
         if (success) {
             modal.classList.remove('active');
             activeRequestId = null;
-            // Refresh balance display (optional)
-            const { data: freshAccount } = await supabase.from('accounts').select('balance').eq('user_id', currentUserId).single();
-            if (freshAccount) currentBalance = freshAccount.balance;
+            const { data: freshWallet } = await supabase.from('wallets').select('balance').eq('user_id', currentUserId).single();
+            if (freshWallet) currentBalance = freshWallet.balance;
         } else {
-            // keep modal open? close anyway to avoid stuck state
             modal.classList.remove('active');
         }
     }
@@ -480,14 +534,18 @@
         activeRequestId = null;
     }
 
-    // Initialize page
+    if (closePayBtn) {
+        closePayBtn.addEventListener('click', () => {
+            window.location.href = 'home.html';
+        });
+    }
+
     async function init() {
         const userLoaded = await loadUserData();
         if (!userLoaded) return;
 
         await subscribeToPaymentRequests();
 
-        // Check for any existing pending requests on page load
         const { data: pendingRequests, error } = await supabase
             .from('payment_requests')
             .select('*')
@@ -500,16 +558,19 @@
         }
     }
 
-    // attach event listeners
     payBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        createPaymentRequest();
+        const amount = parseFloat(amountInput.value);
+        if (isNaN(amount) || amount <= 0) {
+            showToastMsg("Please enter a valid amount greater than 0");
+            return;
+        }
+        createPaymentRequest(amount);
     });
 
     acceptBtn.addEventListener('click', handleAccept);
     rejectBtn.addEventListener('click', handleReject);
 
-    // close modal when clicking on backdrop
     modal.addEventListener('click', (e) => {
         if (e.target === modal) handleReject();
     });
