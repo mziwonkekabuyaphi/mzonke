@@ -19,14 +19,13 @@
             align-items: center; 
             min-height: 100vh; 
             padding: 16px; 
-            /* bottom padding removed – will be handled dynamically to avoid gap */
             margin: 0;
             overflow-x: hidden;
         }
         .wallet-container { 
             max-width: 480px; 
             width: 100%; 
-            margin: 0 auto; /* no bottom margin – dynamic padding will be added */
+            margin: 0 auto;
             background: #ffffff; 
             border-radius: 48px; 
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); 
@@ -36,7 +35,6 @@
             display: flex; 
             flex-direction: column; 
         }
-        /* ADDED: reduce bottom gap (no extra margin) */
         .wallet-container > :last-child {
             margin-bottom: 0;
             padding-bottom: 0;
@@ -225,15 +223,87 @@
             left: 0;
             right: 0;
             z-index: 1000;
-            /* no extra padding – safe-area will be added via script if needed */
         }
         body {
-            padding-bottom: 0; /* no hardcoded bottom padding – dynamic adjustment applied to .wallet-container */
+            padding-bottom: 0;
         }
-        /* remove any previous margin-bottom that caused gap */
         .wallet-container {
             margin-bottom: 0 !important;
         }
+
+        /* New styles for Request Funds modal and incoming popup (if any) - preserved */
+        .funds-request-modal .form-group .error-text {
+            color: #E30613;
+            font-size: 0.7rem;
+            margin-top: 4px;
+            display: block;
+        }
+        .fee-estimate {
+            background: #f8fafd;
+            border-radius: 20px;
+            padding: 12px;
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .incoming-request-popup {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            z-index: 10001;
+            transform: translateY(120%);
+            transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            border: 1px solid rgba(227,6,19,0.2);
+            overflow: hidden;
+        }
+        .incoming-request-popup.active {
+            transform: translateY(0);
+        }
+        .popup-header {
+            background: linear-gradient(135deg, #E30613, #b0020e);
+            padding: 16px 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .popup-header h4 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0;
+        }
+        .popup-body {
+            padding: 20px;
+        }
+        .popup-detail {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+        .popup-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .popup-actions button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 60px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .popup-actions button:active { transform: scale(0.96); }
+        .btn-accept { background: #10b981; color: white; }
+        .btn-reject { background: #f1f5f9; color: #E30613; }
     </style>
 </head>
 <body>
@@ -252,15 +322,28 @@
         </div>
         <div class="quick-actions">
             <div class="action-row-primary">
-                <div class="action-card-primary"><div class="action-icon-bg"><i class="fas fa-arrow-down"></i></div><div class="action-text"><h4>Deposit</h4><p>Add funds instantly</p></div></div>
-                <div class="action-card-primary"><div class="action-icon-bg"><i class="fas fa-arrow-up"></i></div><div class="action-text"><h4>Pay Now</h4><p>Instant payment</p></div></div>
+                <!-- Changed: "Instant Top-Up" → "Top-Up", description "Add funds instantly" → "instant deposit" -->
+                <div class="action-card-primary" id="instantTopUpBtn">
+                    <div class="action-icon-bg"><i class="fas fa-arrow-down"></i></div>
+                    <div class="action-text">
+                        <h4>Top-Up</h4>
+                        <p>instant deposit</p>
+                    </div>
+                </div>
+                <div class="action-card-primary" id="payNowBtn">
+                    <div class="action-icon-bg"><i class="fas fa-arrow-up"></i></div>
+                    <div class="action-text">
+                        <h4>Pay Now</h4>
+                        <p>Instant payment</p>
+                    </div>
+                </div>
             </div>
             <div class="action-row-secondary"></div>
         </div>
         <div class="service-bar">
             <div class="service-title"><i class="fas fa-th-large"></i> Quick Services</div>
             <div class="service-grid">
-                <div class="service-card" onclick="document.getElementById('vvipModalOverlay').classList.add('active')"><i class="fas fa-crown"></i><span>Request Funds</span></div>
+                <div class="service-card" id="requestFundsBtn"><i class="fas fa-crown"></i><span>Request Funds</span></div>
                 <div class="service-card" onclick="window.location.href='festival-banner.html'"><i class="fas fa-credit-card"></i><span>Vibe Banner</span></div>
                 <div class="service-card" onclick="document.querySelector('.modal-overlay .refund-modal').closest('.modal-overlay').classList.add('active')"><i class="fas fa-hand-holding-usd"></i><span>Request Refund</span></div>
             </div>
@@ -281,15 +364,82 @@
         </div>
     </div>
 
-    <!-- Modals (unchanged) -->
+    <!-- Existing modals (preserved) -->
     <div id="shishaModalOverlay" class="shisha-modal-overlay"><div class="shisha-modal-content"><div class="close-shisha-modal" onclick="document.getElementById('shishaModalOverlay').classList.remove('active')"><i class="fas fa-times"></i></div><div class="shisha-card"><h3>🔥 Hookah Session</h3><p>Balance: <span id="shishaWalletBalance">R 0.00</span></p><div class="shisha-order-btn" id="shishaPlaceOrderBtn">💨 Order R260</div></div></div></div>
-    <div id="vvipModalOverlay" class="vvip-modal-overlay"><div class="vvip-modal-content"><div class="close-vvip-modal" onclick="document.getElementById('vvipModalOverlay').classList.remove('active')"><i class="fas fa-times"></i></div><div class="vvip-band-card"><h3>Request Funds</h3><div id="vvipBandNumber" class="vvip-band-number">SVRGN-63571-8294</div><button class="print-band-btn" id="printVVIPBandBtn"><i class="fas fa-print"></i> Generate Request</button></div></div></div>
+    
+    <!-- Request Funds modal (redesigned, preserved) -->
+    <div id="fundsRequestModalOverlay" class="modal-overlay funds-request-modal">
+        <div class="transaction-modal" style="max-width: 480px;">
+            <div class="modal-header"><h3><i class="fas fa-exchange-alt"></i> Request Funds</h3><p style="font-size:0.8rem; color:#64748b;">Request money from another wallet user</p></div>
+            <div class="form-group">
+                <label>Receiver (Phone Number or Wallet ID)</label>
+                <input type="text" id="fundsReceiverInput" placeholder="e.g., +27721234567 or wallet_abc123">
+                <span class="error-text" id="receiverError"></span>
+            </div>
+            <div class="form-group">
+                <label>Amount (ZAR)</label>
+                <input type="number" id="fundsAmountInput" placeholder="0.00" step="0.01" min="0.01">
+                <span class="error-text" id="amountError"></span>
+            </div>
+            <div class="form-group">
+                <label>Reason (optional)</label>
+                <textarea id="fundsReasonInput" rows="2" placeholder="e.g., Dinner, Ticket, etc."></textarea>
+            </div>
+            <div class="fee-estimate">
+                <span>Estimated fee</span>
+                <span>R 0.00</span>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-decline" id="cancelFundsRequest">Cancel</button>
+                <button class="modal-btn btn-primary" id="submitFundsRequest" disabled>Send Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Incoming request popup -->
+    <div id="incomingRequestPopup" class="incoming-request-popup">
+        <div class="popup-header">
+            <h4><i class="fas fa-bell"></i> New Fund Request</h4>
+            <i class="fas fa-times" id="closePopupBtn" style="cursor:pointer;"></i>
+        </div>
+        <div class="popup-body">
+            <div class="popup-detail"><strong>From:</strong> <span id="popupSenderName">Loading...</span></div>
+            <div class="popup-detail"><strong>Amount:</strong> <span id="popupAmount">R0.00</span></div>
+            <div class="popup-detail"><strong>Reason:</strong> <span id="popupReason">—</span></div>
+            <div class="popup-actions">
+                <button class="btn-accept" id="acceptRequestBtn">Accept</button>
+                <button class="btn-reject" id="rejectRequestBtn">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="vvipModalOverlay" class="vvip-modal-overlay"><div class="vvip-modal-content"><div class="close-vvip-modal" onclick="document.getElementById('vvipModalOverlay').classList.remove('active')"><i class="fas fa-times"></i></div><div class="vvip-band-card"><h3>Request Funds (Legacy)</h3><div id="vvipBandNumber" class="vvip-band-number">SVRGN-63571-8294</div><button class="print-band-btn" id="printVVIPBandBtn"><i class="fas fa-print"></i> Generate Request</button></div></div></div>
     <div class="modal-overlay"><div class="transaction-modal"><div class="modal-header"><h3>Deposit Funds</h3></div><input type="number" class="transaction-amount-input" placeholder="Amount"><div class="modal-buttons"><button class="modal-btn btn-decline">Cancel</button><button class="modal-btn btn-primary">Deposit</button></div></div></div>
     <div class="modal-overlay"><div class="transaction-modal"><div class="modal-header"><h3>Pay Now</h3></div><input type="number" class="transaction-amount-input" placeholder="Amount"><div class="modal-buttons"><button class="modal-btn btn-decline">Cancel</button><button class="modal-btn btn-primary">Pay Now</button></div></div></div>
     <div class="modal-overlay"><div class="booze-modal"><div class="modal-header"><h3>Booze Lockers</h3></div><div class="booze-options"><div class="booze-option"><div class="booze-icon"><i class="fas fa-wine-bottle"></i></div><div class="booze-info"><h4>Keep Booze</h4></div></div><div class="booze-option"><div class="booze-icon"><i class="fas fa-hand-holding-heart"></i></div><div class="booze-info"><h4>Collect Booze</h4></div></div></div></div></div>
-    <div class="modal-overlay"><div class="refund-modal"><div class="modal-header"><h3>Request Refund</h3></div><div class="form-group"><label>Amount (R)</label><input type="number"></div><div class="form-group"><label>Transaction ID</label><input type="text"></div><div class="form-group"><label>Reason</label><select><option value="">Select</option><option value="Duplicate payment">Duplicate</option><option value="Wrong amount">Wrong amount</option><option value="Other">Other</option></select></div><div class="modal-buttons"><button class="modal-btn btn-decline">Cancel</button><button class="modal-btn btn-refund">Submit</button></div></div></div>
+    
+    <!-- REFUND MODAL – Cancel button fix: added id and dedicated listener later -->
+    <div class="modal-overlay" id="refundModalOverlay">
+        <div class="refund-modal">
+            <div class="modal-header"><h3>Request Refund</h3></div>
+            <div class="form-group"><label>Amount (R)</label><input type="number" id="refundAmount"></div>
+            <div class="form-group"><label>Transaction ID / Order ID</label><input type="text" id="refundOrderId"></div>
+            <div class="form-group"><label>Reason</label><select id="refundReason">
+                <option value="">Select</option>
+                <option value="Duplicate payment">Duplicate payment</option>
+                <option value="Wrong amount">Wrong amount</option>
+                <option value="Item not received">Item not received</option>
+                <option value="Other">Other</option>
+            </select></div>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-decline" id="refundCancelBtn">Cancel</button>
+                <button class="modal-btn btn-refund" id="refundSubmitBtn">Submit</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="alertModalOverlay" class="alert-modal-overlay"><div class="alert-modal"><div class="alert-modal-header"><i class="fas fa-info-circle"></i><h3>Notice</h3></div><div class="alert-modal-body"></div><div class="alert-modal-footer"><button class="alert-modal-btn" onclick="document.getElementById('alertModalOverlay').classList.remove('active')">Got It</button></div></div></div>
-    <div class="toast-message"></div>
+    <div class="toast-message" id="customToast"></div>
 
     <!-- Bottom navigation container -->
     <div id="bottomNavContainer"></div>
@@ -313,7 +463,7 @@
         let formattedPhone = phone;
         if (phone.match(/^\d+$/)) formattedPhone = phone.replace(/(\d{3})(?=\d)/g, '$1 ');
         document.getElementById('accountPhoneNumber').textContent = formattedPhone || "—";
-        const { data: wallet, error: wErr } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).maybeSingle();
+        const { data: wallet, error: wErr } = await supabase.from('wallets').select('id, balance').eq('user_id', session.user.id).maybeSingle();
         if (wErr) console.warn("Wallet query error:", wErr);
         const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         const formattedBalance = `R ${balanceNum.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
@@ -321,6 +471,8 @@
         const shishaBalance = document.getElementById('shishaWalletBalance');
         if (balanceEl) balanceEl.textContent = formattedBalance;
         if (shishaBalance) shishaBalance.textContent = formattedBalance;
+        
+        if (wallet?.id) window.currentWalletId = wallet.id;
     }
     
     window.updateUserBalance = async function(newBalance) {
@@ -344,7 +496,7 @@
 
 <script src="assets/js/home.js"></script>
 <script>
-    // BARCODE GENERATION, COLOR PERSISTENCE, FLIP, TILT, LONG PRESS (fully preserved - same as before)
+    // BARCODE, COLOR, FLIP, TILT, LONG PRESS (fully preserved - unchanged)
     const barcodeInner = document.getElementById('barcodeInner');
     if (barcodeInner) {
         const seed = [1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,0,0,1,0,0,1,1,0,1,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,1,0,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,0,1,0,0,1,1,0,1,1,0,0,1,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,0,0,1];
@@ -372,57 +524,318 @@
     loadSavedColors();
 </script>
 <script>
-    document.addEventListener('DOMContentLoaded', async function() { await new Promise(r => setTimeout(r, 200)); if (!window.supabase) { console.warn("Supabase not available for vibe meter"); return; } async function fetchVibeFromTickets() { try { const today = new Date().toISOString().split('T')[0]; const { data, error } = await window.supabase.from('tickets').select('id').eq('status', 'used').gte('updated_at', today); if (error) throw error; const usedToday = data?.length || 0; const maxVibe = 150; let percent = Math.min(100, (usedToday / maxVibe) * 100); const fill = document.querySelector('.vibe-bar-fill'); if (fill) fill.style.width = percent + '%'; const statsSpan = document.querySelector('.vibe-stats span'); if (statsSpan) statsSpan.innerHTML = `🔥 Crowd Energy · ${usedToday} check‑ins today`; } catch (err) { console.error('Vibe meter error:', err); const statsSpan = document.querySelector('.vibe-stats span'); if (statsSpan && !statsSpan.innerHTML.includes('check‑ins')) { statsSpan.innerHTML = `🔥 Crowd Energy (offline)`; } } } await fetchVibeFromTickets(); setInterval(fetchVibeFromTickets, 30000); const checkinBtn = document.querySelector('.vibe-action-btn'); if (checkinBtn) { checkinBtn.addEventListener('click', async () => { setTimeout(() => fetchVibeFromTickets(), 800); }); } });
+    // Vibe meter (preserved)
+    document.addEventListener('DOMContentLoaded', async function() { await new Promise(r => setTimeout(r, 200)); if (!window.supabase) return; async function fetchVibeFromTickets() { try { const today = new Date().toISOString().split('T')[0]; const { data, error } = await window.supabase.from('tickets').select('id').eq('status', 'used').gte('updated_at', today); if (error) throw error; const usedToday = data?.length || 0; const maxVibe = 150; let percent = Math.min(100, (usedToday / maxVibe) * 100); const fill = document.querySelector('.vibe-bar-fill'); if (fill) fill.style.width = percent + '%'; const statsSpan = document.querySelector('.vibe-stats span'); if (statsSpan) statsSpan.innerHTML = `🔥 Crowd Energy · ${usedToday} check‑ins today`; } catch (err) { console.error('Vibe meter error:', err); } } await fetchVibeFromTickets(); setInterval(fetchVibeFromTickets, 30000); const checkinBtn = document.querySelector('.vibe-action-btn'); if (checkinBtn) { checkinBtn.addEventListener('click', async () => { setTimeout(() => fetchVibeFromTickets(), 800); }); } });
 </script>
 <script>
-    // DYNAMIC BOTTOM NAV + SPACING FIX (no extra gap)
+    // ========== P2P FUNDS REQUEST SYSTEM (RPC + realtime) ==========
+    (function initP2PRequests() {
+        let currentRequestId = null;
+        let currentReceiverWalletId = null;
+        
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('customToast');
+            if (toast) {
+                toast.textContent = message;
+                toast.style.background = isError ? '#E30613' : '#1e293b';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            } else alert(message);
+        }
+        
+        function showAlert(message) {
+            const alertModal = document.getElementById('alertModalOverlay');
+            const alertBody = document.querySelector('#alertModalOverlay .alert-modal-body');
+            if (alertModal && alertBody) {
+                alertBody.innerHTML = message;
+                alertModal.classList.add('active');
+            } else alert(message);
+        }
+        
+        async function getCurrentWalletId() {
+            if (window.currentWalletId) return window.currentWalletId;
+            const { data: { session } } = await window.supabase.auth.getSession();
+            if (!session) return null;
+            const { data: wallet } = await window.supabase.from('wallets').select('id').eq('user_id', session.user.id).maybeSingle();
+            return wallet?.id || null;
+        }
+        
+        async function resolveReceiverWalletId(input) {
+            if (!input) return null;
+            input = input.trim();
+            if (input.includes('-') || input.length > 20) {
+                const { data: wallet } = await window.supabase.from('wallets').select('id').eq('id', input).maybeSingle();
+                return wallet?.id || null;
+            }
+            let phone = input.replace(/\D/g, '');
+            if (!phone.startsWith('27')) phone = '27' + phone;
+            const { data: profile } = await window.supabase.from('profiles').select('user_id').eq('phone', phone).maybeSingle();
+            if (!profile) return null;
+            const { data: wallet } = await window.supabase.from('wallets').select('id').eq('user_id', profile.user_id).maybeSingle();
+            return wallet?.id || null;
+        }
+        
+        // Request Funds modal logic
+        const requestBtn = document.getElementById('requestFundsBtn');
+        const modalOverlay = document.getElementById('fundsRequestModalOverlay');
+        const receiverInput = document.getElementById('fundsReceiverInput');
+        const amountInput = document.getElementById('fundsAmountInput');
+        const reasonInput = document.getElementById('fundsReasonInput');
+        const submitBtn = document.getElementById('submitFundsRequest');
+        const cancelBtn = document.getElementById('cancelFundsRequest');
+        const receiverError = document.getElementById('receiverError');
+        const amountError = document.getElementById('amountError');
+        
+        function validateForm() {
+            let valid = true;
+            const receiverVal = receiverInput?.value.trim();
+            const amountVal = parseFloat(amountInput?.value);
+            if (!receiverVal) { if(receiverError) receiverError.textContent = 'Receiver required'; valid = false; }
+            else { if(receiverError) receiverError.textContent = ''; }
+            if (!amountVal || amountVal <= 0) { if(amountError) amountError.textContent = 'Amount must be > 0'; valid = false; }
+            else { if(amountError) amountError.textContent = ''; }
+            if (submitBtn) submitBtn.disabled = !valid;
+            return valid;
+        }
+        
+        if (receiverInput) receiverInput.addEventListener('input', validateForm);
+        if (amountInput) amountInput.addEventListener('input', validateForm);
+        if (requestBtn) {
+            requestBtn.addEventListener('click', async () => {
+                if (modalOverlay) modalOverlay.classList.add('active');
+                validateForm();
+            });
+        }
+        if (cancelBtn) cancelBtn.addEventListener('click', () => { if(modalOverlay) modalOverlay.classList.remove('active'); });
+        if (submitBtn) {
+            submitBtn.addEventListener('click', async () => {
+                if (!validateForm()) return;
+                const receiverRaw = receiverInput.value.trim();
+                const amount = parseFloat(amountInput.value);
+                const reason = reasonInput?.value.trim() || '';
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Sending...';
+                try {
+                    const senderWalletId = await getCurrentWalletId();
+                    if (!senderWalletId) throw new Error('Your wallet not found');
+                    const receiverWalletId = await resolveReceiverWalletId(receiverRaw);
+                    if (!receiverWalletId) throw new Error('Receiver not found');
+                    if (senderWalletId === receiverWalletId) throw new Error('Cannot request funds from yourself');
+                    const { error } = await window.supabase.rpc('request_funds', {
+                        p_sender_wallet_id: senderWalletId,
+                        p_receiver_wallet_id: receiverWalletId,
+                        p_amount: amount,
+                        p_reason: reason
+                    });
+                    if (error) throw error;
+                    showToast('✅ Fund request sent successfully!');
+                    if (modalOverlay) modalOverlay.classList.remove('active');
+                    if (receiverInput) receiverInput.value = '';
+                    if (amountInput) amountInput.value = '';
+                    if (reasonInput) reasonInput.value = '';
+                } catch (err) {
+                    console.error(err);
+                    showToast(err.message || 'Failed to send request', true);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Send Request';
+                }
+            });
+        }
+        
+        // Realtime listener for incoming requests
+        let subscriptionActive = false;
+        const popup = document.getElementById('incomingRequestPopup');
+        const closePopupBtn = document.getElementById('closePopupBtn');
+        const acceptBtn = document.getElementById('acceptRequestBtn');
+        const rejectBtn = document.getElementById('rejectRequestBtn');
+        const popupSenderName = document.getElementById('popupSenderName');
+        const popupAmount = document.getElementById('popupAmount');
+        const popupReason = document.getElementById('popupReason');
+        
+        if (closePopupBtn) closePopupBtn.addEventListener('click', () => popup?.classList.remove('active'));
+        
+        async function setupRealtimeListener() {
+            const currentWalletId = await getCurrentWalletId();
+            if (!currentWalletId || subscriptionActive) return;
+            subscriptionActive = true;
+            window.supabase
+                .channel('fund-requests')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'fund_requests',
+                    filter: `receiver_wallet_id=eq.${currentWalletId}`
+                }, async (payload) => {
+                    const newRequest = payload.new;
+                    currentRequestId = newRequest.id;
+                    let senderName = 'User';
+                    if (newRequest.sender_wallet_id) {
+                        const { data: wallet } = await window.supabase.from('wallets').select('user_id').eq('id', newRequest.sender_wallet_id).single();
+                        if (wallet?.user_id) {
+                            const { data: profile } = await window.supabase.from('profiles').select('full_name, phone').eq('id', wallet.user_id).single();
+                            senderName = profile?.full_name?.split(' ')[0] || profile?.phone || 'User';
+                        }
+                    }
+                    popupSenderName.textContent = senderName;
+                    popupAmount.textContent = `R ${newRequest.amount?.toFixed(2) || '0.00'}`;
+                    popupReason.textContent = newRequest.reason || 'No reason provided';
+                    popup.classList.add('active');
+                })
+                .subscribe();
+        }
+        
+        if (acceptBtn) {
+            acceptBtn.addEventListener('click', async () => {
+                if (!currentRequestId) return;
+                acceptBtn.disabled = true;
+                acceptBtn.textContent = 'Processing...';
+                try {
+                    const { error } = await window.supabase.rpc('accept_fund_request', { p_request_id: currentRequestId });
+                    if (error) throw error;
+                    showToast('✅ Request accepted! Funds transferred.');
+                    popup.classList.remove('active');
+                    const { data: { session } } = await window.supabase.auth.getSession();
+                    if (session) {
+                        const { data: wallet } = await window.supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
+                        if (wallet && window.updateUserBalance) window.updateUserBalance(wallet.balance);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast(err.message || 'Failed to accept request', true);
+                } finally {
+                    acceptBtn.disabled = false;
+                    acceptBtn.textContent = 'Accept';
+                    currentRequestId = null;
+                }
+            });
+        }
+        if (rejectBtn) {
+            rejectBtn.addEventListener('click', async () => {
+                if (!currentRequestId) return;
+                rejectBtn.disabled = true;
+                rejectBtn.textContent = 'Rejecting...';
+                try {
+                    const { error } = await window.supabase.rpc('reject_fund_request', { p_request_id: currentRequestId });
+                    if (error) throw error;
+                    showToast('❌ Request rejected');
+                    popup.classList.remove('active');
+                } catch (err) {
+                    console.error(err);
+                    showToast(err.message || 'Failed to reject request', true);
+                } finally {
+                    rejectBtn.disabled = false;
+                    rejectBtn.textContent = 'Reject';
+                    currentRequestId = null;
+                }
+            });
+        }
+        
+        window.addEventListener('load', async () => {
+            await new Promise(r => setTimeout(r, 1500));
+            await setupRealtimeListener();
+        });
+    })();
+
+    // ========== SAFE NAVIGATION FOR TOP-UP & PAY NOW BUTTONS ==========
+    (function addButtonNavigation() {
+        const initNav = () => {
+            const topUpBtn = document.getElementById('instantTopUpBtn');
+            const payNowBtn = document.getElementById('payNowBtn');
+            if (topUpBtn && !topUpBtn.hasAttribute('data-nav-attached')) {
+                topUpBtn.addEventListener('click', (e) => { e.stopPropagation(); window.location.href = 'deposit.html'; });
+                topUpBtn.setAttribute('data-nav-attached', 'true');
+            }
+            if (payNowBtn && !payNowBtn.hasAttribute('data-nav-attached')) {
+                payNowBtn.addEventListener('click', (e) => { e.stopPropagation(); window.location.href = 'pay-now.html'; });
+                payNowBtn.setAttribute('data-nav-attached', 'true');
+            }
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initNav);
+        else initNav();
+    })();
+
+    // ========== REFUND REQUEST (RPC version) WITH WORKING CANCEL BUTTON ==========
+    (function initRefundFeature() {
+        const init = () => {
+            const refundModalOverlay = document.getElementById('refundModalOverlay');
+            const submitBtn = document.getElementById('refundSubmitBtn');
+            const cancelBtn = document.getElementById('refundCancelBtn');
+            
+            // Cancel button handler
+            if (cancelBtn && !cancelBtn.hasAttribute('data-refund-cancel')) {
+                cancelBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (refundModalOverlay) refundModalOverlay.classList.remove('active');
+                });
+                cancelBtn.setAttribute('data-refund-cancel', 'true');
+            }
+            
+            if (!submitBtn || submitBtn.hasAttribute('data-refund-listener')) return;
+            submitBtn.setAttribute('data-refund-listener', 'true');
+            
+            submitBtn.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const amountInput = document.getElementById('refundAmount');
+                const orderIdInput = document.getElementById('refundOrderId');
+                const reasonSelect = document.getElementById('refundReason');
+                const amount = parseFloat(amountInput?.value);
+                const orderId = orderIdInput?.value?.trim();
+                const reason = reasonSelect?.value;
+                if (!amount || amount <= 0) { showAlert('Please enter a valid refund amount.'); return; }
+                if (!orderId) { showAlert('Please enter Order ID.'); return; }
+                if (!reason) { showAlert('Please select a reason.'); return; }
+                const { data: { session }, error: sessionError } = await window.supabase.auth.getSession();
+                if (sessionError || !session) { showAlert('You must be logged in.'); return; }
+                const userId = session.user.id;
+                let walletId = null;
+                const { data: wallet, error: walletErr } = await window.supabase.from('wallets').select('id').eq('user_id', userId).maybeSingle();
+                if (!walletErr && wallet) walletId = wallet.id;
+                const originalText = submitBtn.textContent;
+                submitBtn.textContent = 'Submitting...';
+                submitBtn.disabled = true;
+                try {
+                    const { error: insertError } = await window.supabase.rpc('request_refund', {
+                        p_user_id: userId,
+                        p_order_id: orderId,
+                        p_wallet_id: walletId,
+                        p_amount: amount,
+                        p_reason: reason
+                    });
+                    if (insertError) throw insertError;
+                    showAlert('✅ Refund request submitted!');
+                    if (amountInput) amountInput.value = '';
+                    if (orderIdInput) orderIdInput.value = '';
+                    if (reasonSelect) reasonSelect.value = '';
+                    if (refundModalOverlay) refundModalOverlay.classList.remove('active');
+                } catch (err) {
+                    console.error(err);
+                    showAlert('❌ Failed to submit refund request.');
+                } finally {
+                    submitBtn.textContent = originalText;
+                    submitBtn.disabled = false;
+                }
+            });
+        };
+        function showAlert(message) {
+            const alertModal = document.getElementById('alertModalOverlay');
+            const alertBody = document.querySelector('#alertModalOverlay .alert-modal-body');
+            if (alertModal && alertBody) { alertBody.innerHTML = message; alertModal.classList.add('active'); }
+            else alert(message);
+        }
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+        else init();
+    })();
+
+    // ========== BOTTOM NAVIGATION (preserved, no extra gap) ==========
     (function initGlobalBottomNav() {
         const navContainer = document.getElementById('bottomNavContainer');
         const walletContainer = document.getElementById('walletHomeContainer');
         if (!navContainer || !walletContainer) return;
-        
-        function adjustBottomSpacing() {
-            if (!navContainer) return;
-            const navHeight = navContainer.offsetHeight;
-            let safeArea = 0;
-            if (window.CSS && CSS.supports('padding-bottom: env(safe-area-inset-bottom)')) {
-                safeArea = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)')) || 0;
-            }
-            const totalPadding = navHeight + safeArea + 8; // 8px extra breathing room
-            walletContainer.style.paddingBottom = totalPadding + 'px';
-        }
-        
-        function loadBottomNav() {
-            fetch('bottom-nav.html')
-                .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.text(); })
-                .then(html => { 
-                    navContainer.innerHTML = html; 
-                    attachNavClickHandlers();
-                    adjustBottomSpacing();
-                    // observe resize / orientation changes
-                    window.addEventListener('resize', () => setTimeout(adjustBottomSpacing, 100));
-                })
-                .catch(err => { 
-                    console.warn('Bottom navigation failed to load:', err); 
-                    navContainer.innerHTML = `<div style="background:#fff; text-align:center; padding:12px; font-size:12px; color:#E30613; border-top:1px solid #eee;">⚡ Navigation unavailable</div>`;
-                    adjustBottomSpacing();
-                });
-        }
-        
-        function attachNavClickHandlers() {
-            const navLinks = navContainer.querySelectorAll('a, .nav-item, [data-nav]');
-            navLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    let targetUrl = link.getAttribute('href') || link.getAttribute('data-href');
-                    if (!targetUrl && link.closest('.nav-item')) targetUrl = link.closest('.nav-item').getAttribute('href');
-                    if (targetUrl && targetUrl !== '#') { e.preventDefault(); window.location.href = targetUrl; }
-                });
-            });
-            const currentPage = window.location.pathname.split('/').pop() || 'home.html';
-            const allNavItems = navContainer.querySelectorAll('.nav-item, a');
-            allNavItems.forEach(item => { const href = item.getAttribute('href'); if (href === currentPage) item.classList.add('active'); });
-        }
-        
+        function adjustBottomSpacing() { if (!navContainer) return; const navHeight = navContainer.offsetHeight; let safeArea = 0; if (window.CSS && CSS.supports('padding-bottom: env(safe-area-inset-bottom)')) { safeArea = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)')) || 0; } walletContainer.style.paddingBottom = (navHeight + safeArea + 8) + 'px'; }
+        function loadBottomNav() { fetch('bottom-nav.html').then(response => response.ok ? response.text() : Promise.reject()).then(html => { navContainer.innerHTML = html; attachNavClickHandlers(); adjustBottomSpacing(); window.addEventListener('resize', () => setTimeout(adjustBottomSpacing, 100)); }).catch(() => { navContainer.innerHTML = `<div style="background:#fff; text-align:center; padding:12px; font-size:12px; color:#E30613; border-top:1px solid #eee;">⚡ Navigation unavailable</div>`; adjustBottomSpacing(); }); }
+        function attachNavClickHandlers() { const navLinks = navContainer.querySelectorAll('a, .nav-item, [data-nav]'); navLinks.forEach(link => { link.addEventListener('click', (e) => { let targetUrl = link.getAttribute('href') || link.getAttribute('data-href'); if (!targetUrl && link.closest('.nav-item')) targetUrl = link.closest('.nav-item').getAttribute('href'); if (targetUrl && targetUrl !== '#') { e.preventDefault(); window.location.href = targetUrl; } }); }); const currentPage = window.location.pathname.split('/').pop() || 'home.html'; const allNavItems = navContainer.querySelectorAll('.nav-item, a'); allNavItems.forEach(item => { const href = item.getAttribute('href'); if (href === currentPage) item.classList.add('active'); }); }
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadBottomNav);
         else loadBottomNav();
     })();
