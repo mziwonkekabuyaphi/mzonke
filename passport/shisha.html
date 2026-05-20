@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ========== YOUR EXACT ORIGINAL CSS – unchanged ========== */
+        /* ========== YOUR EXACT ORIGINAL CSS – untouched ========== */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         :root { --red: #E30613; --red-dark: #a0010e; --red-deep: #8A0009; --red-glow: rgba(227,6,19,0.18); --red-subtle: rgba(227,6,19,0.06); --ink: #1e293b; --ink-muted: #334155; --slate: #475569; --mist: #94a3b8; --bone: #f8fafd; --white: #ffffff; --card-bg: #ffffff; --border: rgba(0,0,0,0.07); --border-strong: #eef2f8; --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.12); --shadow-card: 0 4px 16px rgba(0,0,0,0.06); --shadow-float: 0 16px 48px rgba(0,0,0,0.14); --radius-sm: 10px; --radius-md: 18px; --radius-lg: 24px; --radius-xl: 28px; --radius-full: 9999px; --transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
         html { scroll-behavior: smooth; height: 100%; }
@@ -78,6 +78,7 @@
 </head>
 <body>
 
+<!-- Header – only Puff History remains -->
 <header class="site-header">
     <div class="brand" onclick="window.location.href='home.html'">
         <div class="brand-logo"><img src="../assets/images/rands-logo.png" alt="Rands" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\'fas fa-smoking\'></i>';"></div>
@@ -88,14 +89,17 @@
     </div>
 </header>
 
+<!-- Stats Cards -->
 <div class="wallet-stats">
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-wallet"></i></div><div class="stat-info"><h3>My Balance</h3><div class="stat-number" id="walletBalance">R0.00</div></div></div>
     <div class="stat-card"><div class="stat-icon"><i class="fas fa-fire"></i></div><div class="stat-info"><h3>Active Session</h3><div class="stat-number" id="sessionStatText">—</div></div></div>
 </div>
 
+<!-- Dynamic Session Card (appears only when a session exists) -->
 <div id="activeSessionContainer"></div>
 <div id="noSessionContainer" class="empty-state-mini" style="display: none;"><i class="fas fa-smoking" style="font-size: 2rem; color: var(--mist);"></i><p style="margin-top: 10px;">No active session</p><p style="font-size: 0.7rem;">Order below to start</p></div>
 
+<!-- Service Request Buttons -->
 <div class="requests-grid" id="serviceButtonsGrid">
     <button class="service-btn" id="coalRefillBtn"><i class="fas fa-fire"></i> Coal Refill</button>
     <button class="service-btn" id="extendTimeBtn"><i class="fas fa-clock"></i> Extend 30min</button>
@@ -105,6 +109,7 @@
     <button class="service-btn" id="reportIssueBtn"><i class="fas fa-frown"></i> Iyatsarha</button>
 </div>
 
+<!-- Order New Session Card -->
 <div class="order-card-modern">
     <h4><i class="fas fa-ticket-alt"></i> Order New Session</h4>
     <select id="orderLocation" class="modern-select"><option value="Shisha Lounge">Shisha Lounge</option><option value="VIP South">VIP South</option><option value="Main VIP">Main VIP</option><option value="General Vibe Stage">General Vibe Stage</option></select>
@@ -120,15 +125,16 @@
     import { supabase } from '../config/supabase.js';
 
     const SESSION_PRICE = 250;
-    const COAL_DURATION = 60;
-    const REFILL_THRESHOLD = 15;
+    const COAL_DURATION = 60;          // minutes
+    const REFILL_THRESHOLD = 15;       // minutes
 
     let currentBalance = 0;
     let activeSession = null;
     let timerInterval = null;
     let sessionPollInterval = null;
-    let currentCustomer = null;
+    let currentCustomer = null;         // { id, phone, name, walletId }
 
+    // ========== UI HELPERS ==========
     function showToast(message, isError = false) {
         const toast = document.getElementById('toastMessage');
         toast.innerText = message;
@@ -150,7 +156,7 @@
         else sessionStat.innerText = 'None';
     }
 
-    // ========== EXACT BALANCE FETCH LOGIC FROM HOME PAGE ==========
+    // ========== BALANCE FETCH – EXACTLY like Home & Profile (wallets table) ==========
     async function loadCurrentCustomerAndBalance() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session) {
@@ -162,7 +168,7 @@
         }
         const userId = session.user.id;
         
-        // Get wallet (balance) – exactly as Home does
+        // 1. Get wallet (balance)
         const { data: wallet, error: walletErr } = await supabase
             .from('wallets')
             .select('id, balance')
@@ -172,7 +178,7 @@
         const balance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         currentBalance = balance;
         
-        // Get profile info (name, phone) – same as Home
+        // 2. Get profile info (name, phone) – same as home/profile
         const { data: profile, error: profileErr } = await supabase
             .from('profiles')
             .select('name, phone')
@@ -187,11 +193,10 @@
             name: profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Member'
         };
         
-        console.log("Balance loaded:", currentBalance, "Wallet ID:", wallet?.id);
         updateWalletDisplay();
     }
 
-    // Update balance in wallets table (exactly as Home would)
+    // Update balance in wallets table (exactly like Home would)
     async function updateBalanceInDB(newBalance) {
         if (!currentCustomer?.walletId) {
             console.error("No wallet ID found");
@@ -210,7 +215,7 @@
         return true;
     }
 
-    // ========== LOAD ACTIVE SESSION ==========
+    // ========== LOAD ACTIVE SESSION FROM SUPABASE ==========
     async function loadSession() {
         if (!currentCustomer?.phone && !currentCustomer?.id) {
             await loadCurrentCustomerAndBalance();
@@ -357,6 +362,7 @@
         }
     }
 
+    // ========== SEND REQUEST TO STAFF ==========
     async function sendRequestToStaff(requestData) {
         if (!currentCustomer?.phone && !currentCustomer?.id) {
             showToast("Please log in first", true);
@@ -383,6 +389,7 @@
         return true;
     }
 
+    // ========== PUFF STATEMENT (toast only) ==========
     function showPuffStatement() {
         const statements = [
             "💨 Puff! Smooth clouds of excellence. Enjoy the vibe!",
@@ -396,6 +403,7 @@
         showToast(randomMsg);
     }
 
+    // ========== REQUEST HANDLERS ==========
     async function requestCoalRefill() {
         if (!activeSession || activeSession.paused) { showToast("No active session or session paused", true); return; }
         await sendRequestToStaff({ type: 'coal_refill', shishaId: activeSession.shishaId, location: activeSession.location, flavour: activeSession.flavour, amount: 250 });
@@ -427,6 +435,7 @@
             showToast(`Insufficient balance. Need R${SESSION_PRICE}, you have R${currentBalance.toFixed(2)}`, true);
             return;
         }
+        // Deduct from wallet
         const newBalance = currentBalance - SESSION_PRICE;
         const success = await updateBalanceInDB(newBalance);
         if (!success) {
@@ -457,6 +466,7 @@
         }
     }
 
+    // ========== EVENT LISTENERS ==========
     document.getElementById('coalRefillBtn').onclick = requestCoalRefill;
     document.getElementById('extendTimeBtn').onclick = requestExtendTime;
     document.getElementById('pauseBtn').onclick = requestPause;
@@ -466,6 +476,7 @@
     document.getElementById('orderNowBtn').onclick = requestNewOrder;
     document.getElementById('puffHistoryBtn').onclick = showPuffStatement;
 
+    // ========== INITIALIZATION ==========
     await loadCurrentCustomerAndBalance();
     await loadSession();
     startPolling();
