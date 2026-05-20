@@ -40,7 +40,6 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    /* CRITICAL: iframe-ready body – no outer margins, transparent base */
     html, body {
       margin: 0;
       padding: 0;
@@ -52,10 +51,9 @@
 
     body {
       min-height: 100%;
-      padding: 24px;          /* same breathing space as POS reference */
+      padding: 24px;
     }
 
-    /* unified dashboard grid (two columns) */
     .pos-embedded-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -64,7 +62,6 @@
       margin: 0 auto;
     }
 
-    /* card styling – exact match */
     .card {
       background: var(--white);
       border-radius: var(--radius-xl);
@@ -95,7 +92,6 @@
       padding: 24px;
     }
 
-    /* unified form elements */
     .form-group {
       margin-bottom: 20px;
     }
@@ -125,7 +121,6 @@
       box-shadow: 0 0 0 3px var(--red-glow);
     }
 
-    /* payment method row (like POS buttons) */
     .payment-row {
       display: flex;
       gap: 12px;
@@ -156,7 +151,6 @@
       border-color: var(--red);
     }
 
-    /* wallet field */
     .account-field {
       display: none;
       margin-bottom: 20px;
@@ -165,7 +159,11 @@
       display: block;
     }
 
-    /* price display (like POS cart total) */
+    /* new mandatory customer phone field */
+    .mandatory-phone {
+      margin-bottom: 20px;
+    }
+
     .price-card {
       background: var(--bone);
       border-radius: var(--radius-lg);
@@ -197,7 +195,6 @@
     }
     .btn-primary:active { transform: scale(0.97); }
 
-    /* stats row (small inline counters) */
     .stats-inline {
       display: flex;
       gap: 12px;
@@ -215,7 +212,6 @@
       margin-left: 4px;
     }
 
-    /* sessions list (scrollable) */
     .sessions-scroll {
       max-height: 55vh;
       overflow-y: auto;
@@ -279,7 +275,6 @@
     .btn-refill { background: #f59e0b; color: white; }
     .btn-end { background: var(--red); color: white; }
 
-    /* toast */
     .toast-pos {
       position: fixed;
       bottom: 24px;
@@ -340,6 +335,12 @@
       </div>
       <div id="accountField" class="account-field">
         <input type="text" id="accountIdInput" placeholder="WhatsApp number (e.g., 0635713652)">
+      </div>
+
+      <!-- NEW: mandatory customer phone field (always required) -->
+      <div class="mandatory-phone">
+        <label><i class="fas fa-phone-alt"></i> Customer Phone Number <span style="color: var(--red);">*</span></label>
+        <input type="tel" id="customerPhone" placeholder="06XXXXXXXX or +27XXXXXXXXX" autocomplete="off">
       </div>
 
       <div class="price-card">
@@ -559,6 +560,15 @@
     const payment = document.querySelector('input[name="payment"]:checked').value;
     const accountId = document.getElementById('accountIdInput').value.trim();
 
+    // NEW: get customer phone, required for all sessions
+    const customerPhone = document.getElementById('customerPhone').value.trim();
+
+    // Validation: customer phone must be provided (non-empty)
+    if (!customerPhone) {
+      showToast("Phone number required for session", true);
+      return;
+    }
+
     if (!locationId || !productId || !deviceId) { showToast("Please fill all fields", true); return; }
     if (payment === 'wallet' && !accountId) { showToast("Enter WhatsApp number for wallet", true); return; }
 
@@ -571,6 +581,7 @@
       if (!confirm(`Confirm ${payment.toUpperCase()} payment of R${SESSION_PRICE}?`)) return;
     }
 
+    // Insert session with customer_phone (required column)
     const { error } = await supabase.from('shisha_sessions').insert({
       device_id: deviceId,
       product_id: productId,
@@ -583,11 +594,16 @@
       status: 'active',
       paused: false,
       payment_method: payment,
-      account_id: payment === 'wallet' ? accountId : null
+      account_id: payment === 'wallet' ? accountId : null,
+      customer_phone: customerPhone   // <-- NEW: mandatory field added
     });
-    if (error) { showToast(error.message, true); return; }
+    if (error) { 
+      showToast(error.message, true); 
+      return; 
+    }
     showToast(`✅ Session started on hookah!`);
-    // reset form
+    // reset form: clear phone fields & payment default
+    document.getElementById('customerPhone').value = '';
     document.getElementById('accountIdInput').value = '';
     document.getElementById('cash').checked = true;
     document.getElementById('accountField').classList.remove('show');
