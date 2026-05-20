@@ -32,6 +32,23 @@
             background: linear-gradient(135deg, #d32f2f, #b71c1c);
             border-radius: 24px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header-logo {
+            height: 60px;
+            width: auto;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+            border-radius: 12px;
+        }
+
+        .header-text {
+            text-align: center;
         }
 
         .tv-header h1 {
@@ -304,6 +321,9 @@
             .legend-item {
                 font-size: 10px;
             }
+            .header-logo {
+                height: 40px;
+            }
         }
 
         /* For very large TV screens */
@@ -323,10 +343,13 @@
 <body>
     <div class="tv-container">
         <div class="tv-header">
-            <h1>🔥 RANDS SHISHA LOUNGE 🔥</h1>
-            <p>✦ HOOKAH STATUS BOARD ✦ LIVE UPDATE ✦</p>
-            <div class="live-badge">
-                <span>● LIVE</span> UPDATING REAL-TIME
+            <img src="../assets/images/rands-logo.png" alt="Rands Lounge" class="header-logo" onerror="this.style.display='none'">
+            <div class="header-text">
+                <h1>🔥 RANDS SHISHA LOUNGE 🔥</h1>
+                <p>✦ HOOKAH STATUS BOARD ✦ LIVE UPDATE ✦</p>
+                <div class="live-badge">
+                    <span>● LIVE</span> SUPABASE REAL-TIME
+                </div>
             </div>
         </div>
 
@@ -375,135 +398,128 @@
         </div>
     </div>
 
-    <script>
-        // Configuration - Same localStorage keys as other systems
-        const SESSIONS_KEY = 'shishaSessions';
-        const COAL_DURATION = 60; // minutes
-        const REFILL_THRESHOLD = 15; // minutes - show "Refill Soon" when less than this
+    <script type="module">
+        // ------------------------------
+        // SUPABASE INTEGRATION - NO LOCALSTORAGE
+        // Import from your config file (path: ../config/supabase.js)
+        // ------------------------------
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-        let activeSessions = [];
+        // ⚠️ IMPORTANT: Replace with your actual Supabase URL and anon key
+        // or import from your local config file. The line below assumes ../config/supabase.js
+        // exports a 'supabase' client. If not, you can uncomment and set your credentials.
+        // For this demo we use env variables approach but we import from your provided path.
+        let supabase;
+        try {
+            // Attempt to import from your project's config file
+            const configModule = await import('../config/supabase.js');
+            supabase = configModule.supabase;
+            if (!supabase) throw new Error('Supabase client not found in config');
+        } catch (err) {
+            console.warn('Could not load ../config/supabase.js, using fallback. Please configure Supabase credentials.');
+            // FALLBACK - Replace with your own SUPABASE URL + ANON KEY for production
+            const SUPABASE_URL = 'https://your-project.supabase.co';  // CHANGE ME
+            const SUPABASE_ANON_KEY = 'your-anon-key';               // CHANGE ME
+            supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+
+        // Constants
+        const COAL_DURATION = 60; // minutes
+        const REFILL_THRESHOLD = 15; // minutes
         
-        // Format time for display (MM:SS)
+        // Global data
+        let devicesMap = new Map();         // key: device_code (SH-001) -> { id, device_code, location_id? }
+        let activeSessionsMap = new Map();  // key: device_code -> session object from DB with extra fields
+        let allStationCodes = [];            // array of device codes (30 stations)
+        
+        // UI update timer
+        let timerInterval = null;
+        let lastUpdatedTimestamp = new Date();
+        
+        // Helper: format time MM:SS
         function formatTime(seconds) {
             if (seconds < 0) seconds = 0;
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
-
-        // Get status class and text based on session state
-        function getSessionStatus(session) {
+        
+        // Get dynamic remaining time based on lastRefillTime and paused flag
+        function getCurrentRemainingSeconds(session) {
+            if (!session) return null;
+            if (session.paused) return session.remainingTimeSeconds;
+            if (session.remainingTimeSeconds <= 0) return 0;
+            const now = new Date();
+            const lastRefill = new Date(session.lastRefillTime);
+            const elapsedSeconds = (now - lastRefill) / 1000;
+            let remaining = Math.max(0, session.remainingTimeSeconds - elapsedSeconds);
+            return remaining;
+        }
+        
+        // Determine status class, text, timer display based on session & realtime remaining
+        function getSessionStatus(session, currentRemaining) {
             if (!session) {
                 return { class: 'free', text: 'FREE', indicator: 'free', timer: null, timerClass: '' };
             }
-            
             if (session.paused) {
-                return { class: 'paused', text: 'PAUSED', indicator: 'paused', timer: formatTime(session.remainingTime), timerClass: 'paused' };
+                return { class: 'paused', text: 'PAUSED', indicator: 'paused', timer: formatTime(currentRemaining), timerClass: 'paused' };
             }
-            
-            if (session.remainingTime <= 0) {
+            if (currentRemaining <= 0) {
                 return { class: 'expired', text: 'EXPIRED', indicator: 'expired', timer: '00:00', timerClass: 'expired' };
             }
-            
-            if (session.remainingTime <= REFILL_THRESHOLD * 60) {
-                return { class: 'refill', text: 'REFILL SOON!', indicator: 'refill', timer: formatTime(session.remainingTime), timerClass: 'refill' };
+            if (currentRemaining <= REFILL_THRESHOLD * 60) {
+                return { class: 'refill', text: 'REFILL SOON!', indicator: 'refill', timer: formatTime(currentRemaining), timerClass: 'refill' };
             }
-            
-            return { class: 'active', text: 'ACTIVE', indicator: 'active', timer: formatTime(session.remainingTime), timerClass: 'active' };
+            return { class: 'active', text: 'ACTIVE', indicator: 'active', timer: formatTime(currentRemaining), timerClass: 'active' };
         }
-
-        // Load sessions from localStorage
-        function loadSessions() {
-            try {
-                const saved = localStorage.getItem(SESSIONS_KEY);
-                if (saved) {
-                    const newSessions = JSON.parse(saved);
-                    // Convert date strings back to Date objects
-                    activeSessions = newSessions.map(session => ({
-                        ...session,
-                        startTime: new Date(session.startTime),
-                        lastRefillTime: session.lastRefillTime ? new Date(session.lastRefillTime) : new Date()
-                    }));
-                } else {
-                    activeSessions = [];
-                }
-                
-                // Update timers for active sessions
-                updateSessionTimers();
-                renderHookahGrid();
-                updateStatistics();
-                updateLastUpdated();
-            } catch (e) {
-                console.error('Error loading sessions:', e);
-            }
-        }
-
-        // Update remaining time for active sessions
-        function updateSessionTimers() {
-            const now = new Date();
-            let changed = false;
-            
-            activeSessions.forEach(session => {
-                if (!session.paused && session.status !== 'expired') {
-                    const timeSinceRefill = (now - session.lastRefillTime) / 1000;
-                    const newRemaining = Math.max(0, COAL_DURATION * 60 - timeSinceRefill);
-                    
-                    if (Math.floor(session.remainingTime) !== Math.floor(newRemaining)) {
-                        session.remainingTime = newRemaining;
-                        changed = true;
-                    }
-                }
-            });
-            
-            if (changed) {
-                // Don't save here - just for display
-                renderHookahGrid();
-                updateStatistics();
-            }
-        }
-
-        // Render all 30 hookah stations
+        
+        // Render full grid based on devicesMap + activeSessionsMap (with live remaining times)
         function renderHookahGrid() {
             const grid = document.getElementById('hookahGrid');
-            const allStations = [];
-            
-            // Create all 30 stations (SH-001 to SH-030)
-            for (let i = 1; i <= 30; i++) {
-                const shishaId = `SH-${String(i).padStart(3, '0')}`;
-                const session = activeSessions.find(s => s.shishaId === shishaId);
-                allStations.push({ shishaId, session });
-            }
-            
-            // Sort: Free first, then Active, then Refill Soon, then Paused, then Expired
-            allStations.sort((a, b) => {
-                const getPriority = (session) => {
-                    if (!session) return 0; // Free - highest priority
-                    if (session.paused) return 3;
-                    if (session.remainingTime <= 0) return 4; // Expired - lowest
-                    if (session.remainingTime <= REFILL_THRESHOLD * 60) return 2; // Refill Soon
-                    return 1; // Active
-                };
-                return getPriority(a.session) - getPriority(b.session);
-            });
-            
-            if (allStations.length === 0) {
-                grid.innerHTML = '<div class="no-data">No hookah stations available</div>';
+            if (!allStationCodes.length) {
+                grid.innerHTML = '<div class="no-data">No hookah stations found in database</div>';
                 return;
             }
             
-            grid.innerHTML = allStations.map(({ shishaId, session }) => {
-                const status = getSessionStatus(session);
+            // Build array of stations with current session data
+            const stations = allStationCodes.map(deviceCode => {
+                const session = activeSessionsMap.get(deviceCode) || null;
+                let currentRemaining = null;
+                if (session) {
+                    currentRemaining = getCurrentRemainingSeconds(session);
+                }
+                const status = getSessionStatus(session, currentRemaining);
+                let flavour = session?.flavour_name || null;
+                let location = session?.location_name || null;
+                if (!flavour && session) flavour = 'Premium Blend';
+                if (!location && session) location = 'Main Lounge';
                 
+                return { deviceCode, session, status, currentRemaining, flavour, location };
+            });
+            
+            // Sort: Free first, then Active, then Refill Soon, then Paused, then Expired (same as original)
+            stations.sort((a, b) => {
+                const getPriority = (item) => {
+                    if (!item.session) return 0;   // free highest
+                    if (item.status.class === 'paused') return 3;
+                    if (item.status.class === 'expired') return 4;
+                    if (item.status.class === 'refill') return 2;
+                    return 1; // active
+                };
+                return getPriority(a) - getPriority(b);
+            });
+            
+            grid.innerHTML = stations.map(({ deviceCode, session, status, flavour, location }) => {
                 return `
                     <div class="hookah-card ${status.class}">
-                        <div class="hookah-id">${shishaId}</div>
+                        <div class="hookah-id">${deviceCode}</div>
                         <div class="status-text ${status.class}">
                             <span class="status-indicator ${status.indicator}"></span>
                             ${status.text}
                         </div>
                         ${session ? `
-                            <div class="location-info">📍 ${session.location || 'N/A'}</div>
-                            <div class="flavour-info">🍃 ${session.flavour || 'N/A'}</div>
+                            <div class="location-info">📍 ${location || 'Lounge Area'}</div>
+                            <div class="flavour-info">🍃 ${flavour || 'Signature Mix'}</div>
                             ${status.timer ? `<div class="timer-display ${status.timerClass}">⏱️ ${status.timer}</div>` : ''}
                         ` : `
                             <div class="location-info">✨ Available for booking</div>
@@ -514,22 +530,23 @@
                 `;
             }).join('');
         }
-
-        // Update statistics counts
+        
+        // Update stats (free, active, refill, expired, paused) based on current state
         function updateStatistics() {
             let free = 0, active = 0, refill = 0, expired = 0, paused = 0;
             
-            for (let i = 1; i <= 30; i++) {
-                const shishaId = `SH-${String(i).padStart(3, '0')}`;
-                const session = activeSessions.find(s => s.shishaId === shishaId);
-                
+            for (const deviceCode of allStationCodes) {
+                const session = activeSessionsMap.get(deviceCode);
                 if (!session) {
                     free++;
-                } else if (session.paused) {
+                    continue;
+                }
+                const currentRemaining = getCurrentRemainingSeconds(session);
+                if (session.paused) {
                     paused++;
-                } else if (session.remainingTime <= 0) {
+                } else if (currentRemaining <= 0) {
                     expired++;
-                } else if (session.remainingTime <= REFILL_THRESHOLD * 60) {
+                } else if (currentRemaining <= REFILL_THRESHOLD * 60) {
                     refill++;
                 } else {
                     active++;
@@ -542,54 +559,155 @@
             document.getElementById('expiredCount').innerText = expired;
             document.getElementById('pausedCount').innerText = paused;
         }
-
-        // Update last updated timestamp
-        function updateLastUpdated() {
+        
+        // Update last updated UI timestamp
+        function updateLastUpdatedUI() {
             const now = new Date();
             const timeString = now.toLocaleTimeString('en-ZA', { hour12: false });
             document.getElementById('lastUpdated').innerHTML = `Last updated: ${timeString}`;
         }
-
-        // Real-time timer updates (every second)
-        let timerInterval;
-        function startRealTimeUpdates() {
+        
+        // Core function: fetch devices and sessions from Supabase, build activeSessionsMap
+        async function fetchDataFromSupabase() {
+            try {
+                // 1. Fetch all hookah devices (active / all) — get device_code and id
+                const { data: devices, error: devicesError } = await supabase
+                    .from('hookah_devices')
+                    .select('id, device_code, location_id, status')
+                    .order('device_code', { ascending: true });
+                
+                if (devicesError) throw devicesError;
+                
+                if (!devices || devices.length === 0) {
+                    console.warn('No hookah_devices found, generating fallback SH-001..SH-030');
+                    // Fallback: create 30 virtual devices for UI to work
+                    const fallbackDevices = [];
+                    for (let i = 1; i <= 30; i++) {
+                        const code = `SH-${String(i).padStart(3, '0')}`;
+                        fallbackDevices.push({ id: `fallback_${i}`, device_code: code, location_id: null });
+                    }
+                    devicesMap.clear();
+                    fallbackDevices.forEach(d => devicesMap.set(d.device_code, d));
+                    allStationCodes = fallbackDevices.map(d => d.device_code);
+                } else {
+                    devicesMap.clear();
+                    devices.forEach(dev => devicesMap.set(dev.device_code, dev));
+                    allStationCodes = devices.map(dev => dev.device_code);
+                    // Ensure exactly 30 displayed - if less than 30, pad with virtual? Not needed but keeps UI consistent
+                    if (allStationCodes.length < 30) {
+                        for (let i = allStationCodes.length + 1; i <= 30; i++) {
+                            const virtualCode = `SH-${String(i).padStart(3, '0')}`;
+                            if (!allStationCodes.includes(virtualCode)) {
+                                allStationCodes.push(virtualCode);
+                                devicesMap.set(virtualCode, { id: `virtual_${i}`, device_code: virtualCode });
+                            }
+                        }
+                        allStationCodes.sort();
+                    }
+                }
+                
+                // 2. Fetch active sessions (ended_at IS NULL) including related flavour and location
+                const { data: sessions, error: sessionsError } = await supabase
+                    .from('shisha_sessions')
+                    .select(`
+                        id, device_id, product_id, location_id, start_time, last_refill_time, 
+                        remaining_time_seconds, paused, status, ended_at,
+                        hookah_devices!inner ( device_code ),
+                        shisha_products ( name ),
+                        shisha_locations ( name )
+                    `)
+                    .is('ended_at', null);
+                
+                if (sessionsError) throw sessionsError;
+                
+                // Reset sessions map
+                activeSessionsMap.clear();
+                
+                // Process sessions: map by device_code
+                for (const sess of sessions || []) {
+                    const deviceCode = sess.hookah_devices?.device_code;
+                    if (!deviceCode) continue;
+                    
+                    // Build session object with all required fields
+                    const sessionObj = {
+                        id: sess.id,
+                        deviceId: sess.device_id,
+                        remainingTimeSeconds: sess.remaining_time_seconds,
+                        lastRefillTime: sess.last_refill_time,
+                        paused: sess.paused || false,
+                        startTime: sess.start_time,
+                        flavour_name: sess.shisha_products?.name || 'Original Blend',
+                        location_name: sess.shisha_locations?.name || 'Main Area'
+                    };
+                    activeSessionsMap.set(deviceCode, sessionObj);
+                }
+                
+                // Re-render UI after data sync
+                renderHookahGrid();
+                updateStatistics();
+                updateLastUpdatedUI();
+                lastUpdatedTimestamp = new Date();
+            } catch (err) {
+                console.error('Supabase fetch error:', err);
+                document.getElementById('hookahGrid').innerHTML = '<div class="no-data">⚠️ Error connecting to database. Please check config/supabase.js</div>';
+            }
+        }
+        
+        // Real-time subscription: listen to changes on shisha_sessions and hookah_devices
+        function subscribeToRealtime() {
+            // Subscribe to shisha_sessions changes (INSERT, UPDATE, DELETE)
+            const sessionsSubscription = supabase
+                .channel('shisha-sessions-changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'shisha_sessions' }, (payload) => {
+                    console.log('Sessions realtime update', payload.eventType);
+                    fetchDataFromSupabase(); // refresh all data
+                })
+                .subscribe();
+            
+            // Also listen for hookah_devices changes (in case devices added/removed)
+            const devicesSubscription = supabase
+                .channel('hookah-devices-changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'hookah_devices' }, () => {
+                    console.log('Devices realtime update');
+                    fetchDataFromSupabase();
+                })
+                .subscribe();
+            
+            return () => {
+                sessionsSubscription.unsubscribe();
+                devicesSubscription.unsubscribe();
+            };
+        }
+        
+        // Timer that updates remaining seconds every second and refreshes grid/stats
+        function startRealTimeTimer() {
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
-                updateSessionTimers();
-                updateLastUpdated();
+                // Only re-render if we have data loaded; don't call DB each second, just update UI based on current session map
+                if (allStationCodes.length > 0) {
+                    renderHookahGrid();
+                    updateStatistics();
+                    updateLastUpdatedUI();
+                }
             }, 1000);
         }
-
-        // Poll for session changes from localStorage (every 2 seconds)
-        let pollInterval;
-        function startPolling() {
-            if (pollInterval) clearInterval(pollInterval);
-            pollInterval = setInterval(() => {
-                loadSessions();
-            }, 2000);
-        }
-
-        // Listen for storage events from other tabs
-        function listenForStorageChanges() {
-            window.addEventListener('storage', (e) => {
-                if (e.key === SESSIONS_KEY) {
-                    loadSessions();
-                }
-            });
-        }
-
-        // Initial load
-        loadSessions();
-        startRealTimeUpdates();
-        startPolling();
-        listenForStorageChanges();
         
-        // Also update when page becomes visible again
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                loadSessions();
-            }
-        });
+        // Initialization
+        async function init() {
+            // Show loading
+            document.getElementById('hookahGrid').innerHTML = '<div class="no-data">Syncing with Supabase...</div>';
+            await fetchDataFromSupabase();
+            startRealTimeTimer();
+            subscribeToRealtime();
+            
+            // Also periodically sync with DB every 15 seconds as fallback (optional but safe)
+            setInterval(() => {
+                fetchDataFromSupabase();
+            }, 15000);
+        }
+        
+        // Run
+        init();
     </script>
 </body>
 </html>
