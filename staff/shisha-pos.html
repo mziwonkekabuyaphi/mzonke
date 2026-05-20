@@ -159,7 +159,6 @@
       display: block;
     }
 
-    /* new mandatory customer phone field */
     .mandatory-phone {
       margin-bottom: 20px;
     }
@@ -337,7 +336,6 @@
         <input type="text" id="accountIdInput" placeholder="WhatsApp number (e.g., 0635713652)">
       </div>
 
-      <!-- NEW: mandatory customer phone field (always required) -->
       <div class="mandatory-phone">
         <label><i class="fas fa-phone-alt"></i> Customer Phone Number <span style="color: var(--red);">*</span></label>
         <input type="tel" id="customerPhone" placeholder="06XXXXXXXX or +27XXXXXXXXX" autocomplete="off">
@@ -378,6 +376,7 @@
 
   let activeSessions = [];
   let availableHookahs = [];
+  let countdownInterval = null;
 
   function showToast(message, isError = false) {
     const toast = document.getElementById('toastMsg');
@@ -442,12 +441,68 @@
     document.getElementById('statRefill').innerText = refill;
   }
 
+  // ========== LIVE COUNTDOWN LOGIC (FIX) ==========
+  // Returns remaining seconds for a session (active/refill & not paused)
+  function getLiveRemainingSeconds(session) {
+    if (session.paused || session.status === 'expired') {
+      // For paused/expired, return the stored value (static)
+      return session.remaining_time_seconds;
+    }
+    // Use last_refill_time if available, otherwise start_time
+    const referenceTime = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
+    const now = new Date();
+    const elapsedSeconds = (now - referenceTime) / 1000;
+    const totalDuration = COAL_DURATION * 60;
+    let remaining = totalDuration - elapsedSeconds;
+    return remaining > 0 ? remaining : 0;
+  }
+
   function formatTime(seconds) {
+    if (seconds <= 0) return "EXPIRED";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
   }
 
+  // Update all timer displays in the DOM using live calculation
+  function updateAllTimers() {
+    document.querySelectorAll('.timer-value').forEach(elem => {
+      const sessionId = elem.getAttribute('data-session-id');
+      if (!sessionId) return;
+      const session = activeSessions.find(s => s.id === sessionId);
+      if (!session) return;
+      let remainingSec = getLiveRemainingSeconds(session);
+      if (remainingSec <= 0 && !session.paused && session.status !== 'expired') {
+        // Mark as expired in UI only (no DB update)
+        elem.innerText = "EXPIRED";
+        elem.style.color = "var(--red)";
+        // Optionally add expired class to parent
+        const parentItem = elem.closest('.session-item');
+        if (parentItem && !parentItem.classList.contains('expired')) {
+          parentItem.classList.add('expired');
+          const badge = parentItem.querySelector('.status-badge');
+          if (badge) {
+            badge.innerText = "EXPIRED";
+            badge.classList.remove('active', 'refill', 'paused');
+            badge.classList.add('expired');
+          }
+        }
+      } else {
+        elem.innerText = formatTime(remainingSec);
+        elem.style.color = "";
+      }
+    });
+  }
+
+  // Start a single global countdown updater (every second)
+  function startCountdownUpdater() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      updateAllTimers();
+    }, 1000);
+  }
+
+  // Render sessions – each timer gets a dedicated span with data-session-id
   function renderSessions() {
     const container = document.getElementById('sessionsList');
     if (!activeSessions.length) {
@@ -459,6 +514,10 @@
       if (s.paused) { statusClass = 'paused'; statusText = 'PAUSED'; }
       else if (s.status === 'expired') { statusClass = 'expired'; statusText = 'EXPIRED'; }
       else if (s.status === 'refill') { statusClass = 'refill'; statusText = 'REFILL SOON'; }
+      // Determine initial timer display (will be updated live)
+      let initialRemaining = getLiveRemainingSeconds(s);
+      let timerDisplay = formatTime(initialRemaining);
+      if (initialRemaining <= 0 && !s.paused && s.status !== 'expired') timerDisplay = "EXPIRED";
       return `
         <div class="session-item ${statusClass}" data-session-id="${s.id}">
           <div class="session-header">
@@ -467,7 +526,7 @@
           </div>
           <div><small>📍 ${s.location_name} | 🍃 ${s.flavour_name}</small></div>
           <div><small>💰 Total: R${s.total_amount} | ♻️ Refills: ${s.refill_count || 0}</small></div>
-          <div class="timer">⏱️ ${formatTime(s.remainingTime)}</div>
+          <div class="timer">⏱️ <span class="timer-value" data-session-id="${s.id}">${timerDisplay}</span></div>
           <div class="session-actions">
             <button class="btn-refill" data-id="${s.id}">🔄 Refill (R${REFILL_PRICE})</button>
             <button class="btn-end" data-id="${s.id}">❌ End</button>
@@ -475,8 +534,11 @@
         </div>
       `;
     }).join('');
+    // Re-attach event handlers
     document.querySelectorAll('.btn-refill').forEach(btn => btn.addEventListener('click', () => refillSession(btn.dataset.id)));
     document.querySelectorAll('.btn-end').forEach(btn => btn.addEventListener('click', () => endSession(btn.dataset.id)));
+    // Force immediate timer update after render
+    updateAllTimers();
   }
 
   async function refillSession(sessionId) {
@@ -559,16 +621,12 @@
     const deviceId = document.getElementById('shishaSelect').value;
     const payment = document.querySelector('input[name="payment"]:checked').value;
     const accountId = document.getElementById('accountIdInput').value.trim();
-
-    // NEW: get customer phone, required for all sessions
     const customerPhone = document.getElementById('customerPhone').value.trim();
 
-    // Validation: customer phone must be provided (non-empty)
     if (!customerPhone) {
       showToast("Phone number required for session", true);
       return;
     }
-
     if (!locationId || !productId || !deviceId) { showToast("Please fill all fields", true); return; }
     if (payment === 'wallet' && !accountId) { showToast("Enter WhatsApp number for wallet", true); return; }
 
@@ -581,7 +639,6 @@
       if (!confirm(`Confirm ${payment.toUpperCase()} payment of R${SESSION_PRICE}?`)) return;
     }
 
-    // Insert session with customer_phone (required column)
     const { error } = await supabase.from('shisha_sessions').insert({
       device_id: deviceId,
       product_id: productId,
@@ -595,14 +652,10 @@
       paused: false,
       payment_method: payment,
       account_id: payment === 'wallet' ? accountId : null,
-      customer_phone: customerPhone   // <-- NEW: mandatory field added
+      customer_phone: customerPhone
     });
-    if (error) { 
-      showToast(error.message, true); 
-      return; 
-    }
+    if (error) { showToast(error.message, true); return; }
     showToast(`✅ Session started on hookah!`);
-    // reset form: clear phone fields & payment default
     document.getElementById('customerPhone').value = '';
     document.getElementById('accountIdInput').value = '';
     document.getElementById('cash').checked = true;
@@ -616,7 +669,6 @@
     document.getElementById('accountField').classList.toggle('show', walletChecked);
   }
 
-  // ========== ADMIN PANEL REDIRECT (same as original) ==========
   document.getElementById('openAdminPanelBtn').addEventListener('click', (e) => {
     e.preventDefault();
     window.open('shisha-management.html', '_blank');
@@ -627,10 +679,11 @@
     await loadDropdowns();
     await loadAvailableHookahs();
     await loadActiveSessions();
+    startCountdownUpdater();  // start the live 1-second timer
     document.querySelectorAll('input[name="payment"]').forEach(r => r.addEventListener('change', toggleWalletField));
     document.getElementById('startSessionBtn').addEventListener('click', startNewSession);
     toggleWalletField();
-    // periodic refresh to keep timers accurate
+    // periodic refresh to keep session list up to date (realtime is also active)
     setInterval(async () => {
       await loadActiveSessions();
       await loadAvailableHookahs();
