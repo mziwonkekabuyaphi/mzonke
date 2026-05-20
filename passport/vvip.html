@@ -62,37 +62,37 @@
             z-index: 0;
         }
 
-        /* ========== HEADER (identical to Order/Tickets) - WITH BIGGER LOGO ========== */
+        /* ========== HEADER (SMALLER VERSION - NO X ICON) ========== */
         .site-header {
             background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%);
-            padding: 12px 20px;
+            padding: 8px 16px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 200;
-            border-radius: 0 0 28px 28px;
+            border-radius: 0 0 24px 24px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
 
         .brand {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 10px;
             cursor: pointer;
         }
 
         .brand-logo {
-            width: 60px;
-            height: 60px;
+            width: 44px;
+            height: 44px;
             background: rgba(255,255,255,0.2);
             backdrop-filter: blur(8px);
             border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.6rem;
+            font-size: 1.3rem;
             color: white;
             overflow: hidden;
         }
@@ -106,7 +106,7 @@
 
         .brand-text h1 {
             font-family: 'Inter', sans-serif;
-            font-size: 1.3rem;
+            font-size: 1.1rem;
             font-weight: 800;
             color: white;
             letter-spacing: -0.2px;
@@ -114,7 +114,7 @@
         }
 
         .brand-text p {
-            font-size: 0.7rem;
+            font-size: 0.6rem;
             color: rgba(255,255,255,0.85);
             font-weight: 500;
             text-transform: uppercase;
@@ -582,18 +582,18 @@
 </head>
 <body>
 
-<!-- Header (matching Order/Tickets) - Back button removed, logo bigger -->
+<!-- Header (smaller version, no X button) -->
 <header class="site-header">
     <div class="brand" onclick="window.location.href='home.html'">
         <div class="brand-logo">
-            <img src="../assets/images/rands-logo2.png" alt="Rands" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\'fas fa-crown\'></i>';">
+            <img src="../assets/images/rands-logo3.png" alt="Rands" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\'fas fa-crown\'></i>';">
         </div>
         <div class="brand-text">
             <h1>VVIP</h1>
             <p>Sovereign's Circle</p>
         </div>
     </div>
-    <!-- Back button removed as requested -->
+    <!-- X icon removed as requested -->
 </header>
 
 <!-- Stats Cards (matching Ticket page) -->
@@ -608,7 +608,7 @@
     <div class="stat-card">
         <div class="stat-icon"><i class="fas fa-wallet"></i></div>
         <div class="stat-info">
-            <h3>Wallet Balance</h3>
+            <h3>VVIP Tab Balance</h3>  <!-- Changed from "Wallet Balance" -->
             <div class="stat-number" id="walletBalanceStat">R0.00</div>
         </div>
     </div>
@@ -711,356 +711,354 @@
 <div id="bottom-nav-container"></div>
 
 <script type="module">
-  // ========== SUPABASE IMPORTS ==========
-  import { supabase } from '../config/supabase.js';
-  import { getCurrentUser, signOutUser } from '../config/auth.js';
+    import { supabase } from '../config/supabase.js';
 
-  // ========== DOM ELEMENTS ==========
-  const walletBalanceStat = document.getElementById('walletBalanceStat');
-  const statusStat = document.getElementById('statusStat');
-  const vvipBandNumber = document.getElementById('vvipBandNumber');
-  const bandIdDisplay = document.getElementById('bandIdDisplay');
-  const bandWalletName = document.getElementById('bandWalletName');
-  const statusText = document.getElementById('statusText');
-  const qrContainer = document.getElementById('vvipBandQR');
+    // ========== DOM ELEMENTS ==========
+    const walletBalanceStat = document.getElementById('walletBalanceStat');
+    const statusStat = document.getElementById('statusStat');
+    const vvipBandNumber = document.getElementById('vvipBandNumber');
+    const bandIdDisplay = document.getElementById('bandIdDisplay');
+    const bandWalletName = document.getElementById('bandWalletName');
+    const statusText = document.getElementById('statusText');
+    const qrContainer = document.getElementById('vvipBandQR');
 
-  // ========== GLOBAL STATE ==========
-  let currentProfile = null;        // { id, name, balance, phone, role }
-  let vvipBand = null;              // { bandId, ... } stored in localStorage or generated on the fly
+    // ========== GLOBAL STATE ==========
+    let currentProfile = null;
+    let vvipBand = null;
 
-  // ========== HELPER: SHOW VVIP MODAL (unchanged from original) ==========
-  function showVVIPModal(options) {
-    return new Promise((resolve) => {
-      const overlay = document.getElementById('vvipModalOverlay');
-      const iconEl = document.getElementById('vvipModalIcon');
-      const titleEl = document.getElementById('vvipModalTitle');
-      const msgEl = document.getElementById('vvipModalMessage');
-      const confirmBtn = document.getElementById('vvipModalConfirmBtn');
-      const cancelBtn = document.getElementById('vvipModalCancelBtn');
-      
-      iconEl.innerHTML = options.icon || '<i class="fas fa-crown"></i>';
-      iconEl.className = `vvip-modal-icon ${options.iconClass || 'crown-gold'}`;
-      titleEl.innerText = options.title || 'Sovereign Decree';
-      msgEl.innerText = options.message || '';
-      
-      if (options.showCancel === false) {
-        cancelBtn.style.display = 'none';
-        confirmBtn.innerText = options.confirmText || 'Accept';
-      } else {
-        cancelBtn.style.display = 'flex';
-        confirmBtn.innerText = options.confirmText || 'Approve';
-        cancelBtn.innerText = options.cancelText || 'Dismiss';
-      }
-      
-      const onConfirm = () => { cleanup(); resolve(true); };
-      const onCancel = () => { cleanup(); resolve(false); };
-      const cleanup = () => {
-        overlay.classList.remove('active');
-        confirmBtn.removeEventListener('click', onConfirm);
-        cancelBtn.removeEventListener('click', onCancel);
-        overlay.removeEventListener('click', backdropHandler);
-      };
-      const backdropHandler = (e) => {
-        if (e.target === overlay && options.closeOnBackdrop !== false) onCancel();
-      };
-      
-      confirmBtn.addEventListener('click', onConfirm);
-      cancelBtn.addEventListener('click', onCancel);
-      overlay.addEventListener('click', backdropHandler);
-      overlay.classList.add('active');
-    });
-  }
-
-  async function showVVIPInfo(title, message, iconClass = 'crown-gold', iconHtml = '<i class="fas fa-crown"></i>') {
-    await showVVIPModal({
-      title, message, icon: iconHtml, iconClass,
-      showCancel: false, confirmText: 'As My Will'
-    });
-  }
-
-  function showToastMsg(msg) { 
-    let t = document.getElementById('globalToast'); 
-    t.innerText = msg; 
-    t.classList.add('show'); 
-    setTimeout(() => t.classList.remove('show'), 2800); 
-  }
-
-  // ========== FETCH CURRENT USER & PROFILE ==========
-  async function loadCurrentUserAndProfile() {
-    try {
-      // 1. Get authenticated user from Supabase
-      const { user, error: userError } = await getCurrentUser();
-      if (userError || !user) {
-        console.error('No authenticated user, redirecting to login...');
-        window.location.href = '/login.html';
-        return false;
-      }
-
-      // 2. Fetch profile from 'profiles' table
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, name, balance, phone, role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (error || !data) {
-        console.error('Profile fetch error:', error);
-        showVVIPInfo('Access Denied', 'Your account profile is missing. Contact support.', 'error', '<i class="fas fa-exclamation-triangle"></i>');
-        await supabase.auth.signOut();
-        window.location.href = '/login.html';
-        return false;
-      }
-
-      currentProfile = data;
-      console.log('✅ Loaded profile:', currentProfile);
-      return true;
-    } catch (err) {
-      console.error('Auth/profile error:', err);
-      window.location.href = '/login.html';
-      return false;
+    // ========== HELPER: SHOW VVIP MODAL ==========
+    function showVVIPModal(options) {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('vvipModalOverlay');
+            const iconEl = document.getElementById('vvipModalIcon');
+            const titleEl = document.getElementById('vvipModalTitle');
+            const msgEl = document.getElementById('vvipModalMessage');
+            const confirmBtn = document.getElementById('vvipModalConfirmBtn');
+            const cancelBtn = document.getElementById('vvipModalCancelBtn');
+            
+            iconEl.innerHTML = options.icon || '<i class="fas fa-crown"></i>';
+            iconEl.className = `vvip-modal-icon ${options.iconClass || 'crown-gold'}`;
+            titleEl.innerText = options.title || 'Sovereign Decree';
+            msgEl.innerText = options.message || '';
+            
+            if (options.showCancel === false) {
+                cancelBtn.style.display = 'none';
+                confirmBtn.innerText = options.confirmText || 'Accept';
+            } else {
+                cancelBtn.style.display = 'flex';
+                confirmBtn.innerText = options.confirmText || 'Approve';
+                cancelBtn.innerText = options.cancelText || 'Dismiss';
+            }
+            
+            const onConfirm = () => { cleanup(); resolve(true); };
+            const onCancel = () => { cleanup(); resolve(false); };
+            const cleanup = () => {
+                overlay.classList.remove('active');
+                confirmBtn.removeEventListener('click', onConfirm);
+                cancelBtn.removeEventListener('click', onCancel);
+                overlay.removeEventListener('click', backdropHandler);
+            };
+            const backdropHandler = (e) => {
+                if (e.target === overlay && options.closeOnBackdrop !== false) onCancel();
+            };
+            
+            confirmBtn.addEventListener('click', onConfirm);
+            cancelBtn.addEventListener('click', onCancel);
+            overlay.addEventListener('click', backdropHandler);
+            overlay.classList.add('active');
+        });
     }
-  }
 
-  // ========== UPDATE UI WITH REAL USER DATA ==========
-  function updateWalletDisplay() {
-    if (currentProfile) {
-      walletBalanceStat.innerText = `R${currentProfile.balance?.toFixed(2) || '0.00'}`;
-      statusStat.innerText = currentProfile.role === 'super_admin' ? 'Sovereign' : 'Noble';
-      statusText.innerText = 'Immortal Active';
+    async function showVVIPInfo(title, message, iconClass = 'crown-gold', iconHtml = '<i class="fas fa-crown"></i>') {
+        await showVVIPModal({
+            title, message, icon: iconHtml, iconClass,
+            showCancel: false, confirmText: 'As My Will'
+        });
     }
-  }
 
-  // ========== VVIP BAND GENERATION (store in localStorage per user) ==========
-  const VVIP_BANDS_KEY = 'vvip_bands_supabase';
-
-  function getVVIPBandForUser() {
-    if (!currentProfile) return null;
-    const stored = localStorage.getItem(VVIP_BANDS_KEY);
-    const allBands = stored ? JSON.parse(stored) : {};
-    let band = allBands[currentProfile.id];
-    if (!band) {
-      // Create new band using phone or id as bandId
-      const bandId = currentProfile.phone || currentProfile.id;
-      band = {
-        bandId: bandId,
-        accountId: currentProfile.id,
-        accountName: currentProfile.name,
-        status: "Sovereign Active",
-        createdAt: new Date().toISOString(),
-        cashlessEnabled: true,
-        accessLevel: "Absolute VVIP"
-      };
-      allBands[currentProfile.id] = band;
-      localStorage.setItem(VVIP_BANDS_KEY, JSON.stringify(allBands));
+    function showToastMsg(msg) { 
+        let t = document.getElementById('globalToast'); 
+        t.innerText = msg; 
+        t.classList.add('show'); 
+        setTimeout(() => t.classList.remove('show'), 2800); 
     }
-    return band;
-  }
 
-  function renderVVIPBand() {
-    if (!currentProfile) return;
-    const band = getVVIPBandForUser();
-    vvipBand = band;
+    // ========== FETCH CURRENT USER & PROFILE ==========
+    async function loadCurrentUserAndProfile() {
+        try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !session) {
+                console.error('No authenticated session, redirecting to login...');
+                window.location.href = '../login.html';
+                return false;
+            }
+            const userId = session.user.id;
 
-    vvipBandNumber.textContent = band.bandId;
-    bandIdDisplay.textContent = band.bandId;
-    bandWalletName.textContent = currentProfile.name.toUpperCase();
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, full_name, phone, balance, role')
+                .eq('id', userId)
+                .maybeSingle();
 
-    // Generate QR code
-    if (qrContainer) {
-      qrContainer.innerHTML = "";
-      const qrPayload = `SOVEREIGN:${band.bandId}|${currentProfile.id}|${currentProfile.name}|CASHless|THRONE`;
-      new QRCode(qrContainer, {
-        text: qrPayload,
-        width: 130,
-        height: 130,
-        colorDark: "#E30613",
-        correctLevel: QRCode.CorrectLevel.H
-      });
+            if (error || !data) {
+                console.error('Profile fetch error:', error);
+                showVVIPInfo('Access Denied', 'Your account profile is missing. Contact support.', 'error', '<i class="fas fa-exclamation-triangle"></i>');
+                await supabase.auth.signOut();
+                window.location.href = '../login.html';
+                return false;
+            }
+
+            currentProfile = {
+                id: data.id,
+                name: data.full_name || session.user.user_metadata?.full_name || 'Member',
+                balance: data.balance || 0,
+                phone: data.phone || session.user.user_metadata?.phone || session.user.email,
+                role: data.role || 'user'
+            };
+            console.log('✅ Loaded profile:', currentProfile);
+            return true;
+        } catch (err) {
+            console.error('Auth/profile error:', err);
+            window.location.href = '../login.html';
+            return false;
+        }
     }
-  }
 
-  // ========== PRINT BAND ==========
-  async function printVVIPBand() {
-    if (!currentProfile || !vvipBand) return;
-    const band = vvipBand;
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-      <head>
-        <title>SOVEREIGN WRISTBAND - ${band.bandId}</title>
-        <style>
-          body { font-family: 'Playfair Display', 'Inter', serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #0a0a0a; margin: 0; padding: 20px; }
-          .band-card { background: linear-gradient(145deg, #111, #000); border: 3px solid #E30613; border-radius: 48px; padding: 32px; text-align: center; max-width: 420px; width: 100%; box-shadow: 0 25px 40px rgba(227,6,19,0.3); }
-          .crown-icon { font-size: 64px; color: #FFD700; margin-bottom: 8px; }
-          h1 { color: #FFD966; font-size: 28px; margin: 5px 0; letter-spacing: 2px; }
-          .sub { color: #FFD700; font-size: 11px; text-transform: uppercase; }
-          .band-id { font-family: monospace; font-size: 18px; font-weight: bold; color: #E30613; background: #1f1f1f; padding: 8px 16px; border-radius: 40px; display: inline-block; margin: 15px 0; border: 1px solid #FFD700; }
-          .qr-container { background: white; padding: 15px; border-radius: 32px; display: inline-block; margin: 15px 0; }
-          .info { text-align: left; background: rgba(0,0,0,0.7); border-radius: 28px; padding: 16px; margin: 15px 0; color: #ccc; border: 1px solid rgba(255,215,0,0.3); }
-          .info div { margin: 8px 0; display: flex; gap: 12px; }
-          .info i { color: #FFD700; width: 24px; }
-          .footer { font-size: 9px; color: #888; margin-top: 20px; }
-          button { background: #E30613; color: white; border: none; padding: 12px 20px; border-radius: 60px; font-weight: bold; margin-top: 15px; cursor: pointer; width: 100%; }
-        </style>
-      </head>
-      <body>
-        <div class="band-card">
-          <div class="crown-icon"><i class="fas fa-crown"></i></div>
-          <h1>THE SOVEREIGN'S CIRCLE</h1>
-          <div class="sub">✦ Imperial Access & Cashless Rule ✦</div>
-          <div class="band-id">${band.bandId}</div>
-          <div class="qr-container" id="printQR"></div>
-          <div class="info">
-            <div><i class="fas fa-tag"></i> <strong>Sovereign ID:</strong> ${band.bandId}</div>
-            <div><i class="fas fa-user"></i> <strong>Chosen:</strong> ${currentProfile.name}</div>
-            <div><i class="fas fa-door-open"></i> <strong>Access:</strong> All VVIP Realms + Sanctum</div>
-            <div><i class="fas fa-credit-card"></i> <strong>Cashless:</strong> Infinite Command at POS</div>
-          </div>
-          <div class="footer">Present this QR at any Sovereign Gate or Imperial Kiosk</div>
-          <button onclick="window.print();">⚡ Forge Physical Wristband ⚡</button>
-        </div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
-        <script>
-          new QRCode(document.getElementById("printQR"), { text: "SOVEREIGN:${band.bandId}|${currentProfile.id}|${currentProfile.name}|CASHless|THRONE", width: 150, height: 150, colorDark: "#E30613" });
-        <\/script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
-    await showVVIPInfo("👑 Imperial Wristband Forged", `Your Sovereign band "${band.bandId}" has been forged.`, "success", '<i class="fas fa-check-circle"></i>');
-  }
-
-  // ========== SERVICE REQUEST (using real user & Supabase) ==========
-  const VVIP_POS_REQUESTS_KEY = 'vvip_pos_requests';
-
-  function openServiceRequestModal() {
-    document.getElementById('serviceRequestModal').classList.add('active');
-    document.getElementById('requestAmount').value = '';
-    document.getElementById('requestTable').value = '';
-  }
-  function closeServiceRequestModal() {
-    document.getElementById('serviceRequestModal').classList.remove('active');
-  }
-  async function sendServiceRequest() {
-    const amount = parseFloat(document.getElementById('requestAmount').value);
-    const table = document.getElementById('requestTable').value.trim();
-    if (isNaN(amount) || amount <= 0) {
-      await showVVIPInfo("Invalid Amount", "Please enter a valid amount (R).", "error", '<i class="fas fa-exclamation-triangle"></i>');
-      return;
+    // ========== UPDATE UI WITH REAL USER DATA ==========
+    function updateWalletDisplay() {
+        if (currentProfile) {
+            walletBalanceStat.innerText = `R${currentProfile.balance?.toFixed(2) || '0.00'}`;
+            statusStat.innerText = currentProfile.role === 'super_admin' ? 'Sovereign' : 'Noble';
+            statusText.innerText = 'Immortal Active';
+        }
     }
-    if (!table) {
-      await showVVIPInfo("Table Required", "Please enter the table or lounge name.", "error", '<i class="fas fa-exclamation-triangle"></i>');
-      return;
+
+    // ========== VVIP BAND GENERATION ==========
+    const VVIP_BANDS_KEY = 'vvip_bands_supabase';
+
+    function getVVIPBandForUser() {
+        if (!currentProfile) return null;
+        const stored = localStorage.getItem(VVIP_BANDS_KEY);
+        const allBands = stored ? JSON.parse(stored) : {};
+        let band = allBands[currentProfile.id];
+        if (!band) {
+            const bandId = currentProfile.phone || currentProfile.id;
+            band = {
+                bandId: bandId,
+                accountId: currentProfile.id,
+                accountName: currentProfile.name,
+                status: "Sovereign Active",
+                createdAt: new Date().toISOString(),
+                cashlessEnabled: true,
+                accessLevel: "Absolute VVIP"
+            };
+            allBands[currentProfile.id] = band;
+            localStorage.setItem(VVIP_BANDS_KEY, JSON.stringify(allBands));
+        }
+        return band;
     }
-    if (!currentProfile) return;
 
-    const request = {
-      id: Date.now(),
-      type: 'vvip_service_request',
-      customerId: currentProfile.id,
-      customerName: currentProfile.name,
-      amount: amount,
-      table: table,
-      timestamp: new Date().toISOString(),
-      status: 'pending'
-    };
-    let existing = JSON.parse(localStorage.getItem(VVIP_POS_REQUESTS_KEY) || '[]');
-    existing.push(request);
-    localStorage.setItem(VVIP_POS_REQUESTS_KEY, JSON.stringify(existing));
-    window.dispatchEvent(new StorageEvent('storage', { key: VVIP_POS_REQUESTS_KEY }));
-    closeServiceRequestModal();
-    await showVVIPInfo("✨ Request Sent ✨", `Your VVIP service request for R${amount} at "${table}" has been sent.`, "success", '<i class="fas fa-check-circle"></i>');
-  }
+    function renderVVIPBand() {
+        if (!currentProfile) return;
+        const band = getVVIPBandForUser();
+        vvipBand = band;
 
-  // ========== CASHLESS PAYMENT HANDLING (using real balance) ==========
-  const PAYMENT_REQUESTS_KEY = 'rands_payment_requests';
+        vvipBandNumber.textContent = band.bandId;
+        bandIdDisplay.textContent = band.bandId;
+        bandWalletName.textContent = currentProfile.name.toUpperCase();
 
-  async function handleSovereignPayment(request) {
-    const confirmed = await showVVIPModal({
-      title: "💎 SOVEREIGN CASHLESS TRANSACTION",
-      message: `Amount: R${request.amount.toFixed(2)}\nMerchant: ${request.description}\n\nApprove this payment?`,
-      icon: '<i class="fas fa-gem"></i>',
-      iconClass: 'crown-gold',
-      confirmText: "Approve Payment",
-      cancelText: "Reject"
-    });
-    if (!confirmed) {
-      request.status = 'rejected';
-      localStorage.setItem(PAYMENT_REQUESTS_KEY, JSON.stringify(requests));
-      await showVVIPInfo("Payment Rejected", "Transaction declined.", "warning", '<i class="fas fa-ban"></i>');
-      return;
+        if (qrContainer) {
+            qrContainer.innerHTML = "";
+            const qrPayload = `SOVEREIGN:${band.bandId}|${currentProfile.id}|${currentProfile.name}|CASHless|THRONE`;
+            new QRCode(qrContainer, {
+                text: qrPayload,
+                width: 130,
+                height: 130,
+                colorDark: "#E30613",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
     }
-    // Check real balance from Supabase
-    if (currentProfile.balance >= request.amount) {
-      // Deduct from Supabase profiles table
-      const newBalance = currentProfile.balance - request.amount;
-      const { error } = await supabase
-        .from('profiles')
-        .update({ balance: newBalance })
-        .eq('id', currentProfile.id);
-      if (error) {
-        console.error('Balance update error:', error);
-        await showVVIPInfo("Error", "Could not update balance. Try again.", "error");
-        request.status = 'rejected';
-      } else {
-        // Update local profile
-        currentProfile.balance = newBalance;
+
+    // ========== PRINT BAND ==========
+    async function printVVIPBand() {
+        if (!currentProfile || !vvipBand) return;
+        const band = vvipBand;
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>SOVEREIGN WRISTBAND - ${band.bandId}</title>
+                <style>
+                    body { font-family: 'Playfair Display', 'Inter', serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #0a0a0a; margin: 0; padding: 20px; }
+                    .band-card { background: linear-gradient(145deg, #111, #000); border: 3px solid #E30613; border-radius: 48px; padding: 32px; text-align: center; max-width: 420px; width: 100%; box-shadow: 0 25px 40px rgba(227,6,19,0.3); }
+                    .crown-icon { font-size: 64px; color: #FFD700; margin-bottom: 8px; }
+                    h1 { color: #FFD966; font-size: 28px; margin: 5px 0; letter-spacing: 2px; }
+                    .sub { color: #FFD700; font-size: 11px; text-transform: uppercase; }
+                    .band-id { font-family: monospace; font-size: 18px; font-weight: bold; color: #E30613; background: #1f1f1f; padding: 8px 16px; border-radius: 40px; display: inline-block; margin: 15px 0; border: 1px solid #FFD700; }
+                    .qr-container { background: white; padding: 15px; border-radius: 32px; display: inline-block; margin: 15px 0; }
+                    .info { text-align: left; background: rgba(0,0,0,0.7); border-radius: 28px; padding: 16px; margin: 15px 0; color: #ccc; border: 1px solid rgba(255,215,0,0.3); }
+                    .info div { margin: 8px 0; display: flex; gap: 12px; }
+                    .info i { color: #FFD700; width: 24px; }
+                    .footer { font-size: 9px; color: #888; margin-top: 20px; }
+                    button { background: #E30613; color: white; border: none; padding: 12px 20px; border-radius: 60px; font-weight: bold; margin-top: 15px; cursor: pointer; width: 100%; }
+                </style>
+            </head>
+            <body>
+                <div class="band-card">
+                    <div class="crown-icon"><i class="fas fa-crown"></i></div>
+                    <h1>THE SOVEREIGN'S CIRCLE</h1>
+                    <div class="sub">✦ Imperial Access & Cashless Rule ✦</div>
+                    <div class="band-id">${band.bandId}</div>
+                    <div class="qr-container" id="printQR"></div>
+                    <div class="info">
+                        <div><i class="fas fa-tag"></i> <strong>Sovereign ID:</strong> ${band.bandId}</div>
+                        <div><i class="fas fa-user"></i> <strong>Chosen:</strong> ${currentProfile.name}</div>
+                        <div><i class="fas fa-door-open"></i> <strong>Access:</strong> All VVIP Realms + Sanctum</div>
+                        <div><i class="fas fa-credit-card"></i> <strong>Cashless:</strong> Infinite Command at POS</div>
+                    </div>
+                    <div class="footer">Present this QR at any Sovereign Gate or Imperial Kiosk</div>
+                    <button onclick="window.print();">⚡ Forge Physical Wristband ⚡</button>
+                </div>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+                <script>
+                    new QRCode(document.getElementById("printQR"), { text: "SOVEREIGN:${band.bandId}|${currentProfile.id}|${currentProfile.name}|CASHless|THRONE", width: 150, height: 150, colorDark: "#E30613" });
+                <\/script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        await showVVIPInfo("👑 Imperial Wristband Forged", `Your Sovereign band "${band.bandId}" has been forged.`, "success", '<i class="fas fa-check-circle"></i>');
+    }
+
+    // ========== SERVICE REQUEST ==========
+    const VVIP_POS_REQUESTS_KEY = 'vvip_pos_requests';
+
+    function openServiceRequestModal() {
+        document.getElementById('serviceRequestModal').classList.add('active');
+        document.getElementById('requestAmount').value = '';
+        document.getElementById('requestTable').value = '';
+    }
+    function closeServiceRequestModal() {
+        document.getElementById('serviceRequestModal').classList.remove('active');
+    }
+    async function sendServiceRequest() {
+        const amount = parseFloat(document.getElementById('requestAmount').value);
+        const table = document.getElementById('requestTable').value.trim();
+        if (isNaN(amount) || amount <= 0) {
+            await showVVIPInfo("Invalid Amount", "Please enter a valid amount (R).", "error", '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        if (!table) {
+            await showVVIPInfo("Table Required", "Please enter the table or lounge name.", "error", '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        if (!currentProfile) return;
+
+        const request = {
+            id: Date.now(),
+            type: 'vvip_service_request',
+            customerId: currentProfile.id,
+            customerName: currentProfile.name,
+            amount: amount,
+            table: table,
+            timestamp: new Date().toISOString(),
+            status: 'pending'
+        };
+        let existing = JSON.parse(localStorage.getItem(VVIP_POS_REQUESTS_KEY) || '[]');
+        existing.push(request);
+        localStorage.setItem(VVIP_POS_REQUESTS_KEY, JSON.stringify(existing));
+        window.dispatchEvent(new StorageEvent('storage', { key: VVIP_POS_REQUESTS_KEY }));
+        closeServiceRequestModal();
+        await showVVIPInfo("✨ Request Sent ✨", `Your VVIP service request for R${amount} at "${table}" has been sent.`, "success", '<i class="fas fa-check-circle"></i>');
+    }
+
+    // ========== CASHLESS PAYMENT HANDLING ==========
+    const PAYMENT_REQUESTS_KEY = 'rands_payment_requests';
+    let requests = [];
+
+    async function handleSovereignPayment(request) {
+        const confirmed = await showVVIPModal({
+            title: "💎 SOVEREIGN CASHLESS TRANSACTION",
+            message: `Amount: R${request.amount.toFixed(2)}\nMerchant: ${request.description}\n\nApprove this payment?`,
+            icon: '<i class="fas fa-gem"></i>',
+            iconClass: 'crown-gold',
+            confirmText: "Approve Payment",
+            cancelText: "Reject"
+        });
+        if (!confirmed) {
+            request.status = 'rejected';
+            localStorage.setItem(PAYMENT_REQUESTS_KEY, JSON.stringify(requests));
+            await showVVIPInfo("Payment Rejected", "Transaction declined.", "warning", '<i class="fas fa-ban"></i>');
+            return;
+        }
+        if (currentProfile.balance >= request.amount) {
+            const newBalance = currentProfile.balance - request.amount;
+            const { error } = await supabase
+                .from('profiles')
+                .update({ balance: newBalance })
+                .eq('id', currentProfile.id);
+            if (error) {
+                console.error('Balance update error:', error);
+                await showVVIPInfo("Error", "Could not update balance. Try again.", "error");
+                request.status = 'rejected';
+            } else {
+                currentProfile.balance = newBalance;
+                updateWalletDisplay();
+                request.status = 'completed';
+                await showVVIPInfo("Payment Approved", `R${request.amount.toFixed(2)} deducted from your treasury.`, "success");
+            }
+        } else {
+            await showVVIPInfo("Insufficient Funds", "Not enough balance.", "error");
+            request.status = 'rejected';
+        }
+        localStorage.setItem(PAYMENT_REQUESTS_KEY, JSON.stringify(requests));
+    }
+
+    async function checkForSovereignPayments() {
+        if (!currentProfile) return;
+        requests = JSON.parse(localStorage.getItem(PAYMENT_REQUESTS_KEY) || '[]');
+        const pending = requests.filter(r => r.targetAccount === currentProfile.id && r.status === 'pending' && (r.type === 'vvip_cashless' || r.type === 'sovereign_payment'));
+        if (pending.length > 0 && !document.getElementById('vvipModalOverlay').classList.contains('active')) {
+            await handleSovereignPayment(pending[pending.length-1]);
+        }
+    }
+
+    // ========== INITIALISE PAGE ==========
+    async function init() {
+        const ok = await loadCurrentUserAndProfile();
+        if (!ok) return;
         updateWalletDisplay();
-        request.status = 'completed';
-        await showVVIPInfo("Payment Approved", `R${request.amount.toFixed(2)} deducted from your treasury.`, "success");
-      }
-    } else {
-      await showVVIPInfo("Insufficient Funds", "Not enough balance.", "error");
-      request.status = 'rejected';
+        renderVVIPBand();
+
+        document.getElementById('printVVIPBandBtn')?.addEventListener('click', printVVIPBand);
+        document.getElementById('howToPayBtn')?.addEventListener('click', async () => {
+            await showVVIPModal({
+                title: "⚜️ THE SOVEREIGN'S CASHLESS DECREE ⚜️",
+                message: "At any VVIP POS or Kiosk:\n\n1️⃣ Present your QR wristband (Imperial Seal).\n2️⃣ The system will recognize your Sovereign tier.\n3️⃣ Amount is deducted instantly from your Rands Wallet.\n4️⃣ Receive real-time throne notification.\n\n✨ Benefits: No queues, exclusive limits, VIP treatment.\n👑 Access includes: Royal Bars, Designer Shops, VIP Lounges, Fast Lane.",
+                icon: '<i class="fas fa-crown"></i>',
+                iconClass: 'crown-gold',
+                showCancel: false,
+                confirmText: "I Acknowledge"
+            });
+        });
+        document.getElementById('requestServiceBtn')?.addEventListener('click', openServiceRequestModal);
+        document.getElementById('submitServiceRequest')?.addEventListener('click', sendServiceRequest);
+        document.getElementById('cancelServiceRequest')?.addEventListener('click', closeServiceRequestModal);
+
+        setInterval(checkForSovereignPayments, 4000);
     }
-    localStorage.setItem(PAYMENT_REQUESTS_KEY, JSON.stringify(requests));
-  }
 
-  async function checkForSovereignPayments() {
-    if (!currentProfile) return;
-    const requests = JSON.parse(localStorage.getItem(PAYMENT_REQUESTS_KEY) || '[]');
-    const pending = requests.filter(r => r.targetAccount === currentProfile.id && r.status === 'pending' && (r.type === 'vvip_cashless' || r.type === 'sovereign_payment'));
-    if (pending.length > 0 && !document.getElementById('vvipModalOverlay').classList.contains('active')) {
-      await handleSovereignPayment(pending[pending.length-1]);
-    }
-  }
+    init();
 
-  // ========== INITIALISE PAGE ==========
-  async function init() {
-    const ok = await loadCurrentUserAndProfile();
-    if (!ok) return;
-    updateWalletDisplay();
-    renderVVIPBand();
-
-    // Attach event listeners
-    document.getElementById('printVVIPBandBtn')?.addEventListener('click', printVVIPBand);
-    document.getElementById('howToPayBtn')?.addEventListener('click', async () => {
-      await showVVIPModal({
-        title: "⚜️ THE SOVEREIGN'S CASHLESS DECREE ⚜️",
-        message: "At any VVIP POS or Kiosk:\n\n1️⃣ Present your QR wristband (Imperial Seal).\n2️⃣ The system will recognize your Sovereign tier.\n3️⃣ Amount is deducted instantly from your Rands Wallet.\n4️⃣ Receive real-time throne notification.\n\n✨ Benefits: No queues, exclusive limits, VIP treatment.\n👑 Access includes: Royal Bars, Designer Shops, VIP Lounges, Fast Lane.",
-        icon: '<i class="fas fa-crown"></i>',
-        iconClass: 'crown-gold',
-        showCancel: false,
-        confirmText: "I Acknowledge"
-      });
-    });
-    document.getElementById('requestServiceBtn')?.addEventListener('click', openServiceRequestModal);
-    document.getElementById('submitServiceRequest')?.addEventListener('click', sendServiceRequest);
-    document.getElementById('cancelServiceRequest')?.addEventListener('click', closeServiceRequestModal);
-
-    setInterval(checkForSovereignPayments, 4000);
-  }
-
-  init();
-
-  // ========== BOTTOM NAVIGATION (same as before) ==========
-  fetch('bottom-nav.html')
-    .then(res => res.ok ? res.text() : Promise.reject())
-    .then(html => {
-      const container = document.getElementById('bottom-nav-container');
-      if (container) container.innerHTML = html;
-    })
-    .catch(err => console.warn('Bottom nav load failed:', err));
+    // ========== BOTTOM NAVIGATION ==========
+    fetch('bottom-nav.html')
+        .then(res => res.ok ? res.text() : Promise.reject())
+        .then(html => {
+            const container = document.getElementById('bottom-nav-container');
+            if (container) container.innerHTML = html;
+        })
+        .catch(err => console.warn('Bottom nav load failed:', err));
 </script>
 </body>
 </html>
