@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>Event Manager + Wallet Management | Supabase Live</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  /* ========== EXISTING & NEW STYLES (unchanged design) ========== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: transparent;
+    padding: 0;
+  }
+  .module-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .stats-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: white;
+    border-radius: 24px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    border: 1px solid #edf2f7;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .stat-card::before { content: ''; width: 4px; background: #E30613; border-radius: 4px; height: 40px; }
+  .stat-icon { font-size: 1.8rem; color: #E30613; width: 50px; text-align: center; }
+  .stat-info { flex: 1; }
+  .stat-value { font-size: 1.6rem; font-weight: 800; color: #0b1a2f; line-height: 1.2; }
+  .stat-label { color: #6c7a8e; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; }
+
+  .wallet-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .wallet-stat-card {
+    background: white;
+    border-radius: 24px;
+    padding: 16px 12px;
+    text-align: center;
+    border: 1px solid #edf2f7;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  }
+  .wallet-stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #E30613;
+    margin-bottom: 4px;
+  }
+  .wallet-stat-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #6c7a8e;
+    text-transform: uppercase;
+  }
+
+  .dashboard-card {
+    background: white;
+    border-radius: 28px;
+    border: 1px solid #edf2f7;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #eff3f8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .card-header h3 { font-size: 0.9rem; font-weight: 700; color: #0b1a2f; display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 20px; }
+  .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  .action-btn {
+    padding: 8px 16px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    cursor: pointer;
+    background: #f1f4f9;
+    color: #1f2a48;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s;
+  }
+  .action-btn:active { transform: scale(0.96); }
+  .action-btn.primary { background: #E30613; color: white; border: none; }
+  .action-btn.danger { background: #b71c1c; color: white; border: none; }
+  .action-btn.warning { background: #ff9800; color: #1a1a1a; border: none; }
+  .action-btn.info { background: #2196f3; color: white; border: none; }
+  .action-btn.secondary { background: #10b981; color: white; border: none; }
+
+  .search-input {
+    background: #f8fafd;
+    border-radius: 50px;
+    padding: 12px 18px;
+    border: 1px solid #e2e8f0;
+    width: 100%;
+    font-size: 0.85rem;
+    margin-bottom: 20px;
+  }
+
+  .wallet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+  .wallet-card {
+    background: white;
+    border-radius: 24px;
+    border: 1px solid #edf2f7;
+    padding: 16px;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .wallet-card.blocked {
+    opacity: 0.7;
+    background: #fef2f2;
+    border-left: 4px solid #b71c1c;
+  }
+  .wallet-avatar {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #E30613, #b71c1c);
+    border-radius: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.4rem;
+    margin-bottom: 12px;
+  }
+  .wallet-name {
+    font-weight: 800;
+    font-size: 1rem;
+    color: #0b1a2f;
+  }
+  .wallet-email {
+    font-size: 0.7rem;
+    color: #6c7a8e;
+    margin-top: 2px;
+  }
+  .wallet-balance {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #E30613;
+    margin: 12px 0 8px;
+  }
+  .wallet-status {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 50px;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+  .status-active { background: #e6f7ec; color: #2e7d32; }
+  .status-blocked { background: #ffebee; color: #b71c1c; }
+  .wallet-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .wallet-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 40px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    background: #f1f4f9;
+    color: #1f2a48;
+    transition: all 0.2s;
+  }
+  .wallet-btn.primary { background: #E30613; color: white; }
+  .wallet-btn.success { background: #10b981; color: white; }
+  .wallet-btn.warning { background: #ff9800; color: white; }
+  .wallet-btn:active { transform: scale(0.96); }
+
+  .transaction-history-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .transaction-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #eff3f8;
+    font-size: 0.8rem;
+  }
+
+  .event-card-full {
+    background: white;
+    border-radius: 28px;
+    overflow: hidden;
+    border: 1px solid rgba(227,6,19,0.2);
+    margin-bottom: 24px;
+  }
+  .event-banner-full { height: 140px; background: #E30613; background-size: contain; background-position: center; background-repeat: no-repeat; display: flex; align-items: flex-end; justify-content: flex-end; padding: 12px; }
+  .event-status-badge-full {
+    padding: 6px 16px;
+    border-radius: 40px;
+    font-size: 12px;
+    font-weight: 800;
+    background: rgba(0,0,0,0.75);
+    color: white;
+  }
+  .event-status-badge-full.active { background: #E30613; }
+  .event-content-full { padding: 20px; }
+  .event-title-full { font-size: 1.3rem; font-weight: 800; color: #E30613; margin-bottom: 12px; }
+  .detail-item-full { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #475569; margin-bottom: 8px; }
+  .ticket-types-full { background: #fef2f2; border-radius: 24px; padding: 16px; margin: 18px 0; }
+  .ticket-row-full { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(227,6,19,0.12); flex-wrap: wrap; gap: 8px; }
+  .stats-row-full { display: flex; gap: 20px; margin: 16px 0; justify-content: space-around; text-align: center; }
+  .stat-number-full { font-size: 1.5rem; font-weight: 800; color: #E30613; }
+  .event-actions-full { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+  .action-btn-full {
+    padding: 12px 6px;
+    border-radius: 60px;
+    font-weight: 700;
+    font-size: 0.75rem;
+    background: #f1f5f9;
+    color: #1f2a48;
+    border: none;
+    cursor: pointer;
+  }
+  .action-btn-full.view { background: #10b981; color: white; }
+  .action-btn-full.edit { background: #E30613; color: white; }
+  .action-btn-full.delete { background: #6b7280; color: white; }
+  .action-btn-full.duplicate { background: #3b82f6; color: white; }
+  .topup-section {
+    background: #f8fafd;
+    border-radius: 24px;
+    padding: 16px;
+    margin-bottom: 20px;
+    border: 1px solid #eef2f8;
+  }
+  .topup-title { color: #E30613; margin-bottom: 12px; font-size: 0.8rem; font-weight: 700; }
+  .transaction-list { max-height: 280px; overflow-y: auto; }
+  .empty-state { text-align: center; padding: 30px; color: #6c7a8e; }
+
+  .modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 3000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal.active { display: flex; }
+  .modal-content {
+    background: white;
+    border-radius: 32px;
+    padding: 24px;
+    max-width: 500px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .modal-header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #f0f2f5; padding-bottom: 12px; }
+  .modal-header h3 { color: #E30613; font-size: 1.3rem; font-weight: 800; }
+  .modal-footer { display: flex; gap: 12px; margin-top: 20px; }
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 60px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .modal-btn.confirm { background: #E30613; color: white; }
+  .modal-btn.cancel { background: #f1f5f9; color: #1f2a48; border: 1px solid #e2e8f0; }
+  .topup-input {
+    padding: 12px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 50px;
+    font-size: 0.85rem;
+    width: 100%;
+    margin-bottom: 12px;
+  }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    background: #1e2a3a;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 60px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    z-index: 2000;
+    font-size: 0.8rem;
+    justify-content: center;
+  }
+  .toast.show { display: flex; animation: slideUp 0.3s ease; }
+  .toast.success { background: #2e7d32; }
+  .toast.error { background: #b71c1c; }
+  .toast.warning { background: #ff9800; }
+  @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @media (max-width: 700px) {
+    .wallet-stats-row { grid-template-columns: 1fr 1fr; }
+    .wallet-grid { grid-template-columns: 1fr; }
+  }
+  .ticket-type-toggle { margin-bottom: 10px; border: 1px solid #edf2f7; border-radius: 24px; overflow: hidden; }
+  .ticket-header { display: flex; justify-content: space-between; padding: 12px; background: #f8fafc; cursor: pointer; font-weight: 600; }
+  .ticket-fields { display: none; padding: 12px; background: white; flex-direction: column; gap: 8px; }
+  .ticket-fields.active { display: flex; }
+
+  /* Auth loading overlay (optional) */
+  .auth-checking {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    font-family: 'Inter', sans-serif;
+    color: #E30613;
+  }
+</style>
+</head>
+<body>
+<div class="module-container" id="mainContent" style="display: none;">
+  <!-- Original stats -->
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-ticket-alt"></i></div><div class="stat-info"><div class="stat-value" id="totalTickets">0</div><div class="stat-label">Tickets Sold</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-calendar-check"></i></div><div class="stat-info"><div class="stat-value" id="totalEvents">0</div><div class="stat-label">Active Events</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-info"><div class="stat-value" id="totalTicketHolders">0</div><div class="stat-label">Ticket Holders</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-info"><div class="stat-value" id="totalRevenue">R0</div><div class="stat-label">Revenue</div></div></div>
+  </div>
+
+  <!-- Wallet stats -->
+  <div class="wallet-stats-row">
+    <div class="wallet-stat-card"><div class="wallet-stat-value" id="totalWalletUsers">0</div><div class="wallet-stat-label">Total Wallet Users</div></div>
+    <div class="wallet-stat-card"><div class="wallet-stat-value" id="totalWalletBalance">R0</div><div class="wallet-stat-label">Total Balance</div></div>
+    <div class="wallet-stat-card"><div class="wallet-stat-value" id="blockedWalletsCount">0</div><div class="wallet-stat-label">Blocked Wallets</div></div>
+    <div class="wallet-stat-card"><div class="wallet-stat-value" id="topupsToday">0</div><div class="wallet-stat-label">Top Ups Today</div></div>
+  </div>
+
+  <!-- Event management section -->
+  <div id="fullEventCardContainer"></div>
+
+  <div class="dashboard-card">
+    <div class="card-header"><h3><i class="fas fa-calendar-alt"></i> Event Management</h3><button class="action-btn primary" onclick="window.openAddEventModal()"><i class="fas fa-plus"></i> Add Event</button></div>
+    <div class="card-body">
+      <div class="action-buttons">
+        <button class="action-btn danger" onclick="window.deleteSelectedEvent()"><i class="fas fa-trash-alt"></i> Delete Selected</button>
+        <button class="action-btn warning" onclick="window.openEditTicketModal()"><i class="fas fa-edit"></i> Edit Tickets</button>
+        <button class="action-btn info" onclick="window.refreshTickets()"><i class="fas fa-sync-alt"></i> Refresh</button>
+      </div>
+      <div id="selectedEventInfo" style="background:#f8fafd; border-radius:20px; padding:14px; margin-bottom:20px; display:none;">
+        <div><span>Event:</span><span style="color:#E30613; font-weight:700;" id="selEventName">-</span></div>
+        <div><span>Date:</span><span id="selEventDate">-</span></div>
+        <div><span>Location:</span><span id="selEventLocation">-</span></div>
+      </div>
+      <div class="topup-section">
+        <div class="topup-title"><i class="fas fa-chart-simple"></i> Ticket Inventory</div>
+        <div id="ticketInventory" class="transaction-list"></div>
+      </div>
+      <div><div style="color:#E30613; font-weight:700; margin-bottom:10px;"><i class="fas fa-users"></i> Ticket Purchases</div><div id="eventPurchases" class="transaction-list"></div></div>
+    </div>
+  </div>
+
+  <!-- Customer Wallets Section -->
+  <div class="dashboard-card">
+    <div class="card-header"><h3><i class="fas fa-wallet"></i> Customer Wallets</h3><button class="action-btn secondary" onclick="window.refreshWallets()"><i class="fas fa-sync-alt"></i> Refresh</button></div>
+    <div class="card-body">
+      <input type="text" id="walletSearchInput" class="search-input" placeholder="🔍 Search by customer name...">
+      <div id="walletsList" class="wallet-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Top Up Modal -->
+<div class="modal" id="topUpModal">
+  <div class="modal-content">
+    <div class="modal-header"><h3><i class="fas fa-coins"></i> Top Up Wallet</h3></div>
+    <div class="modal-body">
+      <div style="text-align:center; margin-bottom:16px;"><strong>Customer:</strong> <span id="topUpCustomerName"></span></div>
+      <div style="text-align:center; margin-bottom:16px;">Current Balance: <strong style="color:#E30613;" id="topUpCurrentBalance">R0</strong></div>
+      <input type="number" id="topUpAmount" class="topup-input" placeholder="Amount (R)" step="0.01" min="1">
+      <input type="text" id="topUpReason" class="topup-input" placeholder="Reason (optional)">
+      <div id="topUpLoading" style="display:none; text-align:center;">Processing...</div>
+    </div>
+    <div class="modal-footer"><button class="modal-btn confirm" onclick="window.confirmTopUp()">Confirm Top Up</button><button class="modal-btn cancel" onclick="window.closeTopUpModal()">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Transaction History Modal -->
+<div class="modal" id="transactionsModal">
+  <div class="modal-content">
+    <div class="modal-header"><h3><i class="fas fa-history"></i> Transaction History</h3></div>
+    <div class="modal-body">
+      <div id="transactionsList" class="transaction-history-list"></div>
+    </div>
+    <div class="modal-footer"><button class="modal-btn cancel" onclick="window.closeTransactionsModal()">Close</button></div>
+  </div>
+</div>
+
+<!-- Add Event Modal -->
+<div class="modal" id="addEventModal">
+  <div class="modal-content">
+    <div class="modal-header"><h3><i class="fas fa-calendar-plus"></i> Create New Event</h3></div>
+    <div class="modal-body">
+      <input type="text" id="newEventName" placeholder="Event name" class="topup-input">
+      <input type="date" id="newEventDate" class="topup-input">
+      <input type="text" id="newEventLocation" placeholder="Location" class="topup-input" value="Rands Cape Town">
+      <div class="ticket-type-toggle"><div class="ticket-header" onclick="window.toggleTicketFields('earlyBird')"><div><i class="fas fa-clock"></i> 🐦 Early Bird</div><div class="toggle-icon"><i class="fas fa-chevron-down"></i></div></div><div class="ticket-fields" id="earlyBirdFields"><input type="number" id="newEarlyBirdPrice" placeholder="Price (R)" class="topup-input"><input type="number" id="newEarlyBirdCapacity" placeholder="Capacity" class="topup-input"></div></div>
+      <div class="ticket-type-toggle"><div class="ticket-header" onclick="window.toggleTicketFields('general')"><div><i class="fas fa-users"></i> 🎟️ General Admission</div><div class="toggle-icon"><i class="fas fa-chevron-down"></i></div></div><div class="ticket-fields" id="generalFields"><input type="number" id="newGeneralPrice" placeholder="Price (R)" class="topup-input"><input type="number" id="newGeneralCapacity" placeholder="Capacity" class="topup-input"></div></div>
+      <div class="ticket-type-toggle"><div class="ticket-header" onclick="window.toggleTicketFields('vip')"><div><i class="fas fa-crown"></i> 👑 VIP Experience</div><div class="toggle-icon"><i class="fas fa-chevron-down"></i></div></div><div class="ticket-fields" id="vipFields"><input type="number" id="newVipPrice" placeholder="Price (R)" class="topup-input"><input type="number" id="newVipCapacity" placeholder="Capacity" class="topup-input"></div></div>
+    </div>
+    <div class="modal-footer"><button class="modal-btn confirm" onclick="window.confirmAddEvent()">Create Event</button><button class="modal-btn cancel" onclick="window.closeAddEventModal()">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Edit Ticket Modal -->
+<div class="modal" id="editTicketModal">
+  <div class="modal-content">
+    <div class="modal-header"><h3><i class="fas fa-edit"></i> Edit Tickets</h3><p id="editEventNameDisplay" style="font-size:0.7rem;"></p></div>
+    <div class="modal-body">
+      <div><label>Early Bird</label><div style="display:flex; gap:8px;"><input type="number" id="editEarlyBirdPrice" placeholder="Price" class="topup-input"><input type="number" id="editEarlyBirdCapacity" placeholder="Capacity" class="topup-input"></div></div>
+      <div><label>General</label><div style="display:flex; gap:8px;"><input type="number" id="editGeneralPrice" placeholder="Price" class="topup-input"><input type="number" id="editGeneralCapacity" placeholder="Capacity" class="topup-input"></div></div>
+      <div><label>VIP</label><div style="display:flex; gap:8px;"><input type="number" id="editVipPrice" placeholder="Price" class="topup-input"><input type="number" id="editVipCapacity" placeholder="Capacity" class="topup-input"></div></div>
+    </div>
+    <div class="modal-footer"><button class="modal-btn confirm" onclick="window.confirmEditTickets()">Save</button><button class="modal-btn cancel" onclick="window.closeEditTicketModal()">Cancel</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"><span id="toastIcon">✅</span><span id="toastMessage">Success!</span></div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  // ========== AUTH GUARD ==========
+  (async function checkAuth() {
+    // Show a loading indicator while checking auth
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'auth-checking';
+    loadingDiv.innerHTML = '<div><i class="fas fa-spinner fa-pulse" style="font-size: 2rem;"></i><p>Checking authentication...</p></div>';
+    document.body.appendChild(loadingDiv);
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        // No active session – redirect to login page
+        window.location.href = '../login.html';
+        return;
+      }
+
+      // Optional: Check for admin role in profiles table
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError || !profile || profile.role !== 'admin') {
+        // Not an admin – sign out and redirect to login
+        await supabase.auth.signOut();
+        window.location.href = '../login.html?error=unauthorized';
+        return;
+      }
+
+      // Authentication successful – remove loader and show content
+      loadingDiv.remove();
+      document.getElementById('mainContent').style.display = 'block';
+      
+      // Now initialize the dashboard
+      initDashboard();
+      
+    } catch (err) {
+      console.error('Auth check error:', err);
+      window.location.href = '../login.html';
+    }
+  })();
+
+  // ========== GLOBALS ==========
+  let events = [];        // enriched events: { id, name, date, location, status, ticketTypes: { earlyBird: {price, capacity, sold, id}, ... } }
+  let selectedEventId = null;
+  let allWallets = [];
+  let currentTopUpWallet = null;
+
+  // ========== HELPER FUNCTIONS ==========
+  function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+  
+  function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toastIcon').innerText = type === 'success' ? '✅' : (type === 'error' ? '❌' : '⚠️');
+    document.getElementById('toastMessage').innerText = message;
+    toast.className = `toast ${type === 'success' ? 'success' : (type === 'error' ? 'error' : 'warning')} show`;
+    setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  // ========== DATABASE QUERIES ==========
+  async function fetchEventWithTicketTypesAndSold(eventId) {
+    const { data: ticketTypes, error: ttErr } = await supabase
+      .from('ticket_types')
+      .select('id, name, price, capacity')
+      .eq('event_id', eventId);
+    if (ttErr) throw ttErr;
+    
+    const ticketTypeIds = ticketTypes.map(tt => tt.id);
+    let soldMap = {};
+    if (ticketTypeIds.length) {
+      const { data: tickets, error: tErr } = await supabase
+        .from('tickets')
+        .select('ticket_type_id')
+        .in('ticket_type_id', ticketTypeIds);
+      if (!tErr && tickets) {
+        ticketTypeIds.forEach(id => { soldMap[id] = 0; });
+        tickets.forEach(t => { soldMap[t.ticket_type_id] = (soldMap[t.ticket_type_id] || 0) + 1; });
+      }
+    }
+    const ticketTypesObj = {};
+    ticketTypes.forEach(tt => {
+      let typeKey = 'general';
+      if (tt.name.toLowerCase().includes('early')) typeKey = 'earlyBird';
+      else if (tt.name.toLowerCase().includes('vip')) typeKey = 'vip';
+      ticketTypesObj[typeKey] = {
+        id: tt.id,
+        price: tt.price,
+        capacity: tt.capacity,
+        sold: soldMap[tt.id] || 0
+      };
+    });
+    return ticketTypesObj;
+  }
+
+  async function loadEventsFromSupabase() {
+    try {
+      const { data: supEvents, error } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const enrichedEvents = [];
+      for (const ev of supEvents) {
+        const ticketTypes = await fetchEventWithTicketTypesAndSold(ev.id);
+        enrichedEvents.push({
+          id: ev.id,
+          name: ev.name,
+          date: ev.start_time ? ev.start_time.split('T')[0] : new Date().toISOString().split('T')[0],
+          location: ev.location || 'Rands Cape Town',
+          status: ev.status || 'active',
+          ticketTypes: ticketTypes
+        });
+      }
+      console.log('✅ events loaded:', enrichedEvents.length);
+      return enrichedEvents;
+    } catch (err) {
+      console.error(err);
+      showToast(err.message, 'error');
+      return [];
+    }
+  }
+
+  async function updateStats() {
+    if (!events.length) return;
+    let totalTicketsSold = 0;
+    let totalRevenue = 0;
+    const ticketHolderIds = new Set();
+    for (const ev of events) {
+      for (const typeKey of ['earlyBird', 'general', 'vip']) {
+        const tt = ev.ticketTypes[typeKey];
+        if (tt && tt.sold) {
+          totalTicketsSold += tt.sold;
+          totalRevenue += tt.sold * tt.price;
+        }
+      }
+    }
+    const { data: ticketsData, error: tErr } = await supabase.from('tickets').select('user_id');
+    if (!tErr && ticketsData) {
+      ticketsData.forEach(t => { if (t.user_id) ticketHolderIds.add(t.user_id); });
+    }
+    document.getElementById('totalTickets').innerText = totalTicketsSold;
+    document.getElementById('totalEvents').innerText = events.filter(e => e.status === 'active').length;
+    document.getElementById('totalTicketHolders').innerText = ticketHolderIds.size;
+    document.getElementById('totalRevenue').innerText = 'R' + totalRevenue.toLocaleString();
+    console.log(`📊 Stats: sold=${totalTicketsSold}, revenue=${totalRevenue}, holders=${ticketHolderIds.size}`);
+  }
+
+  async function renderTicketInventory() {
+    const container = document.getElementById('ticketInventory');
+    if (!selectedEventId) { container.innerHTML = '<div class="empty-state">Select an event</div>'; return; }
+    const ev = events.find(e => e.id === selectedEventId);
+    if (!ev) return;
+    const types = [
+      { key: 'earlyBird', label: '🐦 Early Bird' },
+      { key: 'general', label: '🎟️ General' },
+      { key: 'vip', label: '👑 VIP' }
+    ];
+    let html = '';
+    for (const t of types) {
+      const data = ev.ticketTypes[t.key];
+      if (data && data.capacity > 0) {
+        const left = data.capacity - data.sold;
+        html += `<div class="transaction-item"><div><i class="fas fa-ticket-alt"></i> ${t.label}</div><div>R${data.price} | Cap: ${data.capacity}</div><div class="amount-positive">Sold: ${data.sold} | Left: ${left}</div></div>`;
+      }
+    }
+    container.innerHTML = html || '<div class="empty-state">No ticket types configured</div>';
+  }
+
+  async function renderEventPurchases() {
+    const container = document.getElementById('eventPurchases');
+    if (!selectedEventId) { container.innerHTML = '<div class="empty-state">Select an event</div>'; return; }
+    const ev = events.find(e => e.id === selectedEventId);
+    if (!ev) return;
+    const ticketTypeIds = Object.values(ev.ticketTypes).map(tt => tt.id).filter(Boolean);
+    if (!ticketTypeIds.length) { container.innerHTML = '<div class="empty-state">No tickets purchased yet</div>'; return; }
+    const { data: ticketsPurchased, error } = await supabase
+      .from('tickets')
+      .select(`
+        id,
+        ticket_code,
+        purchase_date,
+        ticket_type_id,
+        user_id,
+        ticket_types!inner (name, price)
+      `)
+      .in('ticket_type_id', ticketTypeIds)
+      .order('purchase_date', { ascending: false });
+    if (error) { console.error(error); container.innerHTML = '<div class="empty-state">Error loading purchases</div>'; return; }
+    if (!ticketsPurchased.length) { container.innerHTML = '<div class="empty-state">No tickets purchased</div>'; return; }
+    container.innerHTML = ticketsPurchased.map(t => {
+      const ticketTypeName = t.ticket_types?.name || 'Ticket';
+      const price = t.ticket_types?.price || 0;
+      return `<div class="transaction-item"><div><i class="fas fa-user"></i> ${escapeHtml(ticketTypeName)}</div><div>Code: ${t.ticket_code?.slice(-8) || 'N/A'}</div><div class="amount-positive">R${price.toFixed(2)}</div></div>`;
+    }).join('');
+    console.log(`🎟️ Loaded ${ticketsPurchased.length} purchases for event ${ev.name}`);
+  }
+
+  async function refreshTickets() {
+    events = await loadEventsFromSupabase();
+    await updateStats();
+    renderFullEventCard();
+    if (events.length && !selectedEventId) { selectedEventId = events[0].id; selectEvent(selectedEventId); }
+    else if (selectedEventId && events.find(e => e.id === selectedEventId)) await selectEvent(selectedEventId);
+    showToast('Events & tickets refreshed from database', 'success');
+  }
+
+  function renderFullEventCard() {
+    const container = document.getElementById('fullEventCardContainer');
+    if (!events.length) { container.innerHTML = '<div class="empty-state" style="background:white; border-radius:28px; padding:30px;"><i class="fas fa-calendar-times" style="font-size:48px; color:#E30613;"></i><p>No events yet. Click "Add Event"</p></div>'; return; }
+    const event = selectedEventId ? events.find(e => e.id === selectedEventId) : events[0];
+    if (!event) return;
+    const totalSold = (event.ticketTypes.earlyBird?.sold || 0) + (event.ticketTypes.general?.sold || 0) + (event.ticketTypes.vip?.sold || 0);
+    const totalCap = (event.ticketTypes.earlyBird?.capacity || 0) + (event.ticketTypes.general?.capacity || 0) + (event.ticketTypes.vip?.capacity || 0);
+    const percent = totalCap ? Math.round((totalSold / totalCap) * 100) : 0;
+    container.innerHTML = `<div class="event-card-full"><div class="event-banner-full"><span class="event-status-badge-full active">LIVE</span></div><div class="event-content-full"><div class="event-title-full">${escapeHtml(event.name)}</div><div class="detail-item-full"><i class="fas fa-calendar-alt"></i> ${event.date || 'TBD'}</div><div class="detail-item-full"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(event.location)}</div><div class="ticket-types-full">${event.ticketTypes.earlyBird ? `<div class="ticket-row-full"><span>🎟️ Early Bird</span><span>R${event.ticketTypes.earlyBird.price}</span><span>${event.ticketTypes.earlyBird.sold} sold</span></div>` : ''}${event.ticketTypes.general ? `<div class="ticket-row-full"><span>👥 General Admission</span><span>R${event.ticketTypes.general.price}</span><span>${event.ticketTypes.general.sold} sold</span></div>` : ''}${event.ticketTypes.vip ? `<div class="ticket-row-full"><span>👑 VIP Experience</span><span>R${event.ticketTypes.vip.price}</span><span>${event.ticketTypes.vip.sold} sold</span></div>` : ''}</div><div class="stats-row-full"><div class="stat-number-full">${totalSold}</div><div class="stat-number-full">${totalCap - totalSold}</div><div class="stat-number-full">${percent}%</div></div><div class="event-actions-full"><button class="action-btn-full view" onclick="window.viewEventDetails('${event.id}')"><i class="fas fa-eye"></i> View</button><button class="action-btn-full edit" onclick="window.openEditTicketModalById('${event.id}')"><i class="fas fa-edit"></i> Edit</button><button class="action-btn-full delete" onclick="window.deleteSelectedEventById('${event.id}')"><i class="fas fa-trash"></i> Delete</button><button class="action-btn-full duplicate" onclick="window.duplicateEvent('${event.id}')"><i class="fas fa-copy"></i> Duplicate</button></div></div></div>`;
+  }
+
+  async function selectEvent(eventId) {
+    selectedEventId = eventId;
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
+    document.getElementById('selectedEventInfo').style.display = 'block';
+    document.getElementById('selEventName').innerText = ev.name;
+    document.getElementById('selEventDate').innerText = ev.date;
+    document.getElementById('selEventLocation').innerText = ev.location || 'TBA';
+    await renderTicketInventory();
+    await renderEventPurchases();
+    renderFullEventCard();
+  }
+
+  // ========== EVENT CRUD (using Supabase tables) ==========
+  async function confirmAddEvent() {
+    const name = document.getElementById('newEventName').value;
+    const date = document.getElementById('newEventDate').value;
+    const location = document.getElementById('newEventLocation').value.trim() || 'Rands Cape Town';
+    if (!name || !date) { showToast('Event name and date required', 'error'); return; }
+    const ebPrice = parseFloat(document.getElementById('newEarlyBirdPrice').value);
+    const ebCap = parseInt(document.getElementById('newEarlyBirdCapacity').value);
+    const genPrice = parseFloat(document.getElementById('newGeneralPrice').value);
+    const genCap = parseInt(document.getElementById('newGeneralCapacity').value);
+    const vipPrice = parseFloat(document.getElementById('newVipPrice').value);
+    const vipCap = parseInt(document.getElementById('newVipCapacity').value);
+    
+    const { data: newEvent, error: evErr } = await supabase.from('events').insert([{
+      name, location, start_time: date, status: 'active', description: 'Created via admin'
+    }]).select().single();
+    if (evErr) { showToast('DB error: ' + evErr.message, 'error'); return; }
+    const ticketInserts = [];
+    if (ebPrice && ebCap) ticketInserts.push({ event_id: newEvent.id, name: 'earlyBird', price: ebPrice, capacity: ebCap });
+    if (genPrice && genCap) ticketInserts.push({ event_id: newEvent.id, name: 'general', price: genPrice, capacity: genCap });
+    if (vipPrice && vipCap) ticketInserts.push({ event_id: newEvent.id, name: 'vip', price: vipPrice, capacity: vipCap });
+    if (ticketInserts.length) {
+      const { error: ttErr } = await supabase.from('ticket_types').insert(ticketInserts);
+      if (ttErr) console.warn('Ticket types insert error', ttErr);
+    }
+    showToast(`Event "${name}" created`, 'success');
+    await refreshTickets();
+    window.closeAddEventModal();
+    document.getElementById('newEventName').value = '';
+    document.getElementById('newEventDate').value = '';
+    ['newEarlyBirdPrice','newEarlyBirdCapacity','newGeneralPrice','newGeneralCapacity','newVipPrice','newVipCapacity'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = ''; });
+  }
+
+  async function deleteSelectedEventById(id) {
+    if (!confirm('Delete this event permanently? This will delete all ticket types and tickets.')) return;
+    const { error } = await supabase.from('events').delete().eq('id', id);
+    if (error) { showToast(error.message, 'error'); return; }
+    if (selectedEventId === id) selectedEventId = null;
+    await refreshTickets();
+    showToast('Event deleted', 'success');
+  }
+
+  async function confirmEditTickets() {
+    if (!selectedEventId) return;
+    const ev = events.find(e => e.id === selectedEventId);
+    const updates = [
+      { key: 'earlyBird', price: parseFloat(document.getElementById('editEarlyBirdPrice').value), cap: parseInt(document.getElementById('editEarlyBirdCapacity').value) },
+      { key: 'general', price: parseFloat(document.getElementById('editGeneralPrice').value), cap: parseInt(document.getElementById('editGeneralCapacity').value) },
+      { key: 'vip', price: parseFloat(document.getElementById('editVipPrice').value), cap: parseInt(document.getElementById('editVipCapacity').value) }
+    ];
+    for (const u of updates) {
+      const existing = ev.ticketTypes[u.key];
+      if (existing && u.price && u.cap) {
+        await supabase.from('ticket_types').update({ price: u.price, capacity: u.cap }).eq('id', existing.id);
+      } else if (!existing && u.price && u.cap) {
+        await supabase.from('ticket_types').insert({ event_id: selectedEventId, name: u.key, price: u.price, capacity: u.cap });
+      }
+    }
+    showToast('Ticket types updated', 'success');
+    await refreshTickets();
+    window.closeEditTicketModal();
+  }
+
+  async function duplicateEvent(id) {
+    const original = events.find(e => e.id === id);
+    if (!original) return;
+    const { data: newEvent, error } = await supabase.from('events').insert([{
+      name: original.name + " (Copy)",
+      location: original.location,
+      start_time: original.date,
+      status: 'active'
+    }]).select().single();
+    if (error) { showToast(error.message, 'error'); return; }
+    for (const [key, tt] of Object.entries(original.ticketTypes)) {
+      if (tt.price && tt.capacity) {
+        await supabase.from('ticket_types').insert({ event_id: newEvent.id, name: key, price: tt.price, capacity: tt.capacity });
+      }
+    }
+    await refreshTickets();
+    showToast(`Event duplicated: ${newEvent.name}`, 'success');
+  }
+
+  // Wallet functions (unchanged, already Supabase)
+  async function loadWalletStats() { 
+    try {
+      const { data: wallets } = await supabase.from('wallets').select('balance, status');
+      if (!wallets) return;
+      const totalBalance = wallets.reduce((s,w)=>s+(w.balance||0),0);
+      const blockedCount = wallets.filter(w=>w.status==='blocked').length;
+      document.getElementById('totalWalletUsers').innerText = wallets.length;
+      document.getElementById('totalWalletBalance').innerText = 'R' + totalBalance.toLocaleString();
+      document.getElementById('blockedWalletsCount').innerText = blockedCount;
+      const today = new Date().toISOString().split('T')[0];
+      const { data: topups } = await supabase.from('wallet_transactions').select('created_at').eq('type','credit').gte('created_at', today);
+      document.getElementById('topupsToday').innerText = topups?.length || 0;
+    } catch(e) { console.error(e); }
+  }
+  async function loadWallets() { 
+    const { data, error } = await supabase.from('wallets').select(`id,balance,status,created_at,user_id,profiles:user_id(id,name)`);
+    if(error) throw error;
+    allWallets = (data||[]).map(w=>({ id:w.id, userId:w.user_id, customerName:w.profiles?.name||'Unknown', balance:w.balance||0, status:w.status||'active', createdAt:w.created_at }));
+    renderWallets(); loadWalletStats();
+  }
+  function renderWallets() { 
+    const term = document.getElementById('walletSearchInput').value.toLowerCase();
+    const filtered = allWallets.filter(w=>w.customerName.toLowerCase().includes(term));
+    const container = document.getElementById('walletsList');
+    if(!filtered.length){ container.innerHTML='<div class="empty-state">No wallets</div>'; return; }
+    container.innerHTML = filtered.map(w=>`<div class="wallet-card ${w.status==='blocked'?'blocked':''}"><div class="wallet-avatar"><i class="fas fa-user-circle"></i></div><div class="wallet-name">${escapeHtml(w.customerName)}</div><div class="wallet-email">—</div><div class="wallet-balance">R${w.balance.toLocaleString()}</div><div><span class="wallet-status ${w.status==='active'?'status-active':'status-blocked'}">${w.status==='active'?'Active':'Blocked'}</span></div><div class="wallet-actions"><button class="wallet-btn primary" onclick="window.openTopUpModal('${w.id}','${escapeHtml(w.customerName)}',${w.balance})">Top Up</button>${w.status==='active'?`<button class="wallet-btn warning" onclick="window.blockWallet('${w.id}')">Block</button>`:`<button class="wallet-btn success" onclick="window.unblockWallet('${w.id}')">Unblock</button>`}<button class="wallet-btn" onclick="window.viewTransactions('${w.id}')">History</button></div></div>`).join('');
+  }
+  window.openTopUpModal = (id,name,balance)=>{ currentTopUpWallet={id,name,balance}; document.getElementById('topUpCustomerName').innerText=name; document.getElementById('topUpCurrentBalance').innerText='R'+balance.toLocaleString(); document.getElementById('topUpAmount').value=''; document.getElementById('topUpReason').value=''; document.getElementById('topUpModal').classList.add('active'); };
+  window.closeTopUpModal = ()=>document.getElementById('topUpModal').classList.remove('active');
+  window.confirmTopUp = async ()=>{ if(!currentTopUpWallet) return; const amount=parseFloat(document.getElementById('topUpAmount').value); if(isNaN(amount)||amount<=0){ showToast('Invalid amount','error'); return; } const reason=document.getElementById('topUpReason').value.trim()||'Manual top-up'; try{ const {data:wallet}=await supabase.from('wallets').select('balance').eq('id',currentTopUpWallet.id).single(); const newBalance=wallet.balance+amount; await supabase.from('wallets').update({balance:newBalance}).eq('id',currentTopUpWallet.id); await supabase.from('wallet_transactions').insert({wallet_id:currentTopUpWallet.id,amount,type:'credit',description:reason,performed_by:'admin'}); showToast(`Top-up R${amount} successful`,'success'); window.closeTopUpModal(); await loadWallets(); }catch(e){ showToast(e.message,'error'); } };
+  window.blockWallet = async (id)=>{ if(!confirm('Block wallet?')) return; await supabase.from('wallets').update({status:'blocked'}).eq('id',id); showToast('Blocked','success'); await loadWallets(); };
+  window.unblockWallet = async (id)=>{ await supabase.from('wallets').update({status:'active'}).eq('id',id); showToast('Unblocked','success'); await loadWallets(); };
+  window.viewTransactions = async (walletId)=>{ const {data}=await supabase.from('wallet_transactions').select('*').eq('wallet_id',walletId).order('created_at',{ascending:false}); const container=document.getElementById('transactionsList'); if(!data?.length) container.innerHTML='<div class="empty-state">No transactions</div>'; else container.innerHTML=data.map(tx=>`<div class="transaction-item"><div><i class="fas ${tx.type==='credit'?'fa-arrow-up':'fa-arrow-down'}"></i> ${tx.type==='credit'?'Credit':'Debit'}</div><div>R${tx.amount.toFixed(2)}</div><div>${new Date(tx.created_at).toLocaleString()}</div><div><small>${escapeHtml(tx.description||'—')}</small></div></div>`).join(''); document.getElementById('transactionsModal').classList.add('active'); };
+  window.closeTransactionsModal = ()=>document.getElementById('transactionsModal').classList.remove('active');
+  window.refreshWallets = async ()=>{ await loadWallets(); showToast('Wallets refreshed','success'); };
+
+  // expose all needed functions
+  window.openAddEventModal = ()=>document.getElementById('addEventModal').classList.add('active');
+  window.closeAddEventModal = ()=>document.getElementById('addEventModal').classList.remove('active');
+  window.confirmAddEvent = confirmAddEvent;
+  window.deleteSelectedEvent = async ()=>{ if(!selectedEventId){ showToast('Select event first','error'); return; } await deleteSelectedEventById(selectedEventId); };
+  window.openEditTicketModal = ()=>{ if(!selectedEventId){ showToast('Select event','error'); return; } const ev=events.find(e=>e.id===selectedEventId); if(ev){ document.getElementById('editEventNameDisplay').innerHTML=ev.name; document.getElementById('editEarlyBirdPrice').value=ev.ticketTypes.earlyBird?.price||''; document.getElementById('editEarlyBirdCapacity').value=ev.ticketTypes.earlyBird?.capacity||''; document.getElementById('editGeneralPrice').value=ev.ticketTypes.general?.price||''; document.getElementById('editGeneralCapacity').value=ev.ticketTypes.general?.capacity||''; document.getElementById('editVipPrice').value=ev.ticketTypes.vip?.price||''; document.getElementById('editVipCapacity').value=ev.ticketTypes.vip?.capacity||''; document.getElementById('editTicketModal').classList.add('active'); } };
+  window.closeEditTicketModal = ()=>document.getElementById('editTicketModal').classList.remove('active');
+  window.confirmEditTickets = confirmEditTickets;
+  window.refreshTickets = refreshTickets;
+  window.viewEventDetails = (id)=>{ const ev=events.find(e=>e.id===id); if(ev) alert(`🎉 ${ev.name}\nDate: ${ev.date}\nSold: ${(ev.ticketTypes.earlyBird?.sold||0)+(ev.ticketTypes.general?.sold||0)+(ev.ticketTypes.vip?.sold||0)}`); };
+  window.duplicateEvent = duplicateEvent;
+  window.deleteSelectedEventById = deleteSelectedEventById;
+  window.openEditTicketModalById = (id)=>{ selectedEventId=id; window.openEditTicketModal(); };
+  window.selectEvent = selectEvent;
+  window.toggleTicketFields = (type)=>{ const f=document.getElementById(`${type}Fields`); if(f) f.classList.toggle('active'); };
+
+  async function initDashboard() {
+    events = await loadEventsFromSupabase();
+    await updateStats();
+    renderFullEventCard();
+    if (events.length) { selectedEventId = events[0].id; await selectEvent(selectedEventId); }
+    await loadWallets();
+    document.getElementById('walletSearchInput').addEventListener('input', ()=>renderWallets());
+  }
+  // initDashboard is called after auth success
+</script>
+</body>
+</html>
