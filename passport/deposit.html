@@ -45,7 +45,6 @@
       position: relative;
     }
 
-    /* X close button (like profile & pay-now) */
     .close-topup-btn {
       position: absolute;
       top: 16px;
@@ -67,6 +66,22 @@
       backdrop-filter: blur(4px);
     }
     .close-topup-btn:active { transform: scale(0.94); background: #f8fafc; }
+
+    /* Rands logo in header */
+    .rands-logo {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      z-index: 20;
+      background: white;
+      border-radius: 50%;
+      padding: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border: 1px solid rgba(227,6,19,0.15);
+    }
 
     .topup-card {
       background: #ffffff;
@@ -399,18 +414,6 @@
       padding: 2px 8px;
       border-radius: 20px;
     }
-    .voucher-code-display {
-      background: #f0fdf4;
-      border-radius: 20px;
-      padding: 12px;
-      text-align: center;
-      font-family: 'Space Mono', monospace;
-      font-weight: 700;
-      color: #E30613;
-      margin-top: 12px;
-      font-size: 0.8rem;
-      border: 1px solid rgba(227,6,19,0.2);
-    }
 
     .btn {
       display: inline-flex;
@@ -641,6 +644,8 @@
 <body>
 <div id="app">
   <div class="topup-container">
+    <!-- Rands logo added (left side) -->
+    <img src="../assets/images/rands-logo.png" alt="Rands" class="rands-logo" @error="e => e.target.style.display = 'none'">
     <div class="close-topup-btn" @click="goHome"><i class="fas fa-times"></i></div>
     <div class="topup-card">
       <div class="topup-header">
@@ -673,36 +678,17 @@
           <button class="btn btn-red" :disabled="topupAmount <= 0" @click="goToStep2">Continue <i class="fas fa-arrow-right"></i></button>
         </div>
 
-        <!-- STEP 2: Payment methods (1Voucher, CapitecPay, Rands Wallet, + Card Payment) -->
+        <!-- STEP 2: Payment methods - Card Payment moved to TOP -->
         <div v-if="currentStep === 2">
           <div class="section-title"><i class="fas fa-credit-card"></i> Select Payment Method</div>
-          <!-- 1Voucher -->
-          <div class="pay-option" :class="{ selected: selectedPayMethod === '1voucher' }" @click="selectedPayMethod = '1voucher'">
-            <div class="pay-option-header"><div class="pay-icon-wrap"><img src="../assets/icons/1voucher-icon.png" @error="handleImageError" alt="1Voucher"></div><div><div class="pay-option-title">1Voucher</div><div class="pay-option-desc">Redeem Airtime, Data or Electricity voucher</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid #E30613;display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === '1voucher'" style="width:12px;height:12px;background:#E30613;border-radius:50%;"></div></div></div></div>
-            <div v-if="selectedPayMethod === '1voucher'" class="pay-option-expand"><label class="field-label">Voucher PIN / Code</label><input type="text" class="field-input" v-model="voucherCode" placeholder="Enter 16-digit voucher PIN" maxlength="20" /><button class="btn btn-red" @click="processVoucherPayment" :disabled="!voucherCode || processing"><i class="fas fa-ticket-alt"></i> {{ processing ? 'Processing...' : 'Redeem Voucher' }}</button></div>
-          </div>
-          <!-- CapitecPay -->
-          <div class="pay-option" :class="{ selected: selectedPayMethod === 'capitecpay' }" @click="selectedPayMethod = 'capitecpay'">
-            <div class="pay-option-header"><div class="pay-icon-wrap"><img src="../assets/icons/capitec.png" @error="handleImageError" alt="CapitecPay"></div><div><div class="pay-option-title">CapitecPay</div><div class="pay-option-desc">Pay via your Capitec banking app</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid #E30613;display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'capitecpay'" style="width:12px;height:12px;background:#E30613;border-radius:50%;"></div></div></div></div>
-            <div v-if="selectedPayMethod === 'capitecpay'" class="pay-option-expand"><label class="field-label">Capitec Mobile Number</label><input type="tel" class="field-input" v-model="capitecNumber" placeholder="+27 XX XXX XXXX" /><button class="btn btn-red" @click="processCapitecPay" :disabled="!capitecNumber || processing"><i class="fas fa-university"></i> {{ processing ? 'Processing...' : 'Pay with CapitecPay' }}</button><p style="font-size:0.65rem; color:#64748b; margin-top:10px; text-align:center;">You'll receive a push notification on your Capitec app</p></div>
-          </div>
-          <!-- Rands Wallet (Request from another user) -->
-          <div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'">
-            <div class="pay-option-header"><div class="pay-icon-wrap"><img src="../assets/icons/wallet-icon.png" @error="handleImageError" alt="Rands Wallet"></div><div><div class="pay-option-title">Rands Wallet</div><div class="pay-option-desc">Request funds from another wallet user</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid #E30613;display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'wallet'" style="width:12px;height:12px;background:#E30613;border-radius:50%;"></div></div></div></div>
-            <div v-if="selectedPayMethod === 'wallet'" class="pay-option-expand">
-              <div class="request-info-card"><i class="fas fa-info-circle"></i><p>This sends a <strong>top-up request</strong> to the other person's Rands Wallet. They will receive a notification and must approve before funds reach your balance.</p></div>
-              <label class="field-label">Their Wallet ID / Phone Number</label>
-              <input type="tel" class="field-input" v-model="requestTargetId" placeholder="e.g. 0635713652" />
-              <div class="field-wrap" style="margin-top:12px;"><label class="field-label">Add a Note (Optional)</label><input type="text" class="field-input" v-model="requestNote" placeholder="e.g. Paying you back for lunch" maxlength="60" /></div>
-              <div class="request-preview" v-if="requestTargetId"><div class="request-preview-row"><span>Requesting from</span><strong>{{ requestTargetId }}</strong></div><div class="request-preview-row"><span>Amount</span><strong style="color:#E30613;">R {{ formatPrice(topupAmount) }}</strong></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Ref</span><span class="request-ref">TU-{{ previewRef }}</span></div></div>
-              <button class="btn btn-blue" @click="proceedWalletStep" :disabled="!requestTargetId"><i class="fas fa-arrow-right"></i> Review Request</button>
-            </div>
-          </div>
-
-          <!-- Card Payment (Yoco) - FIXED: matches Edge Function expected keys -->
+          
+          <!-- Card Payment (Yoco) - NOW FIRST -->
           <div class="pay-option" :class="{ selected: selectedPayMethod === 'yoco' }" @click="selectedPayMethod = 'yoco'">
             <div class="pay-option-header">
-              <div class="pay-icon-wrap"><i class="fas fa-credit-card"></i></div>
+              <div class="pay-icon-wrap">
+                <!-- Updated Yoco icon path -->
+                <img src="../assets/icons/yoco-icon.png" @error="handleImageError" alt="Yoco">
+              </div>
               <div>
                 <div class="pay-option-title">Card Payment</div>
                 <div class="pay-option-desc">Visa, Mastercard, Apple Pay & EFT</div>
@@ -722,6 +708,29 @@
                 <i class="fas fa-arrow-right"></i> {{ yocoProcessing ? 'Redirecting...' : 'Continue to Payment' }}
               </button>
               <p style="font-size:0.65rem; color:#64748b; margin-top:12px; text-align:center;">You will be redirected to a secure Yoco checkout page. Funds added after payment confirmation.</p>
+            </div>
+          </div>
+
+          <!-- 1Voucher -->
+          <div class="pay-option" :class="{ selected: selectedPayMethod === '1voucher' }" @click="selectedPayMethod = '1voucher'">
+            <div class="pay-option-header"><div class="pay-icon-wrap"><img src="../assets/icons/1voucher-icon.png" @error="handleImageError" alt="1Voucher"></div><div><div class="pay-option-title">1Voucher</div><div class="pay-option-desc">Redeem Airtime, Data or Electricity voucher</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid #E30613;display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === '1voucher'" style="width:12px;height:12px;background:#E30613;border-radius:50%;"></div></div></div></div>
+            <div v-if="selectedPayMethod === '1voucher'" class="pay-option-expand"><label class="field-label">Voucher PIN / Code</label><input type="text" class="field-input" v-model="voucherCode" placeholder="Enter 16-digit voucher PIN" maxlength="20" /><button class="btn btn-red" @click="processVoucherPayment" :disabled="!voucherCode || processing"><i class="fas fa-ticket-alt"></i> {{ processing ? 'Processing...' : 'Redeem Voucher' }}</button></div>
+          </div>
+          <!-- CapitecPay -->
+          <div class="pay-option" :class="{ selected: selectedPayMethod === 'capitecpay' }" @click="selectedPayMethod = 'capitecpay'">
+            <div class="pay-option-header"><div class="pay-icon-wrap"><img src="../assets/icons/capitec.png" @error="handleImageError" alt="CapitecPay"></div><div><div class="pay-option-title">CapitecPay</div><div class="pay-option-desc">Pay via your Capitec banking app</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid #E30613;display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'capitecpay'" style="width:12px;height:12px;background:#E30613;border-radius:50%;"></div></div></div></div>
+            <div v-if="selectedPayMethod === 'capitecpay'" class="pay-option-expand"><label class="field-label">Capitec Mobile Number</label><input type="tel" class="field-input" v-model="capitecNumber" placeholder="+27 XX XXX XXXX" /><button class="btn btn-red" @click="processCapitecPay" :disabled="!capitecNumber || processing"><i class="fas fa-university"></i> {{ processing ? 'Processing...' : 'Pay with CapitecPay' }}</button><p style="font-size:0.65rem; color:#64748b; margin-top:10px; text-align:center;">You'll receive a push notification on your Capitec app</p></div>
+          </div>
+          <!-- Rands Wallet Request -->
+          <div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'">
+            <div class="pay-option-header"><div class="pay-icon-wrap"><img src="../assets/icons/wallet-icon.png" @error="handleImageError" alt="Rands Wallet"></div><div><div class="pay-option-title">Rands Wallet</div><div class="pay-option-desc">Request funds from another wallet user</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid #E30613;display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'wallet'" style="width:12px;height:12px;background:#E30613;border-radius:50%;"></div></div></div></div>
+            <div v-if="selectedPayMethod === 'wallet'" class="pay-option-expand">
+              <div class="request-info-card"><i class="fas fa-info-circle"></i><p>This sends a <strong>top-up request</strong> to the other person's Rands Wallet. They will receive a notification and must approve before funds reach your balance.</p></div>
+              <label class="field-label">Their Wallet ID / Phone Number</label>
+              <input type="tel" class="field-input" v-model="requestTargetId" placeholder="e.g. 0635713652" />
+              <div class="field-wrap" style="margin-top:12px;"><label class="field-label">Add a Note (Optional)</label><input type="text" class="field-input" v-model="requestNote" placeholder="e.g. Paying you back for lunch" maxlength="60" /></div>
+              <div class="request-preview" v-if="requestTargetId"><div class="request-preview-row"><span>Requesting from</span><strong>{{ requestTargetId }}</strong></div><div class="request-preview-row"><span>Amount</span><strong style="color:#E30613;">R {{ formatPrice(topupAmount) }}</strong></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Ref</span><span class="request-ref">TU-{{ previewRef }}</span></div></div>
+              <button class="btn btn-blue" @click="proceedWalletStep" :disabled="!requestTargetId"><i class="fas fa-arrow-right"></i> Review Request</button>
             </div>
           </div>
 
@@ -764,7 +773,7 @@
         customAmount: null,
         customMode: false,
         presets: [50,100,150,200,500],
-        selectedPayMethod: '1voucher',
+        selectedPayMethod: 'yoco',  // default to Card Payment now (moved to top)
         requestTargetId: '',
         requestNote: '',
         previewRef: '',
@@ -911,22 +920,20 @@
           }
         }).subscribe();
       },
-      handleImageError(e) { e.target.style.display = 'none'; e.target.nextSibling?.style?.display ? '' : (e.target.parentElement.innerHTML = '<i class="fas fa-wallet"></i>'); },
+      handleImageError(e) { e.target.style.display = 'none'; e.target.nextSibling?.style?.display ? '' : (e.target.parentElement.innerHTML = '<i class="fas fa-credit-card"></i>'); },
       
-      // ========== Yoco Secure Payment - FIXED KEYS ==========
+      // Yoco Payment - robust with dual key support
       async startYocoPayment() {
         if (this.topupAmount <= 0 || this.topupAmount < 5) {
           this.showToast('Please select a valid top-up amount (min R5)', 'error');
           return;
         }
-        
         this.yocoProcessing = true;
         try {
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           if (sessionError || !session) throw new Error('You must be logged in to make a payment');
           const userId = session.user.id;
           
-          // Create pending transaction record for reconciliation
           const { data: pendingTx, error: insertError } = await supabase
             .from('wallet_transactions')
             .insert({
@@ -945,11 +952,8 @@
           
           if (insertError) throw new Error('Could not initialize payment. Please try again.');
           const transactionId = pendingTx.id;
-          
-          // Convert amount to cents (Yoco expects smallest currency unit)
           const amountCents = Math.round(this.topupAmount * 100);
           
-          // Call Edge Function with exact payload your backend expects
           const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', {
             body: {
               wallet_transaction_id: transactionId,
@@ -958,15 +962,20 @@
             }
           });
           
-          if (edgeError || !edgeResponse?.checkoutUrl) {
-            console.error('Edge function error:', edgeError || edgeResponse);
-            await supabase.from('wallet_transactions').update({ status: 'failed', metadata: { error: edgeError?.message || 'Checkout creation failed' } }).eq('id', transactionId);
-            throw new Error('Payment gateway unavailable. Please try again later.');
+          if (edgeError) {
+            console.error('Edge function error:', edgeError);
+            await supabase.from('wallet_transactions').update({ status: 'failed', metadata: { error: edgeError.message } }).eq('id', transactionId);
+            throw new Error(edgeError.message || 'Payment gateway error');
           }
           
-          // Redirect to Yoco secure hosted payment page
-          window.location.href = edgeResponse.checkoutUrl;
+          // ✅ Handles both checkout_url and checkoutUrl
+          const checkoutUrl = edgeResponse?.checkout_url || edgeResponse?.checkoutUrl;
+          if (!checkoutUrl) {
+            console.error('Invalid edge response - missing checkout URL', edgeResponse);
+            throw new Error('Invalid response from payment gateway');
+          }
           
+          window.location.href = checkoutUrl;
         } catch (err) {
           console.error('Yoco payment initiation error:', err);
           this.showToast(err.message || 'Payment initiation failed', 'error');
