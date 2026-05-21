@@ -15,6 +15,7 @@
         }
     </script>
     <style>
+        /* ========== YOUR EXACT STYLES (unchanged) ========== */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
             --red: #E30613; --red-dark: #a0010e; --red-deep: #8A0009; --red-glow: rgba(227,6,19,0.18);
@@ -487,7 +488,7 @@
         return ticketName && ticketName.toLowerCase().includes('vip');
     }
 
-    // ========== CONFIRMATION MODAL (replaces native confirm) ==========
+    // ========== CONFIRMATION MODAL ==========
     let confirmResolver = null;
     
     function showConfirmModal(message, title = "Confirm") {
@@ -687,7 +688,6 @@
             return;
         }
         
-        // Use custom confirmation modal instead of native confirm
         const confirmed = await showConfirmModal(`Buy this ticket for R${price.toLocaleString()}?`, "Confirm Purchase");
         if (!confirmed) return;
 
@@ -737,7 +737,7 @@
         }
     }
 
-    // ========== MY TICKETS ==========
+    // ========== MY TICKETS - FIXED EVENT LISTENERS ==========
     async function loadMyTickets() {
         const container = document.getElementById('myTicketsList');
         container.innerHTML = '<div class="skeleton skeleton-card"></div>';
@@ -810,33 +810,54 @@
                     new QRCode(qrContainer, { text: qrPayload, width: 140, height: 140, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H });
                 }
             }
-            // Attach event listeners
-            document.querySelectorAll('.transfer-ticket').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    transferTicketId = btn.getAttribute('data-id');
-                    openTransferModal();
-                });
-            });
-            document.querySelectorAll('.delete-ticket').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    const ticketId = btn.getAttribute('data-id');
-                    // Use custom confirmation modal for delete
-                    const confirmed = await showConfirmModal("Delete this ticket? It will be cancelled and cannot be used.", "Confirm Deletion");
-                    if (confirmed) {
-                        await deleteTicket(ticketId);
-                    }
-                });
-            });
-            document.querySelectorAll('.download-qr').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const ticketId = btn.getAttribute('data-id');
-                    downloadQrCode(ticketId);
-                });
-            });
+            
+            // ATTACH EVENT LISTENERS AFTER ALL CARDS ARE ADDED (FIX)
+            attachTicketActionListeners();
+            
         } catch (err) {
             console.error(err);
             container.innerHTML = '<div class="empty-state">Error loading tickets</div>';
         }
+    }
+    
+    function attachTicketActionListeners() {
+        // Transfer buttons
+        document.querySelectorAll('.transfer-ticket').forEach(btn => {
+            // Remove any existing listener to avoid duplicates
+            btn.removeEventListener('click', handleTransferClick);
+            btn.addEventListener('click', handleTransferClick);
+        });
+        // Delete buttons
+        document.querySelectorAll('.delete-ticket').forEach(btn => {
+            btn.removeEventListener('click', handleDeleteClick);
+            btn.addEventListener('click', handleDeleteClick);
+        });
+        // Download QR buttons
+        document.querySelectorAll('.download-qr').forEach(btn => {
+            btn.removeEventListener('click', handleDownloadClick);
+            btn.addEventListener('click', handleDownloadClick);
+        });
+    }
+    
+    function handleTransferClick(e) {
+        e.stopPropagation();
+        transferTicketId = this.getAttribute('data-id');
+        openTransferModal();
+    }
+    
+    async function handleDeleteClick(e) {
+        e.stopPropagation();
+        const ticketId = this.getAttribute('data-id');
+        const confirmed = await showConfirmModal("Delete this ticket? It will be cancelled and cannot be used.", "Confirm Deletion");
+        if (confirmed) {
+            await deleteTicket(ticketId);
+        }
+    }
+    
+    function handleDownloadClick(e) {
+        e.stopPropagation();
+        const ticketId = this.getAttribute('data-id');
+        downloadQrCode(ticketId);
     }
 
     async function deleteTicket(ticketId) {
@@ -844,7 +865,7 @@
             const { error } = await supabase.rpc('cancel_ticket', { p_ticket_id: ticketId, p_user_id: currentUser.id });
             if (error) throw error;
             showToast('Ticket cancelled');
-            await loadMyTickets();
+            await loadMyTickets();   // reload tickets list
             await updateMyTicketsCount();
         } catch (err) {
             showToast(err.message, true);
@@ -869,7 +890,7 @@
             });
             if (error) throw error;
             showToast('Ticket transferred successfully');
-            await loadMyTickets();
+            await loadMyTickets();   // reload after transfer
             await updateMyTicketsCount();
             return true;
         } catch (err) {
