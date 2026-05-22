@@ -323,30 +323,6 @@
             transform: scale(0.97);
             background: var(--red-subtle);
         }
-        .feature-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            justify-content: center;
-            margin: 16px 16px 0 16px;
-        }
-        .feature-badge {
-            background: var(--white);
-            border: 1px solid var(--border-strong);
-            padding: 6px 14px;
-            border-radius: var(--radius-full);
-            font-size: 0.65rem;
-            font-weight: 600;
-            color: var(--slate);
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            box-shadow: var(--shadow-card);
-        }
-        .feature-badge i {
-            color: var(--red);
-            font-size: 0.7rem;
-        }
         .vvip-modal-overlay {
             position: fixed;
             top: 0;
@@ -587,6 +563,11 @@
                 <span id="bandWalletName">—</span>
             </div>
             <div class="info-row">
+                <i class="fas fa-chair"></i>
+                <strong>Assigned Table:</strong>
+                <span id="assignedTableDisplay">—</span>
+            </div>
+            <div class="info-row">
                 <i class="fas fa-door-closed"></i>
                 <strong>Access:</strong>
                 <span>All Sanctuaries + VVIP Sanctum</span>
@@ -607,13 +588,6 @@
             <i class="fas fa-hand-holding-heart"></i> Request VVIP Service
         </button>
     </div>
-</div>
-
-<div class="feature-badges">
-    <span class="feature-badge"><i class="fas fa-champagne-glasses"></i> Private Lounge</span>
-    <span class="feature-badge"><i class="fas fa-wine-bottle"></i> Unlimited Prestige</span>
-    <span class="feature-badge"><i class="fas fa-ticket"></i> Instant Throne Entry</span>
-    <span class="feature-badge"><i class="fas fa-headset"></i> 24k Concierge</span>
 </div>
 
 <div id="vvipModalOverlay" class="vvip-modal-overlay">
@@ -650,6 +624,7 @@
     const vvipBandNumber = document.getElementById('vvipBandNumber');
     const bandIdDisplay = document.getElementById('bandIdDisplay');
     const bandWalletName = document.getElementById('bandWalletName');
+    const assignedTableSpan = document.getElementById('assignedTableDisplay');
     const statusText = document.getElementById('statusText');
     const qrContainer = document.getElementById('vvipBandQR');
 
@@ -714,19 +689,22 @@
         setTimeout(() => t.classList.remove('show'), 2800); 
     }
 
-    // ========== FETCH VVIP TAB BALANCE FROM vvip_bands TABLE ==========
-    async function loadVVIPTabBalance(phone) {
-        if (!phone) return 0;
+    // ========== FETCH VVIP BAND DATA (tab balance + assigned table) ==========
+    async function loadVVIPBandData(phone) {
+        if (!phone) return { tabBalance: 0, assignedTable: null };
         const { data, error } = await supabase
             .from('vvip_bands')
-            .select('tab_balance')
+            .select('tab_balance, assigned_table')
             .eq('phone', phone)
             .maybeSingle();
         if (error) {
-            console.error('Error fetching VVIP tab balance:', error);
-            return 0;
+            console.error('Error fetching VVIP band data:', error);
+            return { tabBalance: 0, assignedTable: null };
         }
-        return data?.tab_balance || 0;
+        return {
+            tabBalance: data?.tab_balance || 0,
+            assignedTable: data?.assigned_table || null
+        };
     }
 
     // ========== FETCH CURRENT USER & PROFILE ==========
@@ -740,7 +718,6 @@
             }
             const userId = session.user.id;
 
-            // Fetch profile
             const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('id, name, phone, role')
@@ -749,7 +726,6 @@
 
             if (profileError || !profileData) {
                 console.error('Profile fetch error:', profileError);
-                // Create minimal profile if missing
                 const newProfile = {
                     id: userId,
                     name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Member',
@@ -766,14 +742,14 @@
                     phone: newProfile.phone,
                     role: newProfile.role,
                     balance: 0,
-                    vvipTabBalance: 0
+                    vvipTabBalance: 0,
+                    assignedTable: null
                 };
                 updateWalletDisplay();
                 renderVVIPBand();
                 return true;
             }
 
-            // Fetch wallet balance (kept for cashless payments)
             const { data: walletData, error: walletError } = await supabase
                 .from('wallets')
                 .select('balance')
@@ -781,22 +757,18 @@
                 .maybeSingle();
 
             let balance = 0;
-            if (!walletError && walletData) {
-                balance = walletData.balance;
-            } else {
-                console.warn('Wallet fetch error or missing, using 0');
-            }
+            if (!walletError && walletData) balance = walletData.balance;
 
-            // NEW: Fetch VVIP tab balance using phone number
-            const vvipTabBalance = await loadVVIPTabBalance(profileData.phone);
+            const bandData = await loadVVIPBandData(profileData.phone);
 
             currentProfile = {
                 id: profileData.id,
                 name: profileData.name || session.user.user_metadata?.full_name || 'Member',
                 phone: profileData.phone || session.user.user_metadata?.phone || session.user.email,
                 role: profileData.role || 'user',
-                balance: balance,                // main wallet balance (unchanged)
-                vvipTabBalance: vvipTabBalance   // VVIP tab balance from vvip_bands
+                balance: balance,
+                vvipTabBalance: bandData.tabBalance,
+                assignedTable: bandData.assignedTable
             };
             console.log('✅ Loaded profile:', currentProfile);
             return true;
@@ -807,13 +779,15 @@
         }
     }
 
-    // ========== UPDATE UI – NOW SHOWS VVIP TAB BALANCE ==========
+    // ========== UPDATE UI ==========
     function updateWalletDisplay() {
         if (currentProfile) {
-            // Display VVIP tab balance, not the main wallet balance
             walletBalanceStat.innerText = `R${currentProfile.vvipTabBalance?.toFixed(2) || '0.00'}`;
             statusStat.innerText = (currentProfile.role === 'super_admin' || currentProfile.role === 'admin') ? 'Sovereign' : 'Noble';
             statusText.innerText = 'Immortal Active';
+            if (assignedTableSpan) {
+                assignedTableSpan.innerText = currentProfile.assignedTable || '—';
+            }
         }
     }
 
@@ -988,7 +962,6 @@
                 request.status = 'rejected';
             } else {
                 currentProfile.balance = newBalance;
-                // UI shows vvipTabBalance, but we keep currentProfile.balance for cashless logic
                 request.status = 'completed';
                 await showVVIPInfo("Payment Approved", `R${request.amount.toFixed(2)} deducted from your treasury.`, "success");
             }
