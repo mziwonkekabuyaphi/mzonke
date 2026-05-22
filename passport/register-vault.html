@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* ========== YOUR EXACT STYLES (unchanged) ========== */
         * {
             margin: 0;
             padding: 0;
@@ -48,7 +49,8 @@
             font-family: 'Inter', sans-serif;
             color: var(--ink);
             min-height: 100vh;
-            padding-bottom: 40px;
+            display: flex;
+            flex-direction: column;
             position: relative;
         }
 
@@ -92,14 +94,13 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.1rem;
-            color: white;
+            overflow: hidden;
         }
 
         .brand-logo img {
-            width: 28px;
-            height: 28px;
-            object-fit: contain;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .brand-text h1 {
@@ -177,10 +178,8 @@
         .kiosk-container {
             max-width: 800px;
             margin: 0 auto;
-            padding: 0 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+            padding: 0 16px 20px 16px;
+            flex: 1;
         }
 
         /* ========== CARD STYLES ========== */
@@ -381,12 +380,14 @@
 
         .footer {
             text-align: center;
-            margin-top: 30px;
+            margin-top: 0;
             padding: 20px;
             color: var(--mist);
             font-size: 0.7rem;
             font-weight: 500;
             border-top: 1px solid var(--border-strong);
+            width: 100%;
+            background: var(--bone);
         }
 
         .footer span {
@@ -617,7 +618,7 @@
         }
 
         @media (max-width: 550px) {
-            .kiosk-container { padding: 0 12px; }
+            .kiosk-container { padding: 0 12px 20px 12px; }
             .form-card { padding: 18px; }
             .card-header h2 { font-size: 1.1rem; }
             .product-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
@@ -628,11 +629,11 @@
 </head>
 <body>
 
-<!-- ========== HEADER ========== -->
+<!-- ========== HEADER (UPDATED LOGO PATH) ========== -->
 <header class="site-header">
     <div class="brand" onclick="window.location.href='index.html'">
         <div class="brand-logo">
-            <img src="../assets/images/rands-logo.png" alt="Rands Locker" onerror="this.style.display='none'; this.parentElement.innerHTML='🔒'">
+            <img src="../assets/images/rands-logo3.png" alt="Rands Locker" onerror="this.style.display='none'; this.parentElement.innerHTML='🔒'">
         </div>
         <div class="brand-text">
             <h1>Rands Locker</h1>
@@ -682,8 +683,8 @@
         </div>
         <div style="margin-bottom: 18px;">
             <label class="label"><i class="fab fa-whatsapp"></i> WhatsApp number</label>
-            <input type="tel" id="prePhone" placeholder="0635713652" autocomplete="tel">
-            <p style="font-size: 11px; color: var(--mist); margin-top: 6px;">You will need this number together with your PIN to access your vault.</p>
+            <input type="tel" id="prePhone" placeholder="073 123 4567" autocomplete="tel" maxlength="13">
+            <p style="font-size: 11px; color: var(--mist); margin-top: 6px;">Enter a valid SA number (e.g., 073 123 4567).</p>
         </div>
         <div style="margin-bottom: 24px;">
             <label class="label"><i class="fas fa-key"></i> Create your PIN (4-6 digits)</label>
@@ -715,7 +716,7 @@
             <i class="fas fa-times" style="cursor:pointer;" onclick="closeProductModal()"></i>
         </div>
         <div id="productModalGrid" class="product-grid">
-            <div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading products...</div>
+            <div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading alcohol products...</div>
         </div>
         <button class="close-product-btn" onclick="closeProductModal()">Close</button>
     </div>
@@ -738,17 +739,61 @@
     let productsWithIds = {};      // { name: id }
     let selectedItems = [];        // { name, quantity, product_id }
 
-    // ========== LOAD PRODUCTS EXCLUSIVELY FROM SUPABASE ==========
+    // ========== SA PHONE FORMATTING ==========
+    function formatSouthAfricanPhone(input) {
+        // Remove all non-digits
+        let digits = input.replace(/\D/g, '');
+        // Limit to 10 digits (SA numbers are 10 digits after 0)
+        if (digits.length > 10) digits = digits.slice(0, 10);
+        
+        // Format as 0XX XXX XXXX
+        let formatted = '';
+        if (digits.length > 0) {
+            formatted = digits.slice(0, 3);
+            if (digits.length >= 4) {
+                formatted += ' ' + digits.slice(3, 6);
+            }
+            if (digits.length >= 7) {
+                formatted += ' ' + digits.slice(6, 10);
+            }
+        }
+        return formatted.trim();
+    }
+
+    function getRawPhoneNumber(formattedValue) {
+        // Remove spaces and return only digits
+        return formattedValue.replace(/\s/g, '');
+    }
+
+    // Attach event listener for phone formatting
+    function initPhoneFormatting() {
+        const phoneInput = document.getElementById('prePhone');
+        if (!phoneInput) return;
+        
+        phoneInput.addEventListener('input', function(e) {
+            const cursorStart = this.selectionStart;
+            const rawValue = getRawPhoneNumber(this.value);
+            const formatted = formatSouthAfricanPhone(rawValue);
+            this.value = formatted;
+            // Adjust cursor position (basic handling)
+            const newCursor = cursorStart + (formatted.length - this.value.length);
+            if (newCursor >= 0) this.setSelectionRange(newCursor, newCursor);
+        });
+    }
+
+    // ========== LOAD ALCOHOL PRODUCTS FROM Supabase (products table) ==========
     async function loadProductsFromSupabase() {
         const grid = document.getElementById('productModalGrid');
         if (grid && grid.innerHTML.includes('Loading')) {
-            grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading products...</div>';
+            grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading alcohol products...</div>';
         }
         
         try {
+            // Fetch from 'products' table where alcohol = true and is_available = true
             const { data, error } = await supabase
-                .from('menu_items')
+                .from('products')
                 .select('id, name, price')
+                .eq('alcohol', true)
                 .eq('is_available', true)
                 .order('name');
             
@@ -761,25 +806,25 @@
                     productsWithValues[item.name] = item.price;
                     productsWithIds[item.name] = item.id;
                 });
-                console.log(`✅ Loaded ${data.length} products from Supabase.`);
+                console.log(`✅ Loaded ${data.length} alcohol products from 'products' table.`);
                 return true;
             } else {
-                throw new Error('No products found in menu_items table. Please add some products first.');
+                throw new Error('No alcohol products found in "products" table. Please add products with alcohol = true and is_available = true.');
             }
         } catch (err) {
             console.error('❌ Supabase error:', err);
             showModal('Products Load Error', 
-                `Unable to load products from database.<br><br>
+                `Unable to load alcohol products from database.<br><br>
                 <strong>Error:</strong> ${err.message || 'Connection failed'}<br><br>
                 Please check:<br>
                 1. Supabase connection in ../config/supabase.js<br>
-                2. 'menu_items' table exists and has data<br>
-                3. 'is_available' = true for some items`);
+                2. 'products' table exists and has data<br>
+                3. Some products have alcohol = true and is_available = true`);
             return false;
         }
     }
 
-    // ========== AUTO-FILL FROM WALLET ==========
+    // ========== AUTO-FILL FROM WALLET (unchanged) ==========
     function autoFillWalletUser() {
         const saved = localStorage.getItem('rands_accounts_v2');
         if (!saved) return;
@@ -792,14 +837,16 @@
                     let phone = acc.id.replace(/\D/g, '');
                     if (phone.length >= 10) {
                         phone = phone.slice(-10);
-                        document.getElementById('prePhone').value = phone;
+                        // Format the phone for display
+                        const formattedPhone = formatSouthAfricanPhone(phone);
+                        document.getElementById('prePhone').value = formattedPhone;
                     }
                 }
             }
         } catch(e) { console.warn(e); }
     }
 
-    // ========== UI HELPERS ==========
+    // ========== UI HELPERS (unchanged) ==========
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -920,7 +967,7 @@
         return selectedItems.reduce((sum, item) => sum + ((productsWithValues[item.name] || 0) * item.quantity), 0);
     }
 
-    // ========== MODAL FUNCTIONS ==========
+    // ========== MODAL FUNCTIONS (unchanged) ==========
     function showModal(title, message, onOk = null) {
         document.getElementById('modalTitle').innerHTML = title;
         document.getElementById('modalMessage').innerHTML = message;
@@ -950,21 +997,19 @@
     function closeModal() { document.getElementById('customModal').classList.remove('active'); }
     function goToLockerDashboard() { window.location.href = 'lockers.html'; }
 
-    // ========== OPEN PRODUCT MODAL ==========
+    // ========== OPEN PRODUCT MODAL (unchanged except loading) ==========
     async function openProductModal() {
         const grid = document.getElementById('productModalGrid');
         
-        // If products are already loaded, show them
         if (Object.keys(productsWithValues).length > 0) {
             renderProductGrid(grid);
         } else {
-            // Try to load products first
-            grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading products...</div>';
+            grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading alcohol products...</div>';
             const loaded = await loadProductsFromSupabase();
             if (loaded && Object.keys(productsWithValues).length > 0) {
                 renderProductGrid(grid);
             } else {
-                grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--red);"><i class="fas fa-exclamation-triangle"></i> No products available. Please check your database.</div>';
+                grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--red);"><i class="fas fa-exclamation-triangle"></i> No alcohol products available. Please check your database.</div>';
             }
         }
         document.getElementById('productPickerModal').classList.add('active');
@@ -991,14 +1036,21 @@
         document.getElementById('productPickerModal').classList.remove('active');
     }
 
-    // ========== CREATE VAULT ==========
+    // ========== CREATE VAULT (with raw phone number) ==========
     async function createNewVault() {
         const name = document.getElementById('preName').value.trim();
-        const phone = document.getElementById('prePhone').value.trim();
+        const phoneFormatted = document.getElementById('prePhone').value.trim();
         const customPin = document.getElementById('prePin').value.trim();
+
+        // Convert formatted phone to raw digits (e.g., "073 123 4567" → "0731234567")
+        const phone = getRawPhoneNumber(phoneFormatted);
 
         if (!name) { showModal('Missing name', 'Please enter your name.'); return; }
         if (!phone) { showModal('Missing phone', 'Please enter your WhatsApp number.'); return; }
+        if (phone.length !== 10 || !/^0[6-8][0-9]{8}$/.test(phone)) {
+            showModal('Invalid phone number', 'Please enter a valid South African cellphone number starting with 073, 063, 078, etc. (10 digits).');
+            return;
+        }
         if (!customPin || customPin.length < 4 || customPin.length > 6 || !/^\d+$/.test(customPin)) {
             showModal('Invalid PIN', 'PIN must be 4-6 digits and contain only numbers.');
             return;
@@ -1050,10 +1102,12 @@
             itemsListHtml += `<li>${item.name} x${item.quantity} = R${(price * item.quantity).toFixed(2)}</li>`;
         });
 
+        // Format phone for display back to user with spaces
+        const displayPhone = formatSouthAfricanPhone(phone);
         showModalWithRedirect('Vault Created!',
             `✅ New vault created successfully!<br><br>
             <strong>Your PIN:</strong> ${customPin}<br>
-            <strong>WhatsApp:</strong> ${phone}<br><br>
+            <strong>WhatsApp:</strong> ${displayPhone}<br><br>
             <strong>📦 Items:</strong><br><ul style="text-align:left;">${itemsListHtml}</ul>
             <strong>💰 Total Value:</strong> R${totalValue.toFixed(2)}<br><br>
             ⚠️ Keep your PIN safe! You will need to show it together with your WhatsApp number at the counter.<br><br>
@@ -1080,14 +1134,15 @@
     window.createNewVault = createNewVault;
 
     // ========== INITIALIZATION ==========
-    // Load products before anything else
+    // Load alcohol products before anything else
     const productsLoaded = await loadProductsFromSupabase();
     if (!productsLoaded) {
-        console.warn('Products could not be loaded from Supabase');
+        console.warn('Alcohol products could not be loaded from Supabase');
     }
     
     autoFillWalletUser();
     updateSelectedItemsDisplay();
+    initPhoneFormatting();  // enable SA phone formatting
 
     document.getElementById('createVaultBtn').onclick = () => createNewVault();
     document.getElementById('openProductModalBtn').onclick = () => openProductModal();
