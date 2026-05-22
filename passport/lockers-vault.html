@@ -11,7 +11,7 @@
         { "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
     </script>
     <style>
-        /* ========== EXACT STYLES FROM TICKETS PAGE (preserved) ========== */
+        /* ========== EXACT STYLES FROM ORIGINAL (preserved) ========== */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
             --red: #E30613; --red-dark: #a0010e; --red-deep: #8A0009; --red-glow: rgba(227,6,19,0.18);
@@ -23,7 +23,43 @@
             --transition: all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
             --glass-bg: rgba(255,255,255,0.7); --glass-border: rgba(255,255,255,0.4); --glass-blur: 12px;
         }
-        body { font-family: 'Inter', sans-serif; background: var(--bone); color: var(--ink); min-height: 100vh; padding-bottom: 0; overflow-x: hidden; display: flex; flex-direction: column; }
+        /* ---------- LAYOUT FIX: NO EXTRA GAP, CLEAN BOTTOM ---------- */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            overflow-x: hidden;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bone);
+            color: var(--ink);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        /* main content wrapper — NO extra bottom padding (only bottom nav spacing) */
+        .main-content {
+            flex: 1 0 auto;
+            width: 100%;
+            padding-bottom: 0;  /* removed any manual bottom spacing */
+        }
+        /* bottom navigation container — no default margins, no extra gaps */
+        #bottomNavContainer {
+            display: block;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            line-height: 0;
+            font-size: 0;
+            flex-shrink: 0;
+        }
+        #bottomNavContainer * {
+            margin: 0;
+            box-sizing: border-box;
+        }
+        /* preserve all original styling for cards, animations, etc. */
         body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; }
         .site-header { background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; border-radius: 0 0 24px 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .brand { display: flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -39,7 +75,6 @@
         .stat-number { font-size: 1.2rem; font-weight: 800; color: var(--ink); line-height: 1.2; }
         .stat-sub { font-size: 0.65rem; color: var(--slate); margin-top: 4px; }
         .action-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 16px 20px 16px; max-width: 800px; margin: 0 auto; }
-        /* ^^^ reduced bottom padding from 40px to 20px (approx 0.5cm gap) ^^^ */
         .action-row { display: flex; gap: 16px; flex-wrap: wrap; }
         .action-card { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.15); transition: transform 0.25s ease; flex: 1; min-width: 160px; cursor: pointer; }
         .action-card:active { transform: translateY(-4px); }
@@ -72,8 +107,8 @@
         .modal-card { background: var(--white); border-radius: var(--radius-xl); max-width: 400px; width: 90%; padding: 24px; text-align: center; border: 2px solid var(--red); }
         .modal-close-btn { background: var(--bone); border: 1px solid var(--border-strong); padding: 12px; border-radius: var(--radius-full); margin-top: 16px; cursor: pointer; width: 100%; font-weight: 600; }
         @media (max-width: 550px) { .action-row { flex-direction: column; } .product-grid { grid-template-columns: 1fr; } }
-        .main-content { flex: 1 0 auto; width: 100%; }
-        #bottomNavContainer { flex-shrink: 0; width: 100%; margin: 0; padding: 0; line-height: 0; }
+        /* additional reset — remove any invisible spacer */
+        .bottom-nav-spacer-old { display: none; }
     </style>
 </head>
 <body>
@@ -98,44 +133,11 @@
 <!-- Action Cards -->
 <div class="action-grid">
     <div class="action-row">
-        <div class="action-card" id="keepBoozeCard">
-            <div class="action-header">
-                <div class="action-icon"><i class="fas fa-arrow-down-to-bracket"></i></div>
-                <div class="action-title">Keep Booze</div>
-                <div class="action-desc">Store securely in your virtual locker</div>
-            </div>
-            <div class="action-body">
-                <button class="action-btn" id="keepActionBtn">
-                    <i class="fas fa-arrow-down-to-bracket"></i> Store Items →
-                </button>
-            </div>
-        </div>
-        <div class="action-card" id="collectBoozeCard">
-            <div class="action-header">
-                <div class="action-icon"><i class="fas fa-hand-peace"></i></div>
-                <div class="action-title">Collect Booze</div>
-                <div class="action-desc">Retrieve your stored items</div>
-            </div>
-            <div class="action-body">
-                <button class="action-btn" id="collectActionBtn">
-                    <i class="fas fa-unlock-alt"></i> Collect →
-                </button>
-            </div>
-        </div>
+        <div class="action-card" id="keepBoozeCard"><div class="action-header"><div class="action-icon"><i class="fas fa-arrow-down-to-bracket"></i></div><div class="action-title">Keep Booze</div><div class="action-desc">Store securely in your virtual locker</div></div><div class="action-body"><button class="action-btn" id="keepActionBtn"><i class="fas fa-save"></i> Store Items →</button></div></div>
+        <div class="action-card" id="collectBoozeCard"><div class="action-header"><div class="action-icon"><i class="fas fa-hand-peace"></i></div><div class="action-title">Collect Booze</div><div class="action-desc">Retrieve your stored items</div></div><div class="action-body"><button class="action-btn" id="collectActionBtn"><i class="fas fa-unlock-alt"></i> Collect →</button></div></div>
     </div>
     <div class="action-row">
-        <div class="action-card" id="myVaultCard">
-            <div class="action-header">
-                <div class="action-icon"><i class="fas fa-chart-line"></i></div>
-                <div class="action-title">My Booze Vault</div>
-                <div class="action-desc">Manage, top-up & check balance</div>
-            </div>
-            <div class="action-body">
-                <button class="action-btn" id="myVaultActionBtn">
-                    <i class="fas fa-wallet"></i> Open Vault →
-                </button>
-            </div>
-        </div>
+        <div class="action-card" id="myVaultCard"><div class="action-header"><div class="action-icon"><i class="fas fa-chart-line"></i></div><div class="action-title">My Booze Vault</div><div class="action-desc">Manage, top-up & check balance</div></div><div class="action-body"><button class="action-btn" id="myVaultActionBtn"><i class="fas fa-wallet"></i> Open Vault →</button></div></div>
     </div>
 </div>
 
@@ -172,6 +174,7 @@
 <div id="toastMsg" class="toast-msg"></div>
 </div> <!-- .main-content ends -->
 
+<!-- bottom navigation container: fixed, no extra spacer -->
 <div id="bottomNavContainer"></div>
 
 <script type="module">
@@ -199,6 +202,7 @@
     }
     function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
 
+    // Dashboard Stats
     function updateStatsUI(balance, lockerNumber, itemCount) {
         document.getElementById('statLockerBalance').innerHTML = `R${balance.toFixed(2)}`;
         document.getElementById('statLockerNumber').innerText = lockerNumber || '—';
@@ -431,6 +435,7 @@
     window.decreaseAddMoreQty = decreaseAddMoreQty;
     window.removeAddMoreItem = removeAddMoreItem;
 
+    // BOTTOM NAVIGATION: no extra spacing, dynamic load & cleanup
     async function loadBottomNav() {
         const container = document.getElementById('bottomNavContainer');
         if(!container) return;
@@ -438,15 +443,45 @@
             const resp = await fetch('bottom-nav.html');
             if(resp.ok) {
                 container.innerHTML = await resp.text();
+                // attach click handlers for navigation links
                 const links = container.querySelectorAll('a, .nav-item');
-                links.forEach(link => link.addEventListener('click', (e) => { let url = link.getAttribute('href'); if(url && url!=='#') { e.preventDefault(); window.location.href = url; } }));
+                links.forEach(link => link.addEventListener('click', (e) => { 
+                    let url = link.getAttribute('href'); 
+                    if(url && url!=='#') { e.preventDefault(); window.location.href = url; } 
+                }));
+                // FINAL LAYOUT SAFETY: remove any margins/paddings, ensure no extra white space
                 container.style.margin = '0';
                 container.style.padding = '0';
+                container.style.lineHeight = 'normal';
+                const lastChild = container.lastElementChild;
+                if(lastChild) lastChild.style.marginBottom = '0';
+                document.body.style.paddingBottom = '0';
+                // if bottom navigation uses fixed positioning, adjust body padding
+                const isFixed = window.getComputedStyle(container).position === 'fixed' || container.querySelector('[style*="position: fixed"]');
+                if(isFixed && container.offsetHeight) {
+                    document.body.style.paddingBottom = `${container.offsetHeight}px`;
+                } else {
+                    document.body.style.paddingBottom = '0px';
+                }
             } else {
                 container.innerHTML = '';
             }
         } catch(e) { console.warn(e); }
     }
+
+    // resize handler to ensure no gap on orientation change
+    function adjustSpacingForDynamicNav() {
+        const container = document.getElementById('bottomNavContainer');
+        if(container && container.children.length > 0) {
+            const isFixed = window.getComputedStyle(container).position === 'fixed' || container.querySelector('[style*="position: fixed"]');
+            if(isFixed && container.offsetHeight) {
+                document.body.style.paddingBottom = `${container.offsetHeight}px`;
+            } else {
+                document.body.style.paddingBottom = '0px';
+            }
+        }
+    }
+    window.addEventListener('resize', () => adjustSpacingForDynamicNav());
 
     async function init() {
         alcoholProducts = await loadAlcoholProducts();
@@ -460,7 +495,8 @@
         document.getElementById('clearVaultResultBtn')?.addEventListener('click', clearVaultResult);
         document.getElementById('accessAddMoreVaultBtn')?.addEventListener('click', accessAddMoreVault);
         document.getElementById('confirmAddToVaultBtn')?.addEventListener('click', confirmAddToVault);
-        loadBottomNav();
+        await loadBottomNav();
+        adjustSpacingForDynamicNav();
     }
     init();
 </script>
