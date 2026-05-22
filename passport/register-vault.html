@@ -741,90 +741,60 @@
 
     // ========== SA PHONE FORMATTING ==========
     function formatSouthAfricanPhone(input) {
-        // Remove all non-digits
         let digits = input.replace(/\D/g, '');
-        // Limit to 10 digits (SA numbers are 10 digits after 0)
         if (digits.length > 10) digits = digits.slice(0, 10);
-        
-        // Format as 0XX XXX XXXX
         let formatted = '';
         if (digits.length > 0) {
             formatted = digits.slice(0, 3);
-            if (digits.length >= 4) {
-                formatted += ' ' + digits.slice(3, 6);
-            }
-            if (digits.length >= 7) {
-                formatted += ' ' + digits.slice(6, 10);
-            }
+            if (digits.length >= 4) formatted += ' ' + digits.slice(3, 6);
+            if (digits.length >= 7) formatted += ' ' + digits.slice(6, 10);
         }
         return formatted.trim();
     }
 
     function getRawPhoneNumber(formattedValue) {
-        // Remove spaces and return only digits
         return formattedValue.replace(/\s/g, '');
     }
 
-    // Attach event listener for phone formatting
-    function initPhoneFormatting() {
-        const phoneInput = document.getElementById('prePhone');
-        if (!phoneInput) return;
-        
-        phoneInput.addEventListener('input', function(e) {
-            const cursorStart = this.selectionStart;
-            const rawValue = getRawPhoneNumber(this.value);
-            const formatted = formatSouthAfricanPhone(rawValue);
-            this.value = formatted;
-            // Adjust cursor position (basic handling)
-            const newCursor = cursorStart + (formatted.length - this.value.length);
-            if (newCursor >= 0) this.setSelectionRange(newCursor, newCursor);
-        });
-    }
-
-    // ========== LOAD ALCOHOL PRODUCTS FROM Supabase (products table) ==========
-    async function loadProductsFromSupabase() {
-        const grid = document.getElementById('productModalGrid');
-        if (grid && grid.innerHTML.includes('Loading')) {
-            grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading alcohol products...</div>';
-        }
-        
+    // ========== LOAD LOGGED-IN USER AND PREFILL ==========
+    async function loadLoggedInUserAndPrefill() {
         try {
-            // Fetch from 'products' table where alcohol = true and is_available = true
-            const { data, error } = await supabase
-                .from('products')
-                .select('id, name, price')
-                .eq('alcohol', true)
-                .eq('is_available', true)
-                .order('name');
-            
-            if (error) throw error;
-            
-            if (data && data.length > 0) {
-                productsWithValues = {};
-                productsWithIds = {};
-                data.forEach(item => {
-                    productsWithValues[item.name] = item.price;
-                    productsWithIds[item.name] = item.id;
-                });
-                console.log(`✅ Loaded ${data.length} alcohol products from 'products' table.`);
-                return true;
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !session) {
+                console.log('No active session, falling back to localStorage');
+                autoFillWalletUser(); // fallback to old localStorage method
+                return;
+            }
+            const userId = session.user.id;
+            // Fetch profile from 'profiles' table
+            const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('name, phone')
+                .eq('id', userId)
+                .maybeSingle();
+            if (profileError) throw profileError;
+            if (profile) {
+                if (profile.name) document.getElementById('preName').value = profile.name;
+                if (profile.phone) {
+                    const rawPhone = profile.phone.replace(/\D/g, '');
+                    if (rawPhone.length === 10 && rawPhone.startsWith('0')) {
+                        const formatted = formatSouthAfricanPhone(rawPhone);
+                        document.getElementById('prePhone').value = formatted;
+                    } else {
+                        console.warn('Phone number not in expected SA 10-digit format:', rawPhone);
+                    }
+                }
             } else {
-                throw new Error('No alcohol products found in "products" table. Please add products with alcohol = true and is_available = true.');
+                console.log('No profile found for logged-in user, falling back to localStorage');
+                autoFillWalletUser();
             }
         } catch (err) {
-            console.error('❌ Supabase error:', err);
-            showModal('Products Load Error', 
-                `Unable to load alcohol products from database.<br><br>
-                <strong>Error:</strong> ${err.message || 'Connection failed'}<br><br>
-                Please check:<br>
-                1. Supabase connection in ../config/supabase.js<br>
-                2. 'products' table exists and has data<br>
-                3. Some products have alcohol = true and is_available = true`);
-            return false;
+            console.error('Error loading user profile:', err);
+            autoFillWalletUser(); // fallback
         }
     }
 
-    // ========== AUTO-FILL FROM WALLET (unchanged) ==========
+    // ========== AUTO-FILL FROM LOCALSTORAGE (fallback) ==========
     function autoFillWalletUser() {
         const saved = localStorage.getItem('rands_accounts_v2');
         if (!saved) return;
@@ -837,13 +807,45 @@
                     let phone = acc.id.replace(/\D/g, '');
                     if (phone.length >= 10) {
                         phone = phone.slice(-10);
-                        // Format the phone for display
                         const formattedPhone = formatSouthAfricanPhone(phone);
                         document.getElementById('prePhone').value = formattedPhone;
                     }
                 }
             }
         } catch(e) { console.warn(e); }
+    }
+
+    // ========== LOAD ALCOHOL PRODUCTS ==========
+    async function loadProductsFromSupabase() {
+        const grid = document.getElementById('productModalGrid');
+        if (grid && grid.innerHTML.includes('Loading')) {
+            grid.innerHTML = '<div style="text-align:center; padding:40px; color:var(--mist);"><i class="fas fa-spinner fa-pulse"></i> Loading alcohol products...</div>';
+        }
+        try {
+            const { data, error } = await supabase
+                .from('products')
+                .select('id, name, price')
+                .eq('alcohol', true)
+                .eq('is_available', true)
+                .order('name');
+            if (error) throw error;
+            if (data && data.length > 0) {
+                productsWithValues = {};
+                productsWithIds = {};
+                data.forEach(item => {
+                    productsWithValues[item.name] = item.price;
+                    productsWithIds[item.name] = item.id;
+                });
+                console.log(`✅ Loaded ${data.length} alcohol products from 'products' table.`);
+                return true;
+            } else {
+                throw new Error('No alcohol products found.');
+            }
+        } catch (err) {
+            console.error(err);
+            showModal('Products Load Error', `Unable to load alcohol products.<br><br>${err.message}`);
+            return false;
+        }
     }
 
     // ========== UI HELPERS (unchanged) ==========
@@ -967,7 +969,7 @@
         return selectedItems.reduce((sum, item) => sum + ((productsWithValues[item.name] || 0) * item.quantity), 0);
     }
 
-    // ========== MODAL FUNCTIONS (unchanged) ==========
+    // ========== MODAL FUNCTIONS ==========
     function showModal(title, message, onOk = null) {
         document.getElementById('modalTitle').innerHTML = title;
         document.getElementById('modalMessage').innerHTML = message;
@@ -997,10 +999,9 @@
     function closeModal() { document.getElementById('customModal').classList.remove('active'); }
     function goToLockerDashboard() { window.location.href = 'lockers.html'; }
 
-    // ========== OPEN PRODUCT MODAL (unchanged except loading) ==========
+    // ========== OPEN PRODUCT MODAL ==========
     async function openProductModal() {
         const grid = document.getElementById('productModalGrid');
-        
         if (Object.keys(productsWithValues).length > 0) {
             renderProductGrid(grid);
         } else {
@@ -1036,13 +1037,11 @@
         document.getElementById('productPickerModal').classList.remove('active');
     }
 
-    // ========== CREATE VAULT (with raw phone number) ==========
+    // ========== CREATE VAULT ==========
     async function createNewVault() {
         const name = document.getElementById('preName').value.trim();
         const phoneFormatted = document.getElementById('prePhone').value.trim();
         const customPin = document.getElementById('prePin').value.trim();
-
-        // Convert formatted phone to raw digits (e.g., "073 123 4567" → "0731234567")
         const phone = getRawPhoneNumber(phoneFormatted);
 
         if (!name) { showModal('Missing name', 'Please enter your name.'); return; }
@@ -1102,7 +1101,6 @@
             itemsListHtml += `<li>${item.name} x${item.quantity} = R${(price * item.quantity).toFixed(2)}</li>`;
         });
 
-        // Format phone for display back to user with spaces
         const displayPhone = formatSouthAfricanPhone(phone);
         showModalWithRedirect('Vault Created!',
             `✅ New vault created successfully!<br><br>
@@ -1134,15 +1132,22 @@
     window.createNewVault = createNewVault;
 
     // ========== INITIALIZATION ==========
-    // Load alcohol products before anything else
     const productsLoaded = await loadProductsFromSupabase();
-    if (!productsLoaded) {
-        console.warn('Alcohol products could not be loaded from Supabase');
-    }
+    if (!productsLoaded) console.warn('Alcohol products could not be loaded');
     
-    autoFillWalletUser();
+    await loadLoggedInUserAndPrefill();  // <-- NEW: prefill from logged-in user
+    
     updateSelectedItemsDisplay();
-    initPhoneFormatting();  // enable SA phone formatting
+    
+    // Phone formatting listener
+    const phoneInput = document.getElementById('prePhone');
+    if (phoneInput) {
+        phoneInput.addEventListener('input', function(e) {
+            const raw = getRawPhoneNumber(this.value);
+            const formatted = formatSouthAfricanPhone(raw);
+            this.value = formatted;
+        });
+    }
 
     document.getElementById('createVaultBtn').onclick = () => createNewVault();
     document.getElementById('openProductModalBtn').onclick = () => openProductModal();
