@@ -6,7 +6,7 @@
 <title>VVIP Console | Admin Portal</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-/* ========== SAME STYLES AS BEFORE ========== */
+/* ========== SAME STYLES AS BEFORE (keep unchanged) ========== */
 * {
     margin: 0;
     padding: 0;
@@ -220,16 +220,6 @@ body {
     font-weight: 600;
     font-size: 14px;
 }
-.item-price {
-    color: #10b981;
-    font-size: 12px;
-    margin-top: 4px;
-}
-.item-stock {
-    color: #f59e0b;
-    font-size: 11px;
-    margin-top: 2px;
-}
 .add-form {
     display: flex;
     gap: 10px;
@@ -378,8 +368,6 @@ body {
     .tables-grid { grid-template-columns: 1fr; }
     .bands-table th, .bands-table td { font-size: 11px; padding: 8px 4px; }
 }
-
-/* ========== STUNNING VVIP MODAL ========== */
 .vvip-modal {
     position: fixed;
     top: 0;
@@ -530,6 +518,11 @@ body {
                 <h2>Registered Wristbands</h2>
                 <span>VVIP Members</span>
             </div>
+            <div class="add-form" style="margin-bottom: 20px;">
+                <input type="text" id="newBandPhone" placeholder="Phone number (e.g., +27761234567)">
+                <input type="text" id="newBandName" placeholder="Customer name (optional)">
+                <button class="add-btn" onclick="createBand()">+ Register New Band</button>
+            </div>
             <div id="bandsListContainer"></div>
         </div>
     </div>
@@ -569,14 +562,15 @@ body {
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    console.log("🔵 Script loaded, supabase client:", supabase);
+    console.log("🔵 VVIP Console - using vvip_bands table (separate from profiles)");
 
     // ========== GLOBAL STATE ==========
     let currentAdmin = null;
-    let cachedTables = [], cachedProducts = [], cachedOrders = [], cachedBands = [], cachedTransactions = [];
-
-    // Real-time subscriptions
-    let tablesSubscription = null, ordersSubscription = null, profilesSubscription = null, transactionsSubscription = null;
+    let cachedTables = [];
+    let cachedBands = [];      // from vvip_bands table
+    let cachedOrders = [];
+    let cachedProducts = [];
+    let cachedTransactions = [];
 
     // ========== HELPER FUNCTIONS ==========
     function escapeHtml(str) {
@@ -604,107 +598,56 @@ body {
     async function checkAdminAccess() {
         console.log("🔐 Checking admin access...");
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-            console.error("❌ Auth error:", error);
-            showModal("Access Denied", "Authentication error: " + error.message, '<i class="fas fa-shield-alt"></i>');
-            return false;
-        }
-        if (!session) {
-            console.warn("⚠️ No active session");
+        if (error || !session) {
             showModal("Access Denied", "You are not logged in.<br><br>Only administrators can access the VVIP Console.", '<i class="fas fa-shield-alt"></i>');
             return false;
         }
-        console.log("✅ Session found, user ID:", session.user.id);
-        
         const { data: profile, error: profErr } = await supabase
             .from('profiles')
-            .select('role, name')
+            .select('role')
             .eq('id', session.user.id)
             .single();
-        if (profErr) {
-            console.error("❌ Profile fetch error:", profErr);
-            showModal("Access Denied", "Could not verify your role. Please contact support.", '<i class="fas fa-lock"></i>');
+        if (profErr || !profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
+            showModal("Access Denied", "You do not have administrator privileges.", '<i class="fas fa-lock"></i>');
             return false;
         }
-        console.log("📋 Profile:", profile);
-        if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
-            console.warn("⛔ Role not allowed:", profile?.role);
-            showModal("Access Denied", "You do not have administrator or staff privileges.<br><br>This area is restricted.", '<i class="fas fa-lock"></i>');
-            return false;
-        }
-        currentAdmin = { id: session.user.id, name: profile.name, role: profile.role };
-        console.log("🎉 Admin access granted:", currentAdmin);
+        currentAdmin = { id: session.user.id, role: profile.role };
         return true;
     }
 
-    // ========== DATA LOADING ==========
+    // ========== DATA LOADING (using vvip_bands, venue_tables, orders, products) ==========
     async function loadVenueTables() {
-        console.log("📊 Loading venue_tables...");
         const { data, error } = await supabase.from('venue_tables').select('*');
-        if (error) console.error("❌ Load tables error:", error);
-        else console.log(`✅ Loaded ${data?.length || 0} tables`);
+        if (error) console.error(error);
         return data || [];
     }
-    async function loadProducts() {
-        const { data, error } = await supabase.from('products').select('*');
-        if (error) console.error("Load products error:", error);
+
+    async function loadVVIPBands() {
+        const { data, error } = await supabase.from('vvip_bands').select('*').order('created_at', { ascending: false });
+        if (error) console.error(error);
         return data || [];
     }
+
     async function loadOrders() {
         const { data, error } = await supabase
             .from('orders')
             .select('*')
             .in('status', ['pending', 'preparing', 'ready'])
             .order('created_at', { ascending: false });
-        if (error) console.error("Load orders error:", error);
+        if (error) console.error(error);
         return data || [];
     }
-    async function loadProfilesAndWallets() {
-        const { data: profiles, error: pErr } = await supabase
-            .from('profiles')
-            .select('id, name, phone, role');
-        if (pErr) console.error(pErr);
-        const { data: wallets, error: wErr } = await supabase
-            .from('wallets')
-            .select('user_id, balance');
-        if (wErr) console.error(wErr);
-        const { data: tabAccounts, error: tErr } = await supabase
-            .from('vvip_tab_accounts')
-            .select('user_id, balance');
-        if (tErr) console.error(tErr);
 
-        const walletMap = {};
-        if (wallets) wallets.forEach(w => { walletMap[w.user_id] = { balance: w.balance, tabBalance: 0 }; });
-        if (tabAccounts) tabAccounts.forEach(t => { if (walletMap[t.user_id]) walletMap[t.user_id].tabBalance = t.balance; else walletMap[t.user_id] = { balance: 0, tabBalance: t.balance }; });
-        
-        const bands = [];
-        if (profiles) {
-            for (const p of profiles) {
-                bands.push({
-                    id: p.phone || p.id,
-                    name: p.name || p.phone,
-                    balance: walletMap[p.id]?.balance || 0,
-                    tabBalance: walletMap[p.id]?.tabBalance || 0,
-                    tableName: null,
-                    userId: p.id
-                });
-            }
-        }
-        const tables = await loadVenueTables();
-        for (const band of bands) {
-            for (const tbl of tables) {
-                if (tbl.guests && tbl.guests.includes(band.userId)) {
-                    band.tableName = tbl.name;
-                    break;
-                }
-            }
-        }
-        return bands;
+    async function loadProducts() {
+        const { data, error } = await supabase.from('products').select('*');
+        if (error) console.error(error);
+        return data || [];
     }
+
     async function loadTransactionHistory() {
         const { data, error } = await supabase
             .from('wallet_transactions')
-            .select('*, profiles(name)')
+            .select('*')
             .order('created_at', { ascending: false })
             .limit(100);
         if (error) console.error(error);
@@ -713,19 +656,16 @@ body {
             amount: tx.amount,
             item: tx.description || 'Transaction',
             quantity: 1,
-            time: new Date(tx.created_at).toLocaleTimeString(),
-            user: tx.profiles?.name
+            time: new Date(tx.created_at).toLocaleTimeString()
         }));
     }
 
     async function refreshAllData() {
-        console.log("🔄 Refreshing all data...");
         cachedTables = await loadVenueTables();
-        cachedProducts = await loadProducts();
+        cachedBands = await loadVVIPBands();
         cachedOrders = await loadOrders();
-        cachedBands = await loadProfilesAndWallets();
+        cachedProducts = await loadProducts();
         cachedTransactions = await loadTransactionHistory();
-        console.log("✅ Data refresh complete", { tables: cachedTables.length, orders: cachedOrders.length });
     }
 
     // ========== RENDER FUNCTIONS ==========
@@ -757,11 +697,17 @@ body {
             const originalTab = t.tab_balance || 0;
             const spent = originalTab - (t.tab_balance || 0);
             const percent = originalTab > 0 ? (spent / originalTab) * 100 : 0;
+            // Get guest names from vvip_bands by phone
+            const guestPhones = t.guests || [];
+            const guestNames = guestPhones.map(phone => {
+                const band = cachedBands.find(b => b.phone === phone);
+                return band ? `${band.name || phone}` : phone;
+            });
             return `<div class="table-card"><div style="display:flex; justify-content:space-between; margin-bottom:12px;"><span class="table-name">${escapeHtml(t.name)}</span><span style="color:#E30613; font-weight:bold;">Tab: R${t.tab_balance || 0}</span></div>
-            <div style="margin-bottom:10px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>👥 Guests: ${(t.guests?.length || 0)}/${t.capacity}</span><span>💰 Spent: R${spent}</span></div>
+            <div style="margin-bottom:10px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>👥 Guests: ${guestPhones.length}/${t.capacity}</span><span>💰 Spent: R${spent}</span></div>
             <div class="progress-bar"><div class="progress-fill" style="width:${percent}%;"></div></div></div>
-            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;"><input type="text" id="assign_${t.name.replace(/\s/g, '_')}" placeholder="Phone number (Wallet ID)" style="flex:1; padding:8px 12px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:40px; color:#1e293b;"><button onclick="assignToTable('${escapeHtml(t.name).replace(/'/g, "\\'")}')" class="btn-small">➕ Assign</button><button onclick="unassignFromTable('${escapeHtml(t.name).replace(/'/g, "\\'")}')" class="btn-small">🗑️ Remove</button></div>
-            <div><span style="color:#64748b; font-size:12px;">Assigned:</span><div style="margin-top:6px;">${(t.guests || []).map(g => `<span class="guest-badge">${escapeHtml(g)}</span>`).join('') || '<span style="color:#94a3b8; font-size:11px;">None</span>'}</div></div></div>`;
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;"><input type="text" id="assign_${t.name.replace(/\s/g, '_')}" placeholder="Phone number" style="flex:1; padding:8px 12px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:40px; color:#1e293b;"><button onclick="assignToTable('${escapeHtml(t.name).replace(/'/g, "\\'")}')" class="btn-small">➕ Assign</button><button onclick="unassignFromTable('${escapeHtml(t.name).replace(/'/g, "\\'")}')" class="btn-small">🗑️ Remove</button></div>
+            <div><span style="color:#64748b; font-size:12px;">Assigned:</span><div style="margin-top:6px;">${guestNames.map(g => `<span class="guest-badge">${escapeHtml(g)}</span>`).join('') || '<span style="color:#94a3b8; font-size:11px;">None</span>'}</div></div></div>`;
         }).join('');
         document.querySelectorAll('[id^="assign_"]').forEach(input => {
             const tableName = input.id.replace('assign_', '').replace(/_/g, ' ');
@@ -772,8 +718,8 @@ body {
     function renderBands() {
         const container = document.getElementById('bandsListContainer');
         if (!container) return;
-        if (cachedBands.length === 0) { container.innerHTML = '<div class="empty-state">💳 No wristbands registered yet.</div>'; return; }
-        container.innerHTML = `<div style="overflow-x:auto;"><table class="bands-table"><thead><tr><th>🆔 ID</th><th>👤 Name</th><th>💰 Wallet</th><th>💎 VVIP Tab</th><th>📋 Table</th><th>🖨️</th></tr></thead><tbody>${cachedBands.map(b => `<tr><td style="font-family:monospace;">${escapeHtml(b.id)}</td><td>${escapeHtml(b.name)}</td><td style="color:#10b981;">R${(b.balance || 0).toLocaleString()}</td><td style="color:#f59e0b;">R${(b.tabBalance || 0).toLocaleString()}</td><td>${b.tableName ? escapeHtml(b.tableName) : '<span style="color:#94a3b8;">—</span>'}</td><td><button onclick="printBand('${b.id.replace(/'/g, "\\'")}')" class="btn-small">🖨️ Print</button></td></tr>`).join('')}</tbody></table></div><div style="margin-top:16px; padding:12px; background:#f8fafc; border-radius:20px; text-align:center; font-size:12px; color:#475569;">💡 Total: ${cachedBands.length} bands | Wallet total: R${cachedBands.reduce((s, b) => s + (b.balance || 0), 0).toLocaleString()} | VVIP Tab total: R${cachedBands.reduce((s, b) => s + (b.tabBalance || 0), 0).toLocaleString()}</div>`;
+        if (cachedBands.length === 0) { container.innerHTML = '<div class="empty-state">💳 No wristbands registered. Use the form above to create one.</div>'; return; }
+        container.innerHTML = `<div style="overflow-x:auto;"><table class="bands-table"><thead><tr><th>📞 Phone</th><th>👤 Name</th><th>💎 VVIP Tab Balance</th><th>📋 Assigned Table</th><th>🖨️</th><th>🗑️</th></thead><tbody>${cachedBands.map(b => `<tr><td style="font-family:monospace;">${escapeHtml(b.phone)}</td><td>${escapeHtml(b.name || '-')}</td><td style="color:#f59e0b;">R${(b.tab_balance || 0).toLocaleString()}</td><td>${b.assigned_table ? escapeHtml(b.assigned_table) : '<span style="color:#94a3b8;">—</span>'}</td><td><button onclick="printBand('${escapeHtml(b.phone).replace(/'/g, "\\'")}')" class="btn-small">🖨️ Print</button></td><td><button onclick="deleteBand('${escapeHtml(b.phone).replace(/'/g, "\\'")}')" class="btn-small" style="background:#666;">🗑️</button></td></tr>`).join('')}</tbody></table></div>`;
     }
 
     function renderOrders() {
@@ -801,7 +747,7 @@ body {
         if (!container) return;
         if (cachedTransactions.length === 0) { container.innerHTML = '<div class="empty-state">✨ No transactions yet.</div>'; return; }
         const totalSpent = cachedTransactions.reduce((s, tx) => s + (tx.amount > 0 ? tx.amount : 0), 0);
-        container.innerHTML = `<div class="dashboard-stats"><div class="stat-card"><div class="value">R${totalSpent.toFixed(2)}</div><div class="label">Total Spent</div></div><div class="stat-card"><div class="value">${cachedTransactions.length}</div><div class="label">Transactions</div></div></div><div class="transaction-list">${cachedTransactions.slice(0, 30).map(tx => { let vendorIcon = "💳"; return `<div class="transaction-item"><div class="transaction-icon">${vendorIcon}</div><div class="transaction-details"><div class="transaction-header"><span class="transaction-vendor">${tx.vendor}</span><span class="transaction-amount">+R${tx.amount}</span></div><div class="transaction-item-name">${tx.quantity}x ${tx.item}</div><div class="transaction-time">⏱️ ${tx.time}</div></div></div>`; }).join('')}</div>`;
+        container.innerHTML = `<div class="dashboard-stats"><div class="stat-card"><div class="value">R${totalSpent.toFixed(2)}</div><div class="label">Total Spent</div></div><div class="stat-card"><div class="value">${cachedTransactions.length}</div><div class="label">Transactions</div></div></div><div class="transaction-list">${cachedTransactions.slice(0, 30).map(tx => `<div class="transaction-item"><div class="transaction-icon">💳</div><div class="transaction-details"><div class="transaction-header"><span class="transaction-vendor">${tx.vendor}</span><span class="transaction-amount">+R${tx.amount}</span></div><div class="transaction-item-name">${tx.quantity}x ${tx.item}</div><div class="transaction-time">⏱️ ${tx.time}</div></div></div>`).join('')}</div>`;
     }
 
     async function renderAll() {
@@ -814,159 +760,146 @@ body {
         if (activeTab === 'history') renderHistory();
     }
 
-    // ========== BUSINESS LOGIC WITH DEBUG LOGS ==========
+    // ========== BUSINESS LOGIC ==========
     window.createTable = async function() {
-        console.log("🔨 createTable() called");
-        const nameInput = document.getElementById('newTableName');
-        const capacityInput = document.getElementById('newTableCapacity');
-        const tabInput = document.getElementById('newTableTab');
-        
-        const name = nameInput?.value.trim();
-        const capacity = parseInt(capacityInput?.value);
-        const tab = parseInt(tabInput?.value);
-        
-        console.log("📝 Table name:", name, "Capacity:", capacity, "Initial Tab:", tab);
-        
-        if (!name || capacity < 1) {
-            console.warn("⚠️ Invalid input: name or capacity missing");
-            showModal("Error", "Valid name and capacity required", '<i class="fas fa-exclamation-triangle"></i>');
-            return;
-        }
-        
-        // Check if table already exists
+        const name = document.getElementById('newTableName')?.value.trim();
+        const capacity = parseInt(document.getElementById('newTableCapacity')?.value);
+        const tab = parseInt(document.getElementById('newTableTab')?.value);
+        if (!name || capacity < 1) { showModal("Error", "Valid name and capacity required"); return; }
         const exists = cachedTables.some(t => t.name === name);
-        if (exists) {
-            console.warn("⚠️ Table already exists:", name);
-            showModal("Duplicate", "Table already exists", '<i class="fas fa-ban"></i>');
-            return;
-        }
-        
-        console.log("🆕 Inserting new table into Supabase...");
-        const { data, error } = await supabase.from('venue_tables').insert([{
-            name, 
-            capacity, 
-            tab_balance: tab, 
-            entries_used: 0, 
-            guests: []
-        }]).select();
-        
-        if (error) {
-            console.error("❌ Supabase insert error:", error);
-            showModal("Error", error.message, '<i class="fas fa-bug"></i>');
-            return;
-        }
-        
-        console.log("✅ Table created successfully:", data);
+        if (exists) { showModal("Duplicate", "Table already exists"); return; }
+        const { error } = await supabase.from('venue_tables').insert([{ name, capacity, tab_balance: tab, entries_used: 0, guests: [] }]);
+        if (error) { showModal("Error", error.message); return; }
         await refreshAllData();
         renderAll();
-        showModal("Table Created", `${name} created with R${tab} tab`, '<i class="fas fa-check-circle"></i>');
-        if (nameInput) nameInput.value = '';
+        showModal("Table Created", `${name} created with R${tab} tab`);
+        document.getElementById('newTableName').value = '';
+    };
+
+    window.createBand = async function() {
+        const phone = document.getElementById('newBandPhone')?.value.trim();
+        const name = document.getElementById('newBandName')?.value.trim();
+        if (!phone) { showModal("Error", "Phone number is required"); return; }
+        // Check if band already exists
+        if (cachedBands.some(b => b.phone === phone)) {
+            showModal("Duplicate", `Band with phone ${phone} already exists`);
+            return;
+        }
+        const { error } = await supabase.from('vvip_bands').insert([{ phone, name: name || null, tab_balance: 0, assigned_table: null, status: 'active' }]);
+        if (error) { showModal("Error", error.message); return; }
+        await refreshAllData();
+        renderAll();
+        showModal("Band Created", `Wristband for ${phone} registered.`);
+        document.getElementById('newBandPhone').value = '';
+        document.getElementById('newBandName').value = '';
+    };
+
+    window.deleteBand = async function(phone) {
+        if (!confirm(`Delete band for ${phone}? This will also unassign from any table.`)) return;
+        // First unassign from table if assigned
+        const band = cachedBands.find(b => b.phone === phone);
+        if (band && band.assigned_table) {
+            const table = cachedTables.find(t => t.name === band.assigned_table);
+            if (table) {
+                let guests = table.guests || [];
+                guests = guests.filter(g => g !== phone);
+                await supabase.from('venue_tables').update({ guests, entries_used: guests.length }).eq('name', table.name);
+            }
+        }
+        const { error } = await supabase.from('vvip_bands').delete().eq('phone', phone);
+        if (error) showModal("Error", error.message);
+        else {
+            await refreshAllData();
+            renderAll();
+            showModal("Deleted", `Band ${phone} removed.`);
+        }
     };
 
     window.assignToTable = async function(tableName) {
-        const walletId = prompt("Enter Phone number (Wallet ID):");
-        if (!walletId) return;
-        const { data: profile, error: profErr } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('phone', walletId)
-            .maybeSingle();
-        if (!profile) {
-            const createNew = confirm(`Profile with phone ${walletId} not found. Create new profile?`);
-            if (!createNew) return;
-            const { data: newProfile, error: createErr } = await supabase
-                .from('profiles')
-                .insert([{ phone: walletId, name: 'Guest', role: 'customer' }])
-                .select()
-                .single();
-            if (createErr) { showModal("Error", createErr.message, '<i class="fas fa-bug"></i>'); return; }
-            var userId = newProfile.id;
-        } else {
-            var userId = profile.id;
+        const phone = prompt("Enter phone number of the wristband:");
+        if (!phone) return;
+        // Check if band exists
+        let band = cachedBands.find(b => b.phone === phone);
+        if (!band) {
+            const create = confirm(`Band ${phone} not found. Create new band?`);
+            if (!create) return;
+            const { error } = await supabase.from('vvip_bands').insert([{ phone, tab_balance: 0, status: 'active' }]);
+            if (error) { showModal("Error", error.message); return; }
+            await refreshAllData();
+            band = cachedBands.find(b => b.phone === phone);
+            if (!band) return;
         }
         const table = cachedTables.find(t => t.name === tableName);
         if (!table) return;
         let guests = table.guests || [];
-        if (guests.includes(userId)) { showModal("Already Assigned", `${walletId} already at this table`, '<i class="fas fa-info-circle"></i>'); return; }
-        if (guests.length >= table.capacity) { showModal("Table Full", `${tableName} at capacity`, '<i class="fas fa-door-closed"></i>'); return; }
-        guests.push(userId);
-        const { error } = await supabase
+        if (guests.includes(phone)) { showModal("Already Assigned", `${phone} already at this table`); return; }
+        if (guests.length >= table.capacity) { showModal("Table Full", `${tableName} at capacity`); return; }
+        guests.push(phone);
+        // Update table guests
+        const { error: tableErr } = await supabase
             .from('venue_tables')
             .update({ guests, entries_used: guests.length })
             .eq('name', tableName);
-        if (error) { showModal("Error", error.message, '<i class="fas fa-bug"></i>'); return; }
+        if (tableErr) { showModal("Error", tableErr.message); return; }
+        // Update band's assigned_table
+        const { error: bandErr } = await supabase
+            .from('vvip_bands')
+            .update({ assigned_table: tableName })
+            .eq('phone', phone);
+        if (bandErr) console.error(bandErr);
         await refreshAllData();
         renderAll();
-        showModal("Assigned", `${walletId} → ${tableName}`, '<i class="fas fa-user-check"></i>');
+        showModal("Assigned", `${phone} → ${tableName}`);
     };
 
     window.unassignFromTable = async function(tableName) {
-        const walletId = prompt("Enter Phone number to remove:");
-        if (!walletId) return;
-        const { data: profile } = await supabase.from('profiles').select('id').eq('phone', walletId).maybeSingle();
-        if (!profile) { showModal("Not Found", "Profile not found", '<i class="fas fa-search"></i>'); return; }
+        const phone = prompt("Enter phone number to remove:");
+        if (!phone) return;
         const table = cachedTables.find(t => t.name === tableName);
         if (!table) return;
         let guests = table.guests || [];
-        const idx = guests.indexOf(profile.id);
-        if (idx === -1) { showModal("Not Found", `${walletId} not at this table`, '<i class="fas fa-search"></i>'); return; }
-        guests.splice(idx, 1);
-        const { error } = await supabase
+        if (!guests.includes(phone)) { showModal("Not Found", `${phone} not at this table`); return; }
+        guests = guests.filter(p => p !== phone);
+        const { error: tableErr } = await supabase
             .from('venue_tables')
             .update({ guests, entries_used: guests.length })
             .eq('name', tableName);
-        if (error) { showModal("Error", error.message, '<i class="fas fa-bug"></i>'); return; }
+        if (tableErr) { showModal("Error", tableErr.message); return; }
+        // Remove table assignment from band
+        await supabase.from('vvip_bands').update({ assigned_table: null }).eq('phone', phone);
         await refreshAllData();
         renderAll();
-        showModal("Removed", `${walletId} removed from ${tableName}`, '<i class="fas fa-user-minus"></i>');
+        showModal("Removed", `${phone} removed from ${tableName}`);
     };
 
     window.collectOrder = async function(orderId) {
         const order = cachedOrders.find(o => o.id === orderId);
         if (!order || order.status !== "ready") return;
-        const { error } = await supabase
-            .from('orders')
-            .update({ status: 'collected' })
-            .eq('id', orderId);
-        if (error) showModal("Error", error.message, '<i class="fas fa-bug"></i>');
+        const { error } = await supabase.from('orders').update({ status: 'collected' }).eq('id', orderId);
+        if (error) showModal("Error", error.message);
         else {
             await refreshAllData();
             renderAll();
-            showModal("Order Collected", `Order #${order.order_id} collected`, '<i class="fas fa-gift"></i>');
+            showModal("Order Collected", `Order #${order.order_id} collected`);
         }
     };
 
-    window.printBand = async function(bandId) {
-        const band = cachedBands.find(b => b.id === bandId);
-        if (!band) { showModal("Error", "Band not found", '<i class="fas fa-exclamation-triangle"></i>'); return; }
+    window.printBand = async function(phone) {
+        const band = cachedBands.find(b => b.phone === phone);
+        if (!band) { showModal("Error", "Band not found"); return; }
         const printWindow = window.open('', '_blank');
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(bandId)}`;
-        printWindow.document.write(`<!DOCTYPE html><html><head><title>VVIP Wristband - ${bandId}</title><style>body{margin:0;padding:20px;background:white;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Arial;}.wristband{width:320px;background:linear-gradient(145deg,#b30000,#8b0000);border-radius:40px;padding:30px;text-align:center;color:white;}.logo{font-size:36px;margin-bottom:15px;}.band-id{font-size:26px;font-weight:bold;margin:15px 0;background:rgba(255,255,255,0.2);padding:10px;border-radius:50px;}.qr{background:white;padding:15px;border-radius:24px;display:inline-block;margin:15px 0;}.qr img{width:150px;height:150px;}</style><body><div class="wristband"><div class="logo">👑 RANDS VVIP</div><div class="band-id">${bandId}</div><div class="qr"><img src="${qrUrl}"></div><div class="footer">Present this wristband for access</div></div></body></html>`);
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(phone)}`;
+        printWindow.document.write(`<!DOCTYPE html><html><head><title>VVIP Wristband - ${phone}</title><style>body{margin:0;padding:20px;background:white;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Arial;}.wristband{width:320px;background:linear-gradient(145deg,#b30000,#8b0000);border-radius:40px;padding:30px;text-align:center;color:white;}.logo{font-size:36px;margin-bottom:15px;}.band-id{font-size:26px;font-weight:bold;margin:15px 0;background:rgba(255,255,255,0.2);padding:10px;border-radius:50px;}.qr{background:white;padding:15px;border-radius:24px;display:inline-block;margin:15px 0;}.qr img{width:150px;height:150px;}</style><body><div class="wristband"><div class="logo">👑 RANDS VVIP</div><div class="band-id">${phone}</div><div class="qr"><img src="${qrUrl}"></div><div class="footer">Present this wristband for access</div></div></body></html>`);
         printWindow.document.close();
         printWindow.print();
     };
 
     // ========== REAL-TIME ==========
     function setupRealtime() {
-        if (tablesSubscription) tablesSubscription.unsubscribe();
-        tablesSubscription = supabase
-            .channel('venue_tables_changes')
+        supabase.channel('vvip_changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'venue_tables' }, () => renderAll())
-            .subscribe();
-        if (ordersSubscription) ordersSubscription.unsubscribe();
-        ordersSubscription = supabase
-            .channel('orders_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bands' }, () => renderAll())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => renderAll())
-            .subscribe();
-        if (profilesSubscription) profilesSubscription.unsubscribe();
-        profilesSubscription = supabase
-            .channel('profiles_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => renderAll())
-            .subscribe();
-        if (transactionsSubscription) transactionsSubscription.unsubscribe();
-        transactionsSubscription = supabase
-            .channel('wallet_transactions_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, () => renderAll())
             .subscribe();
     }
 
@@ -981,26 +914,15 @@ body {
 
     // ========== INIT ==========
     async function init() {
-        console.log("🚀 Initialising VVIP Console...");
-        try {
-            const isAdmin = await checkAdminAccess();
-            if (!isAdmin) {
-                console.warn("⛔ Not admin – UI stays hidden");
-                return;
-            }
-            console.log("✅ Admin confirmed – showing UI");
-            document.getElementById('adminContainer').style.display = 'block';
-            await refreshAllData();
-            renderAll();
-            setupRealtime();
-            document.querySelectorAll('.admin-tab').forEach(tab => {
-                tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-            });
-            console.log("🎉 Initialisation complete!");
-        } catch (err) {
-            console.error("💥 Fatal init error:", err);
-            showModal("Initialization Error", err.message, '<i class="fas fa-bug"></i>');
-        }
+        const isAdmin = await checkAdminAccess();
+        if (!isAdmin) return;
+        document.getElementById('adminContainer').style.display = 'block';
+        await refreshAllData();
+        renderAll();
+        setupRealtime();
+        document.querySelectorAll('.admin-tab').forEach(tab => {
+            tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+        });
     }
     init();
 </script>
