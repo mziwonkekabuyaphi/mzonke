@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>LED Banner | Digital Wallet</title>
+    <title>Festival Banner | Digital Wallet</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -48,7 +48,7 @@
             min-height: 100vh;
             color: var(--ink);
             overflow-x: hidden;
-            padding: 0; /* removed bottom padding - no gap */
+            padding: 0;
             position: relative;
             transition: background 0.3s ease;
         }
@@ -561,7 +561,7 @@
             box-shadow: 0 0 6px var(--red-glow);
         }
 
-        /* Mode grid */
+        /* Mode grid - fixed to have icon above text for all (including wave) */
         .mode-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -572,7 +572,7 @@
         .mode-btn {
             background: var(--bone);
             border: 1px solid var(--border-strong);
-            padding: 8px 6px;
+            padding: 10px 6px;
             border-radius: var(--radius-full);
             color: var(--slate);
             font-size: 0.7rem;
@@ -580,6 +580,12 @@
             cursor: pointer;
             text-align: center;
             transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            line-height: 1.3;
         }
 
         .mode-btn.active {
@@ -656,9 +662,12 @@
         @media (max-width: 480px) {
             .mode-btn {
                 font-size: 0.6rem;
-                padding: 7px 4px;
+                padding: 8px 4px;
+                gap: 4px;
             }
-            
+            .mode-btn i, .mode-btn emoji {
+                font-size: 1rem;
+            }
             .preset-btn {
                 font-size: 0.65rem;
                 padding: 8px 10px;
@@ -687,10 +696,10 @@
 <header class="site-header">
     <div class="brand" onclick="window.location.href='home.html'">
         <div class="brand-logo">
-            <img src="../assets/images/rands-logo.png" alt="Rands" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\'fas fa-lightbulb\'></i>';">
+            <img src="../assets/images/rands-logo3.png" alt="Rands" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\'fas fa-lightbulb\'></i>';">
         </div>
         <div class="brand-text">
-            <h1>LED Banner</h1>
+            <h1>Festival Banner</h1>
             <p>Digital Sign</p>
         </div>
     </div>
@@ -713,7 +722,6 @@
 
 <!-- Controls Panel (modern card) -->
 <div class="controls-card">
-    <!-- Writing area moved above buttons -->
     <div class="input-wrapper">
         <input type="text" id="messageInput" class="message-input" placeholder="ENTER YOUR MESSAGE..." maxlength="200">
     </div>
@@ -748,11 +756,11 @@
     </div>
 
     <div class="mode-grid">
-        <div class="mode-btn" data-mode="static">🔲 STATIC</div>
-        <div class="mode-btn" data-mode="scroll">📜 SCROLL</div>
-        <div class="mode-btn" data-mode="bounce">🏀 BOUNCE</div>
-        <div class="mode-btn" data-mode="flash">⚡ FLASH</div>
-        <div class="mode-btn" data-mode="wave">🌊 WAVE</div>
+        <div class="mode-btn" data-mode="static"><span>🔲</span><span>STATIC</span></div>
+        <div class="mode-btn" data-mode="scroll"><span>📜</span><span>SCROLL</span></div>
+        <div class="mode-btn" data-mode="bounce"><span>🏀</span><span>BOUNCE</span></div>
+        <div class="mode-btn" data-mode="flash"><span>⚡</span><span>FLASH</span></div>
+        <div class="mode-btn" data-mode="wave"><span>🌊</span><span>WAVE</span></div>
     </div>
 
     <div class="preset-grid">
@@ -836,24 +844,8 @@
         fullscreenMsgText.style.color = currentColor;
         fullscreenMsgText.style.textShadow = `0 0 20px ${currentColor}, 0 0 40px ${currentColor}`;
         
-        // Copy current message
-        if (currentMode !== 'wave') {
-            fullscreenMsgText.innerText = currentMessage;
-        } else {
-            const chars = currentMessage.split('');
-            const spannedHtml = chars.map((char, index) => {
-                if (char === ' ') return '&nbsp;';
-                return `<span class="fullscreen-wave-letter" style="--i: ${index}">${char}</span>`;
-            }).join('');
-            fullscreenMsgText.innerHTML = spannedHtml;
-            
-            // Apply wave animation delays
-            const letters = fullscreenMsgText.querySelectorAll('.fullscreen-wave-letter');
-            letters.forEach((letter, idx) => {
-                letter.style.animationDelay = `${idx * 0.04}s`;
-                letter.style.animationDuration = `${0.4 + (12 - currentSpeed) * 0.03}s`;
-            });
-        }
+        // Copy current message with proper wave handling
+        updateFullscreenWaveContent(fullscreenMsgText);
         
         fullscreenMsgContainer.appendChild(fullscreenMsgText);
         fullscreenScreen.appendChild(fullscreenMsgContainer);
@@ -899,7 +891,7 @@
             exitFullscreen();
         });
         
-        // Update fullscreen text color and animation when settings change
+        // Start interval to sync fullscreen with current state
         if (fullscreenAnimationInterval) clearInterval(fullscreenAnimationInterval);
         fullscreenAnimationInterval = setInterval(() => {
             if (!isFullscreen) {
@@ -913,15 +905,47 @@
                 fsMsgText.style.color = currentColor;
                 fsMsgText.style.textShadow = `0 0 20px ${currentColor}, 0 0 40px ${currentColor}`;
                 
-                // Update message if needed (only if not wave mode to avoid flicker)
-                if (currentMode !== 'wave' && fsMsgText.innerText !== currentMessage) {
+                // Only update if message changed (prevent flicker)
+                const currentFsText = (currentMode === 'wave') ? fsMsgText.innerHTML : fsMsgText.innerText;
+                if (currentMode !== 'wave' && currentFsText !== currentMessage) {
                     fsMsgText.innerText = currentMessage;
+                } else if (currentMode === 'wave') {
+                    // For wave, we need to rebuild only if message changed
+                    const waveContentMatches = fsMsgText.innerHTML.includes(currentMessage);
+                    if (!waveContentMatches) {
+                        updateFullscreenWaveContent(fsMsgText);
+                    } else {
+                        // Update animation durations for wave letters based on speed
+                        const letters = fsMsgText.querySelectorAll('.fullscreen-wave-letter');
+                        letters.forEach(letter => {
+                            letter.style.animationDuration = `${0.4 + (12 - currentSpeed) * 0.03}s`;
+                        });
+                    }
                 }
                 
-                // Re-apply animation mode
+                // Re-apply animation mode to ensure timing updates
                 applyFullscreenAnimationMode(fsScreen, fsMsgContainer, fsMsgText);
             }
         }, 100);
+    }
+    
+    function updateFullscreenWaveContent(element) {
+        if (!element) return;
+        if (currentMode === 'wave') {
+            const chars = currentMessage.split('');
+            const spannedHtml = chars.map((char, index) => {
+                if (char === ' ') return '&nbsp;';
+                return `<span class="fullscreen-wave-letter" style="--i: ${index}">${char}</span>`;
+            }).join('');
+            element.innerHTML = spannedHtml;
+            const letters = element.querySelectorAll('.fullscreen-wave-letter');
+            letters.forEach((letter, idx) => {
+                letter.style.animationDelay = `${idx * 0.04}s`;
+                letter.style.animationDuration = `${0.4 + (12 - currentSpeed) * 0.03}s`;
+            });
+        } else {
+            element.innerText = currentMessage;
+        }
     }
     
     function applyFullscreenAnimationMode(container, msgContainer, textElement) {
@@ -964,21 +988,9 @@
                 break;
             case 'wave':
                 container.classList.add('wave-full');
-                // For wave mode, rebuild wave letters if message changed
-                if (textElement && textElement.innerHTML !== currentMessage.split('').map(c => c === ' ' ? '&nbsp;' : `<span class="fullscreen-wave-letter" style="--i: 0">${c}</span>`).join('')) {
-                    const chars = currentMessage.split('');
-                    const spannedHtml = chars.map((char, index) => {
-                        if (char === ' ') return '&nbsp;';
-                        return `<span class="fullscreen-wave-letter" style="--i: ${index}">${char}</span>`;
-                    }).join('');
-                    textElement.innerHTML = spannedHtml;
-                    const letters = textElement.querySelectorAll('.fullscreen-wave-letter');
-                    letters.forEach((letter, idx) => {
-                        letter.style.animationDelay = `${idx * 0.04}s`;
-                        letter.style.animationDuration = `${0.4 + (12 - currentSpeed) * 0.03}s`;
-                    });
-                } else if (textElement && currentMode === 'wave') {
-                    // Update animation durations for existing wave letters
+                // Ensure wave content is up to date and animation properties set
+                if (textElement && textElement.id === 'fullscreenMessageText') {
+                    // Rebuild wave letters if needed (already handled in interval)
                     const letters = textElement.querySelectorAll('.fullscreen-wave-letter');
                     letters.forEach((letter, idx) => {
                         letter.style.animationDuration = `${0.4 + (12 - currentSpeed) * 0.03}s`;

@@ -112,8 +112,60 @@
             border-radius: 60px;
             display: inline-block;
         }
+        /* Vendor selection row - mandatory */
+        .vendor-row {
+            margin: 20px 0 12px;
+        }
+        .vendor-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .required-star {
+            color: #E30613;
+            font-size: 0.9rem;
+        }
+        .vendor-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .vendor-chip {
+            flex: 1;
+            background: #f8fafd;
+            border: 1.5px solid #eef2f8;
+            border-radius: 60px;
+            padding: 10px 12px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: #334155;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .vendor-chip i {
+            font-size: 0.9rem;
+            color: #E30613;
+        }
+        .vendor-chip.active {
+            background: linear-gradient(135deg, #E30613 0%, #b71c1c 100%);
+            border-color: #E30613;
+            color: white;
+        }
+        .vendor-chip.active i {
+            color: white;
+        }
+        .vendor-chip:active { transform: scale(0.96); }
         .amount-input-group {
-            margin: 28px 0 16px;
+            margin: 16px 0 16px;
         }
         .amount-label {
             font-size: 0.8rem;
@@ -160,6 +212,8 @@
             opacity: 0.6;
             transform: none;
             cursor: not-allowed;
+            background: #94a3b8;
+            box-shadow: none;
         }
         .modal {
             display: none;
@@ -220,6 +274,7 @@
             .pay-content { padding: 20px 16px; }
             .pay-heading { font-size: 1.3rem; }
             .close-pay-btn { top: 12px; right: 12px; width: 36px; height: 36px; font-size: 1rem; }
+            .vendor-chip { font-size: 0.7rem; padding: 8px 10px; }
         }
     </style>
 </head>
@@ -242,16 +297,35 @@
             </p>
         </div>
 
-        <!-- Dynamic amount input -->
-        <div class="amount-input-group">
-            <label class="amount-label">Enter amount (ZAR)</label>
-            <input type="number" id="paymentAmount" class="amount-input" placeholder="0.00" step="0.01" min="0.01" value="150.00">
+        <!-- Vendor Selection Row - MANDATORY -->
+        <div class="vendor-row">
+            <div class="vendor-label">
+                <i class="fas fa-store"></i> Select vendor 
+                <span class="required-star">*</span>
+            </div>
+            <div class="vendor-buttons">
+                <div class="vendor-chip" data-vendor="The Butcher">
+                    <i class="fas fa-utensils"></i> The Butcher
+                </div>
+                <div class="vendor-chip" data-vendor="Rands Smart Counter">
+                    <i class="fas fa-beer-mug-empty"></i> Rands Smart Counter
+                </div>
+                <div class="vendor-chip" data-vendor="VVIP Tab">
+                    <i class="fas fa-crown"></i> VVIP Tab
+                </div>
+            </div>
         </div>
 
-        <button class="action-btn" id="payNowBtn">
+        <!-- Amount input: no prefilled value -->
+        <div class="amount-input-group">
+            <label class="amount-label">Enter amount (ZAR)</label>
+            <input type="number" id="paymentAmount" class="amount-input" placeholder="0.00" step="0.01" min="0.01" value="">
+        </div>
+
+        <button class="action-btn" id="payNowBtn" disabled>
             <i class="fas fa-bolt"></i> Pay Now
         </button>
-        <p style="font-size: 0.7rem; color: #94a3b8; margin-top: 20px; text-align: center;">Enter amount and tap to authorise payment</p>
+        <p style="font-size: 0.7rem; color: #94a3b8; margin-top: 20px; text-align: center;">Select a vendor and enter exact amount, then confirm payment</p>
     </div>
 </div>
 
@@ -262,7 +336,7 @@
         <div id="approvalDetails" style="margin:20px 0; text-align:center;">
             <div style="background:#f8fafc; border-radius:20px; padding:20px;">
                 <p style="font-size:1.5rem; font-weight:800; color:#E30613;" id="approvalAmount">R0.00</p>
-                <p style="font-size:0.9rem; color:#64748b; margin-top:10px;">From: <strong>Rands Kiosk • POS</strong></p>
+                <p style="font-size:0.9rem; color:#64748b; margin-top:10px;">From: <strong id="approvalVendor">Rands Kiosk • POS</strong></p>
                 <p style="font-size:0.85rem; color:#475569; margin-top:8px;" id="approvalDesc">-</p>
             </div>
         </div>
@@ -286,16 +360,46 @@
     const modal = document.getElementById('paymentApprovalModal');
     const approvalAmount = document.getElementById('approvalAmount');
     const approvalDesc = document.getElementById('approvalDesc');
+    const approvalVendorSpan = document.getElementById('approvalVendor');
     const acceptBtn = document.getElementById('acceptPaymentBtn');
     const rejectBtn = document.getElementById('rejectPaymentBtn');
     const closePayBtn = document.getElementById('closePayBtn');
     const amountInput = document.getElementById('paymentAmount');
+    const vendorChips = document.querySelectorAll('.vendor-chip');
 
     let currentUserId = null;
     let currentUserPhone = null;
     let currentBalance = 0;
     let activeRequestId = null;
     let realtimeSubscription = null;
+    let selectedVendor = null;   // must be non-null to enable pay button
+
+    // Helper to update pay button state
+    function updatePayButtonState() {
+        const amount = parseFloat(amountInput.value);
+        const hasAmount = !isNaN(amount) && amount > 0;
+        const vendorSelected = selectedVendor !== null;
+        payBtn.disabled = !(hasAmount && vendorSelected);
+    }
+
+    // Vendor selection handler (mandatory)
+    function initVendorSelection() {
+        vendorChips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                const vendor = chip.getAttribute('data-vendor');
+                // If already selected, deselect (but then vendor becomes null, button disabled)
+                if (selectedVendor === vendor) {
+                    selectedVendor = null;
+                    chip.classList.remove('active');
+                } else {
+                    selectedVendor = vendor;
+                    vendorChips.forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                }
+                updatePayButtonState();
+            });
+        });
+    }
 
     function showToastMsg(msg) {
         toast.innerText = msg;
@@ -362,19 +466,26 @@
             showToastMsg("Please enter a valid amount greater than 0");
             return;
         }
+        if (!selectedVendor) {
+            showToastMsg("Please select a vendor before paying");
+            return;
+        }
         if (currentBalance < amount) {
             showToastMsg(`Insufficient balance. Current: R${currentBalance.toFixed(2)}`);
             return;
         }
+
+        let description = `Payment to ${selectedVendor} · R${amount.toFixed(2)}`;
 
         const { data, error } = await supabase
             .from('payment_requests')
             .insert({
                 user_id: currentUserId,
                 amount: amount,
-                description: `Payment to Rands Kiosk · POS Terminal (R${amount.toFixed(2)})`,
+                description: description,
                 status: 'pending',
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                vendor: selectedVendor
             })
             .select()
             .single();
@@ -384,10 +495,10 @@
             showToastMsg("Failed to create payment request");
             return;
         }
-        showToastMsg(`Payment request R${amount.toFixed(2)} sent – awaiting approval`);
+        showToastMsg(`Payment request R${amount.toFixed(2)} to ${selectedVendor} sent – awaiting approval`);
     }
 
-    async function acceptPaymentRequest(requestId, amount, description) {
+    async function acceptPaymentRequest(requestId, amount, description, vendorName) {
         if (!currentUserId) return false;
 
         const { data: wallet, error: fetchError } = await supabase
@@ -454,6 +565,8 @@
         if (!modal || modal.classList.contains('active')) return;
         approvalAmount.innerHTML = `R${request.amount.toFixed(2)}`;
         approvalDesc.innerHTML = `${request.description} (ID: ${request.id.toString().slice(-6)})`;
+        const vendorDisplay = request.vendor ? request.vendor : "Rands Kiosk • POS";
+        if (approvalVendorSpan) approvalVendorSpan.innerText = vendorDisplay;
         modal.setAttribute('data-request-id', request.id);
         activeRequestId = request.id;
         modal.classList.add('active');
@@ -504,7 +617,7 @@
         }
         const { data: request, error } = await supabase
             .from('payment_requests')
-            .select('amount, description')
+            .select('amount, description, vendor')
             .eq('id', requestId)
             .single();
 
@@ -514,7 +627,7 @@
             return;
         }
 
-        const success = await acceptPaymentRequest(requestId, request.amount, request.description);
+        const success = await acceptPaymentRequest(requestId, request.amount, request.description, request.vendor);
         if (success) {
             modal.classList.remove('active');
             activeRequestId = null;
@@ -541,6 +654,7 @@
     }
 
     async function init() {
+        initVendorSelection();
         const userLoaded = await loadUserData();
         if (!userLoaded) return;
 
@@ -556,13 +670,29 @@
         if (!error && pendingRequests && pendingRequests.length > 0) {
             showPaymentModal(pendingRequests[0]);
         }
+
+        // Real-time amount validation to enable/disable pay button
+        amountInput.addEventListener('input', () => {
+            updatePayButtonState();
+        });
+        // initial disable
+        updatePayButtonState();
     }
 
     payBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const amount = parseFloat(amountInput.value);
+        if (!selectedVendor) {
+            showToastMsg("Please select a vendor (mandatory)");
+            return;
+        }
+        let amount = parseFloat(amountInput.value);
         if (isNaN(amount) || amount <= 0) {
             showToastMsg("Please enter a valid amount greater than 0");
+            return;
+        }
+        amount = Math.round(amount * 100) / 100;
+        if (amount <= 0) {
+            showToastMsg("Amount must be positive");
             return;
         }
         createPaymentRequest(amount);

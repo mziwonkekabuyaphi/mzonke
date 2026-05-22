@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Rands Locker · Collect Your Items</title>
+    <title>Rands Locker · Unlock Your Booze</title>
     <style>
         * {
             box-sizing: border-box;
@@ -91,6 +91,7 @@
             cursor: pointer;
             transition: 0.1s;
             color: #333;
+            touch-action: manipulation;
         }
         .key:active {
             background: #ccc;
@@ -116,6 +117,7 @@
             border: none;
             font-weight: bold;
             cursor: pointer;
+            touch-action: manipulation;
         }
         .back-wallet {
             background: #666;
@@ -207,16 +209,18 @@
             background: #c62828;
             color: white;
             border: none;
-            width: 40px;
-            height: 40px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
-            font-size: 20px;
+            font-size: 22px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
             box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            touch-action: manipulation;
+            z-index: 10;
         }
         .back-btn-inside:active {
             transform: scale(0.94);
@@ -225,7 +229,8 @@
         @media (max-width: 480px) {
             .key { padding: 14px; font-size: 20px; }
             .pin-input { font-size: 26px; letter-spacing: 6px; }
-            .back-btn-inside { width: 36px; height: 36px; font-size: 18px; top: 12px; right: 12px; }
+            .back-btn-inside { width: 40px; height: 40px; font-size: 20px; top: 12px; right: 12px; }
+            .action-buttons button { padding: 12px 8px; }
         }
     </style>
 </head>
@@ -233,8 +238,8 @@
 
 <main>
     <div class="section">
-        <button class="back-btn-inside" onclick="window.location.href='index.html'">✕</button>
-        <h2>Unlock Booze Locker</h2>
+        <button class="back-btn-inside" id="closeBtn" aria-label="Close">✕</button>
+        <h2>🔓 Unlock Your Booze</h2>
         <label>📱 WhatsApp Number</label>
         <input type="tel" id="whatsappInput" placeholder="+27 82 123 4567" autocomplete="off">
         <label>🔑 Your PIN (4-6 digits)</label>
@@ -322,12 +327,12 @@
             return;
         }
 
-        // 1️⃣ Find occupied locker with matching phone & PIN (plain text comparison – upgrade to hash later)
+        // Find occupied locker with matching phone & PIN (plain text – assumes 'customer_pin_hash' column)
         const { data: locker, error } = await supabase
             .from('lockers')
             .select('id, locker_number, customer_name, customer_phone, total_value, items, status')
             .eq('customer_phone', phone)
-            .eq('customer_pin_hash', pin)   // assuming we store plain PIN for demo; replace with hash if needed
+            .eq('customer_pin_hash', pin)
             .eq('status', 'occupied')
             .single();
 
@@ -341,7 +346,7 @@
             return;
         }
 
-        // 2️⃣ Create an unlock request in Supabase
+        // Create unlock request
         const { data: request, error: reqError } = await supabase
             .from('unlock_requests')
             .insert({
@@ -363,7 +368,6 @@
 
         currentRequestId = request.id;
 
-        // 3️⃣ Show pending message and start polling
         document.getElementById('resultArea').innerHTML = `
             <div class="pending-message">
                 <h3>⏳ Awaiting Staff Confirmation</h3>
@@ -391,7 +395,6 @@
 
         if (request.status === 'approved') {
             clearInterval(pollInterval);
-            // Locker was released – show success
             document.getElementById('resultArea').innerHTML = `
                 <div class="customer-found">
                     <h3 style="color: #4caf50;">✅ Locker Unlocked!</h3>
@@ -416,9 +419,14 @@
     window.submitPIN = submitPIN;
     window.goToWallet = () => { window.location.href = 'wallet.html'; };
 
-    // Cleanup
+    // Cleanup on page unload
     window.addEventListener('beforeunload', () => {
         if (pollInterval) clearInterval(pollInterval);
+    });
+
+    // Close button: redirect to wallet (same as original behavior, non‑interfering)
+    document.getElementById('closeBtn').addEventListener('click', () => {
+        window.location.href = 'wallet.html';
     });
 </script>
 </body>
