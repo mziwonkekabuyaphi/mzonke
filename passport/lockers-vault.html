@@ -39,13 +39,13 @@
             flex-direction: column;
             position: relative;
         }
-        /* main content wrapper — NO extra bottom padding (only bottom nav spacing) */
+        /* main content wrapper — no extra bottom padding (dynamic body padding will handle bottom nav) */
         .main-content {
             flex: 1 0 auto;
             width: 100%;
-            padding-bottom: 0;  /* removed any manual bottom spacing */
+            padding-bottom: 0;
         }
-        /* bottom navigation container — no default margins, no extra gaps */
+        /* bottom navigation container — no default margins, but we'll let it take natural space */
         #bottomNavContainer {
             display: block;
             width: 100%;
@@ -435,7 +435,7 @@
     window.decreaseAddMoreQty = decreaseAddMoreQty;
     window.removeAddMoreItem = removeAddMoreItem;
 
-    // BOTTOM NAVIGATION: no extra spacing, dynamic load & cleanup
+    // BOTTOM NAVIGATION: NO EXTRA SPACING, ONLY DYNAMIC PADDING TO PREVENT OVERLAP
     async function loadBottomNav() {
         const container = document.getElementById('bottomNavContainer');
         if(!container) return;
@@ -449,38 +449,49 @@
                     let url = link.getAttribute('href'); 
                     if(url && url!=='#') { e.preventDefault(); window.location.href = url; } 
                 }));
-                // FINAL LAYOUT SAFETY: remove any margins/paddings, ensure no extra white space
+                // Ensure no extra margins/paddings
                 container.style.margin = '0';
                 container.style.padding = '0';
                 container.style.lineHeight = 'normal';
                 const lastChild = container.lastElementChild;
                 if(lastChild) lastChild.style.marginBottom = '0';
-                document.body.style.paddingBottom = '0';
-                // if bottom navigation uses fixed positioning, adjust body padding
-                const isFixed = window.getComputedStyle(container).position === 'fixed' || container.querySelector('[style*="position: fixed"]');
-                if(isFixed && container.offsetHeight) {
-                    document.body.style.paddingBottom = `${container.offsetHeight}px`;
-                } else {
-                    document.body.style.paddingBottom = '0px';
-                }
+                
+                // Measure the actual height of the bottom navigation (if fixed, we add body padding)
+                adjustSpacingForDynamicNav();
             } else {
                 container.innerHTML = '';
+                document.body.style.paddingBottom = '0';
             }
         } catch(e) { console.warn(e); }
     }
 
-    // resize handler to ensure no gap on orientation change
     function adjustSpacingForDynamicNav() {
         const container = document.getElementById('bottomNavContainer');
-        if(container && container.children.length > 0) {
-            const isFixed = window.getComputedStyle(container).position === 'fixed' || container.querySelector('[style*="position: fixed"]');
-            if(isFixed && container.offsetHeight) {
-                document.body.style.paddingBottom = `${container.offsetHeight}px`;
-            } else {
-                document.body.style.paddingBottom = '0px';
+        if(!container || !container.children.length) {
+            document.body.style.paddingBottom = '0';
+            return;
+        }
+        // Check if the bottom navigation or any of its children uses fixed positioning
+        let isFixed = window.getComputedStyle(container).position === 'fixed';
+        if(!isFixed) {
+            const fixedChild = container.querySelector('[style*="position: fixed"], .fixed-bottom, .bottom-nav-fixed');
+            if(fixedChild) isFixed = true;
+        }
+        if(isFixed) {
+            // Measure the actual visible height of the bottom navigation element
+            let navHeight = container.offsetHeight;
+            if(navHeight === 0 && container.firstElementChild) {
+                navHeight = container.firstElementChild.offsetHeight;
+            }
+            if(navHeight > 0) {
+                document.body.style.paddingBottom = `${navHeight}px`;
+                return;
             }
         }
+        // If not fixed, ensure no extra body padding
+        document.body.style.paddingBottom = '0';
     }
+
     window.addEventListener('resize', () => adjustSpacingForDynamicNav());
 
     async function init() {
@@ -496,7 +507,6 @@
         document.getElementById('accessAddMoreVaultBtn')?.addEventListener('click', accessAddMoreVault);
         document.getElementById('confirmAddToVaultBtn')?.addEventListener('click', confirmAddToVault);
         await loadBottomNav();
-        adjustSpacingForDynamicNav();
     }
     init();
 </script>
