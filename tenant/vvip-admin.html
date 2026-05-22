@@ -6,7 +6,7 @@
 <title>VVIP Console | Admin Portal</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-/* ========== BASE STYLES (unchanged structure) ========== */
+/* ========== SAME STYLES AS BEFORE ========== */
 * {
     margin: 0;
     padding: 0;
@@ -569,6 +569,8 @@ body {
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
+    console.log("🔵 Script loaded, supabase client:", supabase);
+
     // ========== GLOBAL STATE ==========
     let currentAdmin = null;
     let cachedTables = [], cachedProducts = [], cachedOrders = [], cachedBands = [], cachedTransactions = [];
@@ -600,28 +602,47 @@ body {
 
     // ========== AUTHENTICATION (ADMIN ONLY) ==========
     async function checkAdminAccess() {
+        console.log("🔐 Checking admin access...");
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error || !session) {
+        if (error) {
+            console.error("❌ Auth error:", error);
+            showModal("Access Denied", "Authentication error: " + error.message, '<i class="fas fa-shield-alt"></i>');
+            return false;
+        }
+        if (!session) {
+            console.warn("⚠️ No active session");
             showModal("Access Denied", "You are not logged in.<br><br>Only administrators can access the VVIP Console.", '<i class="fas fa-shield-alt"></i>');
             return false;
         }
+        console.log("✅ Session found, user ID:", session.user.id);
+        
         const { data: profile, error: profErr } = await supabase
             .from('profiles')
             .select('role, name')
             .eq('id', session.user.id)
             .single();
-        if (profErr || !profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
+        if (profErr) {
+            console.error("❌ Profile fetch error:", profErr);
+            showModal("Access Denied", "Could not verify your role. Please contact support.", '<i class="fas fa-lock"></i>');
+            return false;
+        }
+        console.log("📋 Profile:", profile);
+        if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
+            console.warn("⛔ Role not allowed:", profile?.role);
             showModal("Access Denied", "You do not have administrator or staff privileges.<br><br>This area is restricted.", '<i class="fas fa-lock"></i>');
             return false;
         }
         currentAdmin = { id: session.user.id, name: profile.name, role: profile.role };
+        console.log("🎉 Admin access granted:", currentAdmin);
         return true;
     }
 
     // ========== DATA LOADING ==========
     async function loadVenueTables() {
+        console.log("📊 Loading venue_tables...");
         const { data, error } = await supabase.from('venue_tables').select('*');
-        if (error) console.error("Load tables error:", error);
+        if (error) console.error("❌ Load tables error:", error);
+        else console.log(`✅ Loaded ${data?.length || 0} tables`);
         return data || [];
     }
     async function loadProducts() {
@@ -698,11 +719,13 @@ body {
     }
 
     async function refreshAllData() {
+        console.log("🔄 Refreshing all data...");
         cachedTables = await loadVenueTables();
         cachedProducts = await loadProducts();
         cachedOrders = await loadOrders();
         cachedBands = await loadProfilesAndWallets();
         cachedTransactions = await loadTransactionHistory();
+        console.log("✅ Data refresh complete", { tables: cachedTables.length, orders: cachedOrders.length });
     }
 
     // ========== RENDER FUNCTIONS ==========
@@ -791,23 +814,54 @@ body {
         if (activeTab === 'history') renderHistory();
     }
 
-    // ========== BUSINESS LOGIC ==========
-    async function createTable() {
-        const name = document.getElementById('newTableName')?.value.trim();
-        const capacity = parseInt(document.getElementById('newTableCapacity')?.value);
-        const tab = parseInt(document.getElementById('newTableTab')?.value);
-        if (!name || capacity < 1) { showModal("Error", "Valid name and capacity required", '<i class="fas fa-exclamation-triangle"></i>'); return; }
+    // ========== BUSINESS LOGIC WITH DEBUG LOGS ==========
+    window.createTable = async function() {
+        console.log("🔨 createTable() called");
+        const nameInput = document.getElementById('newTableName');
+        const capacityInput = document.getElementById('newTableCapacity');
+        const tabInput = document.getElementById('newTableTab');
+        
+        const name = nameInput?.value.trim();
+        const capacity = parseInt(capacityInput?.value);
+        const tab = parseInt(tabInput?.value);
+        
+        console.log("📝 Table name:", name, "Capacity:", capacity, "Initial Tab:", tab);
+        
+        if (!name || capacity < 1) {
+            console.warn("⚠️ Invalid input: name or capacity missing");
+            showModal("Error", "Valid name and capacity required", '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        
+        // Check if table already exists
         const exists = cachedTables.some(t => t.name === name);
-        if (exists) { showModal("Duplicate", "Table already exists", '<i class="fas fa-ban"></i>'); return; }
-        const { error } = await supabase.from('venue_tables').insert([{
-            name, capacity, tab_balance: tab, entries_used: 0, guests: []
-        }]);
-        if (error) { showModal("Error", error.message, '<i class="fas fa-bug"></i>'); return; }
+        if (exists) {
+            console.warn("⚠️ Table already exists:", name);
+            showModal("Duplicate", "Table already exists", '<i class="fas fa-ban"></i>');
+            return;
+        }
+        
+        console.log("🆕 Inserting new table into Supabase...");
+        const { data, error } = await supabase.from('venue_tables').insert([{
+            name, 
+            capacity, 
+            tab_balance: tab, 
+            entries_used: 0, 
+            guests: []
+        }]).select();
+        
+        if (error) {
+            console.error("❌ Supabase insert error:", error);
+            showModal("Error", error.message, '<i class="fas fa-bug"></i>');
+            return;
+        }
+        
+        console.log("✅ Table created successfully:", data);
         await refreshAllData();
         renderAll();
         showModal("Table Created", `${name} created with R${tab} tab`, '<i class="fas fa-check-circle"></i>');
-        document.getElementById('newTableName').value = '';
-    }
+        if (nameInput) nameInput.value = '';
+    };
 
     window.assignToTable = async function(tableName) {
         const walletId = prompt("Enter Phone number (Wallet ID):");
@@ -927,15 +981,26 @@ body {
 
     // ========== INIT ==========
     async function init() {
-        const isAdmin = await checkAdminAccess();
-        if (!isAdmin) return;
-        document.getElementById('adminContainer').style.display = 'block';
-        await refreshAllData();
-        renderAll();
-        setupRealtime();
-        document.querySelectorAll('.admin-tab').forEach(tab => {
-            tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-        });
+        console.log("🚀 Initialising VVIP Console...");
+        try {
+            const isAdmin = await checkAdminAccess();
+            if (!isAdmin) {
+                console.warn("⛔ Not admin – UI stays hidden");
+                return;
+            }
+            console.log("✅ Admin confirmed – showing UI");
+            document.getElementById('adminContainer').style.display = 'block';
+            await refreshAllData();
+            renderAll();
+            setupRealtime();
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+            });
+            console.log("🎉 Initialisation complete!");
+        } catch (err) {
+            console.error("💥 Fatal init error:", err);
+            showModal("Initialization Error", err.message, '<i class="fas fa-bug"></i>');
+        }
     }
     init();
 </script>
