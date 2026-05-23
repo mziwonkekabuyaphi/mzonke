@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Rands Locker · Digital Vault Wallet</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script type="importmap">
+        { "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
+    </script>
+    <style>
+        /* ========== EXACT STYLES FROM ORIGINAL (preserved) ========== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --red: #E30613; --red-dark: #a0010e; --red-deep: #8A0009; --red-glow: rgba(227,6,19,0.18);
+            --red-subtle: rgba(227,6,19,0.06); --ink: #1e293b; --ink-muted: #334155; --slate: #475569;
+            --mist: #94a3b8; --bone: #f8fafd; --white: #ffffff; --border: rgba(0,0,0,0.07);
+            --border-strong: #eef2f8; --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.12);
+            --shadow-card: 0 4px 16px rgba(0,0,0,0.06); --radius-sm: 12px; --radius-md: 18px;
+            --radius-lg: 24px; --radius-xl: 28px; --radius-full: 9999px;
+            --transition: all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            --glass-bg: rgba(255,255,255,0.7); --glass-border: rgba(255,255,255,0.4); --glass-blur: 12px;
+        }
+        /* ---------- LAYOUT FIX: NO EXTRA GAP, CLEAN BOTTOM ---------- */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            overflow-x: hidden;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bone);
+            color: var(--ink);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        /* main content wrapper — no extra bottom padding (dynamic body padding will handle bottom nav) */
+        .main-content {
+            flex: 1 0 auto;
+            width: 100%;
+            padding-bottom: 0;
+        }
+        /* bottom navigation container — no default margins, but we'll let it take natural space */
+        #bottomNavContainer {
+            display: block;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            line-height: 0;
+            font-size: 0;
+            flex-shrink: 0;
+        }
+        #bottomNavContainer * {
+            margin: 0;
+            box-sizing: border-box;
+        }
+        /* preserve all original styling for cards, animations, etc. */
+        body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; }
+        .site-header { background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; border-radius: 0 0 24px 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .brand { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .brand-logo { width: 36px; height: 36px; object-fit: contain; display: block; }
+        .brand-text h1 { font-family: 'Inter', sans-serif; font-size: 1.1rem; font-weight: 800; color: white; letter-spacing: -0.2px; }
+        .brand-text p { font-size: 0.6rem; color: rgba(255,255,255,0.8); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+        .header-right { display: flex; gap: 8px; }
+        .my-locker-pill { background: rgba(255,255,255,0.2); backdrop-filter: blur(8px); border-radius: var(--radius-full); display: flex; align-items: center; color: white; cursor: pointer; padding: 0 16px; height: 36px; gap: 8px; font-weight: 600; font-size: 0.75rem; }
+        .wallet-stats { display: flex; gap: 10px; margin: 16px 16px 20px 16px; flex-wrap: wrap; }
+        .stat-card { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); border-radius: var(--radius-lg); padding: 12px 16px; display: flex; align-items: center; gap: 14px; border: 1px solid var(--glass-border); box-shadow: var(--shadow-card); flex: 1; min-width: 120px; }
+        .stat-icon { width: 48px; height: 48px; background: var(--red-subtle); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--red); }
+        .stat-info h3 { font-size: 0.7rem; font-weight: 600; color: var(--mist); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .stat-number { font-size: 1.2rem; font-weight: 800; color: var(--ink); line-height: 1.2; }
+        .stat-sub { font-size: 0.65rem; color: var(--slate); margin-top: 4px; }
+        .action-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 16px 20px 16px; max-width: 800px; margin: 0 auto; }
+        .action-row { display: flex; gap: 16px; flex-wrap: wrap; }
+        .action-card { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.15); transition: transform 0.25s ease; flex: 1; min-width: 160px; cursor: pointer; }
+        .action-card:active { transform: translateY(-4px); }
+        .action-header { padding: 20px 20px 16px; background: linear-gradient(135deg, var(--red) 0%, var(--red-dark) 100%); color: white; }
+        .action-icon { font-size: 2rem; margin-bottom: 8px; }
+        .action-title { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 800; }
+        .action-desc { font-size: 0.7rem; opacity: 0.9; margin-top: 6px; }
+        .action-body { padding: 16px 20px 20px; background: white; text-align: center; }
+        .action-btn { background: var(--red); color: white; border: none; padding: 10px; border-radius: var(--radius-full); font-weight: 700; width: 100%; font-size: 0.8rem; cursor: pointer; }
+        .action-btn:active { transform: scale(0.96); }
+        .my-vault-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bone); z-index: 1500; overflow-y: auto; padding-bottom: 80px; }
+        .my-vault-header { background: linear-gradient(145deg, var(--red), var(--red-dark)); color: white; padding: 20px; text-align: center; border-radius: 0 0 28px 28px; position: relative; margin-bottom: 20px; }
+        .my-vault-header h2 { font-size: 1.5rem; font-weight: 800; }
+        .close-vault-btn { position: absolute; right: 16px; top: 18px; background: rgba(255,255,255,0.2); border: none; width: 40px; height: 40px; border-radius: 50%; color: white; cursor: pointer; }
+        .my-vault-section { background: var(--white); border-radius: var(--radius-xl); padding: 20px; margin: 16px; box-shadow: var(--shadow-card); border: 1px solid var(--border-strong); }
+        .my-vault-section h2 { font-size: 1.2rem; font-weight: 800; color: var(--red); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .my-vault-section input { width: 100%; padding: 14px 16px; border-radius: var(--radius-lg); border: 2px solid var(--border-strong); font-size: 16px; background: var(--bone); margin-bottom: 12px; }
+        .my-vault-section button { background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; border: none; padding: 14px; border-radius: var(--radius-full); font-weight: 800; width: 100%; margin-top: 8px; cursor: pointer; }
+        .product-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+        .product-card-item { background: var(--bone); border-radius: var(--radius-lg); padding: 12px; text-align: center; border: 2px solid var(--border-strong); cursor: pointer; transition: var(--transition); }
+        .product-card-item:active { transform: scale(0.97); background: var(--red-subtle); border-color: var(--red); }
+        .selected-items { background: var(--red-subtle); border-radius: var(--radius-lg); padding: 16px; margin-top: 16px; }
+        .cart-item-row { background: white; border-radius: var(--radius-md); padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        .balance-result { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 20px; border-radius: var(--radius-lg); text-align: center; margin-top: 16px; color: #f1c40f; }
+        .toast-msg { position: fixed; bottom: 90px; left: 20px; right: 20px; background: var(--ink); color: white; padding: 10px 16px; border-radius: 60px; text-align: center; z-index: 600; display: none; font-weight: 500; font-size: 0.8rem; }
+        .toast-msg.show { display: block; animation: fadeUp 0.2s ease; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 500; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.show { display: flex; }
+        .modal-card { background: var(--white); border-radius: var(--radius-xl); max-width: 400px; width: 90%; padding: 24px; text-align: center; border: 2px solid var(--red); }
+        .modal-close-btn { background: var(--bone); border: 1px solid var(--border-strong); padding: 12px; border-radius: var(--radius-full); margin-top: 16px; cursor: pointer; width: 100%; font-weight: 600; }
+        @media (max-width: 550px) { .action-row { flex-direction: column; } .product-grid { grid-template-columns: 1fr; } }
+        /* additional reset — remove any invisible spacer */
+        .bottom-nav-spacer-old { display: none; }
+    </style>
+</head>
+<body>
+<div class="main-content">
+<header class="site-header">
+    <div class="brand" onclick="window.location.href='home.html'">
+        <img src="../assets/images/rands-logo3.png" alt="Rands Vibe" class="brand-logo">
+        <div class="brand-text"><h1>Locker Vault</h1><p>Secure Storage</p></div>
+    </div>
+    <div class="header-right">
+        <div class="my-locker-pill" id="myLockerBalancePill"><i class="fas fa-locker"></i> <span id="headerLockerBalance">R0.00</span></div>
+    </div>
+</header>
+
+<!-- Stats Cards -->
+<div class="wallet-stats">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-wine-bottle"></i></div><div class="stat-info"><h3>Locker Balance</h3><div class="stat-number" id="statLockerBalance">R0.00</div><div class="stat-sub">total stored value</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-qrcode"></i></div><div class="stat-info"><h3>Active Locker</h3><div class="stat-number" id="statLockerNumber">—</div><div class="stat-sub">locker ID / number</div></div></div>
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-boxes"></i></div><div class="stat-info"><h3>Items inside</h3><div class="stat-number" id="statItemsCount">0</div><div class="stat-sub">total units</div></div></div>
+</div>
+
+<!-- Action Cards -->
+<div class="action-grid">
+    <div class="action-row">
+        <div class="action-card" id="keepBoozeCard"><div class="action-header"><div class="action-icon"><i class="fas fa-arrow-down-to-bracket"></i></div><div class="action-title">Keep Booze</div><div class="action-desc">Store securely in your virtual locker</div></div><div class="action-body"><button class="action-btn" id="keepActionBtn"><i class="fas fa-save"></i> Store Items →</button></div></div>
+        <div class="action-card" id="collectBoozeCard"><div class="action-header"><div class="action-icon"><i class="fas fa-hand-peace"></i></div><div class="action-title">Collect Booze</div><div class="action-desc">Retrieve your stored items</div></div><div class="action-body"><button class="action-btn" id="collectActionBtn"><i class="fas fa-unlock-alt"></i> Collect →</button></div></div>
+    </div>
+    <div class="action-row">
+        <div class="action-card" id="myVaultCard"><div class="action-header"><div class="action-icon"><i class="fas fa-chart-line"></i></div><div class="action-title">My Booze Vault</div><div class="action-desc">Manage, top-up & check balance</div></div><div class="action-body"><button class="action-btn" id="myVaultActionBtn"><i class="fas fa-wallet"></i> Open Vault →</button></div></div>
+    </div>
+</div>
+
+<!-- My Booze Vault Full Page (Supabase powered) -->
+<div id="myBoozeVaultContainer" class="my-vault-container">
+    <div class="my-vault-header"><h2><i class="fas fa-wine-bottle"></i> My Booze Vault</h2><p>Manage your stored items and vault balance</p><button class="close-vault-btn" id="closeVaultInternalBtn"><i class="fas fa-times"></i></button></div>
+    <div class="my-vault-section">
+        <h2><i class="fas fa-coins"></i> Your Vault Balance</h2>
+        <input type="tel" id="vaultPhone" placeholder="Phone number (e.g., 0635713652)">
+        <input type="password" id="vaultPin" placeholder="PIN (4-6 digits)" maxlength="6" inputmode="numeric">
+        <button id="checkVaultBalanceBtn"><i class="fas fa-search"></i> Check My Balance</button>
+        <div id="vaultBalanceResult" style="display: none; margin-top: 16px;">
+            <div class="balance-result"><div class="balance-result-label">YOUR VAULT VALUE</div><div class="balance-result-amount" id="vaultBalanceAmount">R 0.00</div></div>
+            <div class="items-details" id="vaultItemsList" style="background:var(--bone); border-radius:16px; padding:12px; margin-top:12px;"></div>
+            <button id="clearVaultResultBtn" style="background:#475569; margin-top:12px;"><i class="fas fa-eraser"></i> Clear</button>
+        </div>
+    </div>
+    <div class="my-vault-section add-more-section" style="background:#fffbeb;">
+        <h2><i class="fas fa-plus-circle"></i> Add More Items</h2>
+        <input type="tel" id="addMorePhone" placeholder="Phone number">
+        <input type="password" id="addMorePin" placeholder="PIN (4-6 digits)" maxlength="6">
+        <button id="accessAddMoreVaultBtn" style="background:#f59e0b;"><i class="fas fa-unlock-alt"></i> Access My Vault</button>
+        <div id="addMoreVaultInfo" style="display: none; margin-top: 20px; padding: 16px; background:#f0fdf4; border-radius:var(--radius-lg);"></div>
+    </div>
+    <div class="my-vault-section">
+        <h2><i class="fas fa-shopping-basket"></i> Select Items to Add</h2>
+        <div id="addMoreProductGrid" class="product-grid"></div>
+        <div class="selected-items"><div class="cart-header"><i class="fas fa-shopping-cart"></i> Items to add</div><div id="addMoreSelectedList"><div class="empty-cart-message" style="text-align:center; padding:20px; color:var(--mist);">No items selected yet</div></div></div>
+        <button id="confirmAddToVaultBtn" style="margin-top: 16px; background:#22c55e; display: none;">Add Selected to Vault</button>
+    </div>
+</div>
+
+<div id="customModal" class="modal-overlay"><div class="modal-card"><h3 id="modalTitle">Notice</h3><p id="modalMessage"></p><button class="modal-close-btn" id="modalOkBtn">Got it</button></div></div>
+<div id="toastMsg" class="toast-msg"></div>
+</div> <!-- .main-content ends -->
+
+<!-- Font Awesome (if not already loaded in <head>) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<!-- Bottom navigation CSS -->
+<link rel="stylesheet" href="../assets/css/bottom-nav.css">
+
+<!-- Container where the bottom nav will be injected -->
+<div id="bottomNavContainer"></div>
+
+<!-- Bottom navigation JS -->
+<script src="../assets/js/bottom-nav.js"></script>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    // ---------- GLOBALS ----------
+    let alcoholProducts = [];
+    let addMoreSelectedItems = [];
+    let currentVaultLocker = null;
+
+    // ---------- UI Helpers ----------
+    function showToast(msg, isError = false) {
+        const toast = document.getElementById('toastMsg');
+        toast.textContent = msg;
+        toast.style.background = isError ? '#ef4444' : '#1e293b';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2600);
+    }
+    function showModal(title, message) {
+        const modal = document.getElementById('customModal');
+        document.getElementById('modalTitle').innerHTML = title;
+        document.getElementById('modalMessage').innerHTML = message;
+        modal.classList.add('show');
+        document.getElementById('modalOkBtn').onclick = () => modal.classList.remove('show');
+    }
+    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+
+    // Dashboard Stats
+    function updateStatsUI(balance, lockerNumber, itemCount) {
+        document.getElementById('statLockerBalance').innerHTML = `R${balance.toFixed(2)}`;
+        document.getElementById('statLockerNumber').innerText = lockerNumber || '—';
+        document.getElementById('statItemsCount').innerText = itemCount;
+        document.getElementById('headerLockerBalance').innerHTML = `R${balance.toFixed(2)}`;
+    }
+    async function refreshDashboardStats() {
+        const activeLockerId = localStorage.getItem('activeLockerId');
+        if(!activeLockerId) { updateStatsUI(0, '—', 0); return; }
+        const { data: locker, error } = await supabase.from('lockers').select('id, locker_number').eq('id', activeLockerId).single();
+        if(error || !locker) { updateStatsUI(0, '—', 0); return; }
+        const { data: items, error: itemsErr } = await supabase.from('locker_items').select('product_id, quantity').eq('locker_id', locker.id);
+        if(itemsErr) { updateStatsUI(0, locker.locker_number, 0); return; }
+        let totalValue = 0, totalUnits = 0;
+        if(items && items.length) {
+            const productIds = items.map(i => i.product_id);
+            const { data: prods } = await supabase.from('products').select('id, price').in('id', productIds);
+            const priceMap = Object.fromEntries((prods || []).map(p => [p.id, p.price]));
+            for(let it of items) {
+                const price = priceMap[it.product_id] || 0;
+                totalValue += price * it.quantity;
+                totalUnits += it.quantity;
+            }
+        }
+        updateStatsUI(totalValue, locker.locker_number, totalUnits);
+    }
+
+    async function loadAlcoholProducts() {
+        const { data, error } = await supabase
+            .from('products')
+            .select('id, name, price')
+            .eq('alcohol', true)
+            .eq('is_available', true)
+            .order('name');
+        if(error) {
+            console.error('Failed to load products:', error);
+            showToast('Could not load alcohol products', true);
+            return [];
+        }
+        return data || [];
+    }
+
+    async function findOrCreateLocker(phone, pin) {
+        const lockerNumber = `VAULT_${phone.replace(/[^0-9]/g, '')}`;
+        let { data: existing, error } = await supabase
+            .from('lockers')
+            .select('*')
+            .eq('locker_number', lockerNumber)
+            .maybeSingle();
+        if(error && error.code !== 'PGRST116') throw error;
+        if(existing) {
+            if(existing.pin !== pin) throw new Error('Invalid PIN');
+            return existing;
+        }
+        const { data: newLocker, error: insertErr } = await supabase
+            .from('lockers')
+            .insert({ locker_number: lockerNumber, pin: pin, status: 'available', location: 'virtual', price_per_hour: 0 })
+            .select()
+            .single();
+        if(insertErr) throw insertErr;
+        return newLocker;
+    }
+
+    async function getLockerItemsWithDetails(lockerId) {
+        const { data: items, error } = await supabase
+            .from('locker_items')
+            .select('id, product_id, quantity')
+            .eq('locker_id', lockerId);
+        if(error) throw error;
+        if(!items.length) return [];
+        const productIds = items.map(i => i.product_id);
+        const { data: products } = await supabase.from('products').select('id, name, price').in('id', productIds);
+        const prodMap = Object.fromEntries((products || []).map(p => [p.id, p]));
+        return items.map(it => ({
+            id: it.id,
+            product_id: it.product_id,
+            name: prodMap[it.product_id]?.name || 'Unknown',
+            price: prodMap[it.product_id]?.price || 0,
+            quantity: it.quantity
+        }));
+    }
+
+    async function checkVaultBalance() {
+        const phone = document.getElementById('vaultPhone').value.trim();
+        const pin = document.getElementById('vaultPin').value.trim();
+        if(!phone || !pin) { showModal("Missing", "Phone & PIN required"); return; }
+        if(pin.length<4 || !/^\d+$/.test(pin)) { showModal("Invalid PIN","4-6 digits only"); return; }
+        try {
+            const locker = await findOrCreateLocker(phone, pin);
+            const items = await getLockerItemsWithDetails(locker.id);
+            const total = items.reduce((sum,i)=> sum + (i.price * i.quantity), 0);
+            document.getElementById('vaultBalanceAmount').innerHTML = `R ${total.toFixed(2)}`;
+            let itemsHtml = `<p><strong>Stored items:</strong></p>`;
+            if(items.length === 0) itemsHtml += `<p><em>Empty vault</em></p>`;
+            else {
+                for(let it of items) {
+                    itemsHtml += `<p>• ${escapeHtml(it.name)} x${it.quantity} — R${(it.price * it.quantity).toFixed(2)}</p>`;
+                }
+            }
+            document.getElementById('vaultItemsList').innerHTML = itemsHtml;
+            document.getElementById('vaultBalanceResult').style.display = 'block';
+            localStorage.setItem('activeLockerId', locker.id);
+            await refreshDashboardStats();
+            showToast("Vault loaded");
+        } catch(err) {
+            showModal("Access Denied", err.message || "Invalid phone or PIN");
+            document.getElementById('vaultBalanceResult').style.display = 'none';
+        }
+    }
+    function clearVaultResult() {
+        document.getElementById('vaultBalanceResult').style.display = 'none';
+        document.getElementById('vaultPhone').value = '';
+        document.getElementById('vaultPin').value = '';
+    }
+
+    async function accessAddMoreVault() {
+        const phone = document.getElementById('addMorePhone').value.trim();
+        const pin = document.getElementById('addMorePin').value.trim();
+        if(!phone || !pin) { showModal("Missing", "Phone & PIN required"); return; }
+        try {
+            const locker = await findOrCreateLocker(phone, pin);
+            currentVaultLocker = locker;
+            const items = await getLockerItemsWithDetails(locker.id);
+            let itemsHtml = `<p><strong>Current items in vault:</strong></p>`;
+            let total = 0;
+            if(items.length === 0) itemsHtml += `<p><em>Empty</em></p>`;
+            else {
+                for(let it of items) {
+                    itemsHtml += `<p>• ${escapeHtml(it.name)} x${it.quantity} — R${(it.price * it.quantity).toFixed(2)}</p>`;
+                    total += it.price * it.quantity;
+                }
+                itemsHtml += `<p><strong>Total value: R${total.toFixed(2)}</strong></p>`;
+            }
+            document.getElementById('addMoreVaultInfo').innerHTML = itemsHtml;
+            document.getElementById('addMoreVaultInfo').style.display = 'block';
+            document.getElementById('confirmAddToVaultBtn').style.display = 'block';
+            localStorage.setItem('activeLockerId', locker.id);
+            await refreshDashboardStats();
+            renderAddMoreProductGrid();
+        } catch(err) {
+            showModal("Access Denied", err.message || "Invalid credentials");
+            currentVaultLocker = null;
+            document.getElementById('addMoreVaultInfo').style.display = 'none';
+            document.getElementById('confirmAddToVaultBtn').style.display = 'none';
+        }
+    }
+
+    function renderAddMoreProductGrid() {
+        const grid = document.getElementById('addMoreProductGrid');
+        if(!grid) return;
+        grid.innerHTML = '';
+        for(let prod of alcoholProducts) {
+            const card = document.createElement('div');
+            card.className = 'product-card-item';
+            card.innerHTML = `<div class="product-name">${escapeHtml(prod.name)}</div><div class="product-price">R${prod.price.toFixed(2)}</div>`;
+            card.onclick = () => addToAddMoreSelection(prod);
+            grid.appendChild(card);
+        }
+    }
+
+    function addToAddMoreSelection(product) {
+        const existing = addMoreSelectedItems.find(i => i.product_id === product.id);
+        if(existing) existing.quantity += 1;
+        else addMoreSelectedItems.push({ product_id: product.id, name: product.name, price: product.price, quantity: 1 });
+        updateAddMoreSelectedDisplay();
+    }
+
+    function increaseAddMoreQty(idx) { addMoreSelectedItems[idx].quantity += 1; updateAddMoreSelectedDisplay(); }
+    function decreaseAddMoreQty(idx) { if(addMoreSelectedItems[idx].quantity>1) addMoreSelectedItems[idx].quantity -=1; else addMoreSelectedItems.splice(idx,1); updateAddMoreSelectedDisplay(); }
+    function removeAddMoreItem(idx) { addMoreSelectedItems.splice(idx,1); updateAddMoreSelectedDisplay(); }
+
+    function updateAddMoreSelectedDisplay() {
+        const container = document.getElementById('addMoreSelectedList');
+        if(!container) return;
+        if(addMoreSelectedItems.length === 0) {
+            container.innerHTML = '<div class="empty-cart-message" style="text-align:center; padding:20px;"><i class="fas fa-box-open"></i> No items selected</div>';
+            return;
+        }
+        let html = '';
+        addMoreSelectedItems.forEach((item, idx) => {
+            html += `<div class="cart-item-row">
+                        <div style="flex:2;"><strong>${escapeHtml(item.name)}</strong><br><span style="font-size:0.7rem;">R${item.price.toFixed(2)} ea</span></div>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <button class="qty-btn" onclick="window.decreaseAddMoreQty(${idx})" style="background:#f0f0f0; border:none; width:28px; border-radius:30px;">−</button>
+                            <span>${item.quantity}</span>
+                            <button class="qty-btn" onclick="window.increaseAddMoreQty(${idx})" style="background:#f0f0f0; border:none; width:28px; border-radius:30px;">+</button>
+                        </div>
+                        <div style="min-width:70px; text-align:right; font-weight:800;">R${(item.price * item.quantity).toFixed(2)}</div>
+                        <button onclick="window.removeAddMoreItem(${idx})" style="background:none; border:none; color:red;"><i class="fas fa-trash-alt"></i></button>
+                    </div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    async function confirmAddToVault() {
+        if(!currentVaultLocker) { showModal("No Vault", "Access your vault first"); return; }
+        if(addMoreSelectedItems.length === 0) { showModal("No Items", "Select items to add"); return; }
+        try {
+            for(let newItem of addMoreSelectedItems) {
+                const { data: existing, error: findErr } = await supabase
+                    .from('locker_items')
+                    .select('id, quantity')
+                    .eq('locker_id', currentVaultLocker.id)
+                    .eq('product_id', newItem.product_id)
+                    .maybeSingle();
+                if(existing) {
+                    const newQty = existing.quantity + newItem.quantity;
+                    await supabase.from('locker_items').update({ quantity: newQty }).eq('id', existing.id);
+                } else {
+                    await supabase.from('locker_items').insert({ locker_id: currentVaultLocker.id, product_id: newItem.product_id, quantity: newItem.quantity });
+                }
+                try {
+                    await supabase.from('vault_transactions').insert({ locker_id: currentVaultLocker.id, product_id: newItem.product_id, quantity: newItem.quantity, type: 'add', created_at: new Date() });
+                } catch(e) {}
+            }
+            showToast("Items added to vault!");
+            await accessAddMoreVault();
+            addMoreSelectedItems = [];
+            updateAddMoreSelectedDisplay();
+            await refreshDashboardStats();
+        } catch(err) { showModal("Error", err.message); }
+    }
+
+    function goToKeep() { window.location.href = 'register-vault.html'; }
+    function goToCollect() { window.location.href = 'unlock-vault.html'; }
+    function openMyBoozeVault() { document.getElementById('myBoozeVaultContainer').style.display = 'block'; refreshDashboardStats(); }
+    function closeMyBoozeVault() { document.getElementById('myBoozeVaultContainer').style.display = 'none'; addMoreSelectedItems = []; currentVaultLocker = null; updateAddMoreSelectedDisplay(); }
+
+    window.increaseAddMoreQty = increaseAddMoreQty;
+    window.decreaseAddMoreQty = decreaseAddMoreQty;
+    window.removeAddMoreItem = removeAddMoreItem;
+
+    // BOTTOM NAVIGATION: NO EXTRA SPACING, ONLY DYNAMIC PADDING TO PREVENT OVERLAP
+    async function loadBottomNav() {
+        const container = document.getElementById('bottomNavContainer');
+        if(!container) return;
+        try {
+            const resp = await fetch('bottom-nav.html');
+            if(resp.ok) {
+                container.innerHTML = await resp.text();
+                // attach click handlers for navigation links
+                const links = container.querySelectorAll('a, .nav-item');
+                links.forEach(link => link.addEventListener('click', (e) => { 
+                    let url = link.getAttribute('href'); 
+                    if(url && url!=='#') { e.preventDefault(); window.location.href = url; } 
+                }));
+                // Ensure no extra margins/paddings
+                container.style.margin = '0';
+                container.style.padding = '0';
+                container.style.lineHeight = 'normal';
+                const lastChild = container.lastElementChild;
+                if(lastChild) lastChild.style.marginBottom = '0';
+                
+                // Measure the actual height of the bottom navigation (if fixed, we add body padding)
+                adjustSpacingForDynamicNav();
+            } else {
+                container.innerHTML = '';
+                document.body.style.paddingBottom = '0';
+            }
+        } catch(e) { console.warn(e); }
+    }
+
+    function adjustSpacingForDynamicNav() {
+        const container = document.getElementById('bottomNavContainer');
+        if(!container || !container.children.length) {
+            document.body.style.paddingBottom = '0';
+            return;
+        }
+        // Check if the bottom navigation or any of its children uses fixed positioning
+        let isFixed = window.getComputedStyle(container).position === 'fixed';
+        if(!isFixed) {
+            const fixedChild = container.querySelector('[style*="position: fixed"], .fixed-bottom, .bottom-nav-fixed');
+            if(fixedChild) isFixed = true;
+        }
+        if(isFixed) {
+            // Measure the actual visible height of the bottom navigation element
+            let navHeight = container.offsetHeight;
+            if(navHeight === 0 && container.firstElementChild) {
+                navHeight = container.firstElementChild.offsetHeight;
+            }
+            if(navHeight > 0) {
+                document.body.style.paddingBottom = `${navHeight}px`;
+                return;
+            }
+        }
+        // If not fixed, ensure no extra body padding
+        document.body.style.paddingBottom = '0';
+    }
+
+    window.addEventListener('resize', () => adjustSpacingForDynamicNav());
+
+    async function init() {
+        alcoholProducts = await loadAlcoholProducts();
+        renderAddMoreProductGrid();
+        await refreshDashboardStats();
+        document.getElementById('keepActionBtn')?.addEventListener('click', goToKeep);
+        document.getElementById('collectActionBtn')?.addEventListener('click', goToCollect);
+        document.getElementById('myVaultActionBtn')?.addEventListener('click', openMyBoozeVault);
+        document.getElementById('closeVaultInternalBtn')?.addEventListener('click', closeMyBoozeVault);
+        document.getElementById('checkVaultBalanceBtn')?.addEventListener('click', checkVaultBalance);
+        document.getElementById('clearVaultResultBtn')?.addEventListener('click', clearVaultResult);
+        document.getElementById('accessAddMoreVaultBtn')?.addEventListener('click', accessAddMoreVault);
+        document.getElementById('confirmAddToVaultBtn')?.addEventListener('click', confirmAddToVault);
+        await loadBottomNav();
+    }
+    init();
+</script>
+</body>
+</html>
