@@ -397,7 +397,16 @@
       mainCategories() { return [{ id: 'all', name: 'All Items', icon: 'fas fa-border-all' },{ id: 'beer', name: 'Beers & Ciders', icon: 'fas fa-beer-mug-empty' },{ id: 'wine', name: 'Wines', icon: 'fas fa-wine-glass' },{ id: 'spirits', name: 'Premium Spirits', icon: 'fas fa-crown' },{ id: 'non-alc', name: 'Non-Alcoholic', icon: 'fas fa-droplet' },{ id: 'butcher', name: 'The Butcher', icon: 'fas fa-utensils' },{ id: 'tickets', name: 'Event Tickets', icon: 'fas fa-ticket-alt' }]; },
       spiritSubCategories() { return [{ id: 'rum', name: 'Rum', emoji: '🏝️' },{ id: 'vodka', name: 'Vodka', emoji: '❄️' },{ id: 'cognac', name: 'Cognac', emoji: '🥃' },{ id: 'tequila', name: 'Tequila', emoji: '🌵' },{ id: 'whisky', name: 'Whisky', emoji: '🥃' }]; },
       ticketItemsCount() { return (this.ticketSubCategory === 'tickets' ? this.currentEventTicketProducts.length : this.vvipTablesWithStatus.length); },
-      currentEventTicketProducts() { if (!this.selectedEventId) return []; const ev = this.eventsList.find(e => e.id === this.selectedEventId); if (!ev) return []; return [ { id: `${ev.id}_earlyBird`, name: 'Early Bird', price: ev.ticketTypes.earlyBird?.price || 0, emoji: '🐦', desc: 'Limited early bird discount', features: [`Price: R${ev.ticketTypes.earlyBird?.price || 0}`, `Remaining: ${(ev.ticketTypes.earlyBird?.capacity||0) - (ev.ticketTypes.earlyBird?.sold||0)}`], hasQuantity: true, classSlug: 'earlybird', disabled: ((ev.ticketTypes.earlyBird?.capacity||0) - (ev.ticketTypes.earlyBird?.sold||0)) <= 0, eventId: ev.id, ticketTypeKey: 'earlyBird', isTable: false }, { id: `${ev.id}_general`, name: 'General Admission', price: ev.ticketTypes.general?.price || 0, emoji: '🎟️', desc: 'Standard entry', features: [`Price: R${ev.ticketTypes.general?.price || 0}`, `Remaining: ${(ev.ticketTypes.general?.capacity||0) - (ev.ticketTypes.general?.sold||0)}`], hasQuantity: true, classSlug: 'general', disabled: ((ev.ticketTypes.general?.capacity||0) - (ev.ticketTypes.general?.sold||0)) <= 0, eventId: ev.id, ticketTypeKey: 'general', isTable: false }, { id: `${ev.id}_vip`, name: 'VIP Experience', price: ev.ticketTypes.vip?.price || 0, emoji: '👑', desc: 'Premium wristband + drinks', features: [`Price: R${ev.ticketTypes.vip?.price || 0}`, `Remaining: ${(ev.ticketTypes.vip?.capacity||0) - (ev.ticketTypes.vip?.sold||0)}`], hasQuantity: true, classSlug: 'vip', disabled: ((ev.ticketTypes.vip?.capacity||0) - (ev.ticketTypes.vip?.sold||0)) <= 0, eventId: ev.id, ticketTypeKey: 'vip', isTable: false } ]; },
+      currentEventTicketProducts() { 
+        if (!this.selectedEventId) return []; 
+        const ev = this.eventsList.find(e => e.id === this.selectedEventId); 
+        if (!ev || !ev.ticketTypes) return []; 
+        return [ 
+          { id: `${ev.id}_earlyBird`, name: 'Early Bird', price: ev.ticketTypes.earlyBird?.price || 0, emoji: '🐦', desc: 'Limited early bird discount', features: [`Price: R${ev.ticketTypes.earlyBird?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.earlyBird?.capacity || 0) - (ev.ticketTypes.earlyBird?.sold || 0))}`], hasQuantity: true, classSlug: 'earlybird', disabled: ((ev.ticketTypes.earlyBird?.capacity || 0) - (ev.ticketTypes.earlyBird?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'earlyBird', isTable: false }, 
+          { id: `${ev.id}_general`, name: 'General Admission', price: ev.ticketTypes.general?.price || 0, emoji: '🎟️', desc: 'Standard entry', features: [`Price: R${ev.ticketTypes.general?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.general?.capacity || 0) - (ev.ticketTypes.general?.sold || 0))}`], hasQuantity: true, classSlug: 'general', disabled: ((ev.ticketTypes.general?.capacity || 0) - (ev.ticketTypes.general?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'general', isTable: false }, 
+          { id: `${ev.id}_vip`, name: 'VIP Experience', price: ev.ticketTypes.vip?.price || 0, emoji: '👑', desc: 'Premium wristband + drinks', features: [`Price: R${ev.ticketTypes.vip?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.vip?.capacity || 0) - (ev.ticketTypes.vip?.sold || 0))}`], hasQuantity: true, classSlug: 'vip', disabled: ((ev.ticketTypes.vip?.capacity || 0) - (ev.ticketTypes.vip?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'vip', isTable: false } 
+        ]; 
+      },
       vvipTablesWithStatus() { return this.VVIP_TABLES.map(t => ({ ...t, disabled: this.vvipSold[t.id] === true })); },
       currentTicketProducts() { return this.ticketSubCategory === 'tickets' ? this.currentEventTicketProducts : this.vvipTablesWithStatus; }
     },
@@ -415,7 +424,25 @@
       goHome() { window.location.href = 'index.html'; }, openPaymentModal() { if(this.cartItemCount===0) return; this.paymentModalOpen=true; }, closePaymentModal() { if(!this.waitingModalOpen) this.paymentModalOpen=false; },
       async loadProductsFromSupabase() { this.loadingProducts=true; try { const { data, error } = await supabase.from('products').select('*').eq('is_available', true); if(error) throw error; this.products = data || []; } catch(e) { this.showToast('Menu error', 'error'); } finally { this.loadingProducts=false; } },
       getFallbackImage(p) { return 'https://picsum.photos/seed/drink/300/200'; }, handleImageError(e, p) { e.target.src = this.getFallbackImage(p); },
-      async loadEventsAndTickets() { try { const { data: eventsData, error } = await supabase.from('events').select('*').in('status', ['active','upcoming']); if(error) throw error; this.eventsList = []; for(const ev of eventsData || []) { const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id); const ticketTypes = { earlyBird: types?.find(t=>t.name.toLowerCase().includes('early')) || {price:0,capacity:0,sold:0}, general: types?.find(t=>t.name.toLowerCase().includes('general')) || {price:0,capacity:0,sold:0}, vip: types?.find(t=>t.name.toLowerCase().includes('vip')) || {price:0,capacity:0,sold:0} }; this.eventsList.push({ id: ev.id, name: ev.name, date: ev.start_time?.split('T')[0] || '', location: ev.location, ticketTypes }); } if(this.eventsList.length && !this.selectedEventId) this.selectedEventId = this.eventsList[0].id; } catch(e) { console.error(e); this.showToast('Failed to load events', 'error'); } },
+      async loadEventsAndTickets() { 
+        try { 
+          const { data: eventsData, error } = await supabase.from('events').select('*').in('status', ['active','upcoming']); 
+          if(error) throw error; 
+          this.eventsList = []; 
+          const uniqueEvents = new Map();
+          for(const ev of eventsData || []) { 
+            if (uniqueEvents.has(ev.id)) continue;
+            uniqueEvents.set(ev.id, ev);
+            const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id); 
+            const earlyBird = types?.find(t=>t.name?.toLowerCase().includes('early') || t.name?.toLowerCase().includes('bird')) || {price:0,capacity:0,sold:0};
+            const general = types?.find(t=>t.name?.toLowerCase().includes('general') || t.name?.toLowerCase().includes('ga')) || {price:0,capacity:0,sold:0};
+            const vip = types?.find(t=>t.name?.toLowerCase().includes('vip')) || {price:0,capacity:0,sold:0};
+            const ticketTypes = { earlyBird, general, vip }; 
+            this.eventsList.push({ id: ev.id, name: ev.name, date: ev.start_time?.split('T')[0] || '', location: ev.location, ticketTypes }); 
+          } 
+          if(this.eventsList.length && !this.selectedEventId) this.selectedEventId = this.eventsList[0].id; 
+        } catch(e) { console.error(e); this.showToast('Failed to load events', 'error'); } 
+      },
       loadVVIPSold() { const stored = localStorage.getItem('vvip_tables_sold'); this.vvipSold = stored ? JSON.parse(stored) : {}; },
       saveVVIPSold() { localStorage.setItem('vvip_tables_sold', JSON.stringify(this.vvipSold)); },
       onEventChange() { this.ticketQtys = {}; },
