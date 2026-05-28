@@ -927,6 +927,10 @@ body {
     shiftStart: new Date()
   };
 
+  // Realtime subscription
+  let checkinsSubscription = null;
+  let isLoadingTickets = false;
+
   // ========== LOAD ALL EVENTS ==========
   async function loadAllEvents() {
     const { data, error } = await supabase
@@ -949,68 +953,114 @@ body {
       return;
     }
     
-    // Build dropdown options
     eventSelect.innerHTML = allEvents.map(ev => 
       `<option value="${ev.id}" data-status="${ev.status}">
         ${ev.name} ${ev.status === 'active' ? '🔥' : ''}
       </option>`
     ).join('');
     
-    // Try to select active event first, otherwise first event
     const activeEvent = allEvents.find(ev => ev.status === 'active');
     if (activeEvent) {
       eventSelect.value = activeEvent.id;
     }
     
-    // Load first event's tickets
     await loadEventTickets(eventSelect.value);
     
-    // Listen to event selection change
     eventSelect.addEventListener('change', async (e) => {
       await loadEventTickets(e.target.value);
     });
   }
   
+  // ========== SETUP REALTIME SUBSCRIPTION ==========
+  function setupRealtimeSubscription(eventId) {
+    if (checkinsSubscription) {
+      checkinsSubscription.unsubscribe();
+    }
+    
+    if (!eventId) return;
+    
+    checkinsSubscription = supabase
+      .channel(`checkins-${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'checkins',
+          filter: `event_id=eq.${eventId}`
+        },
+        (payload) => {
+          console.log('Realtime checkin detected:', payload);
+          const newCheckin = payload.new;
+          
+          const ticket = allTickets.find(t => t.id === newCheckin.ticket_id);
+          if (ticket && !ticket.checkedIn) {
+            ticket.checkedIn = true;
+            ticket.checkinTime = newCheckin.scanned_at;
+            updateStatsFromTickets();
+            
+            const scanEntry = {
+              id: newCheckin.ticket_id,
+              name: ticket.attendeeName,
+              type: ticket.ticketType,
+              status: 'valid',
+              icon: '✅',
+              time: new Date(newCheckin.scanned_at).toLocaleTimeString()
+            };
+            scanState.scans.unshift(scanEntry);
+            updateLiveStatsUI();
+            addScanToFeed(scanEntry);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+      });
+  }
+  
   // ========== LOAD TICKETS FOR SELECTED EVENT ==========
   async function loadEventTickets(eventId) {
     if (!eventId) return;
+    if (isLoadingTickets) return;
     
     const selectedEvent = allEvents.find(ev => ev.id === eventId);
     if (!selectedEvent) return;
     
     currentEvent = selectedEvent;
-    document.getElementById('gateName').innerHTML = selectedEvent.name.split(' ')[0] + ' GATE';
+    document.getElementById('gateName').innerHTML = (selectedEvent.name.split(' ')[0] || 'MAIN') + ' GATE';
     
+    isLoadingTickets = true;
     showToast(`Loading tickets for ${selectedEvent.name}...`, 'info');
     
-    const { data, error } = await supabase
-      .from('tickets')
-      .select('id, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
-      .eq('event_id', eventId);
-    
-    if (error) {
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('id, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
+        .eq('event_id', eventId);
+      
+      if (error) throw error;
+      
+      allTickets = (data || []).map(t => ({
+        id: t.id,
+        attendeeName: t.customer_phone || 'Guest',
+        ticketType: t.ticket_types?.name || 'Standard',
+        checkedIn: t.checked_in === true,
+        checkinTime: t.checked_in_at,
+        status: t.status
+      }));
+      
+      updateStatsFromTickets();
+      showToast(`Loaded ${allTickets.length} tickets for ${selectedEvent.name}`, 'success');
+      console.log(`Event: ${selectedEvent.name}, Tickets: ${allTickets.length}, Checked in: ${allTickets.filter(t => t.checkedIn).length}`);
+      
+      setupRealtimeSubscription(eventId);
+      
+    } catch (error) {
       console.error('Error loading tickets:', error);
       showToast('Failed to load tickets', 'error');
-      return;
+    } finally {
+      isLoadingTickets = false;
     }
-    
-    allTickets = (data || []).map(t => ({
-      id: t.id,
-      attendeeName: t.customer_phone || 'Guest',
-      ticketType: t.ticket_types?.name || 'Standard',
-      checkedIn: t.checked_in === true,
-      checkinTime: t.checked_in_at,
-      status: t.status
-    }));
-    
-    // Reset scan stats when changing events (optional - keeps cumulative)
-    // Uncomment if you want stats per event:
-    // scanState = { totalScans:0, validScans:0, invalidScans:0, duplicateScans:0, scans:[], currentFilter:'all', shiftStart:new Date() };
-    // updateLiveStatsUI();
-    
-    updateStatsFromTickets();
-    showToast(`Loaded ${allTickets.length} tickets for ${selectedEvent.name}`, 'success');
-    console.log(`Event: ${selectedEvent.name}, Tickets: ${allTickets.length}, Checked in: ${allTickets.filter(t => t.checkedIn).length}`);
   }
   
   function updateStatsFromTickets() {
@@ -1033,30 +1083,62 @@ body {
 
   async function checkInTicket(ticketId) {
     const now = new Date().toISOString();
-    const { error: updateErr } = await supabase
-      .from('tickets')
-      .update({ checked_in: true, checked_in_at: now })
-      .eq('id', ticketId);
-    if (updateErr) throw updateErr;
     
-    const { error: checkinErr } = await supabase
-      .from('checkins')
-      .insert({
-        ticket_id: ticketId,
-        event_id: currentEvent.id,
-        scanned_at: now,
-        gate: 'MAIN GATE',
-        status: 'valid'
-      });
-    if (checkinErr) throw checkinErr;
-    
-    const ticket = allTickets.find(t => t.id === ticketId);
-    if (ticket) {
-      ticket.checkedIn = true;
-      ticket.checkinTime = now;
+    const existingTicket = allTickets.find(t => t.id === ticketId);
+    if (existingTicket?.checkedIn) {
+      throw new Error('DUPLICATE_TICKET');
     }
-    updateStatsFromTickets();
-    return true;
+    
+    try {
+      const { error: updateErr } = await supabase
+        .from('tickets')
+        .update({ checked_in: true, checked_in_at: now })
+        .eq('id', ticketId)
+        .eq('checked_in', false);
+      
+      if (updateErr) {
+        if (updateErr.code === 'PGRST116' || updateErr.message?.includes('violates')) {
+          throw new Error('DUPLICATE_TICKET');
+        }
+        throw updateErr;
+      }
+      
+      const { error: checkinErr } = await supabase
+        .from('checkins')
+        .insert({
+          ticket_id: ticketId,
+          event_id: currentEvent.id,
+          scanned_at: now,
+          gate: document.querySelector('.gate-number')?.innerText || 'MAIN GATE',
+          status: 'valid'
+        });
+      
+      if (checkinErr) {
+        if (checkinErr.code === '23505') {
+          await supabase
+            .from('tickets')
+            .update({ checked_in: false, checked_in_at: null })
+            .eq('id', ticketId);
+          throw new Error('DUPLICATE_TICKET');
+        }
+        throw checkinErr;
+      }
+      
+      const ticket = allTickets.find(t => t.id === ticketId);
+      if (ticket) {
+        ticket.checkedIn = true;
+        ticket.checkinTime = now;
+      }
+      updateStatsFromTickets();
+      return true;
+      
+    } catch (err) {
+      if (err.message === 'DUPLICATE_TICKET') {
+        throw new Error('DUPLICATE_TICKET');
+      }
+      console.error('Check-in error:', err);
+      throw new Error(err.message || 'Check-in failed');
+    }
   }
 
   function printWristband(ticketInfo) {
@@ -1111,42 +1193,62 @@ body {
   async function processScan(ticketId) {
     if (!currentEvent) {
       showToast('Please select an event first', 'error');
-      return;
+      return false;
     }
     
+    if (!ticketId || ticketId.trim() === '') {
+      showToast('Please enter a valid ticket ID', 'error');
+      return false;
+    }
+    
+    ticketId = ticketId.trim();
+    
     let ticket = allTickets.find(t => t.id === ticketId);
+    
     if (!ticket && navigator.onLine) {
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('id, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
-        .eq('id', ticketId)
-        .single();
-      if (!error && data) {
-        ticket = {
-          id: data.id,
-          attendeeName: data.customer_phone || 'Guest',
-          ticketType: data.ticket_types?.name || 'Standard',
-          checkedIn: data.checked_in === true,
-          checkinTime: data.checked_in_at,
-          status: data.status
-        };
-        allTickets.push(ticket);
+      try {
+        const { data, error } = await supabase
+          .from('tickets')
+          .select('id, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
+          .eq('id', ticketId)
+          .maybeSingle();
+        
+        if (!error && data) {
+          ticket = {
+            id: data.id,
+            attendeeName: data.customer_phone || 'Guest',
+            ticketType: data.ticket_types?.name || 'Standard',
+            checkedIn: data.checked_in === true,
+            checkinTime: data.checked_in_at,
+            status: data.status
+          };
+          allTickets.push(ticket);
+        }
+      } catch (err) {
+        console.error('Fetch ticket error:', err);
       }
     }
     
     scanState.totalScans++;
+    
     let status = 'invalid';
     let message = '';
+    let scanEntry = null;
     
     if (!ticket) {
       status = 'invalid';
       scanState.invalidScans++;
       message = 'Ticket ID not found for this event';
+    } else if (ticket.status !== 'issued') {
+      status = 'invalid';
+      scanState.invalidScans++;
+      message = `Ticket status: ${ticket.status}. Cannot check in.`;
     } else if (ticket.checkedIn === true) {
       status = 'duplicate';
       scanState.duplicateScans++;
       scanState.invalidScans++;
-      message = `Already scanned at ${new Date(ticket.checkinTime).toLocaleTimeString()}`;
+      const checkinTime = ticket.checkinTime ? new Date(ticket.checkinTime).toLocaleTimeString() : 'previously';
+      message = `Already scanned at ${checkinTime}`;
     } else {
       try {
         await checkInTicket(ticketId);
@@ -1155,14 +1257,27 @@ body {
         lastValidScan = { id: ticketId, name: ticket.attendeeName, type: ticket.ticketType };
         pendingPrintTicket = { id: ticketId, name: ticket.attendeeName, type: ticket.ticketType };
         message = `Welcome to ${currentEvent.name}!`;
+        
+        ticket.checkedIn = true;
+        ticket.checkinTime = new Date().toISOString();
+        updateStatsFromTickets();
+        
       } catch (err) {
-        status = 'invalid';
-        scanState.invalidScans++;
-        message = err.message;
+        if (err.message === 'DUPLICATE_TICKET') {
+          status = 'duplicate';
+          scanState.duplicateScans++;
+          scanState.invalidScans++;
+          message = 'Ticket was already scanned (duplicate prevented)';
+          ticket.checkedIn = true;
+        } else {
+          status = 'invalid';
+          scanState.invalidScans++;
+          message = err.message || 'Check-in failed';
+        }
       }
     }
     
-    const scanEntry = {
+    scanEntry = {
       id: ticketId,
       name: ticket?.attendeeName || 'Unknown',
       type: ticket?.ticketType || 'N/A',
@@ -1170,7 +1285,13 @@ body {
       icon: status === 'valid' ? '✅' : (status === 'duplicate' ? '⚠️' : '❌'),
       time: new Date().toLocaleTimeString()
     };
+    
     scanState.scans.unshift(scanEntry);
+    
+    if (scanState.scans.length > 50) {
+      scanState.scans = scanState.scans.slice(0, 50);
+    }
+    
     updateLiveStatsUI();
     addScanToFeed(scanEntry);
     
@@ -1184,14 +1305,15 @@ body {
     } else if (status === 'duplicate') {
       showAlert(scanEntry, 'duplicate', message);
       shakeCamera();
-      showToast(`⚠️ Already scanned`, 'warning');
+      showToast(`⚠️ Already scanned - ${scanEntry.name}`, 'warning');
     } else {
       showAlert(scanEntry, 'invalid', message);
       shakeCamera();
-      showToast(`❌ Invalid ticket`, 'error');
+      showToast(`❌ Invalid: ${message}`, 'error');
     }
     
-    updateStatsFromTickets();
+    await updateStatsFromTickets();
+    return status === 'valid';
   }
   
   function showAlertWithPrint(scan, message) {
@@ -1390,10 +1512,28 @@ body {
     document.getElementById('shiftTimer').textContent = `${h}:${m}:${s}`;
   }, 1000);
   
+  // Network status monitoring
+  window.addEventListener('online', () => {
+    showToast('Connection restored', 'success');
+    if (currentEvent) {
+      loadEventTickets(currentEvent.id);
+    }
+  });
+  
+  window.addEventListener('offline', () => {
+    showToast('Connection lost - offline mode', 'warning');
+  });
+  
   // Init
   async function init() {
     await loadAllEvents();
     showToast('Scanner ready • Select an event to begin', 'success');
+    
+    window.addEventListener('beforeunload', () => {
+      if (checkinsSubscription) {
+        checkinsSubscription.unsubscribe();
+      }
+    });
   }
   init();
 </script>
