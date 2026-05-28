@@ -388,7 +388,105 @@
       async loadEventsAndTickets() { this.eventsList = []; try { const { data: eventsData, error } = await supabase.from('events').select('*'); if (error) throw error; if (eventsData && eventsData.length > 0) { for(const ev of eventsData) { const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id); const earlyBird = types?.find(t => t.name && (t.name.toLowerCase().includes('early') || t.name.toLowerCase().includes('bird'))) || {price: ev.base_price || 0, capacity: ev.capacity || 0, sold: 0}; const general = types?.find(t => t.name && (t.name.toLowerCase().includes('general') || t.name.toLowerCase().includes('ga'))) || {price: ev.base_price || 0, capacity: ev.capacity || 0, sold: 0}; const vip = types?.find(t => t.name && t.name.toLowerCase().includes('vip')) || {price: ev.vip_price || 0, capacity: ev.vip_capacity || 0, sold: 0}; this.eventsList.push({ id: ev.id, name: ev.name, date: ev.start_time?.split('T')[0] || ev.date || 'TBD', location: ev.location, ticketTypes: { earlyBird, general, vip } }); } if(this.eventsList.length && !this.selectedEventId) this.selectedEventId = this.eventsList[0].id; } else { this.showToast('No events available', 'error'); } } catch(e) { this.showToast('Failed to load events', 'error'); } },
       loadVVIPSold() { const stored = localStorage.getItem('vvip_tables_sold'); this.vvipSold = stored ? JSON.parse(stored) : {}; }, saveVVIPSold() { localStorage.setItem('vvip_tables_sold', JSON.stringify(this.vvipSold)); }, onEventChange() { this.ticketQtys = {}; },
       cleanupPaymentFlow() { if (this.approvalTimer) { clearInterval(this.approvalTimer); this.approvalTimer = null; } if (this.paymentSubscription) { supabase.removeChannel(this.paymentSubscription); this.paymentSubscription = null; } this.currentPaymentRequestId = null; this.waitingModalOpen = false; this.paymentProcessingLock = false; },
-      async sendWalletRequest() { if (this.walletId.trim().length < 10) { this.showToast('Valid phone number required (e.g., +27721234567)', 'error'); return; } if (this.paymentProcessingLock) { this.showToast('Payment already in progress', 'error'); return; } this.paymentProcessingLock = true; const cleanedPhone = this.walletId.trim(); this.paymentModalOpen = false; this.waitingModalOpen = true; this.remainingSeconds = 120; this.cleanupPaymentFlow(); const timerCircle = this.$refs.timerCircle; if (timerCircle) { const radius = 45; const circumference = 2 * Math.PI * radius; timerCircle.style.strokeDasharray = circumference; timerCircle.style.strokeDashoffset = 0; } try { const idempotencyKey = crypto.randomUUID(); const { data: paymentRequest, error: insertError } = await supabase.from('payment_requests').insert({ customer_phone: cleanedPhone, quantity: this.cartItemCount, total_amount: this.cartTotal, channel: 'kiosk', status: 'pending', requested_at: new Date().toISOString(), expires_at: new Date(Date.now() + 120000).toISOString(), request_message: `Kiosk payment for ${this.cartItemCount} items`, idempotency_key: idempotencyKey, metadata: { cart_items: this.cart.map(item => ({ ...item, fingerprint: 'secure-kiosk' })) } }).select().single(); if (insertError) throw insertError; this.currentPaymentRequestId = paymentRequest.id; this.setupSecurePaymentListener(paymentRequest.id); this.approvalTimer = setInterval(() => { if (this.remainingSeconds > 0) { this.remainingSeconds--; const circle = this.$refs.timerCircle; if (circle) { const radius = 45; const circumference = 2 * Math.PI * radius; const offset = circumference - (this.remainingSeconds / 120) * circumference; circle.style.strokeDashoffset = offset; if (this.remainingSeconds <= 30) circle.style.stroke = '#E30613'; else if (this.remainingSeconds <= 60) circle.style.stroke = '#FF6B6B'; else circle.style.stroke = '#10B981'; } if (this.remainingSeconds === 0 && this.waitingModalOpen) { supabase.from('payment_requests').update({ status: 'expired' }).eq('id', this.currentPaymentRequestId).then(); this.cleanupPaymentFlow(); this.showToast('Request expired', 'error'); } } else { clearInterval(this.approvalTimer); } }, 1000); this.showToast(`Request sent to ${cleanedPhone}`, 'success'); } catch (err) { console.error(err); this.cleanupPaymentFlow(); this.showToast('Failed to send request: ' + (err.message || 'Unknown error'), 'error'); } },
+      async sendWalletRequest() { if (this.walletId.trim().length < 10) { this.showToast('Valid phone number required (e.g., +27721234567)', 'error'); return; } if (this.paymentProcessingLock) { this.showToast('Payment already in progress', 'error'); return; } this.paymentProcessingLock = true; const cleanedPhone = this.walletId.trim(); this.paymentModalOpen = false; this.waitingModalOpen = true; this.remainingSeconds = 120; this.cleanupPaymentFlow(); const timerCircle = this.$refs.timerCircle; if (timerCircle) { const radius = 45; const circumference = 2 * Math.PI * radius; timerCircle.style.strokeDasharray = circumference; timerCircle.style.strokeDashoffset = 0; } try { const idempotencyKey = crypto.randomUUID();
+
+/*
+  STEP 1: Find customer profile using phone number
+*/
+const { data: profile, error: profileError } = await supabase
+  .from('profiles')
+  .select('id, name, phone')
+  .eq('phone', cleanedPhone)
+  .single();
+
+if (profileError || !profile) {
+  throw new Error('No wallet account found for this phone number');
+}
+
+/*
+  STEP 2: Optional wallet validation
+*/
+const { data: wallet } = await supabase
+  .from('wallets')
+  .select('id, balance')
+  .eq('user_id', profile.id)
+  .single();
+
+if (!wallet) {
+  throw new Error('Wallet account not found');
+}
+
+/*
+  STEP 3: Create payment request
+*/
+const { data: paymentRequest, error: insertError } = await supabase
+  .from('payment_requests')
+  .insert({
+    customer_phone: cleanedPhone,
+
+    // THIS FIXES YOUR ERROR
+    customer_profile_id: profile.id,
+
+    wallet_id: wallet.id,
+
+    quantity: this.cartItemCount,
+    total_amount: this.cartTotal,
+
+    channel: 'kiosk',
+    request_type: 'kiosk_order',
+
+    status: 'pending',
+
+    requested_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 120000).toISOString(),
+
+    request_message: `Kiosk payment for ${this.cartItemCount} items`,
+
+    idempotency_key: idempotencyKey,
+
+    metadata: {
+      source: 'rands_kiosk',
+      customer_name: profile.name,
+      cart_items: this.cart.map(item => ({
+        ...item,
+        fingerprint: 'secure-kiosk'
+      }))
+    }
+  })
+  .select()
+  .single();
+
+if (insertError) throw insertError;
+        this.currentPaymentRequestId = paymentRequest.id;
+        this.setupSecurePaymentListener(paymentRequest.id);
+        this.approvalTimer = setInterval(() => {
+          if (this.remainingSeconds > 0) {
+            this.remainingSeconds--;
+            const circle = this.$refs.timerCircle;
+            if (circle) {
+              const radius = 45;
+              const circumference = 2 * Math.PI * radius;
+              const offset = circumference - (this.remainingSeconds / 120) * circumference;
+              circle.style.strokeDashoffset = offset;
+              if (this.remainingSeconds <= 30) circle.style.stroke = '#E30613';
+              else if (this.remainingSeconds <= 60) circle.style.stroke = '#FF6B6B';
+              else circle.style.stroke = '#10B981';
+            }
+            if (this.remainingSeconds === 0 && this.waitingModalOpen) {
+              supabase.from('payment_requests').update({ status: 'expired' }).eq('id', this.currentPaymentRequestId).then();
+              this.cleanupPaymentFlow();
+              this.showToast('Request expired', 'error');
+            }
+          } else {
+            clearInterval(this.approvalTimer);
+          }
+        }, 1000);
+        this.showToast(`Request sent to ${cleanedPhone}`, 'success');
+      } catch (err) {
+        console.error(err);
+        this.cleanupPaymentFlow();
+        this.showToast('Failed to send request: ' + (err.message || 'Unknown error'), 'error');
+      } },
       setupSecurePaymentListener(paymentRequestId) { if (this.paymentSubscription) supabase.removeChannel(this.paymentSubscription); this.paymentSubscription = supabase.channel(`secure-payment-${paymentRequestId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `id=eq.${paymentRequestId}` }, async (payload) => { const newStatus = payload.new.status; const oldStatus = payload.old.status; const validTransitions = { 'pending': ['approved', 'rejected', 'expired', 'cancelled'] }; if (validTransitions[oldStatus]?.includes(newStatus)) { await this.handlePaymentStatusUpdate(payload.new); } else { console.warn(`Invalid transition: ${oldStatus} -> ${newStatus}`); } }).subscribe(); },
       async handlePaymentStatusUpdate(paymentRequest) { const { status, order_id, id } = paymentRequest; if (status === 'approved' && order_id) { this.cleanupPaymentFlow(); const { data: order } = await supabase.from('orders').select('order_number').eq('id', order_id).single(); if (order) { this.orderNumber = order.order_number; this.cart = []; this.successModalOpen = true; this.showToast(`Payment approved! Order: ${order.order_number}`, 'success'); setTimeout(() => { this.successModalOpen = false; this.waitingModalOpen = false; }, 4000); await this.printOrderReceipt(order_id); } } else if (status === 'rejected') { this.cleanupPaymentFlow(); this.showToast('Payment rejected by wallet', 'error'); this.waitingModalOpen = false; } else if (status === 'expired') { this.cleanupPaymentFlow(); this.showToast('Payment request expired', 'error'); this.waitingModalOpen = false; } else if (status === 'cancelled') { this.cleanupPaymentFlow(); this.showToast('Payment cancelled', 'error'); this.waitingModalOpen = false; } },
       async printOrderReceipt(orderId) { const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId); if (!items) return; const menuItems = items.filter(i => i.product_type === 'menu'); const ticketItems = items.filter(i => i.product_type === 'ticket'); if (menuItems.length) this.printNormalOrder(menuItems); if (ticketItems.length) await this.printTicketReceipt(ticketItems); },
