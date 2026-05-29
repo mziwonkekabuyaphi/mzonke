@@ -666,22 +666,45 @@
         });
     }
     
-    // Format wallet ID as 16-digit grouped card number (XXXX XXXX XXXX XXXX)
-    function formatWalletIdToCardNumber(walletId) {
-        if (!walletId) return "•••• •••• •••• ••••";
-        const idStr = String(walletId);
-        // Pad with leading zeros to ensure 16 digits
-        let padded = idStr.padStart(16, '0').slice(0, 16);
-        // Group in 4s
-        const groups = padded.match(/.{1,4}/g);
-        return groups ? groups.join(' ') : padded;
+    // Convert UUID to a clean 16-digit numeric string
+    function uuidTo16DigitNumber(uuid) {
+        if (!uuid) return null;
+        // Remove hyphens and get only hex characters
+        const hexString = uuid.replace(/-/g, '');
+        // Take first 16 characters from hex (each hex char is 0-9a-f)
+        let hex16 = hexString.substring(0, 16);
+        // Convert hex to a large number string (use simple mapping for consistency)
+        let numericStr = '';
+        for (let i = 0; i < hex16.length; i++) {
+            const char = hex16[i];
+            const digit = parseInt(char, 16);
+            numericStr += digit.toString();
+        }
+        // Ensure we have exactly 16 digits (pad with zeros if needed)
+        while (numericStr.length < 16) {
+            numericStr = '0' + numericStr;
+        }
+        // Take first 16 digits
+        numericStr = numericStr.substring(0, 16);
+        return numericStr;
     }
     
-    // Update the card number display
+    // Format the 16-digit number as card number with spaces (XXXX XXXX XXXX XXXX)
+    function formatCardNumber(cardNumberStr) {
+        if (!cardNumberStr || cardNumberStr.length !== 16) return "•••• •••• •••• ••••";
+        const groups = cardNumberStr.match(/.{1,4}/g);
+        return groups ? groups.join(' ') : cardNumberStr;
+    }
+    
+    // Update the card number display using wallet UUID
     function updateCardNumber(walletId) {
         const cardNumberEl = document.getElementById('dynamicCardNumber');
-        if (cardNumberEl) {
-            cardNumberEl.textContent = formatWalletIdToCardNumber(walletId);
+        if (cardNumberEl && walletId) {
+            const numeric16 = uuidTo16DigitNumber(walletId);
+            const formatted = formatCardNumber(numeric16);
+            cardNumberEl.textContent = formatted;
+        } else if (cardNumberEl) {
+            cardNumberEl.textContent = "•••• •••• •••• ••••";
         }
     }
     
