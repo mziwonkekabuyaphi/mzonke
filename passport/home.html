@@ -181,7 +181,19 @@
         .card-mid { display: flex; flex-direction: column; gap: 10px; }
         .emv-chip { width: clamp(38px, 10vw, 50px); height: clamp(28px, 7.5vw, 38px); border-radius: 5px; position: relative; background: linear-gradient(135deg, #e8a82a 0%, #f5d070 25%, #d4a030 50%, #f8e080 75%, #c89020 100%); box-shadow: 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -1px 0 rgba(0,0,0,0.3); overflow: hidden; }
         .emv-chip::before { content: ''; position: absolute; inset: 15% 20%; background: repeating-linear-gradient(90deg, transparent 0, transparent 28%, rgba(100,60,0,0.4) 28%, rgba(100,60,0,0.4) 30%, transparent 30%), repeating-linear-gradient(0deg, transparent 0, transparent 28%, rgba(100,60,0,0.35) 28%, rgba(100,60,0,0.35) 30%, transparent 30%); border-radius: 2px; }
-        .card-number { font-family: 'Space Mono', monospace; font-size: clamp(14px, 4vw, 19px); letter-spacing: clamp(2px, 0.8vw, 5px); color: rgba(255,255,255,0.96); text-shadow: 0 2px 12px rgba(0,0,0,0.6), 0 0 30px rgba(220,60,80,0.3); font-weight: 400; word-break: keep-all; }
+        .card-number { 
+            font-family: 'Space Mono', monospace; 
+            font-size: clamp(16px, 5vw, 22px); 
+            letter-spacing: clamp(3px, 1.2vw, 6px); 
+            color: rgba(255,255,255,0.96); 
+            text-shadow: 0 2px 12px rgba(0,0,0,0.6), 0 0 30px rgba(220,60,80,0.3); 
+            font-weight: 600; 
+            word-break: keep-all;
+            white-space: nowrap;
+            overflow-x: auto;
+            text-align: center;
+            width: 100%;
+        }
         .card-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
         .card-holder-label { font-size: clamp(7px, 1.8vw, 9px); letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.4); font-weight: 400; margin-bottom: 2px; }
         .card-holder-name { font-size: clamp(10px, 2.8vw, 14px); font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.92); text-shadow: 0 1px 8px rgba(0,0,0,0.4); }
@@ -603,16 +615,16 @@
         if (toast) { toast.textContent = 'System error. Please refresh.'; toast.style.background = '#E30613'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 4000); }
     });
     
-    let currentWalletId = null;
+    let currentWalletRowId = null; // This is the wallets.id (UUID) for balance tracking
     let walletChannel = null;
     
-    // Generate REAL barcode from wallet_id
-    function generateRealBarcode(walletId) {
+    // Generate barcode from the 16-digit wallet_id from profiles
+    function generateRealBarcode(walletIdNumber) {
         const barcodeInner = document.getElementById('barcodeInner');
-        if (!barcodeInner || !walletId) return;
+        if (!barcodeInner || !walletIdNumber) return;
         
         barcodeInner.innerHTML = '';
-        const idString = String(walletId);
+        const idString = String(walletIdNumber);
         
         // Create a deterministic pattern based on wallet_id string
         let binaryPattern = [];
@@ -673,11 +685,11 @@
         return groups ? groups.join(' ') : walletNumber;
     }
     
-    // Update the card number display using wallet_id from profiles
+    // Update the card number display using the 16-digit wallet_id from profiles
     function updateCardNumber(walletIdNumber) {
         const cardNumberEl = document.getElementById('dynamicCardNumber');
         if (cardNumberEl && walletIdNumber) {
-            const formatted = formatCardNumber(walletIdNumber);
+            const formatted = formatCardNumber(String(walletIdNumber));
             cardNumberEl.textContent = formatted;
         } else if (cardNumberEl) {
             cardNumberEl.textContent = "•••• •••• •••• ••••";
@@ -691,34 +703,41 @@
             if($('cardHolderName')) $('cardHolderName').textContent = "GUEST";
             return;
         }
-        // Get profile with wallet_id
+        
+        // SOURCE OF TRUTH: Get profile with wallet_id (16-digit plain number)
         const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone, wallet_id').eq('id', session.user.id).maybeSingle();
         if (pErr) console.error("Profile fetch error:", pErr);
+        
         const fullName = profile?.full_name || session.user.user_metadata?.full_name || "Member";
         const firstName = fullName.split(' ')[0];
         if($('userNameDisplay')) $('userNameDisplay').textContent = firstName;
         if($('cardHolderName')) $('cardHolderName').textContent = fullName.toUpperCase();
+        
         const phoneRaw = profile?.phone || session.user.user_metadata?.phone || "";
         let formattedPhone = phoneRaw;
         if (phoneRaw && phoneRaw.match(/^\d+$/)) formattedPhone = phoneRaw.replace(/(\d{3})(?=\d)/g, '$1 ');
         if($('accountPhoneNumber')) $('accountPhoneNumber').textContent = formattedPhone || "—";
         
-        // Get wallet for balance
+        // Get wallet for balance only (this is the wallets.id UUID row)
         const { data: wallet, error: wErr } = await supabase.from('wallets').select('id, balance').eq('user_id', session.user.id).maybeSingle();
         if (wErr) console.warn("Wallet query error:", wErr);
         const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         window.updateUserBalance(balanceNum);
         
-        // Use wallet_id from profile for card number (16-digit plain number)
+        // SOURCE OF TRUTH: Use wallet_id from profiles for card number display and barcode
         const walletIdNumber = profile?.wallet_id;
         if (walletIdNumber) {
-            updateCardNumber(String(walletIdNumber));
-            generateRealBarcode(String(walletIdNumber)); // Use wallet_id for barcode too
+            const walletIdStr = String(walletIdNumber);
+            updateCardNumber(walletIdStr);
+            generateRealBarcode(walletIdStr);
+        } else {
+            console.warn("No wallet_id found in profiles table for this user");
+            updateCardNumber(null);
         }
         
         if (wallet?.id) { 
-            currentWalletId = wallet.id;
-            window.currentWalletId = currentWalletId;
+            currentWalletRowId = wallet.id;
+            window.currentWalletRowId = currentWalletRowId;
             setupWalletRealtime();
         }
     }
@@ -733,9 +752,9 @@
     
     function setupWalletRealtime() {
         if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; }
-        if (!currentWalletId) return;
-        walletChannel = supabase.channel(`wallet-${currentWalletId}`).on('postgres_changes', {
-            event: 'UPDATE', schema: 'public', table: 'wallets', filter: `id=eq.${currentWalletId}`
+        if (!currentWalletRowId) return;
+        walletChannel = supabase.channel(`wallet-${currentWalletRowId}`).on('postgres_changes', {
+            event: 'UPDATE', schema: 'public', table: 'wallets', filter: `id=eq.${currentWalletRowId}`
         }, async (payload) => { if (payload.new?.balance !== undefined) window.updateUserBalance(payload.new.balance); }).subscribe();
     }
     
