@@ -33,6 +33,8 @@
       --border-strong: #eef2f8;
       --radius-lg: 28px;
       --radius-full: 9999px;
+      --green: #10b981;
+      --yellow: #f59e0b;
     }
 
     body {
@@ -55,6 +57,11 @@
       border: 1px solid var(--border-strong);
       overflow: hidden;
       box-shadow: 0 8px 20px -6px rgba(0,0,0,0.12);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+      box-shadow: 0 12px 28px -8px rgba(0,0,0,0.15);
     }
 
     .card-header {
@@ -65,6 +72,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      background: linear-gradient(to bottom, var(--white), var(--bone));
     }
 
     .card-header i {
@@ -91,6 +99,14 @@
       text-align: center;
       cursor: pointer;
       transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ticket-card:hover:not(.disabled) {
+      transform: translateY(-2px);
+      border-color: var(--red);
+      box-shadow: 0 4px 12px var(--red-glow);
     }
 
     .ticket-card.selected {
@@ -101,6 +117,7 @@
     .ticket-card.disabled {
       opacity: 0.5;
       cursor: not-allowed;
+      filter: grayscale(0.1);
     }
 
     .ticket-price {
@@ -135,6 +152,16 @@
       font-weight: 700;
       cursor: pointer;
       color: var(--red);
+      transition: all 0.1s;
+    }
+
+    .quantity-btn:active {
+      transform: scale(0.95);
+    }
+
+    .quantity-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
     }
 
     .quantity-display {
@@ -177,11 +204,37 @@
       font-size: 1rem;
       cursor: pointer;
       width: 100%;
-      transition: 0.2s;
+      transition: all 0.2s;
     }
 
-    .btn-primary:active { transform: scale(0.97); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--red-dark);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.97);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--bone);
+      color: var(--ink);
+      border: 1px solid var(--border-strong);
+      padding: 6px 14px;
+      border-radius: 60px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: var(--white);
+      border-color: var(--red);
+    }
 
     .input-group {
       margin-bottom: 20px;
@@ -195,10 +248,17 @@
 
     .input-group input {
       width: 100%;
-      padding: 12px;
+      padding: 12px 16px;
       border-radius: 60px;
       border: 1px solid var(--border-strong);
       font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px var(--red-glow);
     }
 
     .status-panel {
@@ -207,6 +267,18 @@
       border-radius: 20px;
       background: var(--bone);
       text-align: center;
+    }
+
+    .status-panel.success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--green);
+      color: var(--green);
+    }
+
+    .status-panel.error {
+      background: rgba(227, 6, 19, 0.1);
+      border: 1px solid var(--red);
+      color: var(--red);
     }
 
     .toast {
@@ -220,11 +292,34 @@
       z-index: 10001;
       transform: translateX(400px);
       transition: transform 0.25s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    .toast.show { transform: translateX(0); }
+
+    .toast.show {
+      transform: translateX(0);
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(227,6,19,0.3);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
 
     @media (max-width: 900px) {
-      .dashboard-grid { grid-template-columns: 1fr; }
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+      body {
+        padding: 16px;
+      }
     }
   </style>
 </head>
@@ -235,11 +330,14 @@
   <div class="card">
     <div class="card-header">
       <span><i class="fas fa-ticket-alt"></i> Select tickets</span>
-      <button class="btn-sm" id="syncBtn" style="background: var(--bone); border:1px solid var(--border-strong); padding:6px 14px; border-radius:60px;">⟳ Sync</button>
+      <button class="btn-secondary" id="syncBtn">
+        <i class="fas fa-sync-alt"></i> Sync
+      </button>
     </div>
     <div class="card-body">
       <div id="eventInfo">
-        <div style="font-size:1.3rem; font-weight:800; color:var(--red);">Loading events...</div>
+        <div class="loading-spinner"></div>
+        <div style="margin-top: 12px; color: var(--mist);">Loading events...</div>
       </div>
       <div id="ticketContainer" class="ticket-grid"></div>
       <div class="quantity-section">
@@ -284,15 +382,22 @@
 <div id="toastMsg" class="toast"></div>
 
 <script type="module">
-  import { supabase } from '../config/supabase.js';
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+  // Supabase configuration - REPLACE WITH YOUR ACTUAL CREDENTIALS
+  const supabaseUrl = 'https://your-project.supabase.co'; // CHANGE THIS
+  const supabaseAnonKey = 'your-anon-key'; // CHANGE THIS
+  
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   // ---------- STATE ----------
   let events = [];
   let selectedEvent = null;
-  let selectedTicketType = null;   // { key, name, price, available, ticketTypeId }
+  let selectedTicketType = null;
   let ticketQuantity = 1;
   let currentRequestId = null;
   let requestSubscription = null;
+  let isLoading = false;
 
   // DOM elements
   const eventInfoDiv = document.getElementById('eventInfo');
@@ -313,73 +418,239 @@
   // Helper functions
   function showToast(msg, type = 'info') {
     const toast = document.getElementById('toastMsg');
-    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${msg}`;
+    const icon = type === 'success' ? 'fa-check-circle' : 
+                 type === 'error' ? 'fa-exclamation-circle' : 
+                 'fa-info-circle';
+    toast.innerHTML = `<i class="fas ${icon}"></i> ${msg}`;
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
-  async function loadEvents() {
+  function validatePhone(phone) {
+    const phoneRegex = /^[0-9]{10}$/;
+    return phoneRegex.test(phone);
+  }
+
+  // Get or create customer profile (CRITICAL FIX)
+  async function getOrCreateCustomerProfile(phone) {
     try {
+      // First try to get existing profile
+      let { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, name, email, wallet_balance')
+        .eq('phone', phone)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Profile lookup error:', error);
+        throw error;
+      }
+
+      if (!profile) {
+        console.log('Creating new profile for phone:', phone);
+        
+        // Create new profile for customer
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            phone: phone,
+            role: 'customer',
+            account_type: 'general',
+            status: 'Active',
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Profile creation error:', createError);
+          throw createError;
+        }
+        
+        profile = newProfile;
+        
+        // Also create wallet for new customer
+        const { error: walletError } = await supabase
+          .from('wallets')
+          .insert({
+            user_id: profile.id,
+            balance: 0,
+            currency: 'ZAR',
+            status: 'active',
+            balance_cents: 0,
+            created_at: new Date().toISOString()
+          });
+
+        if (walletError) {
+          console.warn('Wallet creation warning:', walletError);
+          // Don't throw - wallet might already exist via trigger
+        } else {
+          console.log('Created wallet for new customer');
+        }
+      }
+
+      return profile;
+    } catch (err) {
+      console.error('getOrCreateCustomerProfile error:', err);
+      throw new Error(`Failed to get/create customer profile: ${err.message}`);
+    }
+  }
+
+  function isEventAvailable(event) {
+    const now = new Date();
+    const startTime = new Date(event.start_time);
+    const endTime = new Date(event.end_time);
+    
+    return event.is_active === true && 
+           event.status === 'active' &&
+           startTime <= now &&
+           endTime >= now;
+  }
+
+  async function loadEvents() {
+    if (isLoading) return;
+    isLoading = true;
+    
+    try {
+      const now = new Date().toISOString();
+      
       const { data: eventsData, error } = await supabase
         .from('events')
         .select('*')
-        .order('start_time', { ascending: false });
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .order('start_time', { ascending: true });
+
       if (error) throw error;
+      
       events = eventsData || [];
+      
       if (events.length === 0) {
-        eventInfoDiv.innerHTML = '<div style="color:var(--mist);">No events found</div>';
+        eventInfoDiv.innerHTML = `
+          <div style="color: var(--mist); text-align: center; padding: 20px;">
+            <i class="fas fa-calendar-times" style="font-size: 48px; margin-bottom: 12px;"></i>
+            <div>No active events found</div>
+            <small>Check if events have is_active=true and status='active'</small>
+          </div>
+        `;
         ticketContainer.innerHTML = '';
         selectedEvent = null;
+        isLoading = false;
         return;
       }
+      
       // Load ticket types for each event
       for (let ev of events) {
-        const { data: types } = await supabase
+        const { data: types, error: typesError } = await supabase
           .from('ticket_types')
           .select('*')
-          .eq('event_id', ev.id);
+          .eq('event_id', ev.id)
+          .gt('capacity', 0); // Only show ticket types with capacity
+          
+        if (typesError) {
+          console.error('Error loading ticket types for event', ev.id, typesError);
+        }
+        
         ev.ticketTypes = types || [];
+        ev.isAvailable = isEventAvailable(ev);
+        
+        console.log(`Event "${ev.name}" - Available: ${ev.isAvailable}, Ticket types: ${ev.ticketTypes.length}`);
       }
-      selectedEvent = events[0];
+      
+      // Filter to only available events with ticket types
+      const availableEvents = events.filter(ev => ev.isAvailable && ev.ticketTypes.length > 0);
+      
+      if (availableEvents.length === 0) {
+        eventInfoDiv.innerHTML = `
+          <div style="color: var(--mist); text-align: center; padding: 20px;">
+            <i class="fas fa-ticket-alt" style="font-size: 48px; margin-bottom: 12px;"></i>
+            <div>No available tickets at this time</div>
+            <small>Check event dates and ticket availability</small>
+          </div>
+        `;
+        ticketContainer.innerHTML = '';
+        selectedEvent = null;
+        isLoading = false;
+        return;
+      }
+      
+      selectedEvent = availableEvents[0];
       renderEvent();
       renderTickets();
+      
     } catch (err) {
-      console.error(err);
-      showToast('Failed to load events', 'error');
+      console.error('Load events error:', err);
+      eventInfoDiv.innerHTML = `
+        <div style="color: var(--red); text-align: center; padding: 20px;">
+          <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 12px;"></i>
+          <div>Failed to load events</div>
+          <small>${err.message}</small>
+        </div>
+      `;
+      showToast('Failed to load events: ' + err.message, 'error');
+    } finally {
+      isLoading = false;
     }
   }
 
   function renderEvent() {
     if (!selectedEvent) return;
+    
     const start = selectedEvent.start_time ? new Date(selectedEvent.start_time) : null;
-    const dateStr = start ? start.toLocaleDateString() : 'TBD';
-    const timeStr = start ? start.toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' }) : '';
+    const end = selectedEvent.end_time ? new Date(selectedEvent.end_time) : null;
+    const dateStr = start ? start.toLocaleDateString('en-ZA', { weekday: 'short', month: 'short', day: 'numeric' }) : 'TBD';
+    const timeStr = start ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const endTimeStr = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    
     eventInfoDiv.innerHTML = `
-      <div style="font-size:1.3rem; font-weight:800; color:var(--red);">${escapeHtml(selectedEvent.name)}</div>
-      <div style="color:var(--slate); margin-top:4px;">📅 ${dateStr} ${timeStr} &nbsp;📍 ${escapeHtml(selectedEvent.location || 'Venue')}</div>
+      <div style="font-size: 1.3rem; font-weight: 800; color: var(--red); margin-bottom: 8px;">
+        ${escapeHtml(selectedEvent.name)}
+      </div>
+      <div style="color: var(--slate); font-size: 0.9rem;">
+        <i class="fas fa-calendar-alt"></i> ${dateStr} ${timeStr} - ${endTimeStr}<br>
+        <i class="fas fa-map-marker-alt"></i> ${escapeHtml(selectedEvent.location || 'Venue TBA')}
+      </div>
+      ${selectedEvent.description ? `<div style="color: var(--mist); font-size: 0.85rem; margin-top: 8px;">${escapeHtml(selectedEvent.description.substring(0, 100))}</div>` : ''}
     `;
   }
 
   function renderTickets() {
     if (!selectedEvent || !selectedEvent.ticketTypes.length) {
-      ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types</div>';
+      ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types available</div>';
       return;
     }
-    const typeMap = {
-      earlyBird: { icon: '🐦', label: 'Early Bird' },
-      general: { icon: '🎫', label: 'General Admission' },
-      vip: { icon: '⭐', label: 'VIP' }
+    
+    const ticketIcons = {
+      'vip': '👑',
+      'general': '🎫',
+      'early': '🐦',
+      'standard': '🎟️'
     };
+    
     ticketContainer.innerHTML = selectedEvent.ticketTypes.map(tt => {
-      const key = tt.name.toLowerCase().includes('early') ? 'earlyBird' : (tt.name.toLowerCase().includes('vip') ? 'vip' : 'general');
       const available = (tt.capacity || 0) - (tt.sold || 0);
-      const isActive = available > 0 && selectedEvent.status === 'active';
+      const isActive = available > 0 && selectedEvent.isAvailable;
+      
+      let icon = '🎟️';
+      const nameLower = tt.name.toLowerCase();
+      if (nameLower.includes('vip')) icon = '👑';
+      else if (nameLower.includes('early')) icon = '🐦';
+      else if (nameLower.includes('general')) icon = '🎫';
+      
       return `
-        <div class="ticket-card ${!isActive ? 'disabled' : ''}" data-id="${tt.id}" data-name="${tt.name}" data-price="${tt.price}" data-available="${available}" data-key="${key}">
-          <div class="ticket-icon" style="font-size:32px;">${typeMap[key]?.icon || '🎟️'}</div>
-          <div style="font-weight:700; margin:8px 0;">${escapeHtml(tt.name)}</div>
-          <div class="ticket-price">R${tt.price}</div>
-          <div style="font-size:0.7rem; background:var(--bone); display:inline-block; padding:4px 10px; border-radius:60px; margin-top:8px;">${available} left</div>
+        <div class="ticket-card ${!isActive ? 'disabled' : ''}" 
+             data-id="${tt.id}" 
+             data-name="${escapeHtml(tt.name)}" 
+             data-price="${tt.price}" 
+             data-available="${available}" 
+             data-capacity="${tt.capacity}"
+             data-sold="${tt.sold || 0}">
+          <div style="font-size: 32px;">${icon}</div>
+          <div style="font-weight: 700; margin: 8px 0;">${escapeHtml(tt.name)}</div>
+          <div class="ticket-price">R${Number(tt.price).toLocaleString()}</div>
+          <div style="font-size: 0.7rem; background: var(--bone); display: inline-block; padding: 4px 10px; border-radius: 60px; margin-top: 8px;">
+            ${available} left
+          </div>
         </div>
       `;
     }).join('');
@@ -394,20 +665,31 @@
           name: card.dataset.name,
           price: parseInt(card.dataset.price),
           available: parseInt(card.dataset.available),
-          key: card.dataset.key
+          capacity: parseInt(card.dataset.capacity),
+          sold: parseInt(card.dataset.sold)
         };
         updateSummary();
         updateQuantityLimit();
       });
     });
-    // auto-select first available
+    
+    // Auto-select first available ticket type
     const firstAvail = document.querySelector('.ticket-card:not(.disabled)');
-    if (firstAvail) firstAvail.click();
-    else selectedTicketType = null;
+    if (firstAvail) {
+      firstAvail.click();
+    } else {
+      selectedTicketType = null;
+      updateSummary();
+    }
   }
 
   function updateQuantityLimit() {
-    const max = selectedTicketType ? selectedTicketType.available : 0;
+    if (!selectedTicketType) {
+      incQty.disabled = true;
+      decQty.disabled = true;
+      return;
+    }
+    const max = Math.min(selectedTicketType.available, 10); // Max 10 per transaction
     incQty.disabled = ticketQuantity >= max;
     decQty.disabled = ticketQuantity <= 1;
   }
@@ -421,11 +703,12 @@
     }
     const total = selectedTicketType.price * ticketQuantity;
     summaryType.textContent = selectedTicketType.name;
-    summaryPrice.textContent = `R${selectedTicketType.price}`;
+    summaryPrice.textContent = `R${selectedTicketType.price.toLocaleString()}`;
     summaryQty.textContent = ticketQuantity;
-    summaryTotal.textContent = `R${total}`;
+    summaryTotal.textContent = `R${total.toLocaleString()}`;
   }
 
+  // Quantity controls
   decQty.addEventListener('click', () => {
     if (ticketQuantity > 1) {
       ticketQuantity--;
@@ -434,8 +717,9 @@
       updateQuantityLimit();
     }
   });
+  
   incQty.addEventListener('click', () => {
-    if (selectedTicketType && ticketQuantity < selectedTicketType.available) {
+    if (selectedTicketType && ticketQuantity < selectedTicketType.available && ticketQuantity < 10) {
       ticketQuantity++;
       qtyDisplay.textContent = ticketQuantity;
       updateSummary();
@@ -443,50 +727,91 @@
     }
   });
 
-  // ---------- CREATE PAYMENT REQUEST ----------
+  // Create payment request (FIXED with customer_profile_id)
   async function createPaymentRequest() {
     const phone = customerPhoneInput.value.trim();
+    
     if (!phone) {
-      showToast('Enter customer phone number', 'error');
+      showToast('Please enter customer phone number', 'error');
       return false;
     }
+    
+    if (!validatePhone(phone)) {
+      showToast('Please enter a valid 10-digit phone number', 'error');
+      return false;
+    }
+    
     if (!selectedTicketType) {
-      showToast('Select a ticket type', 'error');
+      showToast('Please select a ticket type', 'error');
       return false;
     }
+    
     if (ticketQuantity > selectedTicketType.available) {
-      showToast(`Only ${selectedTicketType.available} tickets left`, 'error');
+      showToast(`Only ${selectedTicketType.available} tickets available`, 'error');
       return false;
     }
+    
     const totalAmount = selectedTicketType.price * ticketQuantity;
-    // Insert request
-    const { data, error } = await supabase
-      .from('payment_requests')
-      .insert({
-        customer_phone: phone,
-        event_id: selectedEvent.id,
-        ticket_type_id: selectedTicketType.id,
-        quantity: ticketQuantity,
-        total_amount: totalAmount,
-        channel: 'boxoffice',
-        status: 'pending'
-      })
-      .select()
-      .single();
-    if (error) {
-      showToast('Error creating request: ' + error.message, 'error');
+    
+    try {
+      // CRITICAL FIX: Get or create customer profile first
+      const customerProfile = await getOrCreateCustomerProfile(phone);
+      
+      if (!customerProfile || !customerProfile.id) {
+        throw new Error('Failed to get or create customer profile');
+      }
+      
+      // Insert payment request with required customer_profile_id
+      const { data, error } = await supabase
+        .from('payment_requests')
+        .insert({
+          customer_phone: phone,
+          customer_profile_id: customerProfile.id, // ✅ CRITICAL FIX
+          event_id: selectedEvent.id,
+          ticket_type_id: selectedTicketType.id,
+          quantity: ticketQuantity,
+          total_amount: totalAmount,
+          channel: 'boxoffice',
+          status: 'pending',
+          requested_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
+          attempt_count: 0,
+          version: 1,
+          metadata: {
+            box_office_session: true,
+            ticket_name: selectedTicketType.name,
+            event_name: selectedEvent.name
+          }
+        })
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Payment request error:', error);
+        throw new Error(error.message);
+      }
+      
+      currentRequestId = data.id;
+      requestIdDisplay.textContent = `Request ID: ${currentRequestId.slice(0, 8)}...`;
+      requestStatusDiv.style.display = 'block';
+      requestStatusDiv.className = 'status-panel';
+      requestPaymentBtn.disabled = true;
+      
+      return true;
+      
+    } catch (err) {
+      console.error('Create payment request error:', err);
+      showToast('Failed to create request: ' + err.message, 'error');
       return false;
     }
-    currentRequestId = data.id;
-    requestIdDisplay.textContent = `Request ID: ${currentRequestId.slice(0,8)}...`;
-    requestStatusDiv.style.display = 'block';
-    requestPaymentBtn.disabled = true;
-    return true;
   }
 
-  // ---------- LISTEN FOR CUSTOMER APPROVAL ----------
+  // Subscribe to request status changes
   function subscribeToRequest(requestId) {
-    if (requestSubscription) requestSubscription.unsubscribe();
+    if (requestSubscription) {
+      requestSubscription.unsubscribe();
+    }
+    
     requestSubscription = supabase
       .channel(`payment-request-${requestId}`)
       .on('postgres_changes', {
@@ -496,56 +821,82 @@
         filter: `id=eq.${requestId}`
       }, (payload) => {
         const newStatus = payload.new.status;
+        console.log('Payment request status update:', newStatus);
+        
         if (newStatus === 'approved') {
           handleApproval(payload.new);
         } else if (newStatus === 'rejected') {
           showToast('❌ Customer rejected the payment request', 'error');
+          requestStatusDiv.innerHTML = '<i class="fas fa-times-circle"></i> Request rejected by customer';
+          requestStatusDiv.className = 'status-panel error';
           resetRequestFlow();
         } else if (newStatus === 'expired') {
-          showToast('⏰ Request expired', 'error');
+          showToast('⏰ Payment request expired', 'error');
+          requestStatusDiv.innerHTML = '<i class="fas fa-clock"></i> Request expired';
+          requestStatusDiv.className = 'status-panel error';
           resetRequestFlow();
         }
       })
       .subscribe();
   }
 
+  // Handle approved payment (FIXED with proper error handling)
   async function handleApproval(request) {
     showToast('✅ Payment approved! Processing tickets...', 'success');
+    requestStatusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing tickets...';
+    
     try {
-      // 1. Find customer profile by phone
+      // Get customer profile
       const { data: profile, error: profileErr } = await supabase
         .from('profiles')
         .select('id')
         .eq('phone', request.customer_phone)
         .single();
-      if (profileErr || !profile) throw new Error('Customer profile not found');
+        
+      if (profileErr || !profile) {
+        throw new Error('Customer profile not found');
+      }
 
-      // 2. Find wallet
+      // Get wallet
       const { data: wallet, error: walletErr } = await supabase
         .from('wallets')
         .select('id, balance')
         .eq('user_id', profile.id)
         .single();
-      if (walletErr || !wallet) throw new Error('Wallet not found for this customer');
-      if (wallet.balance < request.total_amount) throw new Error('Insufficient balance');
+        
+      if (walletErr || !wallet) {
+        throw new Error('Wallet not found for this customer');
+      }
+      
+      if (wallet.balance < request.total_amount) {
+        throw new Error(`Insufficient balance. Available: R${wallet.balance}, Required: R${request.total_amount}`);
+      }
 
-      // 3. Deduct from wallet
+      // Deduct from wallet
       const newBalance = wallet.balance - request.total_amount;
       const { error: updateErr } = await supabase
         .from('wallets')
-        .update({ balance: newBalance })
+        .update({ balance: newBalance, updated_at: new Date().toISOString() })
         .eq('id', wallet.id);
+        
       if (updateErr) throw updateErr;
 
-      // 4. Record transaction
-      await supabase.from('wallet_transactions').insert({
-        wallet_id: wallet.id,
-        amount: -request.total_amount,
-        type: 'debit',
-        description: `Box office: ${request.quantity} tickets for event ${selectedEvent.name}`
-      });
+      // Record transaction
+      const { error: txErr } = await supabase
+        .from('wallet_transactions')
+        .insert({
+          wallet_id: wallet.id,
+          amount: -request.total_amount,
+          type: 'debit',
+          description: `Box office: ${request.quantity} x ${selectedTicketType?.name || 'ticket'} for ${selectedEvent?.name || 'event'}`,
+          status: 'completed',
+          direction: 'debit',
+          created_at: new Date().toISOString()
+        });
+        
+      if (txErr) console.warn('Transaction record warning:', txErr);
 
-      // 5. Create tickets (auto check-in)
+      // Create tickets
       const ticketsToInsert = [];
       for (let i = 0; i < request.quantity; i++) {
         ticketsToInsert.push({
@@ -553,35 +904,43 @@
           ticket_type_id: request.ticket_type_id,
           customer_phone: request.customer_phone,
           status: 'issued',
-          issued_by: null,
           issued_at: new Date().toISOString(),
           checked_in: true,
-          checked_in_at: new Date().toISOString()
+          checked_in_at: new Date().toISOString(),
+          ticket_type: selectedTicketType?.name?.toLowerCase().includes('vip') ? 'vip' : 'general',
+          qr_token: crypto.randomUUID()
         });
       }
+      
       const { data: tickets, error: ticketErr } = await supabase
         .from('tickets')
         .insert(ticketsToInsert)
         .select();
+        
       if (ticketErr) throw ticketErr;
 
-      // 6. Insert check-in records
+      // Create check-in records
       for (const ticket of tickets) {
-        await supabase.from('checkins').insert({
-          ticket_id: ticket.id,
-          event_id: request.event_id,
-          scanned_by: null,
-          scanned_at: new Date().toISOString(),
-          status: 'valid'
-        });
+        const { error: checkinErr } = await supabase
+          .from('checkins')
+          .insert({
+            ticket_id: ticket.id,
+            event_id: request.event_id,
+            scanned_at: new Date().toISOString(),
+            status: 'valid',
+            gate: 'box_office'
+          });
+          
+        if (checkinErr) console.warn('Check-in record warning:', checkinErr);
       }
 
-      // 7. Update ticket_type sold count
+      // Update ticket_type sold count
       const { data: tt, error: ttFetch } = await supabase
         .from('ticket_types')
         .select('sold')
         .eq('id', request.ticket_type_id)
         .single();
+        
       if (!ttFetch && tt) {
         await supabase
           .from('ticket_types')
@@ -589,20 +948,29 @@
           .eq('id', request.ticket_type_id);
       }
 
-      // 8. Update payment request with transaction status
+      // Update payment request status
       await supabase
         .from('payment_requests')
-        .update({ transaction_id: wallet.id })
+        .update({ 
+          transaction_id: wallet.id,
+          status: 'completed',
+          approved_at: new Date().toISOString()
+        })
         .eq('id', request.id);
 
-      showToast(`🎉 ${request.quantity} tickets issued and checked in!`, 'success');
-      // Refresh ticket availability
+      showToast(`🎉 ${request.quantity} ticket(s) issued and checked in!`, 'success');
+      requestStatusDiv.innerHTML = `<i class="fas fa-check-circle"></i> Completed! ${request.quantity} ticket(s) issued`;
+      requestStatusDiv.className = 'status-panel success';
+      
+      // Refresh data
       await loadEvents();
       resetRequestFlow();
+      
     } catch (err) {
-      console.error(err);
-      showToast('Approval processing failed: ' + err.message, 'error');
-      // Optionally mark request as failed
+      console.error('Approval processing failed:', err);
+      showToast('Processing failed: ' + err.message, 'error');
+      requestStatusDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed: ${err.message}`;
+      requestStatusDiv.className = 'status-panel error';
       resetRequestFlow();
     }
   }
@@ -617,22 +985,46 @@
     requestPaymentBtn.disabled = false;
   }
 
-  // Request button click
+  // Event handlers
   requestPaymentBtn.addEventListener('click', async () => {
     const success = await createPaymentRequest();
     if (success) {
       subscribeToRequest(currentRequestId);
-      showToast('📱 Request sent. Waiting for customer to approve...', 'info');
+      showToast('📱 Request sent. Customer will approve in app.', 'success');
     }
   });
 
   syncBtn.addEventListener('click', () => {
     loadEvents();
-    showToast('Refreshed events', 'info');
+    showToast('Refreshed events and availability', 'info');
+  });
+
+  // Phone input validation
+  customerPhoneInput.addEventListener('input', (e) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 10) value = value.slice(0, 10);
+    e.target.value = value;
   });
 
   // Initial load
   loadEvents();
+  
+  // Auto-refresh every 30 seconds
+  setInterval(() => {
+    if (!currentRequestId) {
+      loadEvents();
+    }
+  }, 30000);
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 </script>
 </body>
 </html>
