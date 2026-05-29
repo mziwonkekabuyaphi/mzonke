@@ -615,7 +615,7 @@
         if (toast) { toast.textContent = 'System error. Please refresh.'; toast.style.background = '#E30613'; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 4000); }
     });
     
-    let currentWalletRowId = null; // This is the wallets.id (UUID) for balance tracking
+    let currentWalletRowId = null;
     let walletChannel = null;
     
     // Generate barcode from the 16-digit wallet_id from profiles
@@ -680,18 +680,22 @@
     
     // Format the 16-digit wallet number as card number with spaces (XXXX XXXX XXXX XXXX)
     function formatCardNumber(walletNumber) {
-        if (!walletNumber || walletNumber.length !== 16) return "•••• •••• •••• ••••";
-        const groups = walletNumber.match(/.{1,4}/g);
-        return groups ? groups.join(' ') : walletNumber;
+        if (!walletNumber) return "•••• •••• •••• ••••";
+        const walletStr = String(walletNumber);
+        if (walletStr.length !== 16) return "•••• •••• •••• ••••";
+        const groups = walletStr.match(/.{1,4}/g);
+        return groups ? groups.join(' ') : walletStr;
     }
     
     // Update the card number display using the 16-digit wallet_id from profiles
     function updateCardNumber(walletIdNumber) {
         const cardNumberEl = document.getElementById('dynamicCardNumber');
         if (cardNumberEl && walletIdNumber) {
-            const formatted = formatCardNumber(String(walletIdNumber));
+            const formatted = formatCardNumber(walletIdNumber);
+            console.log('Updating card number with:', walletIdNumber, 'Formatted:', formatted);
             cardNumberEl.textContent = formatted;
         } else if (cardNumberEl) {
+            console.log('No wallet_id found, showing dots');
             cardNumberEl.textContent = "•••• •••• •••• ••••";
         }
     }
@@ -704,9 +708,14 @@
             return;
         }
         
+        console.log('Loading user data for:', session.user.email);
+        
         // SOURCE OF TRUTH: Get profile with wallet_id (16-digit plain number)
         const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone, wallet_id').eq('id', session.user.id).maybeSingle();
         if (pErr) console.error("Profile fetch error:", pErr);
+        
+        console.log('Profile data retrieved:', profile);
+        console.log('wallet_id value:', profile?.wallet_id);
         
         const fullName = profile?.full_name || session.user.user_metadata?.full_name || "Member";
         const firstName = fullName.split(' ')[0];
@@ -728,6 +737,7 @@
         const walletIdNumber = profile?.wallet_id;
         if (walletIdNumber) {
             const walletIdStr = String(walletIdNumber);
+            console.log('Setting card number to:', walletIdStr);
             updateCardNumber(walletIdStr);
             generateRealBarcode(walletIdStr);
         } else {
