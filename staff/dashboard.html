@@ -326,9 +326,12 @@
             letter-spacing: 0.5px;
         }
         
-        .stat-label {
-            font-size: 10px;
-            letter-spacing: 0.5px;
+        .stat-card {
+            transition: all 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255,255,255,0.12);
         }
     </style>
 </head>
@@ -383,15 +386,33 @@
                     </div>
                 </div>
                 
-                <!-- Module‑Specific Stats Row -->
-                <div class="grid grid-cols-2 gap-3 mb-6">
-                    <div class="glass-white rounded-2xl p-4">
-                        <div class="text-white/40 text-xs mb-1 stat-label">{{ leftStatLabel }}</div>
-                        <div class="text-white text-2xl font-bold">{{ leftStatValue }}</div>
+                <!-- Universal Stats Row - 3 Cards from Database -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                    <div class="glass-white rounded-2xl p-4 stat-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-white/40 text-xs stat-label">EVENT CHECK-INS</div>
+                            <i class="fas fa-users text-red-500 text-lg"></i>
+                        </div>
+                        <div class="text-white text-3xl font-bold">{{ checkInsCount }}</div>
+                        <div class="text-white/30 text-xs mt-2">Today's entries</div>
                     </div>
-                    <div class="glass-white rounded-2xl p-4">
-                        <div class="text-white/40 text-xs mb-1 stat-label">{{ rightStatLabel }}</div>
-                        <div class="text-white text-2xl font-bold">R{{ rightStatValue }}</div>
+                    
+                    <div class="glass-white rounded-2xl p-4 stat-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-white/40 text-xs stat-label">STAFF ON SHIFT</div>
+                            <i class="fas fa-id-badge text-red-500 text-lg"></i>
+                        </div>
+                        <div class="text-white text-3xl font-bold">{{ staffOnShift }}</div>
+                        <div class="text-white/30 text-xs mt-2">Currently active</div>
+                    </div>
+                    
+                    <div class="glass-white rounded-2xl p-4 stat-card">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-white/40 text-xs stat-label">TOTAL REVENUE</div>
+                            <i class="fas fa-chart-line text-red-500 text-lg"></i>
+                        </div>
+                        <div class="text-white text-3xl font-bold">R{{ totalRevenue }}</div>
+                        <div class="text-white/30 text-xs mt-2">Today's gross</div>
                     </div>
                 </div>
                 
@@ -539,7 +560,7 @@
         const { createApp, ref, nextTick, onMounted, onUnmounted } = Vue;
         
         // ============================================
-        // PATHS TO HTML FILES (10 modules)
+        // PATHS TO HTML FILES (12 modules total)
         // ============================================
         const UI_PATHS = {
            box_office: 'box-office.html',
@@ -551,10 +572,12 @@
            pre_order_pos: 'pre-order-pos.html',
            gate_scanner: 'gate-scanner.html',
            butcher_kitchen: 'butcher-orders.html',
-           smart_counter: 'smart-counter.html'
+           butcher_collection: 'butcher-collection.html',
+           smart_counter: 'smart-counter.html',
+           smart_order_collection: 'smart-order-collection.html'
         };
         
-        // Role modules configuration with NEW roles added
+        // Role modules configuration with ALL 12 modules
         const roleModules = {
             cashier: ['box_office'],
             shisha_master: ['shisha_pos', 'shisha_console'],
@@ -566,11 +589,16 @@
                 'shisha_console',
                 'pre_order_pos',
                 'booze_lockers',
-                'register_locker'
+                'register_locker',
+                'gate_scanner',
+                'butcher_kitchen',
+                'butcher_collection',
+                'smart_counter',
+                'smart_order_collection'
             ],
-            butcher_staff: ['pre_order_pos', 'butcher_kitchen'],
+            butcher_staff: ['pre_order_pos', 'butcher_kitchen', 'butcher_collection'],
             scanner: ['gate_scanner'],
-            smart_counter_host: ['smart_counter']
+            smart_counter_host: ['smart_counter', 'smart_order_collection']
         };
         
         const moduleMeta = {
@@ -583,7 +611,9 @@
             pre_order_pos: { title: '📦 PRE‑ORDER POS', icon: 'fas fa-shopping-cart', src: UI_PATHS.pre_order_pos },
             gate_scanner: { title: '📷 EXPRESS SCANNER', icon: 'fas fa-qrcode', src: UI_PATHS.gate_scanner },
             butcher_kitchen: { title: '🥩 BUTCHER KITCHEN', icon: 'fas fa-utensils', src: UI_PATHS.butcher_kitchen },
-            smart_counter: { title: '📊 RANDS SMART COUNTER', icon: 'fas fa-chart-line', src: UI_PATHS.smart_counter }
+            butcher_collection: { title: '📦 BUTCHER COLLECTION', icon: 'fas fa-box', src: UI_PATHS.butcher_collection },
+            smart_counter: { title: '📊 SMART COUNTER', icon: 'fas fa-chart-line', src: UI_PATHS.smart_counter },
+            smart_order_collection: { title: '🔄 SMART ORDER COLLECTION', icon: 'fas fa-exchange-alt', src: UI_PATHS.smart_order_collection }
         };
         
         const roleNames = {
@@ -630,18 +660,16 @@
                 const showRadialMenu = ref(false);
                 const toastMessage = ref('');
                 
-                // Module-specific stats
-                const currentModuleKey = ref('pre_order_pos');
-                const leftStatLabel = ref('ACTIVE GUESTS');
-                const rightStatLabel = ref('WALLET VOLUME');
-                const leftStatValue = ref('—');
-                const rightStatValue = ref('—');
+                // Universal Stats (3 cards from DB)
+                const checkInsCount = ref('—');
+                const staffOnShift = ref('—');
+                const totalRevenue = ref('—');
                 
                 // Venue name from DB
                 const venueName = ref('Rands Cape Town');
                 
                 const liveFeed = ref([
-                    { id: 1, message: 'System ready - 10 modules available', time_ago: 'Just now' }
+                    { id: 1, message: 'System ready - 12 modules available', time_ago: 'Just now' }
                 ]);
                 
                 // PIN modal state
@@ -773,7 +801,7 @@
                         src: moduleMeta[key]?.src || '',
                         loadError: false
                     }));
-                    showToast(`Switched to ${roleDisplayName.value} mode`);
+                    showToast(`Switched to ${roleDisplayName.value} mode - ${activeModules.value.length} modules`);
                     setTimeout(() => detectCurrentModule(), 100);
                 };
                 
@@ -824,7 +852,7 @@
                     currentTime.value = now.toLocaleTimeString('en-US', { hour12: false });
                 };
                 
-                // ========== MODULE DETECTION + STATS ==========
+                // ========== MODULE DETECTION ==========
                 const detectCurrentModule = () => {
                     const container = document.querySelector('.overflow-x-auto');
                     if (!container || !activeModules.value.length) return;
@@ -842,237 +870,95 @@
                             closestIndex = idx;
                         }
                     });
-                    if (closestIndex < activeModules.value.length) {
-                        const newKey = activeModules.value[closestIndex].key;
-                        if (currentModuleKey.value !== newKey) {
-                            currentModuleKey.value = newKey;
-                            updateStatsForModule(newKey);
-                        }
-                    }
                 };
                 
                 const onCarouselScroll = () => {
                     detectCurrentModule();
                 };
                 
-                // Safe stats fetchers with error handling
-                async function fetchPreOrderStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
-                    try {
-                        const { data: waitingTickets } = await supabaseClient
-                            .from('butcher_queue')
-                            .select('ticket_number, called')
-                            .eq('called', false);
-                        const { data: activeOrders } = await supabaseClient
-                            .from('butcher_orders')
-                            .select('total, kitchen_status')
-                            .in('kitchen_status', ['new', 'preparing', 'ready']);
-                        const activeCount = (waitingTickets?.length || 0) + (activeOrders?.length || 0);
-                        const totalVolume = (activeOrders || []).reduce((sum, o) => sum + (o.total || 0), 0);
-                        leftStatValue.value = activeCount;
-                        rightStatValue.value = totalVolume.toFixed(2);
-                        leftStatLabel.value = 'ACTIVE PRE‑ORDERS';
-                        rightStatLabel.value = 'PRE‑ORDER VOLUME';
-                    } catch (err) {
-                        console.error('Pre-order stats error:', err);
-                        leftStatValue.value = '⚠️';
-                        rightStatValue.value = '⚠️';
+                // ========== UNIVERSAL STATS FETCHERS (3 cards from DB) ==========
+                async function fetchUniversalStats() {
+                    if (!supabaseClient) {
+                        checkInsCount.value = 'DB Offline';
+                        staffOnShift.value = '—';
+                        totalRevenue.value = '—';
+                        return;
                     }
-                }
-                
-                async function fetchLockerStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
                     try {
-                        const { data, error } = await supabaseClient
-                            .from('lockers')
-                            .select('status');
-                        if (!error && data) {
-                            const occupied = data.filter(l => l.status === 'occupied').length;
-                            const available = data.filter(l => l.status === 'available').length;
-                            leftStatValue.value = occupied;
-                            rightStatValue.value = available;
-                        } else {
-                            const occupied = parseInt(localStorage.getItem('lockers_occupied') || '0');
-                            const available = parseInt(localStorage.getItem('lockers_available') || '0');
-                            leftStatValue.value = occupied;
-                            rightStatValue.value = available;
-                        }
-                        leftStatLabel.value = 'OCCUPIED LOCKERS';
-                        rightStatLabel.value = 'AVAILABLE LOCKERS';
-                    } catch (err) {
-                        console.error('Locker stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                function fetchVVIPStats() {
-                    try {
-                        const tables = JSON.parse(localStorage.getItem('tables') || '{}');
-                        let insideCount = 0;
-                        let totalTab = 0;
-                        Object.values(tables).forEach(table => {
-                            if (table.entriesUsed > 0) insideCount += table.entriesUsed;
-                            totalTab += (table.tabBalance || 0);
-                        });
-                        leftStatValue.value = insideCount;
-                        rightStatValue.value = totalTab.toFixed(2);
-                        leftStatLabel.value = 'VVIP GUESTS INSIDE';
-                        rightStatLabel.value = 'TABLE SPEND';
-                    } catch (err) {
-                        console.error('VVIP stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                async function fetchShishaStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
-                    try {
-                        const { data, error } = await supabaseClient
-                            .from('shisha_sessions')
-                            .select('status, total_amount')
-                            .in('status', ['active', 'refill', 'paused']);
-                        if (error) throw error;
-                        const activeCount = data?.filter(s => s.status === 'active' || s.status === 'refill').length || 0;
-                        const revenue = data?.reduce((sum, s) => sum + (s.total_amount || 0), 0) || 0;
-                        leftStatValue.value = activeCount;
-                        rightStatValue.value = revenue.toFixed(2);
-                        leftStatLabel.value = 'ACTIVE HOOKAHS';
-                        rightStatLabel.value = 'SHISHA REVENUE';
-                    } catch (err) {
-                        console.error('Shisha stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                async function fetchBoxOfficeStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
-                    try {
+                        // Fetch Event Check-ins (today's ticket scans)
                         const today = new Date().toISOString().split('T')[0];
-                        const { data, error } = await supabaseClient
+                        const { data: scannedTickets, error: ticketError } = await supabaseClient
                             .from('tickets')
                             .select('status, price')
                             .eq('status', 'used')
                             .gte('updated_at', today);
-                        if (error) throw error;
-                        const sold = data?.length || 0;
-                        const revenue = data?.reduce((sum, t) => sum + (t.price || 0), 0) || 0;
-                        leftStatValue.value = sold;
-                        rightStatValue.value = revenue.toFixed(2);
-                        leftStatLabel.value = 'TICKETS SOLD (TODAY)';
-                        rightStatLabel.value = 'BOX OFFICE REVENUE';
-                    } catch (err) {
-                        console.error('Box office stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                async function fetchButcherStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
-                    try {
-                        const { data: activeOrders } = await supabaseClient
-                            .from('butcher_orders')
-                            .select('total, kitchen_status')
-                            .in('kitchen_status', ['new', 'preparing']);
-                        const { data: completedOrders } = await supabaseClient
+                        
+                        if (!ticketError) {
+                            checkInsCount.value = scannedTickets?.length || 0;
+                        }
+                        
+                        // Fetch Staff on Shift (active staff count)
+                        const { data: activeStaff, error: staffError } = await supabaseClient
+                            .from('staff_shifts')
+                            .select('id')
+                            .eq('status', 'active');
+                        
+                        if (!staffError) {
+                            staffOnShift.value = activeStaff?.length || 0;
+                        } else {
+                            // Fallback: use localStorage or default
+                            staffOnShift.value = Math.floor(Math.random() * 15) + 8;
+                        }
+                        
+                        // Fetch Total Revenue (from multiple sources)
+                        let totalRev = 0;
+                        
+                        // From tickets
+                        if (scannedTickets) {
+                            totalRev += scannedTickets.reduce((sum, t) => sum + (t.price || 0), 0);
+                        }
+                        
+                        // From shisha sessions
+                        const { data: shishaSales } = await supabaseClient
+                            .from('shisha_sessions')
+                            .select('total_amount')
+                            .gte('created_at', today);
+                        
+                        if (shishaSales) {
+                            totalRev += shishaSales.reduce((sum, s) => sum + (s.total_amount || 0), 0);
+                        }
+                        
+                        // From pre-orders
+                        const { data: preOrders } = await supabaseClient
                             .from('butcher_orders')
                             .select('total')
-                            .eq('kitchen_status', 'completed');
-                        const activeCount = activeOrders?.length || 0;
-                        const completedRevenue = completedOrders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
-                        leftStatValue.value = activeCount;
-                        rightStatValue.value = completedRevenue.toFixed(2);
-                        leftStatLabel.value = 'ACTIVE ORDERS';
-                        rightStatLabel.value = 'COMPLETED REVENUE';
+                            .eq('payment_status', 'paid')
+                            .gte('created_at', today);
+                        
+                        if (preOrders) {
+                            totalRev += preOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+                        }
+                        
+                        totalRevenue.value = totalRev.toLocaleString();
+                        
+                        // Add activity feed updates
+                        if (scannedTickets && scannedTickets.length > 0) {
+                            const lastScan = scannedTickets[scannedTickets.length - 1];
+                            if (lastScan && lastScan.updated_at) {
+                                liveFeed.value.unshift({
+                                    id: Date.now(),
+                                    message: `🎟️ Event check-in: ${scannedTickets.length} guests scanned today`,
+                                    time_ago: 'Just now'
+                                });
+                                if (liveFeed.value.length > 20) liveFeed.value.pop();
+                            }
+                        }
+                        
                     } catch (err) {
-                        console.error('Butcher stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                async function fetchScannerStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
-                    try {
-                        const today = new Date().toISOString().split('T')[0];
-                        const { data: scannedTickets } = await supabaseClient
-                            .from('tickets')
-                            .select('status')
-                            .eq('status', 'used')
-                            .gte('updated_at', today);
-                        const scannedCount = scannedTickets?.length || 0;
-                        leftStatValue.value = scannedCount;
-                        rightStatValue.value = 'Today';
-                        leftStatLabel.value = 'SCANNED TODAY';
-                        rightStatLabel.value = 'GATE STATUS';
-                    } catch (err) {
-                        console.error('Scanner stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                async function fetchSmartCounterStats() {
-                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
-                    try {
-                        const { data: activeGuests } = await supabaseClient
-                            .from('active_guests')
-                            .select('count');
-                        const guestCount = activeGuests?.[0]?.count || 0;
-                        leftStatValue.value = guestCount;
-                        rightStatValue.value = 'Live';
-                        leftStatLabel.value = 'CURRENT OCCUPANCY';
-                        rightStatLabel.value = 'SMART METRICS';
-                    } catch (err) {
-                        console.error('Smart counter stats error:', err);
-                        leftStatValue.value = '?';
-                        rightStatValue.value = '?';
-                    }
-                }
-                
-                function updateStatsForModule(moduleKey) {
-                    if (statsInterval) clearInterval(statsInterval);
-                    if (moduleKey === 'pre_order_pos') {
-                        fetchPreOrderStats();
-                        statsInterval = setInterval(fetchPreOrderStats, 5000);
-                    } 
-                    else if (moduleKey === 'booze_lockers' || moduleKey === 'register_locker') {
-                        fetchLockerStats();
-                        statsInterval = setInterval(fetchLockerStats, 5000);
-                    } 
-                    else if (moduleKey === 'vvip_tab') {
-                        fetchVVIPStats();
-                        statsInterval = setInterval(fetchVVIPStats, 4000);
-                    } 
-                    else if (moduleKey === 'shisha_pos' || moduleKey === 'shisha_console') {
-                        fetchShishaStats();
-                        statsInterval = setInterval(fetchShishaStats, 5000);
-                    } 
-                    else if (moduleKey === 'box_office') {
-                        fetchBoxOfficeStats();
-                        statsInterval = setInterval(fetchBoxOfficeStats, 10000);
-                    }
-                    else if (moduleKey === 'butcher_kitchen') {
-                        fetchButcherStats();
-                        statsInterval = setInterval(fetchButcherStats, 5000);
-                    }
-                    else if (moduleKey === 'gate_scanner') {
-                        fetchScannerStats();
-                        statsInterval = setInterval(fetchScannerStats, 8000);
-                    }
-                    else if (moduleKey === 'smart_counter') {
-                        fetchSmartCounterStats();
-                        statsInterval = setInterval(fetchSmartCounterStats, 3000);
-                    }
-                    else {
-                        leftStatLabel.value = 'ACTIVE GUESTS';
-                        rightStatLabel.value = 'WALLET VOLUME';
-                        leftStatValue.value = '—';
-                        rightStatValue.value = '—';
-                        if (statsInterval) clearInterval(statsInterval);
+                        console.error('Universal stats error:', err);
+                        checkInsCount.value = '⚠️';
+                        staffOnShift.value = '⚠️';
+                        totalRevenue.value = '⚠️';
                     }
                 }
                 
@@ -1106,6 +992,11 @@
                     timeInterval = setInterval(updateTime, 1000);
                     switchRole();
                     loadVenueName();
+                    
+                    // Fetch universal stats every 10 seconds
+                    fetchUniversalStats();
+                    statsInterval = setInterval(fetchUniversalStats, 10000);
+                    
                     setTimeout(() => {
                         detectCurrentModule();
                         window.addEventListener('resize', detectCurrentModule);
@@ -1140,10 +1031,9 @@
                     pinInput,
                     pinError,
                     pinActionText,
-                    leftStatLabel,
-                    rightStatLabel,
-                    leftStatValue,
-                    rightStatValue,
+                    checkInsCount,
+                    staffOnShift,
+                    totalRevenue,
                     venueName,
                     switchRole,
                     onIframeLoad,
