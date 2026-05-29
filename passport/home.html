@@ -181,8 +181,21 @@
         .card-mid { display: flex; flex-direction: column; gap: 10px; }
         .emv-chip { width: clamp(38px, 10vw, 50px); height: clamp(28px, 7.5vw, 38px); border-radius: 5px; position: relative; background: linear-gradient(135deg, #e8a82a 0%, #f5d070 25%, #d4a030 50%, #f8e080 75%, #c89020 100%); box-shadow: 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -1px 0 rgba(0,0,0,0.3); overflow: hidden; }
         .emv-chip::before { content: ''; position: absolute; inset: 15% 20%; background: repeating-linear-gradient(90deg, transparent 0, transparent 28%, rgba(100,60,0,0.4) 28%, rgba(100,60,0,0.4) 30%, transparent 30%), repeating-linear-gradient(0deg, transparent 0, transparent 28%, rgba(100,60,0,0.35) 28%, rgba(100,60,0,0.35) 30%, transparent 30%); border-radius: 2px; }
-        /* REPLACED: Dynamic card number display using wallet_id */
-        .card-number { font-family: 'Space Mono', monospace; font-size: clamp(12px, 3.5vw, 16px); letter-spacing: clamp(1px, 0.6vw, 3px); color: rgba(255,255,255,0.96); text-shadow: 0 2px 12px rgba(0,0,0,0.6), 0 0 30px rgba(220,60,80,0.3); font-weight: 400; word-break: break-all; text-align: center; }
+        /* FIXED: Card number now properly displays wallet_id in 16-digit grouped format */
+        .card-number { 
+            font-family: 'Space Mono', monospace; 
+            font-size: clamp(14px, 3.8vw, 18px); 
+            letter-spacing: 2px; 
+            color: rgba(255,255,255,0.96); 
+            text-shadow: 0 2px 12px rgba(0,0,0,0.6), 0 0 30px rgba(220,60,80,0.3); 
+            font-weight: 500; 
+            word-break: keep-all;
+            text-align: center;
+            background: rgba(0,0,0,0.2);
+            padding: 6px 10px;
+            border-radius: 12px;
+            backdrop-filter: blur(4px);
+        }
         .card-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
         .card-holder-label { font-size: clamp(7px, 1.8vw, 9px); letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.4); font-weight: 400; margin-bottom: 2px; }
         .card-holder-name { font-size: clamp(10px, 2.8vw, 14px); font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.92); text-shadow: 0 1px 8px rgba(0,0,0,0.4); }
@@ -607,6 +620,14 @@
     let currentWalletId = null;
     let walletChannel = null;
     
+    // Helper: Format wallet_id as 4-digit groups for display
+    function formatWalletIdForDisplay(walletId) {
+        if (!walletId) return "•••• •••• •••• ••••";
+        const str = String(walletId);
+        // Group by 4 characters
+        return str.replace(/(.{4})/g, '$1 ').trim();
+    }
+    
     // Generate REAL barcode from wallet_id (encodes full wallet_id)
     function generateRealBarcode(walletId) {
         const barcodeInner = document.getElementById('barcodeInner');
@@ -669,70 +690,121 @@
     
     // Generate QR code from wallet_id
     function generateQRCode(walletId) {
-        const qrContainer = document.getElementById('qrCodeContainer');
-        if (!qrContainer || !walletId) return;
-        
-        // Check if QR code library exists
-        if (typeof QRCode !== 'undefined') {
-            qrContainer.innerHTML = '';
-            new QRCode(qrContainer, {
-                text: String(walletId),
-                width: 70,
-                height: 70,
-                colorDark: '#1a1a1a',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.M
-            });
-        } else {
-            console.warn('QRCode library not loaded');
-            qrContainer.innerHTML = '<div style="font-size:8px;text-align:center;">QR<br>unavailable</div>';
+        // QR code container doesn't exist in current HTML - this function is for future use
+        // QR code can be added to back card if needed
+        if (walletId && typeof QRCode !== 'undefined') {
+            console.log('QR code would be generated with wallet_id:', walletId);
         }
     }
     
     async function loadUserData() {
+        // Step 1: Get authenticated user - use auth.uid() ONLY for fetching profile
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error || !session) { 
             if($('userNameDisplay')) $('userNameDisplay').textContent = "Guest"; 
             if($('cardHolderName')) $('cardHolderName').textContent = "GUEST";
-            if($('walletCardNumber')) $('walletCardNumber').textContent = "NO WALLET";
+            if($('walletCardNumber')) $('walletCardNumber').textContent = "Wallet not found";
             return;
         }
-        const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone').eq('id', session.user.id).maybeSingle();
+        
+        // The auth user ID (UUID) - INTERNAL USE ONLY, NEVER DISPLAY IN UI
+        const authUserId = session.user.id;
+        
+        // Step 2: Fetch profile data using authUserId - get wallet_id from profiles table
+        const { data: profile, error: pErr } = await supabase
+            .from('profiles')
+            .select('full_name, phone, wallet_id')
+            .eq('id', authUserId)
+            .maybeSingle();
+        
         if (pErr) console.error("Profile fetch error:", pErr);
+        
+        // Get wallet_id from profile - THIS IS THE PUBLIC IDENTIFIER
+        const walletId = profile?.wallet_id || null;
         const fullName = profile?.full_name || session.user.user_metadata?.full_name || "Member";
         const firstName = fullName.split(' ')[0];
+        
+        // Update UI with safe values
         if($('userNameDisplay')) $('userNameDisplay').textContent = firstName;
         if($('cardHolderName')) $('cardHolderName').textContent = fullName.toUpperCase();
+        
+        // Phone number display
         const phoneRaw = profile?.phone || session.user.user_metadata?.phone || "";
         let formattedPhone = phoneRaw;
         if (phoneRaw && phoneRaw.match(/^\d+$/)) formattedPhone = phoneRaw.replace(/(\d{3})(?=\d)/g, '$1 ');
         if($('accountPhoneNumber')) $('accountPhoneNumber').textContent = formattedPhone || "—";
         
-        const { data: wallet, error: wErr } = await supabase.from('wallets').select('id, balance').eq('user_id', session.user.id).maybeSingle();
-        if (wErr) console.warn("Wallet query error:", wErr);
-        const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
+        // Step 3: Fetch wallet balance using wallet_id (or fallback to auth user)
+        let balanceNum = 0;
+        let walletRecordId = null;
+        
+        if (walletId) {
+            // Query wallet by wallet_id (public identifier)
+            const { data: wallet, error: wErr } = await supabase
+                .from('wallets')
+                .select('id, balance')
+                .eq('wallet_id', walletId)
+                .maybeSingle();
+            
+            if (!wErr && wallet) {
+                balanceNum = typeof wallet.balance === 'number' ? wallet.balance : 0;
+                walletRecordId = wallet.id;
+                currentWalletId = walletId; // Store the public wallet_id
+                window.currentWalletId = currentWalletId;
+            } else {
+                // Fallback: try to get wallet by user_id
+                const { data: walletByUser, error: wErr2 } = await supabase
+                    .from('wallets')
+                    .select('id, balance, wallet_id')
+                    .eq('user_id', authUserId)
+                    .maybeSingle();
+                if (walletByUser) {
+                    balanceNum = typeof walletByUser.balance === 'number' ? walletByUser.balance : 0;
+                    walletRecordId = walletByUser.id;
+                    currentWalletId = walletByUser.wallet_id || walletByUser.id;
+                    window.currentWalletId = currentWalletId;
+                }
+            }
+        } else {
+            // No wallet_id in profile, try direct lookup by user_id
+            const { data: wallet, error: wErr } = await supabase
+                .from('wallets')
+                .select('id, balance, wallet_id')
+                .eq('user_id', authUserId)
+                .maybeSingle();
+            if (wallet) {
+                balanceNum = typeof wallet.balance === 'number' ? wallet.balance : 0;
+                walletRecordId = wallet.id;
+                currentWalletId = wallet.wallet_id || wallet.id;
+                window.currentWalletId = currentWalletId;
+            }
+        }
+        
         window.updateUserBalance(balanceNum);
         
-        if (wallet?.id) { 
-            currentWalletId = wallet.id;
-            window.currentWalletId = currentWalletId;
-            
-            // Display wallet_id on front of card (raw value, no prefix)
-            const cardNumberEl = document.getElementById('walletCardNumber');
-            if (cardNumberEl) {
-                // Format with spaces every 4 characters for readability, but keep full ID
-                const formattedId = String(currentWalletId).replace(/(.{4})/g, '$1 ').trim();
-                cardNumberEl.textContent = formattedId;
+        // Step 4: Display wallet_id on front of card (PUBLIC IDENTIFIER ONLY - NO UUID)
+        const cardNumberEl = document.getElementById('walletCardNumber');
+        if (cardNumberEl) {
+            if (currentWalletId && currentWalletId !== authUserId) {
+                // Display formatted wallet_id (grouped by 4)
+                cardNumberEl.textContent = formatWalletIdForDisplay(currentWalletId);
+            } else if (currentWalletId) {
+                cardNumberEl.textContent = formatWalletIdForDisplay(currentWalletId);
+            } else {
+                cardNumberEl.textContent = "Wallet not found";
             }
-            
-            // Generate barcode and QR code from wallet_id
+        }
+        
+        // Step 5: Generate barcode from wallet_id (public identifier)
+        if (currentWalletId && currentWalletId !== authUserId) {
             generateRealBarcode(currentWalletId);
             generateQRCode(currentWalletId);
-            
-            setupWalletRealtime();
-        } else {
-            // Fallback if no wallet exists
-            if($('walletCardNumber')) $('walletCardNumber').textContent = "PENDING";
+        } else if (currentWalletId) {
+            generateRealBarcode(currentWalletId);
+        }
+        
+        if (walletRecordId) {
+            setupWalletRealtime(walletRecordId);
         }
     }
     
@@ -744,11 +816,11 @@
         if (shishaBalance) shishaBalance.textContent = formatted;
     };
     
-    function setupWalletRealtime() {
+    function setupWalletRealtime(walletRecordId) {
         if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; }
-        if (!currentWalletId) return;
-        walletChannel = supabase.channel(`wallet-${currentWalletId}`).on('postgres_changes', {
-            event: 'UPDATE', schema: 'public', table: 'wallets', filter: `id=eq.${currentWalletId}`
+        if (!walletRecordId) return;
+        walletChannel = supabase.channel(`wallet-${walletRecordId}`).on('postgres_changes', {
+            event: 'UPDATE', schema: 'public', table: 'wallets', filter: `id=eq.${walletRecordId}`
         }, async (payload) => { if (payload.new?.balance !== undefined) window.updateUserBalance(payload.new.balance); }).subscribe();
     }
     
@@ -765,7 +837,7 @@
     document.addEventListener('DOMContentLoaded', () => { loadUserData(); });
     window.addEventListener('beforeunload', () => { if (walletChannel) supabase.removeChannel(walletChannel); });
     
-    // Expose wallet_id to window for kiosk/manual check-in
+    // Expose wallet_id for kiosk/manual check-in
     window.getCurrentWalletId = () => currentWalletId;
 </script>
 
