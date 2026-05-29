@@ -428,7 +428,11 @@
                 </div>
             </div>
             <div class="welcome-section"><div class="greeting">Wamkelekile,</div><div class="user-name" id="userNameDisplay">Loading...</div></div>
-            <div class="header-balance-card"><div class="balance-label">Total Balance</div><div class="balance-amount" id="realWalletBalance">R 0.00</div><div class="balance-sub">Available for cashless spending and Tickets</div></div>
+            <div class="header-balance-card">
+                <div class="balance-label">Total Balance</div>
+                <div class="balance-amount" id="realWalletBalance">R 0.00</div>
+                <div class="balance-sub">Available for cashless spending and Tickets</div>
+            </div>
         </div>
         <div class="quick-actions">
             <div class="action-row-primary">
@@ -620,7 +624,7 @@
             
             const authUserId = session.user.id;
             
-            // Fetch profile with wallet association
+            // Fetch profile
             const { data: profile, error: pErr } = await supabase
                 .from('profiles')
                 .select('full_name, phone')
@@ -639,39 +643,52 @@
             if (phoneRaw && phoneRaw.match(/^\d+$/)) formattedPhone = phoneRaw.replace(/(\d{3})(?=\d)/g, '$1 ');
             if($('accountPhoneNumber')) $('accountPhoneNumber').textContent = formattedPhone || "—";
             
-            // Fetch wallet data - use user_id to find the wallet
-            const { data: wallet, error: wErr } = await supabase
+            // Fetch wallet data - try multiple approaches
+            let walletData = null;
+            
+            // Try 1: Query by user_id (most common)
+            const { data: walletByUser, error: wErr1 } = await supabase
                 .from('wallets')
                 .select('id, balance, wallet_id')
                 .eq('user_id', authUserId)
                 .maybeSingle();
             
-            if (wErr) {
-                console.error("Wallet fetch error:", wErr);
+            if (walletByUser) {
+                walletData = walletByUser;
+            } else {
+                // Try 2: Query by profile_id if wallets table uses profile_id
+                const { data: walletByProfile, error: wErr2 } = await supabase
+                    .from('wallets')
+                    .select('id, balance, wallet_id')
+                    .eq('profile_id', authUserId)
+                    .maybeSingle();
+                
+                if (walletByProfile) {
+                    walletData = walletByProfile;
+                } else {
+                    console.warn("No wallet found for user");
+                }
             }
             
             let balanceNum = 0;
             let displayWalletId = null;
             
-            if (wallet) {
-                balanceNum = typeof wallet.balance === 'number' ? wallet.balance : 0;
-                // Use wallet_id if exists, otherwise use wallet.id as fallback
-                displayWalletId = wallet.wallet_id || wallet.id;
+            if (walletData) {
+                balanceNum = typeof walletData.balance === 'number' ? walletData.balance : 0;
+                displayWalletId = walletData.wallet_id || walletData.id;
                 currentWalletId = displayWalletId;
                 window.currentWalletId = currentWalletId;
                 
                 // Setup realtime with the wallet record ID
-                if (wallet.id) {
-                    setupWalletRealtime(wallet.id);
+                if (walletData.id) {
+                    setupWalletRealtime(walletData.id);
                 }
-            } else {
-                console.warn("No wallet found for user");
-                displayWalletId = null;
             }
             
+            // Update balance display
             window.updateUserBalance(balanceNum);
             
-            // Display wallet ID on card (public facing identifier)
+            // Display wallet ID on card
             const cardNumberEl = document.getElementById('walletCardNumber');
             if (cardNumberEl) {
                 if (displayWalletId) {
@@ -737,6 +754,7 @@
     window.getCurrentWalletId = () => currentWalletId;
 </script>
 
+<script src="assets/js/home.js"></script>
 <script>
     const cardStage = document.getElementById('cardStage'); let flipped = false;
     if (cardStage) { cardStage.addEventListener('click', (e) => { e.stopPropagation(); flipped = !flipped; cardStage.classList.toggle('flipped', flipped); if (flipped) { cardStage.style.animation = 'none'; } else { setTimeout(() => { cardStage.style.animation = 'floatCard 4s ease-in-out infinite'; }, 300); } }); }
