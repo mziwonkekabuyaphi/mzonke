@@ -666,42 +666,18 @@
         });
     }
     
-    // Convert UUID to a clean 16-digit numeric string
-    function uuidTo16DigitNumber(uuid) {
-        if (!uuid) return null;
-        // Remove hyphens and get only hex characters
-        const hexString = uuid.replace(/-/g, '');
-        // Take first 16 characters from hex (each hex char is 0-9a-f)
-        let hex16 = hexString.substring(0, 16);
-        // Convert hex to a large number string (use simple mapping for consistency)
-        let numericStr = '';
-        for (let i = 0; i < hex16.length; i++) {
-            const char = hex16[i];
-            const digit = parseInt(char, 16);
-            numericStr += digit.toString();
-        }
-        // Ensure we have exactly 16 digits (pad with zeros if needed)
-        while (numericStr.length < 16) {
-            numericStr = '0' + numericStr;
-        }
-        // Take first 16 digits
-        numericStr = numericStr.substring(0, 16);
-        return numericStr;
+    // Format the 16-digit wallet number as card number with spaces (XXXX XXXX XXXX XXXX)
+    function formatCardNumber(walletNumber) {
+        if (!walletNumber || walletNumber.length !== 16) return "•••• •••• •••• ••••";
+        const groups = walletNumber.match(/.{1,4}/g);
+        return groups ? groups.join(' ') : walletNumber;
     }
     
-    // Format the 16-digit number as card number with spaces (XXXX XXXX XXXX XXXX)
-    function formatCardNumber(cardNumberStr) {
-        if (!cardNumberStr || cardNumberStr.length !== 16) return "•••• •••• •••• ••••";
-        const groups = cardNumberStr.match(/.{1,4}/g);
-        return groups ? groups.join(' ') : cardNumberStr;
-    }
-    
-    // Update the card number display using wallet UUID
-    function updateCardNumber(walletId) {
+    // Update the card number display using wallet_id from profiles
+    function updateCardNumber(walletIdNumber) {
         const cardNumberEl = document.getElementById('dynamicCardNumber');
-        if (cardNumberEl && walletId) {
-            const numeric16 = uuidTo16DigitNumber(walletId);
-            const formatted = formatCardNumber(numeric16);
+        if (cardNumberEl && walletIdNumber) {
+            const formatted = formatCardNumber(walletIdNumber);
             cardNumberEl.textContent = formatted;
         } else if (cardNumberEl) {
             cardNumberEl.textContent = "•••• •••• •••• ••••";
@@ -715,7 +691,8 @@
             if($('cardHolderName')) $('cardHolderName').textContent = "GUEST";
             return;
         }
-        const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone').eq('id', session.user.id).maybeSingle();
+        // Get profile with wallet_id
+        const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone, wallet_id').eq('id', session.user.id).maybeSingle();
         if (pErr) console.error("Profile fetch error:", pErr);
         const fullName = profile?.full_name || session.user.user_metadata?.full_name || "Member";
         const firstName = fullName.split(' ')[0];
@@ -726,16 +703,23 @@
         if (phoneRaw && phoneRaw.match(/^\d+$/)) formattedPhone = phoneRaw.replace(/(\d{3})(?=\d)/g, '$1 ');
         if($('accountPhoneNumber')) $('accountPhoneNumber').textContent = formattedPhone || "—";
         
+        // Get wallet for balance
         const { data: wallet, error: wErr } = await supabase.from('wallets').select('id, balance').eq('user_id', session.user.id).maybeSingle();
         if (wErr) console.warn("Wallet query error:", wErr);
         const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         window.updateUserBalance(balanceNum);
+        
+        // Use wallet_id from profile for card number (16-digit plain number)
+        const walletIdNumber = profile?.wallet_id;
+        if (walletIdNumber) {
+            updateCardNumber(String(walletIdNumber));
+            generateRealBarcode(String(walletIdNumber)); // Use wallet_id for barcode too
+        }
+        
         if (wallet?.id) { 
             currentWalletId = wallet.id;
             window.currentWalletId = currentWalletId;
-            updateCardNumber(currentWalletId);
             setupWalletRealtime();
-            generateRealBarcode(currentWalletId);
         }
     }
     
