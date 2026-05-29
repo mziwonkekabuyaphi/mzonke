@@ -342,7 +342,7 @@
                 <option value="cashier">💰 Cashier</option>
                 <option value="shisha_master">💨 Shisha Master</option>
                 <option value="vvip_concierge">✨ VVIP Concierge</option>
-                <option value="staff">👤 Staff (Manager)</option>
+                <option value="event_manager">👔 Event Manager</option>
             </select>
         </div>
         
@@ -555,15 +555,11 @@
             shisha_master: ['shisha_pos', 'shisha_console'],
             vvip_concierge: ['vvip_tab'],
             event_manager: [
-                // 1. Event Management
                 'box_office',
-                // 2. Passports
                 'vvip_tab',
-                // 3. Staff Management
                 'shisha_pos',
                 'shisha_console',
                 'pre_order_pos',
-                // 4. Workforce
                 'booze_lockers',
                 'register_locker'
             ]
@@ -571,7 +567,6 @@
         
         const moduleMeta = {
             box_office: { title: '🎟️ BOX OFFICE', icon: 'fas fa-ticket-alt', src: UI_PATHS.box_office },
-            gate_scanner: { title: '📦 Express Scanner', icon: 'fas fa-qrcode', src: UI_PATHS.gate_scanner }
             shisha_pos: { title: '💨 SHISHA POS', icon: 'fas fa-cash-register', src: UI_PATHS.shisha_pos },
             shisha_console: { title: '🎮 SHISHA CONSOLE', icon: 'fas fa-gamepad', src: UI_PATHS.shisha_console },
             vvip_tab: { title: '✨ VVIP TAB', icon: 'fas fa-star', src: UI_PATHS.vvip_tab },
@@ -587,10 +582,15 @@
             event_manager: 'Event Manager'
         };
         
-        // Supabase credentials (same as your box-office module)
-        const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Supabase credentials - wrapped in try/catch to prevent blank screen
+        let supabaseClient = null;
+        try {
+            const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } catch(e) {
+            console.warn('Supabase init failed, using fallback mode:', e);
+        }
         
         // Get logged-in staff name
         const getLoggedInStaffName = () => {
@@ -603,8 +603,8 @@
         
         createApp({
             setup() {
-                const currentRole = ref('staff');
-                const roleDisplayName = ref('Staff (Manager)');
+                const currentRole = ref('event_manager');
+                const roleDisplayName = ref('Event Manager');
                 const staffName = ref(getLoggedInStaffName());
                 const activeModules = ref([]);
                 
@@ -810,7 +810,7 @@
                     currentTime.value = now.toLocaleTimeString('en-US', { hour12: false });
                 };
                 
-                // ========== MODULE DETECTION + STATS (unchanged from previous working version) ==========
+                // ========== MODULE DETECTION + STATS ==========
                 const detectCurrentModule = () => {
                     const container = document.querySelector('.overflow-x-auto');
                     if (!container || !activeModules.value.length) return;
@@ -841,8 +841,9 @@
                     detectCurrentModule();
                 };
                 
-                // ----- REAL STAT FETCHERS (same as before) -----
+                // Safe stats fetchers with error handling
                 async function fetchPreOrderStats() {
+                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
                     try {
                         const { data: waitingTickets } = await supabaseClient
                             .from('butcher_queue')
@@ -866,6 +867,7 @@
                 }
                 
                 async function fetchLockerStats() {
+                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
                     try {
                         const { data, error } = await supabaseClient
                             .from('lockers')
@@ -911,6 +913,7 @@
                 }
                 
                 async function fetchShishaStats() {
+                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
                     try {
                         const { data, error } = await supabaseClient
                             .from('shisha_sessions')
@@ -931,6 +934,7 @@
                 }
                 
                 async function fetchBoxOfficeStats() {
+                    if (!supabaseClient) { leftStatValue.value = 'DB Offline'; rightStatValue.value = '0'; return; }
                     try {
                         const today = new Date().toISOString().split('T')[0];
                         const { data, error } = await supabaseClient
@@ -985,6 +989,7 @@
                 
                 // ========== FETCH VENUE NAME FROM TENANTS TABLE ==========
                 async function loadVenueName() {
+                    if (!supabaseClient) return;
                     try {
                         const { data, error } = await supabaseClient
                             .from('tenants')
@@ -994,15 +999,12 @@
                         if (!error && data && data.length > 0) {
                             venueName.value = data[0].name;
                         } else {
-                            // try without is_active filter
                             const { data: allTenants } = await supabaseClient
                                 .from('tenants')
                                 .select('name')
                                 .limit(1);
                             if (allTenants && allTenants.length) {
                                 venueName.value = allTenants[0].name;
-                            } else {
-                                console.warn('No tenant found, keeping fallback name');
                             }
                         }
                     } catch (err) {
@@ -1014,7 +1016,7 @@
                     updateTime();
                     timeInterval = setInterval(updateTime, 1000);
                     switchRole();
-                    loadVenueName();  // fetch venue name from DB
+                    loadVenueName();
                     setTimeout(() => {
                         detectCurrentModule();
                         window.addEventListener('resize', detectCurrentModule);
