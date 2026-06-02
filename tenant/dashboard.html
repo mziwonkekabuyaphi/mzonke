@@ -90,15 +90,23 @@
         .action-icons { display: flex; gap: 12px; }
         .action-icons i { cursor: pointer; font-size: 1rem; transition: transform 0.1s; }
         .action-icons i:active { transform: scale(0.9); }
+        .loading-screen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: white; z-index: 9999; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px; }
+        .loading-spinner { width: 50px; height: 50px; border: 3px solid #f3f3f3; border-top: 3px solid #E30613; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 <div id="app">
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
+    <!-- Loading Screen -->
+    <div class="loading-screen" v-if="isLoading">
+        <div class="loading-spinner"></div>
+        <div style="color: #E30613; font-weight: 600;">Loading Dashboard...</div>
+    </div>
+
+    <aside class="sidebar" :class="{ open: sidebarOpen }" v-if="!isLoading">
         <div class="sidebar-header">
             <div class="tenant-logo" :style="{ backgroundColor: branding.primaryColor }">
                 <img src="../assets/images/rands-logo2.png" alt="Rands" @error="e => e.target.style.display='none'">
-                <span v-if="!logoLoaded" style="display:none">{{ tenantInitial }}</span>
             </div>
             <div class="tenant-info">
                 <h3>{{ tenantName }}</h3>
@@ -125,7 +133,7 @@
         </div>
     </aside>
 
-    <div class="main-content">
+    <div class="main-content" v-if="!isLoading">
         <div class="top-header">
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div class="menu-toggle" @click="sidebarOpen = !sidebarOpen"><i class="fas fa-bars"></i></div>
@@ -156,22 +164,21 @@
                 </div>
                 <div v-else class="settings-panel" style="text-align:center; padding:20px;"><i class="fas fa-user-clock" style="font-size:32px; color:#cbd5e1;"></i><p style="margin-top:8px;">No staff currently on shift</p></div>
                 <div class="section-header"><h2>Recent Staff Activity</h2></div>
-                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><tr><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
             </div>
 
-            <!-- PRIVATE LABEL (internal) -->
+            <!-- PRIVATE LABEL -->
             <div v-for="module in enabledModulesList" :key="'brand_' + module.id" v-if="currentSection === 'module_' + module.id && module.name === 'Private Label'">
                 <div class="section-header"><h2><i class="fas fa-palette"></i> Venue Branding</h2><button class="btn-outline" @click="currentSection = 'dashboard'"><i class="fas fa-arrow-left"></i> Back</button></div>
                 <div class="settings-panel">
                     <div class="form-group"><label>Venue Name</label><input class="form-control" v-model="tenantName" @blur="saveBranding"></div>
-                    <div class="form-group"><label>Logo URL</label><input class="form-control" v-model="branding.logoUrl" placeholder="https://..."><div v-if="branding.logoUrl"><img :src="branding.logoUrl" class="site-logo-preview" style="max-width:120px; max-height:60px; margin-top:8px; border-radius:12px; border:1px solid #e2e8f0;"></div></div>
-                    <div class="form-group"><label>Primary Color</label><div class="color-preview" style="display:flex; align-items:center; gap:12px; margin-top:8px;"><input type="color" v-model="branding.primaryColor" class="form-control" style="width:80px; padding:4px;" @change="saveBranding"><div class="preview-box" style="width:40px; height:40px; border-radius:12px; border:1px solid #e2e8f0;" :style="{ backgroundColor: branding.primaryColor }"></div><span>{{ branding.primaryColor }}</span></div></div>
-                    <div class="form-group"><label>Favicon URL</label><input class="form-control" v-model="branding.faviconUrl" placeholder="Favicon link"></div>
+                    <div class="form-group"><label>Logo URL</label><input class="form-control" v-model="branding.logoUrl" placeholder="https://..."><div v-if="branding.logoUrl"><img :src="branding.logoUrl" style="max-width:120px; max-height:60px; margin-top:8px; border-radius:12px; border:1px solid #e2e8f0;"></div></div>
+                    <div class="form-group"><label>Primary Color</label><div style="display:flex; align-items:center; gap:12px; margin-top:8px;"><input type="color" v-model="branding.primaryColor" class="form-control" style="width:80px; padding:4px;" @change="saveBranding"><div style="width:40px; height:40px; border-radius:12px; border:1px solid #e2e8f0;" :style="{ backgroundColor: branding.primaryColor }"></div><span>{{ branding.primaryColor }}</span></div></div>
                     <button class="btn-primary" @click="saveBranding"><i class="fas fa-save"></i> Save Branding</button>
                 </div>
             </div>
 
-            <!-- STAFF MANAGEMENT MODULE (internal) -->
+            <!-- STAFF MANAGEMENT -->
             <div v-for="module in enabledModulesList" :key="'staff_' + module.id" v-if="currentSection === 'module_' + module.id && module.name === 'Staff Management'">
                 <div class="section-header"><h2><i class="fas fa-users"></i> Staff Management</h2><button class="btn-outline" @click="currentSection = 'dashboard'">Back</button></div>
                 <div class="tabs-container">
@@ -192,9 +199,7 @@
                     </div>
                     <div class="table-wrapper">
                         <table class="data-table">
-                            <thead>
-                                <tr><th>Name</th><th>Role</th><th>Phone</th><th>Hourly Rate</th><th>Status</th><th>Created</th><th>Actions</th></tr>
-                            </thead>
+                            <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Hourly Rate</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
                             <tbody>
                                 <tr v-for="staff in staffList" :key="staff.id">
                                     <td><strong>{{ staff.name }} {{ staff.surname }}</strong></td>
@@ -242,7 +247,7 @@
                 </div>
             </div>
 
-            <!-- SETTINGS (internal) -->
+            <!-- SETTINGS -->
             <div v-if="currentSection === 'settings'">
                 <div class="section-header"><h2>System Settings</h2></div>
                 <div class="settings-panel">
@@ -251,7 +256,7 @@
                 </div>
             </div>
 
-            <!-- EXTERNAL MODULE CONTENT (iframe) -->
+            <!-- EXTERNAL MODULE -->
             <div v-if="currentSection === 'external'" class="external-module">
                 <iframe :src="externalUrl" class="external-iframe" title="External Module"></iframe>
             </div>
@@ -306,6 +311,7 @@ const MODULE_ORDER = ['Event Management', 'Passports', 'Staff Management', 'Work
 new Vue({
     el: '#app',
     data: {
+        isLoading: true,
         sidebarOpen: false,
         currentSection: 'dashboard',
         tenantId: null,
@@ -331,9 +337,7 @@ new Vue({
         avgHoursPerStaff: 0,
         staffModuleTab: 'accounts',
         currentUserTenantId: null,
-        externalUrl: '',
-        logoLoaded: true,
-        sessionChecked: false
+        externalUrl: ''
     },
     computed: {
         tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
@@ -400,9 +404,9 @@ new Vue({
         formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
         formatDateTime(d){ return d?new Date(d).toLocaleString():'-'; },
         calculateDuration(loginTime){ const diff = Math.floor((new Date() - new Date(loginTime)) / 60000); return `${Math.floor(diff/60)}h ${diff%60}m`; },
-        showStunningAlert(title, msg, icon, color){ this.infoTitle=title; this.infoMessage=msg; this.infoIcon=icon; this.infoIconColor=color; this.showInfoModal=true; },
+        showAlert(title, msg, icon, color){ this.infoTitle=title; this.infoMessage=msg; this.infoIcon=icon; this.infoIconColor=color; this.showInfoModal=true; },
         handleNavClick(item){ this.currentSection = item.id; this.closeSidebar(); },
-        testNotification(){ this.showStunningAlert('Notification Center', 'You have no new notifications', 'fas fa-bell', '#E30613'); },
+        testNotification(){ this.showAlert('Notification Center', 'You have no new notifications', 'fas fa-bell', '#E30613'); },
         
         goToModuleSection(module) {
             const externalPath = moduleFileMap[module.name];
@@ -419,55 +423,58 @@ new Vue({
         
         closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
 
-        async checkAuthAndLoad() {
+        async initDashboard() {
+            this.isLoading = true;
+            
             try {
+                // Get current user
                 const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
                 
                 if (userError || !user) {
-                    console.error('No user found:', userError);
-                    this.showStunningAlert('Session Expired', 'Please log in again', 'fas fa-exclamation-triangle', '#dc2626');
-                    setTimeout(() => { window.location.href = '../login.html'; }, 2000);
+                    console.error('No user found, redirecting to login');
+                    window.location.href = '../login.html';
                     return false;
                 }
                 
                 this.adminEmail = user.email;
                 this.adminName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin';
                 
-                // Try to get tenant from user metadata first
-                let tenantId = user.user_metadata?.tenant_id;
+                // Get tenant ID - try multiple sources
+                let tenantId = null;
                 
+                // First try user metadata
+                if (user.user_metadata?.tenant_id) {
+                    tenantId = user.user_metadata.tenant_id;
+                }
+                
+                // If not, try profiles table
                 if (!tenantId) {
-                    // Try to get from profiles table
                     const { data: profile, error: profileError } = await supabaseClient
                         .from('profiles')
                         .select('tenant_id')
                         .eq('id', user.id)
                         .maybeSingle();
                     
-                    if (profileError) {
-                        console.error('Profile error:', profileError);
-                    }
-                    
-                    if (profile && profile.tenant_id) {
+                    if (!profileError && profile && profile.tenant_id) {
                         tenantId = profile.tenant_id;
                     }
                 }
                 
+                // If still no tenant, get first available
                 if (!tenantId) {
-                    // Get first available tenant as fallback
                     const { data: tenants, error: tenantError } = await supabaseClient
                         .from('tenants')
                         .select('id, name')
                         .limit(1);
                     
-                    if (tenantError || !tenants || tenants.length === 0) {
-                        this.showStunningAlert('Error', 'No tenant found for this account', 'fas fa-exclamation', '#dc2626');
-                        setTimeout(() => { window.location.href = '../login.html'; }, 2000);
-                        return false;
+                    if (!tenantError && tenants && tenants.length > 0) {
+                        tenantId = tenants[0].id;
+                        this.tenantName = tenants[0].name;
+                    } else {
+                        // Use demo tenant ID
+                        tenantId = '11111111-1111-1111-1111-111111111111';
+                        this.tenantName = 'Demo Venue';
                     }
-                    
-                    tenantId = tenants[0].id;
-                    this.tenantName = tenants[0].name;
                 } else {
                     // Get tenant name
                     const { data: tenantData } = await supabaseClient
@@ -480,54 +487,79 @@ new Vue({
                 
                 this.tenantId = tenantId;
                 this.currentUserTenantId = tenantId;
-                this.sessionChecked = true;
+                
+                // Load all data
+                await Promise.all([
+                    this.loadTenantModules(),
+                    this.loadStaffFromSupabase()
+                ]);
+                
+                this.loadLocalData();
+                
+                this.isLoading = false;
                 return true;
                 
             } catch (err) {
-                console.error('Auth check error:', err);
-                this.showStunningAlert('Error', 'Failed to verify session', 'fas fa-exclamation', '#dc2626');
-                setTimeout(() => { window.location.href = '../login.html'; }, 2000);
+                console.error('Init error:', err);
+                this.isLoading = false;
+                this.showAlert('Error', 'Failed to load dashboard. Please refresh.', 'fas fa-exclamation', '#dc2626');
                 return false;
             }
         },
         
         async loadStaffFromSupabase() {
             if (!this.tenantId) return;
-            const { data, error } = await supabaseClient
-                .from('profiles')
-                .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
-                .eq('tenant_id', this.tenantId)
-                .in('role', ['staff', 'manager', 'cashier', 'security', 'scanner', 'cleaner', 'shisha', 'vvip'])
-                .order('created_at', { ascending: false });
-            if (error) { console.error('Error loading staff profiles:', error); return; }
-            this.staffList = data || [];
+            try {
+                const { data, error } = await supabaseClient
+                    .from('profiles')
+                    .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
+                    .eq('tenant_id', this.tenantId)
+                    .order('created_at', { ascending: false });
+                    
+                if (error) {
+                    console.error('Error loading staff:', error);
+                    return;
+                }
+                this.staffList = data || [];
+            } catch (err) {
+                console.error('Staff load error:', err);
+            }
         },
         
         async loadTenantModules() {
             if (!this.tenantId) return;
-            const { data: modules, error } = await supabaseClient
-                .from('tenant_modules')
-                .select(`id, enabled, module:module_id (id, name, description, icon)`)
-                .eq('tenant_id', this.tenantId);
-            if (error) {
-                console.error('Error loading modules:', error);
-                return;
+            try {
+                const { data: modules, error } = await supabaseClient
+                    .from('tenant_modules')
+                    .select(`id, enabled, module:module_id (id, name, description, icon)`)
+                    .eq('tenant_id', this.tenantId);
+                    
+                if (error) {
+                    console.error('Error loading modules:', error);
+                    return;
+                }
+                this.tenantModules = modules ? modules.map(m => ({ 
+                    id: m.module.id, 
+                    name: m.module.name, 
+                    enabled: m.enabled, 
+                    description: m.module.description, 
+                    icon: m.module.icon 
+                })) : [];
+            } catch (err) {
+                console.error('Modules load error:', err);
             }
-            this.tenantModules = modules.map(m => ({ 
-                id: m.module.id, 
-                name: m.module.name, 
-                enabled: m.enabled, 
-                description: m.module.description, 
-                icon: m.module.icon 
-            }));
         },
         
         loadLocalData() {
-            const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
-            this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
-            const savedBrand = localStorage.getItem(`qless_tenant_branding_${this.tenantId}`);
-            if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
-            this.calcTotals();
+            try {
+                const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
+                this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
+                const savedBrand = localStorage.getItem(`qless_tenant_branding_${this.tenantId}`);
+                if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
+                this.calcTotals();
+            } catch (err) {
+                console.error('Local data error:', err);
+            }
         },
         
         calcTotals(){
@@ -559,7 +591,7 @@ new Vue({
                 this.shifts[idx].status='completed'; 
                 this.shifts[idx].hours_worked=hrs; 
                 this.saveShifts(); 
-                this.showStunningAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); 
+                this.showAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); 
                 this.calcTotals(); 
             } 
         },
@@ -567,7 +599,7 @@ new Vue({
         saveBranding(){ 
             const data={tenantName:this.tenantName,branding:this.branding}; 
             localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); 
-            this.showStunningAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); 
+            this.showAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); 
         },
         
         openCreateStaffModal(){ this.isEditing=false; this.editingStaffId=null; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.showStaffModal=true; },
@@ -575,10 +607,10 @@ new Vue({
         closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.saving=false; },
         
         async saveStaff(){
-            if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showStunningAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
-            if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showStunningAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
-            if(!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) return this.showStunningAlert('Invalid', 'Hourly rate must be greater than 0', 'fas fa-exclamation', '#dc2626');
-            if(!this.currentUserTenantId) return this.showStunningAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626');
+            if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
+            if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
+            if(!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) return this.showAlert('Invalid', 'Hourly rate must be greater than 0', 'fas fa-exclamation', '#dc2626');
+            if(!this.currentUserTenantId) return this.showAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626');
             this.saving = true;
             try {
                 const payload = { 
@@ -593,11 +625,11 @@ new Vue({
                 const { data, error } = await supabaseClient.functions.invoke('create-staff', { body: payload });
                 if (error) throw new Error(error.message);
                 if (data && data.error) throw new Error(data.error);
-                this.showStunningAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check', '#10b981');
+                this.showAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check', '#10b981');
                 this.closeStaffModal();
                 await this.loadStaffFromSupabase();
                 this.loadLocalData();
-            } catch (err) { console.error(err); this.showStunningAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } 
+            } catch (err) { console.error(err); this.showAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } 
             finally { this.saving = false; }
         },
         
@@ -606,26 +638,25 @@ new Vue({
             if(!staff) return;
             const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
             const { error } = await supabaseClient.from('profiles').update({ status: newStatus }).eq('id', id);
-            if(error){ console.error(error); return this.showStunningAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); }
+            if(error){ console.error(error); return this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); }
             await this.loadStaffFromSupabase();
-            this.showStunningAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
+            this.showAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
         },
         
         async deleteStaff(id){
             const staff = this.staffList.find(s => s.id === id);
             if(staff && confirm(`Delete ${staff.name} ${staff.surname}? This will remove their profile permanently.`)){
                 const { error } = await supabaseClient.from('profiles').delete().eq('id', id);
-                if(error){ console.error(error); return this.showStunningAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); }
+                if(error){ console.error(error); return this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); }
                 await this.loadStaffFromSupabase();
-                this.showStunningAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
+                this.showAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
             }
         },
         
-        exportAttendanceReport(){ this.showStunningAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
+        exportAttendanceReport(){ this.showAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
         
         logout(){ 
             supabaseClient.auth.signOut().then(() => {
-                sessionStorage.clear();
                 window.location.href = '../login.html';
             }).catch(() => {
                 window.location.href = '../login.html';
@@ -634,12 +665,7 @@ new Vue({
     },
     
     async mounted() {
-        const loggedIn = await this.checkAuthAndLoad();
-        if (!loggedIn) return;
-        
-        await this.loadTenantModules();
-        await this.loadStaffFromSupabase();
-        this.loadLocalData();
+        await this.initDashboard();
         
         // Refresh data periodically
         setInterval(() => { 
