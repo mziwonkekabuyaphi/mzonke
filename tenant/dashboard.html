@@ -8,7 +8,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+            }
+        }
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: #f5f7fb; overflow-x: hidden; }
@@ -101,6 +107,7 @@
     <div class="loading-screen" v-if="isLoading">
         <div class="loading-spinner"></div>
         <div style="color: #E30613; font-weight: 600;">Loading Dashboard...</div>
+        <div style="font-size: 12px; color: #666;">{{ loadingStatus }}</div>
     </div>
 
     <aside class="sidebar" :class="{ open: sidebarOpen }" v-if="!isLoading">
@@ -164,7 +171,7 @@
                 </div>
                 <div v-else class="settings-panel" style="text-align:center; padding:20px;"><i class="fas fa-user-clock" style="font-size:32px; color:#cbd5e1;"></i><p style="margin-top:8px;">No staff currently on shift</p></div>
                 <div class="section-header"><h2>Recent Staff Activity</h2></div>
-                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><tr><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td v-if="staff.hours_today">{{ staff.hours_today?.toFixed(1) || '0' }}h</td><td v-else>-</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td><td>{{ staff.hours_today?.toFixed(1) || '0' }}h</td></tr><tr v-if="staffList.length === 0"><td colspan="4" style="text-align:center;">No staff members yet</td></tr></tbody></table></div>
             </div>
 
             <!-- PRIVATE LABEL -->
@@ -288,392 +295,407 @@
     </div>
 </div>
 
-<script>
-const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlenZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const STORAGE_KEYS = { SHIFTS: 'qless_shifts' };
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+    
+    const STORAGE_KEYS = { SHIFTS: 'qless_shifts' };
 
-const moduleFileMap = {
-  'Event Management': '/tenant/event-manager.html',
-  'Passports': '/tenant/passport.html',
-  'Workforce': '/tenant/workforce.html',
-  'VVIP Console': '/tenant/vvip-admin.html',
-  'Sales & Orders Engine': '/tenant/order-admin.html',
-  'Booze Lockers': '/tenant/lockers-admin.html',
-  'Shisha Lounge System': '/tenant/shisha-admin.html',
-  'Tenant Revenue': '/tenant-revenue.html',
-  'Tenant Settings': '/tenant-admin.html'
-};
+    const moduleFileMap = {
+      'Event Management': '/tenant/event-manager.html',
+      'Passports': '/tenant/passport.html',
+      'Workforce': '/tenant/workforce.html',
+      'VVIP Console': '/tenant/vvip-admin.html',
+      'Sales & Orders Engine': '/tenant/order-admin.html',
+      'Booze Lockers': '/tenant/lockers-admin.html',
+      'Shisha Lounge System': '/tenant/shisha-admin.html',
+      'Tenant Revenue': '/tenant-revenue.html',
+      'Tenant Settings': '/tenant-admin.html'
+    };
 
-const MODULE_ORDER = ['Event Management', 'Passports', 'Staff Management', 'Workforce'];
+    const MODULE_ORDER = ['Event Management', 'Passports', 'Staff Management', 'Workforce'];
 
-new Vue({
-    el: '#app',
-    data: {
-        isLoading: true,
-        sidebarOpen: false,
-        currentSection: 'dashboard',
-        tenantId: null,
-        tenantName: 'Demo Venue',
-        adminName: 'Admin',
-        adminEmail: '',
-        branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
-        tenantModules: [],
-        staffList: [],
-        showStaffModal: false,
-        showInfoModal: false,
-        isEditing: false,
-        editingStaffId: null,
-        staffForm: { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0 },
-        saving: false,
-        infoTitle: '',
-        infoMessage: '',
-        infoIcon: 'fas fa-check-circle',
-        infoIconColor: '#E30613',
-        coreNavItems: [{ id: 'dashboard', label: 'Dashboard', icon: 'fas fa-tachometer-alt' }],
-        shifts: [],
-        totalHoursToday: 0,
-        avgHoursPerStaff: 0,
-        staffModuleTab: 'accounts',
-        currentUserTenantId: null,
-        externalUrl: ''
-    },
-    computed: {
-        tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
-        adminInitial() { return this.adminName ? this.adminName.charAt(0).toUpperCase() : 'A'; },
-        currentSectionTitle() {
-            if (this.currentSection === 'external') return 'External Module';
-            if (this.currentSection === 'settings') return 'Settings';
-            if (this.currentSection === 'dashboard') return 'Dashboard';
-            if (this.currentSection.startsWith('module_')) {
-                const mod = this.enabledModulesList.find(m => 'module_'+m.id === this.currentSection);
-                return mod ? this.getModuleDisplayName(mod.name) : 'Module';
+    new Vue({
+        el: '#app',
+        data: {
+            isLoading: true,
+            loadingStatus: 'Checking authentication...',
+            sidebarOpen: false,
+            currentSection: 'dashboard',
+            tenantId: null,
+            tenantName: 'Demo Venue',
+            adminName: 'Admin',
+            adminEmail: '',
+            branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
+            tenantModules: [],
+            staffList: [],
+            showStaffModal: false,
+            showInfoModal: false,
+            isEditing: false,
+            editingStaffId: null,
+            staffForm: { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0 },
+            saving: false,
+            infoTitle: '',
+            infoMessage: '',
+            infoIcon: 'fas fa-check-circle',
+            infoIconColor: '#E30613',
+            coreNavItems: [{ id: 'dashboard', label: 'Dashboard', icon: 'fas fa-tachometer-alt' }],
+            shifts: [],
+            totalHoursToday: 0,
+            avgHoursPerStaff: 0,
+            staffModuleTab: 'accounts',
+            currentUserTenantId: null,
+            externalUrl: ''
+        },
+        computed: {
+            tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
+            adminInitial() { return this.adminName ? this.adminName.charAt(0).toUpperCase() : 'A'; },
+            currentSectionTitle() {
+                if (this.currentSection === 'external') return 'External Module';
+                if (this.currentSection === 'settings') return 'Settings';
+                if (this.currentSection === 'dashboard') return 'Dashboard';
+                if (this.currentSection.startsWith('module_')) {
+                    const mod = this.enabledModulesList.find(m => 'module_'+m.id === this.currentSection);
+                    return mod ? this.getModuleDisplayName(mod.name) : 'Module';
+                }
+                return 'Dashboard';
+            },
+            enabledModulesList() {
+                return this.tenantModules.filter(m => m.enabled === true);
+            },
+            sortedModules() {
+                const modules = [...this.enabledModulesList];
+                modules.sort((a, b) => {
+                    const idxA = MODULE_ORDER.indexOf(a.name);
+                    const idxB = MODULE_ORDER.indexOf(b.name);
+                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                    if (idxA !== -1) return -1;
+                    if (idxB !== -1) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+                return modules;
+            },
+            activeShiftsList() {
+                return this.shifts.filter(s => s.status === 'active' && s.tenant_id === this.tenantId).map(s => {
+                    const staff = this.staffList.find(st => st.id === s.staff_id);
+                    return { ...s, staff_name: staff ? `${staff.name} ${staff.surname}` : 'Unknown', staff_role: staff?.role || 'unknown' };
+                });
             }
-            return 'Dashboard';
         },
-        enabledModulesList() {
-            return this.tenantModules.filter(m => m.enabled === true);
-        },
-        sortedModules() {
-            const modules = [...this.enabledModulesList];
-            modules.sort((a, b) => {
-                const idxA = MODULE_ORDER.indexOf(a.name);
-                const idxB = MODULE_ORDER.indexOf(b.name);
-                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                if (idxA !== -1) return -1;
-                if (idxB !== -1) return 1;
-                return a.name.localeCompare(b.name);
-            });
-            return modules;
-        },
-        activeShiftsList() {
-            return this.shifts.filter(s => s.status === 'active' && s.tenant_id === this.tenantId).map(s => {
-                const staff = this.staffList.find(st => st.id === s.staff_id);
-                return { ...s, staff_name: staff ? `${staff.name} ${staff.surname}` : 'Unknown', staff_role: staff?.role || 'unknown' };
-            });
-        }
-    },
-    methods: {
-        getModuleDisplayName(name) { 
-            if(name === 'Private Label') return 'Venue Branding'; 
-            if(name === 'Staff Management') return 'Staff Management';
-            return name; 
-        },
-        getModuleIcon(name) { 
-            const icons = {
-                'Event Management': 'fas fa-calendar-alt',
-                'Passports': 'fas fa-passport',
-                'Staff Management': 'fas fa-users',
-                'Workforce': 'fas fa-hard-hat',
-                'Private Label': 'fas fa-palette',
-                'VVIP Console': 'fas fa-crown',
-                'Sales & Orders Engine': 'fas fa-chart-line',
-                'Booze Lockers': 'fas fa-locker',
-                'Shisha Lounge System': 'fas fa-smoking',
-                'Tenant Revenue': 'fas fa-chart-pie',
-                'Tenant Settings': 'fas fa-cog'
-            };
-            return icons[name] || 'fas fa-cube';
-        },
-        getRoleDisplay(r) { 
-            const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security', scanner:'Scanner', cleaner:'Cleaner', shisha:'Shisha Master', vvip:'VVIP Concierge' }; 
-            return map[r] || r; 
-        },
-        formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
-        formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
-        formatDateTime(d){ return d?new Date(d).toLocaleString():'-'; },
-        calculateDuration(loginTime){ const diff = Math.floor((new Date() - new Date(loginTime)) / 60000); return `${Math.floor(diff/60)}h ${diff%60}m`; },
-        showAlert(title, msg, icon, color){ this.infoTitle=title; this.infoMessage=msg; this.infoIcon=icon; this.infoIconColor=color; this.showInfoModal=true; },
-        handleNavClick(item){ this.currentSection = item.id; this.closeSidebar(); },
-        testNotification(){ this.showAlert('Notification Center', 'You have no new notifications', 'fas fa-bell', '#E30613'); },
-        
-        goToModuleSection(module) {
-            const externalPath = moduleFileMap[module.name];
-            if (externalPath) {
-                this.externalUrl = externalPath;
-                this.currentSection = 'external';
-                this.closeSidebar();
-                return;
-            }
-            this.currentSection = 'module_' + module.id;
-            if (module.name === 'Staff Management') this.staffModuleTab = 'accounts';
-            this.closeSidebar();
-        },
-        
-        closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
-
-        async initDashboard() {
-            this.isLoading = true;
+        methods: {
+            getModuleDisplayName(name) { 
+                if(name === 'Private Label') return 'Venue Branding'; 
+                if(name === 'Staff Management') return 'Staff Management';
+                return name; 
+            },
+            getModuleIcon(name) { 
+                const icons = {
+                    'Event Management': 'fas fa-calendar-alt',
+                    'Passports': 'fas fa-passport',
+                    'Staff Management': 'fas fa-users',
+                    'Workforce': 'fas fa-hard-hat',
+                    'Private Label': 'fas fa-palette',
+                    'VVIP Console': 'fas fa-crown',
+                    'Sales & Orders Engine': 'fas fa-chart-line',
+                    'Booze Lockers': 'fas fa-locker',
+                    'Shisha Lounge System': 'fas fa-smoking',
+                    'Tenant Revenue': 'fas fa-chart-pie',
+                    'Tenant Settings': 'fas fa-cog'
+                };
+                return icons[name] || 'fas fa-cube';
+            },
+            getRoleDisplay(r) { 
+                const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security', scanner:'Scanner', cleaner:'Cleaner', shisha:'Shisha Master', vvip:'VVIP Concierge' }; 
+                return map[r] || r; 
+            },
+            formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
+            formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
+            formatDateTime(d){ return d?new Date(d).toLocaleString():'-'; },
+            calculateDuration(loginTime){ const diff = Math.floor((new Date() - new Date(loginTime)) / 60000); return `${Math.floor(diff/60)}h ${diff%60}m`; },
+            showAlert(title, msg, icon, color){ this.infoTitle=title; this.infoMessage=msg; this.infoIcon=icon; this.infoIconColor=color; this.showInfoModal=true; },
+            handleNavClick(item){ this.currentSection = item.id; this.closeSidebar(); },
+            testNotification(){ this.showAlert('Notification Center', 'You have no new notifications', 'fas fa-bell', '#E30613'); },
             
-            try {
-                // Get current user
-                const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+            goToModuleSection(module) {
+                const externalPath = moduleFileMap[module.name];
+                if (externalPath) {
+                    this.externalUrl = externalPath;
+                    this.currentSection = 'external';
+                    this.closeSidebar();
+                    return;
+                }
+                this.currentSection = 'module_' + module.id;
+                if (module.name === 'Staff Management') this.staffModuleTab = 'accounts';
+                this.closeSidebar();
+            },
+            
+            closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
+
+            async initDashboard() {
+                this.isLoading = true;
                 
-                if (userError || !user) {
-                    console.error('No user found, redirecting to login');
-                    window.location.href = '../login.html';
+                try {
+                    // Check session
+                    this.loadingStatus = 'Checking session...';
+                    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                    
+                    let user = null;
+                    
+                    if (sessionError) {
+                        console.error('Session error:', sessionError);
+                    }
+                    
+                    if (session && session.user) {
+                        user = session.user;
+                        console.log('Found existing session for user:', user.email);
+                    } else {
+                        this.loadingStatus = 'Getting user info...';
+                        const { data: { user: fetchedUser }, error: userError } = await supabase.auth.getUser();
+                        
+                        if (userError || !fetchedUser) {
+                            console.error('No user found, redirecting to login');
+                            window.location.href = '../login.html';
+                            return false;
+                        }
+                        user = fetchedUser;
+                    }
+                    
+                    this.adminEmail = user.email;
+                    this.adminName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin';
+                    
+                    // Get tenant ID
+                    this.loadingStatus = 'Loading tenant info...';
+                    let tenantId = null;
+                    
+                    if (user.user_metadata?.tenant_id) {
+                        tenantId = user.user_metadata.tenant_id;
+                    }
+                    
+                    if (!tenantId) {
+                        const { data: profile, error: profileError } = await supabase
+                            .from('profiles')
+                            .select('tenant_id')
+                            .eq('id', user.id)
+                            .maybeSingle();
+                        
+                        if (!profileError && profile && profile.tenant_id) {
+                            tenantId = profile.tenant_id;
+                        }
+                    }
+                    
+                    if (!tenantId) {
+                        const { data: tenants, error: tenantError } = await supabase
+                            .from('tenants')
+                            .select('id, name')
+                            .limit(1);
+                        
+                        if (!tenantError && tenants && tenants.length > 0) {
+                            tenantId = tenants[0].id;
+                            this.tenantName = tenants[0].name;
+                        } else {
+                            tenantId = '00000000-0000-0000-0000-000000000001';
+                            this.tenantName = 'Demo Venue';
+                        }
+                    } else {
+                        const { data: tenantData } = await supabase
+                            .from('tenants')
+                            .select('name')
+                            .eq('id', tenantId)
+                            .single();
+                        if (tenantData) this.tenantName = tenantData.name;
+                    }
+                    
+                    this.tenantId = tenantId;
+                    this.currentUserTenantId = tenantId;
+                    
+                    // Load data
+                    this.loadingStatus = 'Loading staff data...';
+                    await this.loadStaffFromSupabase();
+                    
+                    this.loadingStatus = 'Loading modules...';
+                    await this.loadTenantModules();
+                    
+                    this.loadingStatus = 'Loading local data...';
+                    this.loadLocalData();
+                    
+                    this.isLoading = false;
+                    this.loadingStatus = 'Ready!';
+                    return true;
+                    
+                } catch (err) {
+                    console.error('Init error:', err);
+                    this.isLoading = false;
+                    this.showAlert('Error', 'Failed to load dashboard: ' + err.message, 'fas fa-exclamation', '#dc2626');
                     return false;
                 }
-                
-                this.adminEmail = user.email;
-                this.adminName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin';
-                
-                // Get tenant ID - try multiple sources
-                let tenantId = null;
-                
-                // First try user metadata
-                if (user.user_metadata?.tenant_id) {
-                    tenantId = user.user_metadata.tenant_id;
-                }
-                
-                // If not, try profiles table
-                if (!tenantId) {
-                    const { data: profile, error: profileError } = await supabaseClient
+            },
+            
+            async loadStaffFromSupabase() {
+                if (!this.tenantId) return;
+                try {
+                    const { data, error } = await supabase
                         .from('profiles')
-                        .select('tenant_id')
-                        .eq('id', user.id)
-                        .maybeSingle();
-                    
-                    if (!profileError && profile && profile.tenant_id) {
-                        tenantId = profile.tenant_id;
+                        .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
+                        .eq('tenant_id', this.tenantId)
+                        .order('created_at', { ascending: false });
+                        
+                    if (error) {
+                        console.error('Error loading staff:', error);
+                        return;
                     }
+                    this.staffList = data || [];
+                } catch (err) {
+                    console.error('Staff load error:', err);
                 }
-                
-                // If still no tenant, get first available
-                if (!tenantId) {
-                    const { data: tenants, error: tenantError } = await supabaseClient
-                        .from('tenants')
-                        .select('id, name')
-                        .limit(1);
-                    
-                    if (!tenantError && tenants && tenants.length > 0) {
-                        tenantId = tenants[0].id;
-                        this.tenantName = tenants[0].name;
-                    } else {
-                        // Use demo tenant ID
-                        tenantId = '11111111-1111-1111-1111-111111111111';
-                        this.tenantName = 'Demo Venue';
+            },
+            
+            async loadTenantModules() {
+                if (!this.tenantId) return;
+                try {
+                    const { data: modules, error } = await supabase
+                        .from('tenant_modules')
+                        .select(`id, enabled, module:module_id (id, name, description, icon)`)
+                        .eq('tenant_id', this.tenantId);
+                        
+                    if (error) {
+                        console.error('Error loading modules:', error);
+                        return;
                     }
-                } else {
-                    // Get tenant name
-                    const { data: tenantData } = await supabaseClient
-                        .from('tenants')
-                        .select('name')
-                        .eq('id', tenantId)
-                        .single();
-                    if (tenantData) this.tenantName = tenantData.name;
+                    this.tenantModules = modules ? modules.map(m => ({ 
+                        id: m.module.id, 
+                        name: m.module.name, 
+                        enabled: m.enabled, 
+                        description: m.module.description, 
+                        icon: m.module.icon 
+                    })) : [];
+                } catch (err) {
+                    console.error('Modules load error:', err);
                 }
-                
-                this.tenantId = tenantId;
-                this.currentUserTenantId = tenantId;
-                
-                // Load all data
-                await Promise.all([
-                    this.loadTenantModules(),
-                    this.loadStaffFromSupabase()
-                ]);
-                
+            },
+            
+            loadLocalData() {
+                try {
+                    const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
+                    this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
+                    const savedBrand = localStorage.getItem(`qless_tenant_branding_${this.tenantId}`);
+                    if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
+                    this.calcTotals();
+                } catch (err) {
+                    console.error('Local data error:', err);
+                }
+            },
+            
+            calcTotals(){
+                let todayTotal=0;
+                const today = new Date().setHours(0,0,0,0);
+                this.shifts.forEach(s=>{
+                    const shiftDate = new Date(s.login_time).setHours(0,0,0,0);
+                    if(shiftDate === today){
+                        if(s.hours_worked) todayTotal+=s.hours_worked;
+                        else if(s.status==='active') todayTotal+=(new Date()-new Date(s.login_time))/(1000*60*60);
+                    }
+                });
+                this.totalHoursToday=todayTotal;
+                this.avgHoursPerStaff=this.staffList.length?todayTotal/this.staffList.length:0;
+            },
+            
+            saveShifts(){ 
+                const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); 
+                const filtered=all.filter(s=>s.tenant_id!==this.tenantId); 
+                localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); 
+            },
+            
+            async forceLogout(shift){ 
+                if(!confirm(`Force logout ${shift.staff_name}?`)) return; 
+                const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); 
+                if(idx!==-1){ 
+                    const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); 
+                    this.shifts[idx].logout_time=new Date().toISOString(); 
+                    this.shifts[idx].status='completed'; 
+                    this.shifts[idx].hours_worked=hrs; 
+                    this.saveShifts(); 
+                    this.showAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); 
+                    this.calcTotals(); 
+                } 
+            },
+            
+            saveBranding(){ 
+                const data={tenantName:this.tenantName,branding:this.branding}; 
+                localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); 
+                this.showAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); 
+            },
+            
+            openCreateStaffModal(){ this.isEditing=false; this.editingStaffId=null; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.showStaffModal=true; },
+            editStaff(staff){ this.isEditing=true; this.editingStaffId=staff.id; this.staffForm={ name:staff.name, surname:staff.surname, email:staff.email, password:'', role:staff.role, hourly_rate:staff.hourly_rate }; this.showStaffModal=true; },
+            closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.saving=false; },
+            
+            async saveStaff(){
+                if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
+                if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
+                if(!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) return this.showAlert('Invalid', 'Hourly rate must be greater than 0', 'fas fa-exclamation', '#dc2626');
+                if(!this.currentUserTenantId) return this.showAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626');
+                this.saving = true;
+                try {
+                    const payload = { 
+                        email: this.staffForm.email, 
+                        password: this.staffForm.password, 
+                        name: this.staffForm.name, 
+                        surname: this.staffForm.surname, 
+                        role: this.staffForm.role, 
+                        hourly_rate: parseFloat(this.staffForm.hourly_rate), 
+                        tenant_id: this.currentUserTenantId 
+                    };
+                    const { data, error } = await supabase.functions.invoke('create-staff', { body: payload });
+                    if (error) throw new Error(error.message);
+                    if (data && data.error) throw new Error(data.error);
+                    this.showAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check', '#10b981');
+                    this.closeStaffModal();
+                    await this.loadStaffFromSupabase();
+                    this.loadLocalData();
+                } catch (err) { console.error(err); this.showAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } 
+                finally { this.saving = false; }
+            },
+            
+            async toggleStaffStatus(id){
+                const staff = this.staffList.find(s => s.id === id);
+                if(!staff) return;
+                const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
+                const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', id);
+                if(error){ console.error(error); return this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); }
+                await this.loadStaffFromSupabase();
+                this.showAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
+            },
+            
+            async deleteStaff(id){
+                const staff = this.staffList.find(s => s.id === id);
+                if(staff && confirm(`Delete ${staff.name} ${staff.surname}? This will remove their profile permanently.`)){
+                    const { error } = await supabase.from('profiles').delete().eq('id', id);
+                    if(error){ console.error(error); return this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); }
+                    await this.loadStaffFromSupabase();
+                    this.showAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
+                }
+            },
+            
+            exportAttendanceReport(){ this.showAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
+            
+            logout(){ 
+                supabase.auth.signOut().then(() => {
+                    localStorage.removeItem('supabase-auth-token');
+                    window.location.href = '../login.html';
+                }).catch(() => {
+                    window.location.href = '../login.html';
+                });
+            }
+        },
+        
+        async mounted() {
+            await this.initDashboard();
+            
+            setInterval(() => { 
                 this.loadLocalData();
-                
-                this.isLoading = false;
-                return true;
-                
-            } catch (err) {
-                console.error('Init error:', err);
-                this.isLoading = false;
-                this.showAlert('Error', 'Failed to load dashboard. Please refresh.', 'fas fa-exclamation', '#dc2626');
-                return false;
-            }
-        },
-        
-        async loadStaffFromSupabase() {
-            if (!this.tenantId) return;
-            try {
-                const { data, error } = await supabaseClient
-                    .from('profiles')
-                    .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
-                    .eq('tenant_id', this.tenantId)
-                    .order('created_at', { ascending: false });
-                    
-                if (error) {
-                    console.error('Error loading staff:', error);
-                    return;
-                }
-                this.staffList = data || [];
-            } catch (err) {
-                console.error('Staff load error:', err);
-            }
-        },
-        
-        async loadTenantModules() {
-            if (!this.tenantId) return;
-            try {
-                const { data: modules, error } = await supabaseClient
-                    .from('tenant_modules')
-                    .select(`id, enabled, module:module_id (id, name, description, icon)`)
-                    .eq('tenant_id', this.tenantId);
-                    
-                if (error) {
-                    console.error('Error loading modules:', error);
-                    return;
-                }
-                this.tenantModules = modules ? modules.map(m => ({ 
-                    id: m.module.id, 
-                    name: m.module.name, 
-                    enabled: m.enabled, 
-                    description: m.module.description, 
-                    icon: m.module.icon 
-                })) : [];
-            } catch (err) {
-                console.error('Modules load error:', err);
-            }
-        },
-        
-        loadLocalData() {
-            try {
-                const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
-                this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
-                const savedBrand = localStorage.getItem(`qless_tenant_branding_${this.tenantId}`);
-                if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
                 this.calcTotals();
-            } catch (err) {
-                console.error('Local data error:', err);
-            }
-        },
-        
-        calcTotals(){
-            let todayTotal=0;
-            const today = new Date().setHours(0,0,0,0);
-            this.shifts.forEach(s=>{
-                const shiftDate = new Date(s.login_time).setHours(0,0,0,0);
-                if(shiftDate === today){
-                    if(s.hours_worked) todayTotal+=s.hours_worked;
-                    else if(s.status==='active') todayTotal+=(new Date()-new Date(s.login_time))/(1000*60*60);
-                }
-            });
-            this.totalHoursToday=todayTotal;
-            this.avgHoursPerStaff=this.staffList.length?todayTotal/this.staffList.length:0;
-        },
-        
-        saveShifts(){ 
-            const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); 
-            const filtered=all.filter(s=>s.tenant_id!==this.tenantId); 
-            localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); 
-        },
-        
-        async forceLogout(shift){ 
-            if(!confirm(`Force logout ${shift.staff_name}?`)) return; 
-            const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); 
-            if(idx!==-1){ 
-                const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); 
-                this.shifts[idx].logout_time=new Date().toISOString(); 
-                this.shifts[idx].status='completed'; 
-                this.shifts[idx].hours_worked=hrs; 
-                this.saveShifts(); 
-                this.showAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); 
-                this.calcTotals(); 
-            } 
-        },
-        
-        saveBranding(){ 
-            const data={tenantName:this.tenantName,branding:this.branding}; 
-            localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); 
-            this.showAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); 
-        },
-        
-        openCreateStaffModal(){ this.isEditing=false; this.editingStaffId=null; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.showStaffModal=true; },
-        editStaff(staff){ this.isEditing=true; this.editingStaffId=staff.id; this.staffForm={ name:staff.name, surname:staff.surname, email:staff.email, password:'', role:staff.role, hourly_rate:staff.hourly_rate }; this.showStaffModal=true; },
-        closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.saving=false; },
-        
-        async saveStaff(){
-            if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
-            if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
-            if(!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) return this.showAlert('Invalid', 'Hourly rate must be greater than 0', 'fas fa-exclamation', '#dc2626');
-            if(!this.currentUserTenantId) return this.showAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626');
-            this.saving = true;
-            try {
-                const payload = { 
-                    email: this.staffForm.email, 
-                    password: this.staffForm.password, 
-                    name: this.staffForm.name, 
-                    surname: this.staffForm.surname, 
-                    role: this.staffForm.role, 
-                    hourly_rate: parseFloat(this.staffForm.hourly_rate), 
-                    tenant_id: this.currentUserTenantId 
-                };
-                const { data, error } = await supabaseClient.functions.invoke('create-staff', { body: payload });
-                if (error) throw new Error(error.message);
-                if (data && data.error) throw new Error(data.error);
-                this.showAlert('Success', `Staff ${this.staffForm.name} ${this.staffForm.surname} created.`, 'fas fa-user-check', '#10b981');
-                this.closeStaffModal();
-                await this.loadStaffFromSupabase();
-                this.loadLocalData();
-            } catch (err) { console.error(err); this.showAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } 
-            finally { this.saving = false; }
-        },
-        
-        async toggleStaffStatus(id){
-            const staff = this.staffList.find(s => s.id === id);
-            if(!staff) return;
-            const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
-            const { error } = await supabaseClient.from('profiles').update({ status: newStatus }).eq('id', id);
-            if(error){ console.error(error); return this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); }
-            await this.loadStaffFromSupabase();
-            this.showAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
-        },
-        
-        async deleteStaff(id){
-            const staff = this.staffList.find(s => s.id === id);
-            if(staff && confirm(`Delete ${staff.name} ${staff.surname}? This will remove their profile permanently.`)){
-                const { error } = await supabaseClient.from('profiles').delete().eq('id', id);
-                if(error){ console.error(error); return this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); }
-                await this.loadStaffFromSupabase();
-                this.showAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
-            }
-        },
-        
-        exportAttendanceReport(){ this.showAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
-        
-        logout(){ 
-            supabaseClient.auth.signOut().then(() => {
-                window.location.href = '../login.html';
-            }).catch(() => {
-                window.location.href = '../login.html';
-            });
+            }, 5000);
         }
-    },
-    
-    async mounted() {
-        await this.initDashboard();
-        
-        // Refresh data periodically
-        setInterval(() => { 
-            this.loadLocalData();
-            this.calcTotals();
-        }, 5000);
-    }
-});
+    });
 </script>
 </body>
 </html>
