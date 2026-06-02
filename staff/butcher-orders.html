@@ -632,7 +632,8 @@
     
     return data.map(order => ({
       ...order,
-      orderId: order.order_number || order.order_id,
+      dbId: order.id,                                    // UUID — used for ALL DB updates
+      orderId: order.order_number || order.id,           // display-only receipt number
       items: order.items || [],
       total: order.total || 0,
       source: order.source || (order.payment_source === 'wallet' ? 'wallet' : 'kiosk'),
@@ -663,7 +664,8 @@
     if (error) return [];
     return data.map(order => ({
       ...order,
-      orderId: order.order_number || order.order_id,
+      dbId: order.id,                           // UUID — consistent with active orders
+      orderId: order.order_number || order.id,  // display-only receipt number
       items: order.items || [],
       total: order.total || 0,
       source: order.source,
@@ -673,47 +675,86 @@
     }));
   }
 
-  async function updateOrderStatus(orderId, newStatus, source) {
+  // dbId      = order.id (UUID PRIMARY KEY) — used for all Supabase .eq() filters
+  // displayId = order.order_number          — used only for user-facing toasts / logs
+  async function updateOrderStatus(dbId, newStatus, source, displayId) {
+    if (!dbId) {
+      console.error("❌ updateOrderStatus called with missing dbId", { dbId, newStatus });
+      showToast("❌ Cannot update: missing order ID", "error");
+      return false;
+    }
+    const label = displayId || dbId;
+    console.log(`🔄 Updating order dbId=${dbId} (display #${label}) → ${newStatus}`);
+
     try {
+      // Step 1: fetch current row by UUID so we can read prep_start_time / status
       const { data: existing, error: fetchErr } = await supabase
         .from('orders')
-        .select('status, prep_start_time')
-        .eq('order_number', orderId)
-        .eq('vendor', VENDOR_NAME)
+        .select('id, status, prep_start_time')
+        .eq('id', dbId)
         .single();
-      if (fetchErr) throw fetchErr;
-      
-      const updateData = { status: newStatus, updated_at: new Date().toISOString() };
-      if (newStatus === 'preparing' && existing.status === 'pending') {
-        updateData.prep_start_time = Date.now();
+
+      if (fetchErr) {
+        console.error("❌ Supabase fetch error (pre-update):", fetchErr);
+        throw fetchErr;
       }
+      if (!existing) {
+        throw new Error(`No order found with id=${dbId}`);
+      }
+
+      console.log(`📋 Current DB row:`, existing);
+
+      // Step 2: build update payload
+      const updateData = {
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      if (newStatus === 'preparing' && (existing.status === 'pending' || existing.status === 'placed')) {
+        updateData.prep_start_time = new Date().toISOString();
+        console.log(`⏱️ Setting prep_start_time for order ${label}`);
+      }
+
       if (newStatus === 'ready' && existing.status === 'preparing') {
-        const start = existing.prep_start_time || Date.now();
-        updateData.prep_time = Math.round((Date.now() - start) / 60000);
+        const startMs = existing.prep_start_time
+          ? new Date(existing.prep_start_time).getTime()
+          : Date.now();
+        updateData.prep_time = Math.round((Date.now() - startMs) / 60000);
         updateData.ready_at = new Date().toISOString();
+        console.log(`✅ Order ${label} ready — prep_time: ${updateData.prep_time}m`);
         playNotificationSound();
-        showToast(`✅ Order #${orderId} is READY!`, "ready");
+        showToast(`✅ Order #${label} is READY for collection!`, "ready");
       }
-      
-      const { error: updateErr } = await supabase
+
+      // Step 3: update using UUID — never order_number
+      const { data: updated, error: updateErr } = await supabase
         .from('orders')
         .update(updateData)
-        .eq('order_number', orderId)
-        .eq('vendor', VENDOR_NAME);
-      if (updateErr) throw updateErr;
-      
-      if (newStatus !== 'ready') showToast(`🥩 Order #${orderId} is now ${newStatus.toUpperCase()}`, "info");
+        .eq('id', dbId)
+        .select();
+
+      if (updateErr) {
+        console.error("❌ Supabase update error:", updateErr);
+        throw updateErr;
+      }
+
+      console.log(`✅ Order ${label} updated successfully:`, updated);
+
+      if (newStatus !== 'ready') {
+        showToast(`🥩 Order #${label} is now ${newStatus.toUpperCase()}`, "info");
+      }
+
       await refreshAllData();
       return true;
     } catch (err) {
-      console.error(err);
-      showToast("Failed to update status", "error");
+      console.error("❌ updateOrderStatus failed:", err?.message || err, err);
+      showToast(`❌ Failed to update order #${label}: ${err?.message || 'DB error'}`, "error");
       return false;
     }
   }
 
-  async function markOrderReady(orderId, source) {
-    await updateOrderStatus(orderId, 'ready', source);
+  async function markOrderReady(dbId, source, displayId) {
+    await updateOrderStatus(dbId, 'ready', source, displayId);
   }
 
   async function updateStats() {
@@ -799,10 +840,10 @@
           </div>
           <div class="order-total">Total: R${order.total.toFixed(2)}</div>
           <div class="order-actions">
-            <button class="btn btn-prepare" onclick="window.updateOrderStatus('${order.orderId}', 'preparing', '${order.source}')" ${order.status !== "pending" && order.status !== "placed" ? "disabled" : ""}>
+            <button class="btn btn-prepare" onclick="window.updateOrderStatus('${order.dbId}', 'preparing', '${order.source}', '${escapeHtml(String(order.orderId))}')" ${order.status !== "pending" && order.status !== "placed" ? "disabled" : ""}>
               🔥 START PREPARING
             </button>
-            <button class="btn btn-ready" onclick="window.markOrderReady('${order.orderId}', '${order.source}')" ${order.status !== "preparing" ? "disabled" : ""}>
+            <button class="btn btn-ready" onclick="window.markOrderReady('${order.dbId}', '${order.source}', '${escapeHtml(String(order.orderId))}')" ${order.status !== "preparing" ? "disabled" : ""}>
               ✅ MARK READY → COLLECTION
             </button>
           </div>
@@ -934,9 +975,9 @@
   setInterval(updateClock, 1000);
   updateClock();
 
-  // Expose functions globally
-  window.updateOrderStatus = updateOrderStatus;
-  window.markOrderReady = markOrderReady;
+  // Expose functions globally — buttons use these via onclick
+  window.updateOrderStatus = updateOrderStatus;   // (dbId, newStatus, source, displayId)
+  window.markOrderReady = markOrderReady;         // (dbId, source, displayId)
   window.toggleCompletedOrders = toggleCompletedOrders;
 
   const styleAnim = document.createElement('style');
