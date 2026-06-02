@@ -85,6 +85,11 @@
         .menu-toggle { font-size: 1.3rem; cursor: pointer; color: #1e293b; }
         .external-module { margin-top: 0; }
         .external-iframe { width: 100%; height: calc(100vh - 70px); border: none; background: white; border-radius: 24px; }
+        .session-status { display: flex; align-items: center; gap: 8px; background: #f0fdf4; padding: 6px 14px; border-radius: 40px; font-size: 0.7rem; font-weight: 500; color: #10b981; }
+        .session-status i { font-size: 0.5rem; }
+        .action-icons { display: flex; gap: 12px; }
+        .action-icons i { cursor: pointer; font-size: 1rem; transition: transform 0.1s; }
+        .action-icons i:active { transform: scale(0.9); }
     </style>
 </head>
 <body>
@@ -127,14 +132,14 @@
                 <div class="header-left"><h3>{{ currentSectionTitle }}</h3></div>
             </div>
             <div class="header-right">
-                <div class="session-status"><i class="fas fa-circle" style="font-size: 0.6rem;"></i><span>Session Active</span></div>
-                <div class="notification-icon"><i class="far fa-bell"></i><span class="badge-dot"></span></div>
+                <div class="session-status"><i class="fas fa-circle"></i><span>Session Active</span></div>
+                <div class="notification-icon" @click="testNotification"><i class="far fa-bell"></i><span class="badge-dot"></span></div>
                 <div class="profile-dropdown" @click="logout"><div class="avatar">{{ adminInitial }}</div><span style="font-size:0.85rem;">{{ adminName }}</span><i class="fas fa-sign-out-alt"></i></div>
             </div>
         </div>
 
         <div class="dashboard-container">
-            <!-- DASHBOARD (unchanged) -->
+            <!-- DASHBOARD -->
             <div v-if="currentSection === 'dashboard'">
                 <div class="stats-grid">
                     <div class="stat-card"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-title">Total Staff</div><div class="stat-number">{{ staffList.length }}</div></div>
@@ -188,15 +193,7 @@
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Role</th>
-                                    <th>Phone</th>
-                                    <th>Hourly Rate</th>
-                                    <th>Status</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
-                                </tr>
+                                <tr><th>Name</th><th>Role</th><th>Phone</th><th>Hourly Rate</th><th>Status</th><th>Created</th><th>Actions</th></tr>
                             </thead>
                             <tbody>
                                 <tr v-for="staff in staffList" :key="staff.id">
@@ -206,13 +203,7 @@
                                     <td>R{{ parseFloat(staff.hourly_rate || 0).toFixed(2) }}</td>
                                     <td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td>
                                     <td>{{ formatDate(staff.created_at) }}</td>
-                                    <td>
-                                        <div class="action-icons">
-                                            <i class="fas fa-edit" @click="editStaff(staff)" style="color:#f59e0b;"></i>
-                                            <i class="fas" :class="staff.status === 'Active' ? 'fa-toggle-on' : 'fa-toggle-off'" @click="toggleStaffStatus(staff.id)" style="cursor:pointer;"></i>
-                                            <i class="fas fa-trash-alt" @click="deleteStaff(staff.id)" style="color:#dc2626;"></i>
-                                        </div>
-                                    </td>
+                                    <td><div class="action-icons"><i class="fas fa-edit" @click="editStaff(staff)" style="color:#f59e0b;"></i><i class="fas" :class="staff.status === 'Active' ? 'fa-toggle-on' : 'fa-toggle-off'" @click="toggleStaffStatus(staff.id)" style="cursor:pointer;"></i><i class="fas fa-trash-alt" @click="deleteStaff(staff.id)" style="color:#dc2626;"></i></div></td>
                                 </tr>
                                 <tr v-if="staffList.length===0"><td colspan="7" style="text-align:center;">No staff members</td></tr>
                             </tbody>
@@ -260,57 +251,28 @@
                 </div>
             </div>
 
-            <!-- EXTERNAL MODULE CONTENT (iframe) - Back button REMOVED -->
+            <!-- EXTERNAL MODULE CONTENT (iframe) -->
             <div v-if="currentSection === 'external'" class="external-module">
                 <iframe :src="externalUrl" class="external-iframe" title="External Module"></iframe>
             </div>
         </div>
     </div>
 
-    <!-- STAFF MODAL (unchanged) -->
+    <!-- STAFF MODAL -->
     <div class="modal-mask" :class="{ active: showStaffModal }">
         <div class="modal-container">
             <h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3>
-            <div class="form-group">
-                <label>Name *</label>
-                <input class="form-control" v-model="staffForm.name" placeholder="First name">
-            </div>
-            <div class="form-group">
-                <label>Surname *</label>
-                <input class="form-control" v-model="staffForm.surname" placeholder="Last name">
-            </div>
-            <div class="form-group">
-                <label>Email *</label>
-                <input class="form-control" v-model="staffForm.email" placeholder="staff@example.com" type="email">
-            </div>
-            <div class="form-group" v-if="!isEditing">
-                <label>Password *</label>
-                <input class="form-control" v-model="staffForm.password" placeholder="Min 6 characters" type="password">
-            </div>
-            <div class="form-group">
-                <label>Role *</label>
-                <select class="form-control" v-model="staffForm.role">
-                    <option value="staff">Staff</option>
-                    <option value="scanner">Scanner</option>
-                    <option value="cleaner">Cleaner</option>
-                    <option value="shisha">Shisha Master</option>
-                    <option value="cashier">Cashier</option>
-                    <option value="vvip">VVIP Concierge</option>
-                    <option value="security">Security</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Hourly Rate (ZAR) *</label>
-                <input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50" placeholder="e.g., 45.00">
-            </div>
-            <div class="modal-buttons">
-                <button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button>
-                <button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button>
-            </div>
+            <div class="form-group"><label>Name *</label><input class="form-control" v-model="staffForm.name" placeholder="First name"></div>
+            <div class="form-group"><label>Surname *</label><input class="form-control" v-model="staffForm.surname" placeholder="Last name"></div>
+            <div class="form-group"><label>Email *</label><input class="form-control" v-model="staffForm.email" placeholder="staff@example.com" type="email"></div>
+            <div class="form-group" v-if="!isEditing"><label>Password *</label><input class="form-control" v-model="staffForm.password" placeholder="Min 6 characters" type="password"></div>
+            <div class="form-group"><label>Role *</label><select class="form-control" v-model="staffForm.role"><option value="staff">Staff</option><option value="scanner">Scanner</option><option value="cleaner">Cleaner</option><option value="shisha">Shisha Master</option><option value="cashier">Cashier</option><option value="vvip">VVIP Concierge</option><option value="security">Security</option></select></div>
+            <div class="form-group"><label>Hourly Rate (ZAR) *</label><input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50" placeholder="e.g., 45.00"></div>
+            <div class="modal-buttons"><button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button><button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button></div>
         </div>
     </div>
 
-    <!-- INFO MODAL (unchanged) -->
+    <!-- INFO MODAL -->
     <div class="modal-mask" :class="{ active: showInfoModal }">
         <div class="modal-container">
             <div class="modal-icon"><i :class="infoIcon" :style="{ color: infoIconColor }"></i></div>
@@ -322,13 +284,11 @@
 </div>
 
 <script>
-// Supabase configuration (unchanged)
 const SUPABASE_URL = 'https://fqbcidcezfprranfxhyj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlemZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlenZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const STORAGE_KEYS = { SHIFTS: 'qless_shifts' };
 
-// ========== MODULE TO FILE MAPPING (EXTERNAL IFrame LINKS) ==========
 const moduleFileMap = {
   'Event Management': '/tenant/event-manager.html',
   'Passports': '/tenant/passport.html',
@@ -341,7 +301,6 @@ const moduleFileMap = {
   'Tenant Settings': '/tenant-admin.html'
 };
 
-// Define custom order for modules
 const MODULE_ORDER = ['Event Management', 'Passports', 'Staff Management', 'Workforce'];
 
 new Vue({
@@ -352,6 +311,7 @@ new Vue({
         tenantId: null,
         tenantName: 'Demo Venue',
         adminName: 'Admin',
+        adminEmail: '',
         branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
         tenantModules: [],
         staffList: [],
@@ -372,7 +332,8 @@ new Vue({
         staffModuleTab: 'accounts',
         currentUserTenantId: null,
         externalUrl: '',
-        logoLoaded: true
+        logoLoaded: true,
+        sessionChecked: false
     },
     computed: {
         tenantInitial() { return this.tenantName ? this.tenantName.charAt(0).toUpperCase() : 'R'; },
@@ -390,7 +351,6 @@ new Vue({
         enabledModulesList() {
             return this.tenantModules.filter(m => m.enabled === true);
         },
-        // Sorted modules according to custom order, then alphabetically
         sortedModules() {
             const modules = [...this.enabledModulesList];
             modules.sort((a, b) => {
@@ -432,13 +392,17 @@ new Vue({
             };
             return icons[name] || 'fas fa-cube';
         },
-        getRoleDisplay(r) { const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security' }; return map[r] || r; },
+        getRoleDisplay(r) { 
+            const map = { staff:'Staff', manager:'Manager', cashier:'Cashier', security:'Security', scanner:'Scanner', cleaner:'Cleaner', shisha:'Shisha Master', vvip:'VVIP Concierge' }; 
+            return map[r] || r; 
+        },
         formatDate(iso) { return iso ? new Date(iso).toLocaleDateString() : '-'; },
         formatTime(d){ return d?new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-'; },
         formatDateTime(d){ return d?new Date(d).toLocaleString():'-'; },
         calculateDuration(loginTime){ const diff = Math.floor((new Date() - new Date(loginTime)) / 60000); return `${Math.floor(diff/60)}h ${diff%60}m`; },
         showStunningAlert(title, msg, icon, color){ this.infoTitle=title; this.infoMessage=msg; this.infoIcon=icon; this.infoIconColor=color; this.showInfoModal=true; },
         handleNavClick(item){ this.currentSection = item.id; this.closeSidebar(); },
+        testNotification(){ this.showStunningAlert('Notification Center', 'You have no new notifications', 'fas fa-bell', '#E30613'); },
         
         goToModuleSection(module) {
             const externalPath = moduleFileMap[module.name];
@@ -450,46 +414,114 @@ new Vue({
             }
             this.currentSection = 'module_' + module.id;
             if (module.name === 'Staff Management') this.staffModuleTab = 'accounts';
-            if (module.name === 'Private Label') {}
             this.closeSidebar();
         },
         
         closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
 
-        async loadCurrentAdminTenant() {
-            const { data: { user } } = await supabaseClient.auth.getUser();
-            if (!user) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); return false; }
-            const { data: profile, error } = await supabaseClient.from('profiles').select('tenant_id').eq('id', user.id).single();
-            if (error || !profile || !profile.tenant_id) {
-                const { data: tenants, error: tenantErr } = await supabaseClient.from('tenants').select('id').limit(1);
-                if (tenantErr || !tenants || tenants.length === 0) { this.showStunningAlert('Error', 'No tenant found', 'fas fa-exclamation', '#dc2626'); return false; }
-                this.currentUserTenantId = tenants[0].id;
-                this.tenantId = tenants[0].id;
-                const { data: tenantData } = await supabaseClient.from('tenants').select('name').eq('id', this.tenantId).single();
-                if (tenantData) this.tenantName = tenantData.name;
+        async checkAuthAndLoad() {
+            try {
+                const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+                
+                if (userError || !user) {
+                    console.error('No user found:', userError);
+                    this.showStunningAlert('Session Expired', 'Please log in again', 'fas fa-exclamation-triangle', '#dc2626');
+                    setTimeout(() => { window.location.href = '../login.html'; }, 2000);
+                    return false;
+                }
+                
+                this.adminEmail = user.email;
+                this.adminName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin';
+                
+                // Try to get tenant from user metadata first
+                let tenantId = user.user_metadata?.tenant_id;
+                
+                if (!tenantId) {
+                    // Try to get from profiles table
+                    const { data: profile, error: profileError } = await supabaseClient
+                        .from('profiles')
+                        .select('tenant_id')
+                        .eq('id', user.id)
+                        .maybeSingle();
+                    
+                    if (profileError) {
+                        console.error('Profile error:', profileError);
+                    }
+                    
+                    if (profile && profile.tenant_id) {
+                        tenantId = profile.tenant_id;
+                    }
+                }
+                
+                if (!tenantId) {
+                    // Get first available tenant as fallback
+                    const { data: tenants, error: tenantError } = await supabaseClient
+                        .from('tenants')
+                        .select('id, name')
+                        .limit(1);
+                    
+                    if (tenantError || !tenants || tenants.length === 0) {
+                        this.showStunningAlert('Error', 'No tenant found for this account', 'fas fa-exclamation', '#dc2626');
+                        setTimeout(() => { window.location.href = '../login.html'; }, 2000);
+                        return false;
+                    }
+                    
+                    tenantId = tenants[0].id;
+                    this.tenantName = tenants[0].name;
+                } else {
+                    // Get tenant name
+                    const { data: tenantData } = await supabaseClient
+                        .from('tenants')
+                        .select('name')
+                        .eq('id', tenantId)
+                        .single();
+                    if (tenantData) this.tenantName = tenantData.name;
+                }
+                
+                this.tenantId = tenantId;
+                this.currentUserTenantId = tenantId;
+                this.sessionChecked = true;
                 return true;
+                
+            } catch (err) {
+                console.error('Auth check error:', err);
+                this.showStunningAlert('Error', 'Failed to verify session', 'fas fa-exclamation', '#dc2626');
+                setTimeout(() => { window.location.href = '../login.html'; }, 2000);
+                return false;
             }
-            this.currentUserTenantId = profile.tenant_id;
-            this.tenantId = profile.tenant_id;
-            return true;
         },
+        
         async loadStaffFromSupabase() {
             if (!this.tenantId) return;
-            const { data, error } = await supabaseClient.from('profiles').select('id, name, surname, email, role, phone, hourly_rate, status, created_at').eq('tenant_id', this.tenantId).in('role', ['staff', 'manager', 'cashier', 'security']).order('created_at', { ascending: false });
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
+                .eq('tenant_id', this.tenantId)
+                .in('role', ['staff', 'manager', 'cashier', 'security', 'scanner', 'cleaner', 'shisha', 'vvip'])
+                .order('created_at', { ascending: false });
             if (error) { console.error('Error loading staff profiles:', error); return; }
             this.staffList = data || [];
         },
+        
         async loadTenantModules() {
-            const { data: tenants, error: tenantError } = await supabaseClient.from('tenants').select('id, name');
-            if (tenantError) { console.error(tenantError); return; }
-            if (tenants && tenants.length > 0) {
-                this.tenantId = tenants[0].id;
-                this.tenantName = tenants[0].name;
-                const { data: modules, error } = await supabaseClient.from('tenant_modules').select(`id, enabled, module:module_id (id, name, description, icon)`).eq('tenant_id', this.tenantId);
-                if (error) console.error(error);
-                else this.tenantModules = modules.map(m => ({ id: m.module.id, name: m.module.name, enabled: m.enabled, description: m.module.description, icon: m.module.icon }));
+            if (!this.tenantId) return;
+            const { data: modules, error } = await supabaseClient
+                .from('tenant_modules')
+                .select(`id, enabled, module:module_id (id, name, description, icon)`)
+                .eq('tenant_id', this.tenantId);
+            if (error) {
+                console.error('Error loading modules:', error);
+                return;
             }
+            this.tenantModules = modules.map(m => ({ 
+                id: m.module.id, 
+                name: m.module.name, 
+                enabled: m.enabled, 
+                description: m.module.description, 
+                icon: m.module.icon 
+            }));
         },
+        
         loadLocalData() {
             const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
             this.shifts = allShifts.filter(s=>s.tenant_id===this.tenantId);
@@ -497,10 +529,13 @@ new Vue({
             if(savedBrand){ const b=JSON.parse(savedBrand); this.tenantName=b.tenantName||this.tenantName; this.branding=b.branding||{primaryColor:'#E30613',logoUrl:'',faviconUrl:''}; }
             this.calcTotals();
         },
+        
         calcTotals(){
             let todayTotal=0;
+            const today = new Date().setHours(0,0,0,0);
             this.shifts.forEach(s=>{
-                if(new Date(s.login_time).setHours(0,0,0,0)===new Date().setHours(0,0,0,0)){
+                const shiftDate = new Date(s.login_time).setHours(0,0,0,0);
+                if(shiftDate === today){
                     if(s.hours_worked) todayTotal+=s.hours_worked;
                     else if(s.status==='active') todayTotal+=(new Date()-new Date(s.login_time))/(1000*60*60);
                 }
@@ -508,12 +543,37 @@ new Vue({
             this.totalHoursToday=todayTotal;
             this.avgHoursPerStaff=this.staffList.length?todayTotal/this.staffList.length:0;
         },
-        saveShifts(){ const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); const filtered=all.filter(s=>s.tenant_id!==this.tenantId); localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); },
-        async forceLogout(shift){ if(!confirm(`Force logout ${shift.staff_name}?`)) return; const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); if(idx!==-1){ const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); this.shifts[idx].logout_time=new Date().toISOString(); this.shifts[idx].status='completed'; this.shifts[idx].hours_worked=hrs; this.saveShifts(); this.showStunningAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); this.calcTotals(); } },
-        saveBranding(){ const data={tenantName:this.tenantName,branding:this.branding}; localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); this.showStunningAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); },
+        
+        saveShifts(){ 
+            const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); 
+            const filtered=all.filter(s=>s.tenant_id!==this.tenantId); 
+            localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); 
+        },
+        
+        async forceLogout(shift){ 
+            if(!confirm(`Force logout ${shift.staff_name}?`)) return; 
+            const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); 
+            if(idx!==-1){ 
+                const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); 
+                this.shifts[idx].logout_time=new Date().toISOString(); 
+                this.shifts[idx].status='completed'; 
+                this.shifts[idx].hours_worked=hrs; 
+                this.saveShifts(); 
+                this.showStunningAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); 
+                this.calcTotals(); 
+            } 
+        },
+        
+        saveBranding(){ 
+            const data={tenantName:this.tenantName,branding:this.branding}; 
+            localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); 
+            this.showStunningAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); 
+        },
+        
         openCreateStaffModal(){ this.isEditing=false; this.editingStaffId=null; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.showStaffModal=true; },
         editStaff(staff){ this.isEditing=true; this.editingStaffId=staff.id; this.staffForm={ name:staff.name, surname:staff.surname, email:staff.email, password:'', role:staff.role, hourly_rate:staff.hourly_rate }; this.showStaffModal=true; },
         closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.saving=false; },
+        
         async saveStaff(){
             if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showStunningAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
             if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showStunningAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
@@ -521,7 +581,15 @@ new Vue({
             if(!this.currentUserTenantId) return this.showStunningAlert('Error', 'Tenant not found. Refresh page.', 'fas fa-exclamation', '#dc2626');
             this.saving = true;
             try {
-                const payload = { email: this.staffForm.email, password: this.staffForm.password, name: this.staffForm.name, surname: this.staffForm.surname, role: this.staffForm.role, hourly_rate: parseFloat(this.staffForm.hourly_rate), tenant_id: this.currentUserTenantId };
+                const payload = { 
+                    email: this.staffForm.email, 
+                    password: this.staffForm.password, 
+                    name: this.staffForm.name, 
+                    surname: this.staffForm.surname, 
+                    role: this.staffForm.role, 
+                    hourly_rate: parseFloat(this.staffForm.hourly_rate), 
+                    tenant_id: this.currentUserTenantId 
+                };
                 const { data, error } = await supabaseClient.functions.invoke('create-staff', { body: payload });
                 if (error) throw new Error(error.message);
                 if (data && data.error) throw new Error(data.error);
@@ -529,8 +597,10 @@ new Vue({
                 this.closeStaffModal();
                 await this.loadStaffFromSupabase();
                 this.loadLocalData();
-            } catch (err) { console.error(err); this.showStunningAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } finally { this.saving = false; }
+            } catch (err) { console.error(err); this.showStunningAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } 
+            finally { this.saving = false; }
         },
+        
         async toggleStaffStatus(id){
             const staff = this.staffList.find(s => s.id === id);
             if(!staff) return;
@@ -540,6 +610,7 @@ new Vue({
             await this.loadStaffFromSupabase();
             this.showStunningAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981');
         },
+        
         async deleteStaff(id){
             const staff = this.staffList.find(s => s.id === id);
             if(staff && confirm(`Delete ${staff.name} ${staff.surname}? This will remove their profile permanently.`)){
@@ -549,16 +620,32 @@ new Vue({
                 this.showStunningAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626');
             }
         },
+        
         exportAttendanceReport(){ this.showStunningAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
-        logout(){ sessionStorage.clear(); window.location.href = '../login.html'; }
+        
+        logout(){ 
+            supabaseClient.auth.signOut().then(() => {
+                sessionStorage.clear();
+                window.location.href = '../login.html';
+            }).catch(() => {
+                window.location.href = '../login.html';
+            });
+        }
     },
+    
     async mounted() {
-        const loggedIn = await this.loadCurrentAdminTenant();
-        if (!loggedIn) { this.showStunningAlert('Session required', 'Please log in as tenant admin', 'fas fa-exclamation', '#dc2626'); setTimeout(() => { window.location.href = 'login.html'; }, 2000); return; }
+        const loggedIn = await this.checkAuthAndLoad();
+        if (!loggedIn) return;
+        
         await this.loadTenantModules();
         await this.loadStaffFromSupabase();
         this.loadLocalData();
-        setInterval(() => { this.loadLocalData(); }, 5000);
+        
+        // Refresh data periodically
+        setInterval(() => { 
+            this.loadLocalData();
+            this.calcTotals();
+        }, 5000);
     }
 });
 </script>
