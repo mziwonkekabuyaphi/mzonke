@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-<title>VVIP POS | Sovereign Terminal | Premium</title>
+<title>VVIP POS | Sovereign Terminal | Multi-Vendor Routing</title>
 <style>
 * {
     margin: 0;
@@ -235,16 +235,12 @@ body {
     cursor: not-allowed;
     transform: none;
 }
-
-/* Loading state for checkout */
 .cart-btn.loading {
     opacity: 0.7;
     cursor: wait;
     pointer-events: none;
 }
-.cart-btn.loading::after {
-    content: " ⏳";
-}
+.cart-btn.loading::after { content: " ⏳"; }
 
 .modal {
     display: none;
@@ -273,24 +269,9 @@ body {
     padding: 14px 18px;
     margin-bottom: 20px;
 }
-.package-info-title {
-    font-size: 10px;
-    color: rgba(255,255,255,0.7);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-}
-.package-info-name {
-    font-size: 15px;
-    font-weight: 700;
-    color: white;
-    margin-bottom: 4px;
-}
-.package-info-credit {
-    font-size: 20px;
-    font-weight: 800;
-    color: #ffd700;
-}
+.package-info-title { font-size: 10px; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.package-info-name { font-size: 15px; font-weight: 700; color: white; margin-bottom: 4px; }
+.package-info-credit { font-size: 20px; font-weight: 800; color: #ffd700; }
 .customer-info-bar {
     background: var(--gray-bg);
     padding: 14px 18px;
@@ -340,12 +321,7 @@ body {
     text-align: center;
 }
 .vvip-modal-icon { font-size: 56px; margin-bottom: 16px; }
-.vvip-modal-title {
-    font-size: 22px;
-    font-weight: 800;
-    margin-bottom: 12px;
-    color: var(--red);
-}
+.vvip-modal-title { font-size: 22px; font-weight: 800; margin-bottom: 12px; color: var(--red); }
 .vvip-modal-message { color: var(--gray-text); font-size: 14px; margin-bottom: 24px; }
 .vvip-modal-btn {
     background: var(--red);
@@ -393,8 +369,6 @@ input:focus, select:focus {
     .cart-container { position: static; margin-top: 20px; }
     .quick-status { flex-direction: column; align-items: flex-start; }
     .status-buttons { margin-left: 0; margin-top: 8px; width: 100%; justify-content: center; }
-    .cart-item-row { flex-wrap: wrap; }
-    .cart-item-controls { margin-left: auto; }
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -404,7 +378,7 @@ input:focus, select:focus {
 <div class="container">
     <div class="quick-status">
         <div class="status-dot"></div>
-        <div class="status-text" id="statusText">POS ACTIVE</div>
+        <div class="status-text" id="statusText">VVIP POS ACTIVE</div>
         <div class="status-stats">
             <div>Revenue: <span id="quickRevenue">R0</span></div>
             <div>Guests: <span id="quickGuests">0</span></div>
@@ -489,7 +463,6 @@ input:focus, select:focus {
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    // Vendor constants
     const VENDORS = {
         SMART_COUNTER: "Rands Smart Counter",
         BUTCHER: "The Butcher Shop", 
@@ -516,58 +489,26 @@ input:focus, select:focus {
     window.closeVVIPModal = () => document.getElementById('vvipModal').classList.remove('active');
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
 
-    // Load customer by phone number - FIXED: proper phone lookup
     window.loadCustomerManual = async function() {
         const identifier = document.getElementById('posBand').value.trim();
         if (!identifier) { showToast('Please enter a mobile number', true); return; }
         
-        // Show loading state
-        const loadBtn = event?.target;
-        if (loadBtn) loadBtn.textContent = '⏳ LOADING...';
-        
         try {
-            // Try to find by phone number (primary method)
-            let { data: profile, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('phone', identifier)
-                .maybeSingle();
-            
-            // If not found by phone, try by wallet_id or ID
+            let { data: profile, error } = await supabase.from('profiles').select('*').eq('phone', identifier).maybeSingle();
             if (!profile && !error) {
-                const { data: byWallet } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('wallet_id', identifier)
-                    .maybeSingle();
+                const { data: byWallet } = await supabase.from('profiles').select('*').eq('wallet_id', identifier).maybeSingle();
                 if (byWallet) profile = byWallet;
             }
-            
-            if (!profile || error) {
-                console.error('Customer lookup error:', error);
-                showToast(`Customer not found with identifier: ${identifier}`, true);
-                return;
-            }
-            
+            if (!profile || error) { showToast(`Customer not found: ${identifier}`, true); return; }
             await loadCustomerByProfile(profile);
-        } catch (err) {
-            console.error('Unexpected error:', err);
-            showToast('Error loading customer', true);
-        } finally {
-            if (loadBtn) loadBtn.textContent = '🔍 LOAD CUSTOMER';
-        }
+        } catch (err) { showToast('Error loading customer', true); }
     };
 
     async function loadCustomerByProfile(profile) {
-        // Get active VVIP booking
-        const { data: activeBooking } = await supabase
-            .from('vvip_bookings')
+        const { data: activeBooking } = await supabase.from('vvip_bookings')
             .select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price)`)
-            .eq('customer_id', profile.id)
-            .in('status', ['confirmed', 'checked_in', 'seated'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .eq('customer_id', profile.id).in('status', ['confirmed', 'checked_in', 'seated'])
+            .order('created_at', { ascending: false }).limit(1).maybeSingle();
             
         if (activeBooking && activeBooking.packages) {
             currentTabBalance = activeBooking.remaining_balance || activeBooking.total_amount;
@@ -580,8 +521,7 @@ input:focus, select:focus {
         
         currentCustomer = profile;
         currentCart = [];
-        
-        document.getElementById('customerBandDisplay').innerText = profile.name || profile.phone || profile.wallet_id;
+        document.getElementById('customerBandDisplay').innerText = profile.name || profile.phone;
         document.getElementById('customerBalanceDisplay').innerHTML = `R${currentTabBalance.toFixed(2)}`;
         document.getElementById('customerInfoBar').style.display = 'block';
         
@@ -589,19 +529,13 @@ input:focus, select:focus {
             document.getElementById('packageName').innerText = currentPackageInfo.name;
             document.getElementById('packageRemaining').innerHTML = `R${currentPackageInfo.remaining.toFixed(2)}`;
             document.getElementById('packageInfoCard').style.display = 'block';
-        } else {
-            document.getElementById('packageInfoCard').style.display = 'none';
-        }
-        
+        } else { document.getElementById('packageInfoCard').style.display = 'none'; }
         updateCartDisplay();
         showToast(`✅ Welcome ${profile.name || profile.phone}! Balance: R${currentTabBalance.toFixed(2)}`);
     }
 
     window.clearCustomer = function() {
-        currentCustomer = null;
-        currentCart = [];
-        currentTabBalance = 0;
-        currentPackageInfo = null;
+        currentCustomer = null; currentCart = []; currentTabBalance = 0; currentPackageInfo = null;
         document.getElementById('customerInfoBar').style.display = 'none';
         document.getElementById('packageInfoCard').style.display = 'none';
         document.getElementById('posBand').value = '';
@@ -609,33 +543,14 @@ input:focus, select:focus {
         showToast('Customer cleared');
     };
 
-    // Load products with actual images from database
     async function loadVendorProducts() {
-        // Load products from products table with images
-        const { data: products, error } = await supabase
-            .from('products')
-            .select('*')
-            .eq('is_available', true);
-        
-        if (error) console.error('Error loading products:', error);
-        
-        // Categorize products
+        const { data: products } = await supabase.from('products').select('*').eq('is_available', true);
         const allProducts = products || [];
         
-        vendorProducts[VENDORS.SMART_COUNTER] = allProducts.filter(p => 
-            ['beer', 'wine', 'spirits', 'non_alcoholic', 'cocktail'].includes(p.category)
-        );
+        vendorProducts[VENDORS.SMART_COUNTER] = allProducts.filter(p => ['beer', 'wine', 'spirits', 'non_alcoholic', 'cocktail'].includes(p.category));
+        vendorProducts[VENDORS.BUTCHER] = allProducts.filter(p => ['butcher', 'food', 'steak', 'burger', 'meat'].includes(p.category));
         
-        vendorProducts[VENDORS.BUTCHER] = allProducts.filter(p => 
-            ['butcher', 'food', 'steak', 'burger', 'meat'].includes(p.category)
-        );
-        
-        // Load shisha products
-        const { data: shishaProducts } = await supabase
-            .from('shisha_products')
-            .select('*')
-            .eq('is_available', true);
-        
+        const { data: shishaProducts } = await supabase.from('shisha_products').select('*').eq('is_available', true);
         vendorProducts[VENDORS.SHISHA] = shishaProducts || [];
         
         updateVendorMenu();
@@ -647,62 +562,27 @@ input:focus, select:focus {
         const container = document.getElementById('vendorMenu');
         
         if (!items.length) {
-            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--gray-text);">No items available for this category</div>';
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--gray-text);">No items available</div>';
             return;
         }
         
         container.innerHTML = items.map(item => {
-            // Use actual product image from database or fallback to a placeholder based on product name
-            let productImage = item.image_url || '';
-            // If no image in DB, use a themed placeholder (not random picsum)
-            if (!productImage) {
-                const category = item.category || 'default';
-                productImage = `https://placehold.co/400x300/e30613/white?text=${encodeURIComponent(item.name.substring(0, 15))}`;
-            }
-            
-            return `
-                <div class="menu-item">
-                    <div class="product-image-wrap">
-                        <img class="product-image" src="${productImage}" alt="${escapeHtml(item.name)}" onerror="this.src='https://placehold.co/400x300/e30613/white?text=${encodeURIComponent(item.name.substring(0, 10))}'">
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                        <strong style="font-size:0.85rem;">${escapeHtml(item.name)}</strong>
-                        <span style="color:var(--red); font-weight:700;">R${item.price}</span>
-                    </div>
-                    <button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-image="${productImage}" data-vendor="${vendor}">
-                        ➕ ADD TO ORDER
-                    </button>
-                </div>
-            `;
+            let productImage = item.image_url || `https://placehold.co/400x300/e30613/white?text=${encodeURIComponent(item.name.substring(0, 15))}`;
+            return `<div class="menu-item"><div class="product-image-wrap"><img class="product-image" src="${productImage}" onerror="this.src='https://placehold.co/400x300/e30613/white?text=Product'"></div><div style="display:flex; justify-content:space-between; margin-bottom:8px;"><strong>${escapeHtml(item.name)}</strong><span style="color:var(--red); font-weight:700;">R${item.price}</span></div><button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-image="${productImage}" data-vendor="${vendor}">➕ ADD</button></div>`;
         }).join('');
         
-        // Attach event listeners
         container.querySelectorAll('.add-to-cart-btn').forEach(btn => {
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                const name = btn.dataset.name;
-                const price = parseFloat(btn.dataset.price);
-                const productId = btn.dataset.id;
-                const imageUrl = btn.dataset.image;
-                const vendor = btn.dataset.vendor;
-                addToCart(name, price, vendor, productId, imageUrl);
-            };
+            btn.onclick = () => addToCart(btn.dataset.name, parseFloat(btn.dataset.price), btn.dataset.vendor, btn.dataset.id, btn.dataset.image);
         });
     }
     
     function addToCart(name, price, vendor, productId, imageUrl) {
-        if (!currentCustomer) {
-            showToast('Please load a customer first', true);
-            return;
-        }
+        if (!currentCustomer) { showToast('Please load a customer first', true); return; }
         const existing = currentCart.find(i => i.productId === productId && i.vendor === vendor);
-        if (existing) {
-            existing.quantity++;
-        } else {
-            currentCart.push({ name, price, vendor, quantity: 1, productId, imageUrl });
-        }
+        if (existing) existing.quantity++;
+        else currentCart.push({ name, price, vendor, quantity: 1, productId, imageUrl });
         updateCartDisplay();
-        showToast(`✓ Added ${name} to cart`);
+        showToast(`✓ Added ${name}`);
     }
     
     function updateCartDisplay() {
@@ -710,7 +590,7 @@ input:focus, select:focus {
         let subtotal = 0, totalItems = 0;
         
         if (!currentCart.length) {
-            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--gray-text);">🛒 Cart is empty</div>';
+            container.innerHTML = '<div style="text-align:center; padding:40px;">🛒 Cart empty</div>';
             document.getElementById('cartItemCount').innerText = '0';
             document.getElementById('cartSubtotal').innerText = 'R0';
             document.getElementById('checkoutBtn').disabled = true;
@@ -725,22 +605,7 @@ input:focus, select:focus {
             const itemTotal = item.price * item.quantity;
             subtotal += itemTotal;
             totalItems += item.quantity;
-            html += `
-                <div class="cart-item-row">
-                    <img class="cart-item-img" src="${item.imageUrl}" onerror="this.src='https://placehold.co/52x52/e30613/white?text=🍽️'">
-                    <div class="cart-item-details">
-                        <div class="cart-item-name">${escapeHtml(item.name)}</div>
-                        <div class="cart-item-price">R${item.price} · ${escapeHtml(item.vendor)}</div>
-                    </div>
-                    <div class="cart-item-controls">
-                        <button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button>
-                        <span style="min-width:28px; text-align:center; font-weight:600;">${item.quantity}</span>
-                        <button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button>
-                        <button class="remove-item" onclick="removeFromCart(${idx})">✕</button>
-                    </div>
-                    <span style="color:var(--red); font-weight:700; min-width:65px; text-align:right;">R${itemTotal.toFixed(2)}</span>
-                </div>
-            `;
+            html += `<div class="cart-item-row"><img class="cart-item-img" src="${item.imageUrl}" onerror="this.src='https://placehold.co/52x52/e30613/white?text=🍽️'"><div class="cart-item-details"><div class="cart-item-name">${escapeHtml(item.name)}</div><div class="cart-item-price">R${item.price} · ${escapeHtml(item.vendor)}</div></div><div class="cart-item-controls"><button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button><span style="min-width:28px; text-align:center; font-weight:600;">${item.quantity}</span><button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button><button class="remove-item" onclick="removeFromCart(${idx})">✕</button></div><span style="color:var(--red); font-weight:700;">R${itemTotal.toFixed(2)}</span></div>`;
         });
         
         container.innerHTML = html;
@@ -755,34 +620,35 @@ input:focus, select:focus {
     }
     
     window.updateQuantity = function(idx, delta) {
-        if (currentCart[idx]) {
-            currentCart[idx].quantity += delta;
-            if (currentCart[idx].quantity <= 0) currentCart.splice(idx, 1);
-            updateCartDisplay();
-        }
+        if (currentCart[idx]) { currentCart[idx].quantity += delta; if (currentCart[idx].quantity <= 0) currentCart.splice(idx, 1); updateCartDisplay(); }
     };
+    window.removeFromCart = function(idx) { currentCart.splice(idx, 1); updateCartDisplay(); };
+    window.clearCart = function() { currentCart = []; updateCartDisplay(); };
     
-    window.removeFromCart = function(idx) {
-        currentCart.splice(idx, 1);
-        updateCartDisplay();
-    };
+    // Send Shisha request to staff console
+    async function sendShishaRequest(items, total) {
+        const requestData = {
+            customer_phone: currentCustomer.phone,
+            customer_name: currentCustomer.name,
+            request_type: 'new_order',
+            location_name: 'Main Lounge',
+            flavour_name: items[0]?.name || 'Premium',
+            device_code: 'New',
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            request_data: { items, total, is_vvip: true }
+        };
+        await supabase.from('shisha_requests').insert([requestData]);
+        showToast(`💨 Shisha request sent to staff console!`);
+    }
     
-    window.clearCart = function() {
-        currentCart = [];
-        updateCartDisplay();
-    };
-    
-    // Checkout with proper loading state
     window.checkout = async function() {
         if (isLoadingCheckout) return;
         if (!currentCustomer) { showToast('No customer loaded', true); return; }
         if (!currentCart.length) { showToast('Cart is empty', true); return; }
         
         const total = currentCart.reduce((s, i) => s + i.price * i.quantity, 0);
-        if (currentTabBalance < total) {
-            showToast(`Insufficient balance. Need R${total}, have R${currentTabBalance}`, true);
-            return;
-        }
+        if (currentTabBalance < total) { showToast(`Insufficient balance. Need R${total}, have R${currentTabBalance}`, true); return; }
         
         isLoadingCheckout = true;
         const checkoutBtn = document.getElementById('checkoutBtn');
@@ -790,52 +656,51 @@ input:focus, select:focus {
         checkoutBtn.disabled = true;
         
         try {
-            // Group by vendor
             const vendorGroups = new Map();
             currentCart.forEach(item => {
                 if (!vendorGroups.has(item.vendor)) vendorGroups.set(item.vendor, []);
                 vendorGroups.get(item.vendor).push(item);
             });
             
-            // Create orders for each vendor
             const orderPromises = [];
+            let hasShisha = false;
+            
             for (const [vendor, items] of vendorGroups.entries()) {
                 const vendorTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
                 const prefix = vendor === VENDORS.SMART_COUNTER ? 'SC' : (vendor === VENDORS.BUTCHER ? 'BT' : 'SH');
                 const orderNumber = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
                 
-                orderPromises.push(supabase.from('orders').insert([{
-                    order_number: orderNumber,
-                    customer_phone: currentCustomer.phone || '',
-                    customer_name: currentCustomer.name,
-                    total: vendorTotal,
-                    payment_method: 'vvip_tab',
-                    payment_status: 'paid',
-                    status: 'pending',
-                    vendor: vendor,
-                    source: 'wallet',
-                    is_vvip: true,
-                    customer_id: currentCustomer.id,
-                    items: items.map(i => ({ 
-                        product_name: i.name, 
-                        quantity: i.quantity, 
-                        unit_price: i.price, 
-                        subtotal: i.price * i.quantity 
-                    })),
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                }]));
+                if (vendor === VENDORS.SHISHA) {
+                    hasShisha = true;
+                    await sendShishaRequest(items, vendorTotal);
+                } else {
+                    orderPromises.push(supabase.from('orders').insert([{
+                        order_number: orderNumber,
+                        customer_phone: currentCustomer.phone || '',
+                        customer_name: currentCustomer.name,
+                        total: vendorTotal,
+                        payment_method: 'vvip_tab',
+                        payment_status: 'paid',
+                        status: 'pending',
+                        vendor: vendor,
+                        source: 'wallet',
+                        is_vvip: true,
+                        customer_id: currentCustomer.id,
+                        items: items.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity })),
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }]));
+                }
             }
             
-            // Update balance
+            await Promise.all(orderPromises);
+            
             const newTabBalance = currentTabBalance - total;
             if (currentPackageInfo) {
                 await supabase.from('vvip_bookings').update({ remaining_balance: newTabBalance }).eq('id', currentPackageInfo.id);
             } else {
                 await supabase.from('wallets').update({ balance: newTabBalance }).eq('user_id', currentCustomer.id);
             }
-            
-            await Promise.all(orderPromises);
             
             revenue += total;
             guests++;
@@ -850,14 +715,10 @@ input:focus, select:focus {
             document.getElementById('quickGuests').innerText = guests;
             
             const vendorNames = Array.from(vendorGroups.keys()).join(', ');
-            showToast(`✅ Order placed! R${total} deducted. Sent to: ${vendorNames}`);
+            showToast(`✅ Order placed! R${total} deducted. Sent to: ${vendorNames}${hasShisha ? ' (Shisha request sent to staff)' : ''}`);
             
             clearCart();
-            
-            if (newTabBalance <= 0) {
-                showToast(`Balance depleted. Customer will be cleared.`);
-                setTimeout(() => clearCustomer(), 2000);
-            }
+            if (newTabBalance <= 0) { showToast(`Balance depleted. Customer will be cleared.`); setTimeout(() => clearCustomer(), 2000); }
         } catch (err) {
             console.error('Checkout error:', err);
             showToast('Checkout failed. Please try again.', true);
@@ -871,24 +732,11 @@ input:focus, select:focus {
     async function renderActiveOrders() {
         const { data } = await supabase.from('orders').select('*').in('status', ['pending', 'preparing', 'ready']).order('is_vvip', { ascending: false }).order('created_at', { ascending: false });
         const container = document.getElementById('activeOrdersGrid');
-        if (!data?.length) {
-            container.innerHTML = '<div style="text-align:center; padding:40px;">No active orders</div>';
-            return;
-        }
-        container.innerHTML = data.map(order => `
-            <div class="active-order-card" style="background:white; border-radius:20px; padding:16px; border:1px solid var(--gray-border);">
-                <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
-                    <span style="background:var(--red-soft); padding:4px 12px; border-radius:30px; font-size:12px; font-weight:600;">#${order.order_number}</span>
-                    <span>${order.vendor || 'Unknown'}</span>
-                </div>
-                <div><strong>${order.customer_name}</strong> ${order.is_vvip ? '👑 VVIP' : ''}</div>
-                <div style="margin:10px 0;">Total: R${order.total}</div>
-                <div class="status-badge status-${order.status}">${order.status.toUpperCase()}</div>
-            </div>
-        `).join('');
+        if (!data?.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No active orders</div>'; return; }
+        container.innerHTML = data.map(order => `<div style="background:white; border-radius:20px; padding:16px; border:1px solid var(--gray-border); ${order.is_vvip ? 'border-left: 4px solid #ffd700;' : ''}"><div style="display:flex; justify-content:space-between; margin-bottom:12px;"><span style="background:var(--red-soft); padding:4px 12px; border-radius:30px; font-size:12px; font-weight:600;">#${order.order_number}</span><span>${order.vendor || 'Unknown'}</span></div><div><strong>${order.customer_name}</strong> ${order.is_vvip ? '👑 VVIP' : ''}</div><div style="margin:10px 0;">Total: R${order.total}</div><div class="status-badge" style="display:inline-block; padding:4px 12px; border-radius:30px; font-size:11px; background:#fef3c7; color:#b45309;">${order.status.toUpperCase()}</div></div>`).join('');
     }
     
-    function switchToPOS() { document.getElementById('pos').classList.add('active'); document.getElementById('activeOrders').classList.remove('active'); document.getElementById('statusText').innerText = 'POS ACTIVE'; }
+    function switchToPOS() { document.getElementById('pos').classList.add('active'); document.getElementById('activeOrders').classList.remove('active'); document.getElementById('statusText').innerText = 'VVIP POS ACTIVE'; }
     function switchToActiveOrders() { document.getElementById('pos').classList.remove('active'); document.getElementById('activeOrders').classList.add('active'); document.getElementById('statusText').innerText = 'ACTIVE ORDERS'; renderActiveOrders(); }
     async function openDashboardModal() { const { data: orders } = await supabase.from('orders').select('total'); const totalRevenue = (orders || []).reduce((s, o) => s + (o.total || 0), 0); document.getElementById('dashboardContent').innerHTML = `<div style="padding:20px;"><div style="background:var(--gray-bg); padding:20px; border-radius:20px;"><div style="font-size:32px; font-weight:800; color:var(--red);">R${totalRevenue.toLocaleString()}</div><div>Total Revenue</div><div style="margin-top:15px;">Guests Served: ${guests}</div></div></div>`; document.getElementById('dashboardModal').style.display = 'flex'; }
     function closeDashboardModal() { document.getElementById('dashboardModal').style.display = 'none'; }
@@ -897,23 +745,10 @@ input:focus, select:focus {
     
     document.getElementById('nfcButton')?.addEventListener('click', () => showToast('📱 Please enter phone number manually'));
     
-    async function init() {
-        await loadVendorProducts();
-        updateQuickStats();
-    }
+    async function init() { await loadVendorProducts(); updateQuickStats(); }
+    function updateQuickStats() { document.getElementById('quickRevenue').innerText = 'R' + revenue; document.getElementById('quickGuests').innerText = guests; }
     
-    function updateQuickStats() {
-        document.getElementById('quickRevenue').innerText = 'R' + revenue;
-        document.getElementById('quickGuests').innerText = guests;
-    }
-    
-    window.switchToPOS = switchToPOS;
-    window.switchToActiveOrders = switchToActiveOrders;
-    window.openDashboardModal = openDashboardModal;
-    window.closeDashboardModal = closeDashboardModal;
-    window.openVVIPPackages = openVVIPPackages;
-    window.switchVendor = switchVendor;
-    
+    window.switchToPOS = switchToPOS; window.switchToActiveOrders = switchToActiveOrders; window.openDashboardModal = openDashboardModal; window.closeDashboardModal = closeDashboardModal; window.openVVIPPackages = openVVIPPackages; window.switchVendor = switchVendor;
     init();
 </script>
 </body>
