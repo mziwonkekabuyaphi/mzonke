@@ -52,78 +52,6 @@
       z-index: 0;
     }
 
-    .site-header {
-      background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%);
-      padding: 1rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-radius: 0 0 32px 32px;
-      box-shadow: var(--shadow-soft);
-      margin-bottom: 30px;
-      position: relative;
-      z-index: 2;
-    }
-    .logo-wrap {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-    }
-    .logo-img {
-      height: 44px;
-      width: auto;
-      object-fit: contain;
-      background: rgba(255,255,255,0.15);
-      padding: 4px 12px;
-      border-radius: var(--radius-full);
-      backdrop-filter: blur(4px);
-    }
-    .logo-text {
-      font-family: 'Inter', sans-serif;
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: white;
-      letter-spacing: -0.3px;
-    }
-    .header-meta {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .status-pill {
-      background: rgba(255,255,255,0.2);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: var(--radius-full);
-      padding: 0.3rem 1rem;
-      font-family: 'Inter', sans-serif;
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: white;
-    }
-    .status-pill::before {
-      content: '●';
-      margin-right: 6px;
-      color: #4ade80;
-      font-size: 0.7rem;
-      animation: blink 1.4s infinite;
-    }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-    .clock {
-      font-family: 'Inter', sans-serif;
-      font-size: 1rem;
-      font-weight: 600;
-      letter-spacing: 1px;
-      background: rgba(0,0,0,0.3);
-      padding: 0.3rem 0.9rem;
-      border-radius: var(--radius-full);
-      color: white;
-      backdrop-filter: blur(4px);
-    }
-
     .stats-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -537,8 +465,6 @@
       body { padding: 12px; }
       .stats-row { grid-template-columns: repeat(2,1fr); gap: 12px; }
       .orders-grid { grid-template-columns: 1fr; }
-      .site-header { padding: 0.8rem 1rem; }
-      .clock { display: none; }
     }
     @media (max-width: 480px) {
       .stats-row { grid-template-columns: 1fr; }
@@ -548,16 +474,6 @@
   </style>
 </head>
 <body>
-
-<header class="site-header">
-  <div class="logo-wrap" id="logoWrap">
-    <img class="logo-img" id="logoImg" src="../assets/images/rands-logo3.png" alt="Rands" onerror="this.src='../assets/images/rands-logo3.png'">
-  </div>
-  <div class="header-meta">
-    <div class="status-pill">Bar Screen · Live</div>
-    <div class="clock" id="liveClock">--:--</div>
-  </div>
-</header>
 
 <div class="stats-row">
   <div class="stat-card"><div class="stat-value" id="pendingCount">0</div><div class="stat-label">Pending Orders</div></div>
@@ -601,7 +517,6 @@
   let showCompleted = false;
   let realtimeSubscription = null;
 
-  // Drink keywords
   const drinkKeywords = ['coke', 'cola', 'water', 'beer', 'lager', 'stout', 'wine', 'spirit', 'cocktail', 'juice', 'soda', 'fanta', 'sprite', 'whiskey', 'vodka', 'gin', 'rum', 'tequila', 'brandy'];
 
   function filterDrinkItems(items) {
@@ -627,7 +542,7 @@
       return [];
     }
     
-    console.log(`📦 Fetched ${data?.length || 0} raw orders from Supabase:`, data);
+    console.log(`📦 Fetched ${data?.length || 0} raw orders from Supabase`);
     
     if (!data || data.length === 0) return [];
     
@@ -643,7 +558,7 @@
       
       return {
         ...order,
-        id: order.id,                           // UUID primary key
+        id: order.id,
         orderId: order.order_number || order.order_id || order.id,
         items: displayItems,
         total: displayTotal,
@@ -700,7 +615,6 @@
     });
   }
 
-  // FIXED: Use UUID (order.id) for database operations
   async function updateOrderStatus(orderUuid, newStatus) {
     if (!orderUuid) {
       console.error("❌ Missing order UUID");
@@ -711,7 +625,6 @@
     try {
       console.log(`🔄 Updating order ${orderUuid} to status: ${newStatus}`);
       
-      // Fetch current order state using UUID
       const { data: existing, error: fetchErr } = await supabase
         .from('orders')
         .select('status, prep_start_time')
@@ -731,7 +644,6 @@
       
       console.log(`📋 Current status: ${existing.status}, new status: ${newStatus}`);
       
-      // Validate transition
       if (newStatus === 'preparing' && existing.status !== 'pending' && existing.status !== 'placed') {
         showToast(`Cannot prepare order with status: ${existing.status}`, "error");
         return false;
@@ -755,13 +667,12 @@
         const start = existing.prep_start_time || Date.now();
         const prepMinutes = Math.round((Date.now() - start) / 60000);
         updateData.prep_time = prepMinutes;
-        updateData.ready_at = new Date().toISOString();
+        // REMOVED: ready_at column doesn't exist in your schema
         console.log(`✅ Prep time: ${prepMinutes} minutes`);
         playNotificationSound();
         showToast(`🍺 Order is READY for collection!`, "ready");
       }
       
-      // Update using UUID primary key
       const { error: updateErr } = await supabase
         .from('orders')
         .update(updateData)
@@ -855,7 +766,6 @@
       const noteHtml = (order.source === "kiosk" && order.originalTotal && order.originalTotal > order.total) 
         ? `<div style="font-size:10px; color:#ff9800; margin-top:5px;">⚠️ Note: This order also has food items (kitchen screen)</div>` : '';
       
-      // CRITICAL: Pass order.id (UUID) to button actions
       const orderUuid = order.id;
       const displayOrderId = order.orderId;
       
@@ -1010,13 +920,6 @@
       }, 150);
     } catch(e) {}
   }
-
-  function updateClock() {
-    const now = new Date();
-    document.getElementById('liveClock').textContent = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-  }
-  setInterval(updateClock, 1000);
-  updateClock();
 
   // Expose functions globally
   window.updateOrderStatus = updateOrderStatus;
