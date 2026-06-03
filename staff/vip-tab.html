@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>VVIP Tab - Unified POS | Supabase</title>
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+body {
+    background: #0f0f0f;
+    color: #ffffff;
+    min-height: 100vh;
+    padding: 20px;
+}
+.container { max-width: 1600px; margin: 0 auto; }
+.quick-status {
+    background: #1a1a1a;
+    padding: 15px 25px;
+    border-radius: 60px;
+    border: 1px solid #b30000;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #00ff9c;
+    animation: pulse 1.5s infinite;
+}
+.status-text { color: #ff4d4d; font-weight: 600; }
+.status-stats { display: flex; gap: 15px; color: #aaa; font-size: 13px; }
+.status-stats span { color: #ff4d4d; font-weight: bold; }
+.status-buttons { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+.status-btn {
+    background: #b30000;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 40px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.status-btn:hover { background: #ff4d4d; transform: translateY(-2px); }
+.section { display: none; width: 100%; }
+.section.active { display: block; }
+.main-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+}
+.cart-container {
+    background: linear-gradient(145deg, #1a1a1a, #121212);
+    border: 2px solid #b30000;
+    border-radius: 24px;
+    padding: 20px;
+}
+.cart-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #ff4d4d;
+}
+.cart-header span:last-child {
+    background: #b30000;
+    padding: 5px 15px;
+    border-radius: 30px;
+    font-size: 14px;
+    margin-left: auto;
+}
+.vendor-group {
+    background: #1a1a1a;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 15px;
+    border: 1px solid #333;
+}
+.vendor-group h5 { color: #ff4d4d; margin-bottom: 12px; border-bottom: 2px solid #b30000; padding-bottom: 6px; }
+.vendor-group-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: #222;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    border: 1px solid #b30000;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.quantity-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #b30000;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+.remove-item { background: none; border: none; color: #ff4d4d; cursor: pointer; font-size: 18px; }
+.cart-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.cart-btn {
+    background: #b30000;
+    border: none;
+    padding: 12px;
+    border-radius: 12px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+.cart-btn.secondary { background: #2a2a2a; border: 1px solid #b30000; }
+.menu-item {
+    background: #1a1a1a;
+    border-radius: 16px;
+    padding: 15px;
+    border: 1px solid #333;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.menu-item:hover { border-color: #b30000; transform: scale(1.02); }
+.add-to-cart-btn {
+    background: #b30000;
+    border: none;
+    padding: 10px;
+    border-radius: 40px;
+    color: white;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+}
+.inventory-warning { font-size: 10px; color: #ff9800; margin-top: 5px; display: block; }
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.95);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+}
+.modal-content {
+    background: #1a1a1a;
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 28px;
+    padding: 25px;
+    border: 2px solid #b30000;
+}
+.hookah-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+}
+.hookah-option {
+    background: #2a2a2a;
+    padding: 12px;
+    border-radius: 60px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid #b30000;
+}
+.active-orders-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+.active-order-card {
+    background: #1a1a1a;
+    border-radius: 24px;
+    padding: 20px;
+    border: 2px solid #b30000;
+}
+.active-order-card.ready { border-color: #00ff9c; }
+.active-order-card.vvip-order {
+    border: 3px solid #ffd700;
+    background: linear-gradient(135deg, #2a1500 0%, #1a1a1a 100%);
+}
+.active-order-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #b30000;
+}
+.active-order-id {
+    background: #b30000;
+    padding: 5px 15px;
+    border-radius: 30px;
+    font-weight: 600;
+}
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+.status-pending { background: #ffaa00; color: #1a1a1a; }
+.status-preparing { background: #00a86b; color: white; }
+.status-ready { background: #b30000; color: white; animation: pulse 1s infinite; }
+.active-order-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 40px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.active-order-btn-collect { background: #00a86b; color: white; }
+.bands-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+.bands-table th, .bands-table td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
+.bands-table th { background: #b30000; color: white; }
+input, select {
+    background: #2a2a2a;
+    border: 1px solid #b30000;
+    border-radius: 40px;
+    padding: 12px 16px;
+    color: white;
+}
+.nfc-btn {
+    background: #b30000;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 40px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+.vvip-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.95);
+    backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+.vvip-modal.active { opacity: 1; visibility: visible; }
+.vvip-modal-card {
+    background: linear-gradient(145deg, #1f1f1f, #0a0a0a);
+    border-radius: 48px;
+    border: 2px solid #b30000;
+    max-width: 450px;
+    width: 90%;
+    padding: 32px 28px;
+    text-align: center;
+}
+.vvip-modal-icon { font-size: 64px; margin-bottom: 20px; }
+.vvip-modal-title {
+    font-size: 28px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #ff4d4d, #ffd700);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.vvip-modal-btn {
+    background: #b30000;
+    border: none;
+    padding: 12px 32px;
+    border-radius: 60px;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+}
+.product-image-wrap {
+    position: relative;
+    width: 100%;
+    height: 140px;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+    margin: -15px -15px 12px -15px;
+    width: calc(100% + 30px);
+}
+.product-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+@media (max-width: 768px) {
+    .main-layout { grid-template-columns: 1fr; }
+    .quick-status { flex-direction: column; align-items: flex-start; }
+    .status-buttons { margin-left: 0; margin-top: 10px; }
+    .active-orders-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="container">
+    <div class="quick-status">
+        <div class="status-dot"></div>
+        <div class="status-text" id="statusText">POS ACTIVE</div>
+        <div class="status-stats">
+            <div>Revenue: <span id="quickRevenue">R0</span></div>
+            <div>Guests: <span id="quickGuests">0</span></div>
+        </div>
+        <div class="status-buttons">
+            <button class="status-btn" onclick="switchToActiveOrders()">👨‍🍳 ACTIVE ORDERS</button>
+            <button class="status-btn" onclick="openBandsModal()">🖨️ BANDS</button>
+            <button class="status-btn" onclick="openDashboardModal()">📊 DASHBOARD</button>
+            <button class="status-btn" onclick="openVVIPPackages()">🎁 VVIP PACKAGES</button>
+        </div>
+    </div>
+
+    <div id="pos" class="section active">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+            <span style="font-size: 28px;">👑</span>
+            <h3 style="color: #ff4d4d;">VVIP Tab System</h3>
+            <span style="background: #b30000; padding: 6px 18px; border-radius: 40px; font-weight: 600; margin-left: auto;" id="currentVendorDisplay">Rands Smart Counter</span>
+        </div>
+
+        <select id="vendor" onchange="switchVendor()" style="width:100%; margin-bottom:20px;">
+            <option>Loading vendors...</option>
+        </select>
+
+        <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap: wrap;">
+            <input id="posBand" placeholder="Scan Customer Band ID / Phone" style="flex:2;">
+            <button class="status-btn" onclick="loadCustomer()" style="flex:1;">LOAD CUSTOMER</button>
+            <button id="nfcButton" class="nfc-btn" style="flex:0.5;">📡 Tap NFC</button>
+        </div>
+
+        <div id="customerInfoBar" style="display:none; background:#222; padding:15px; border-radius:20px; margin-bottom:20px; border-left:4px solid #00ff9c;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                <div><span style="color:#aaa;">Customer:</span> <span style="color:#00ff9c; font-weight:bold;" id="customerBandDisplay"></span></div>
+                <div><span style="color:#aaa;">Balance:</span> <span style="color:#ff4d4d; font-weight:bold;" id="customerBalanceDisplay"></span></div>
+                <div><span style="color:#aaa;">Cart Items:</span> <span id="customerCartCount">0</span></div>
+                <div><span style="color:#aaa;">Cart Total:</span> <span id="customerCartTotal">R0</span></div>
+                <button style="padding:8px 15px; background:#333; border:none; border-radius:40px; color:white; cursor:pointer;" onclick="clearCustomer()">NEW CUSTOMER</button>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <div style="background:#1a1a1a; border-radius:24px; padding:20px;">
+                <h4 style="margin-top:0; color:#ff4d4d;">🍽️ MENU ITEMS</h4>
+                <div id="vendorMenu" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px;"></div>
+            </div>
+            <div class="cart-container">
+                <div class="cart-header">
+                    <span id="cartIcon">🧊</span>
+                    <span id="cartTitle">Ice Bucket</span>
+                    <span id="cartItemCount">0</span>
+                </div>
+                <div id="cartItems" style="max-height:400px; overflow-y:auto; margin-bottom:15px;"></div>
+                <div style="background:#222; padding:15px; border-radius:16px; margin-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between;"><span>Subtotal:</span> <span style="color:#00ff9c;" id="cartSubtotal">R0</span></div>
+                    <div style="display:flex; justify-content:space-between; color:#aaa;"><span>Total Items:</span> <span id="cartTotalItems">0</span></div>
+                </div>
+                <div class="cart-actions">
+                    <button class="cart-btn" onclick="checkout()" id="checkoutBtn" disabled>💳 CHECKOUT (R<span id="checkoutAmount">0</span>)</button>
+                    <button class="cart-btn secondary" onclick="clearCart()">🗑️ CLEAR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="activeOrders" class="section">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="color:#ff4d4d;">📋 Active Orders Dashboard</h2>
+            <button class="status-btn" onclick="switchToPOS()">← Back to POS</button>
+        </div>
+        <div id="activeOrdersGrid" class="active-orders-grid"></div>
+    </div>
+
+    <div id="bandsModal" class="modal"><div class="modal-content"><div style="display:flex; justify-content:space-between;"><h2>🖨️ BANDS MANAGEMENT</h2><button onclick="closeBandsModal()" style="background:none; border:none; color:white; font-size:24px;">✕</button></div><div id="bandsList"></div></div></div>
+    <div id="dashboardModal" class="modal"><div class="modal-content"><div style="display:flex; justify-content:space-between;"><h2>📊 LIVE DASHBOARD</h2><button onclick="closeDashboardModal()" style="background:none; border:none; color:white; font-size:24px;">✕</button></div><div id="dashboardContent"></div></div></div>
+    <div id="hookahModal" class="modal"><div class="modal-content"><h3 style="color:#ffd700;">💨 Select Available Hookah</h3><div id="hookahOptionsList" class="hookah-selector"></div><button onclick="closeHookahModal()" style="margin-top:15px; background:#333; border:none; padding:10px; border-radius:40px; color:white; width:100%;">Cancel</button></div></div>
+    <div id="vvipModal" class="vvip-modal"><div class="vvip-modal-card"><div class="vvip-modal-icon" id="vvipModalIcon">👑</div><div class="vvip-modal-title" id="vvipModalTitle">VVIP Notification</div><div class="vvip-modal-message" id="vvipModalMessage">Message</div><button class="vvip-modal-btn" onclick="closeVVIPModal()">Confirm</button></div></div>
+</div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    // State
+    let currentCustomer = null;
+    let currentCart = [];
+    let vendorMenus = {};
+    let shishaProducts = [];
+    let globalOrders = [];
+    let revenue = 0;
+    let guests = 0;
+
+    // Helper functions
+    function showToast(message, isError = false) {
+        const modal = document.getElementById('vvipModal');
+        document.getElementById('vvipModalTitle').innerText = isError ? 'Error' : 'Notification';
+        document.getElementById('vvipModalMessage').innerHTML = message;
+        document.getElementById('vvipModalIcon').innerHTML = isError ? '⚠️' : '👑';
+        modal.classList.add('active');
+        setTimeout(() => modal.classList.remove('active'), 3000);
+    }
+
+    window.showVVIPModal = showToast;
+    window.closeVVIPModal = () => document.getElementById('vvipModal').classList.remove('active');
+
+    // Product image helper
+    function getProductImage(item) {
+        if (item.image) return item.image;
+        const nameLower = (item.name || '').toLowerCase();
+        if (nameLower.includes('shisha')) return 'https://picsum.photos/seed/shisha/300/200';
+        if (nameLower.includes('beer')) return 'https://picsum.photos/seed/beer/300/200';
+        if (nameLower.includes('wine')) return 'https://picsum.photos/seed/wine/300/200';
+        return `https://picsum.photos/seed/${encodeURIComponent(item.name || 'product')}/300/200`;
+    }
+
+    // Load products from Supabase
+    async function loadProducts() {
+        const { data, error } = await supabase.from('products').select('*').eq('is_available', true);
+        if (error) {
+            console.error('Error loading products:', error);
+            return [];
+        }
+        return data || [];
+    }
+
+    async function loadShishaProducts() {
+        const { data, error } = await supabase.from('shisha_products').select('*').eq('is_available', true);
+        if (error) {
+            console.error('Error loading shisha products:', error);
+            return [];
+        }
+        return data || [];
+    }
+
+    async function buildVendorMenus() {
+        const products = await loadProducts();
+        const shisha = await loadShishaProducts();
+        
+        const vendors = ['Rands Smart Counter', 'Shisha Lounge', 'The Butcher Shop'];
+        const menus = { 'Rands Smart Counter': [], 'Shisha Lounge': [], 'The Butcher Shop': [] };
+        
+        // Map products to vendors by category
+        const categoryToVendor = {
+            'beer': 'Rands Smart Counter', 'wine': 'Rands Smart Counter', 'spirits': 'Rands Smart Counter',
+            'non_alcoholic': 'Rands Smart Counter', 'butcher': 'The Butcher Shop', 'food': 'The Butcher Shop'
+        };
+        
+        products.forEach(p => {
+            const vendor = categoryToVendor[p.category] || 'Rands Smart Counter';
+            if (menus[vendor]) {
+                menus[vendor].push({ ...p, isShishaProduct: false });
+            }
+        });
+        
+        shisha.forEach(s => {
+            menus['Shisha Lounge'].push({ 
+                id: s.id, name: s.name, price: s.price, 
+                isShishaProduct: true, stock: 999, image: s.image 
+            });
+        });
+        
+        return menus;
+    }
+
+    async function refreshMenus() {
+        vendorMenus = await buildVendorMenus();
+        updateVendorSelect();
+        updateVendorMenu();
+    }
+
+    function updateVendorSelect() {
+        const select = document.getElementById('vendor');
+        const vendors = Object.keys(vendorMenus);
+        select.innerHTML = vendors.map(v => `<option value="${v}">${v}</option>`).join('');
+        if (vendors.length) select.value = vendors[0];
+        document.getElementById('currentVendorDisplay').innerText = select.value;
+    }
+
+    function updateVendorMenu() {
+        const vendor = document.getElementById('vendor').value;
+        const items = vendorMenus[vendor] || [];
+        const container = document.getElementById('vendorMenu');
+        
+        if (!items.length) {
+            container.innerHTML = '<div style="text-align:center; padding:40px;">No items available</div>';
+            return;
+        }
+        
+        container.innerHTML = items.map(item => `
+            <div class="menu-item">
+                <div class="product-image-wrap">
+                    <img class="product-image" src="${getProductImage(item)}" alt="${escapeHtml(item.name)}" loading="lazy">
+                </div>
+                <div><strong>${escapeHtml(item.name)}</strong> <span style="float:right; color:#ff4d4d;">R${item.price}</span></div>
+                <button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-shisha="${item.isShishaProduct}">➕ ADD</button>
+            </div>
+        `).join('');
+        
+        // Attach events
+        container.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+            btn.onclick = () => {
+                const name = btn.dataset.name;
+                const price = parseFloat(btn.dataset.price);
+                const isShisha = btn.dataset.shisha === 'true';
+                if (isShisha) initiateShishaOrder(name, price, btn.dataset.id);
+                else addToCart(name, price, vendor, btn.dataset.id, false);
+            };
+        });
+    }
+
+    async function initiateShishaOrder(name, price, productId) {
+        if (!currentCustomer) { showToast('Load a customer first', true); return; }
+        
+        // Get available hookah devices
+        const { data: devices, error } = await supabase
+            .from('hookah_devices')
+            .select('*')
+            .eq('status', 'available');
+        
+        if (error || !devices?.length) {
+            showToast('No hookah devices available', true);
+            return;
+        }
+        
+        const container = document.getElementById('hookahOptionsList');
+        container.innerHTML = devices.map(d => `<div class="hookah-option" onclick="selectHookah('${d.id}', '${name}', ${price}, '${productId}')">🔥 ${d.device_code}</div>`).join('');
+        document.getElementById('hookahModal').style.display = 'flex';
+    }
+
+    window.selectHookah = function(deviceId, name, price, productId) {
+        addToCart(name, price, 'Shisha Lounge', productId, true, deviceId);
+        closeHookahModal();
+    };
+
+    function closeHookahModal() { document.getElementById('hookahModal').style.display = 'none'; }
+
+    function addToCart(name, price, vendor, productId, isShisha, hookahId = null) {
+        if (!currentCustomer) { showToast('Load a customer first', true); return; }
+        
+        const existing = currentCart.find(i => i.name === name && i.vendor === vendor && i.hookahId === hookahId);
+        if (existing) existing.quantity++;
+        else currentCart.push({ name, price, vendor, quantity: 1, productId, isShishaProduct: isShisha, hookahId });
+        updateCartDisplay();
+    }
+
+    function updateCartDisplay() {
+        const container = document.getElementById('cartItems');
+        let subtotal = 0, totalItems = 0;
+        
+        if (!currentCart.length) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Cart empty</div>';
+            document.getElementById('cartItemCount').innerText = '0';
+            document.getElementById('cartSubtotal').innerText = 'R0';
+            document.getElementById('cartTotalItems').innerText = '0';
+            document.getElementById('checkoutBtn').disabled = true;
+            document.getElementById('checkoutAmount').innerText = '0';
+            return;
+        }
+        
+        let html = '';
+        currentCart.forEach((item, idx) => {
+            const itemTotal = item.price * item.quantity;
+            subtotal += itemTotal;
+            totalItems += item.quantity;
+            html += `
+                <div class="vendor-group-item">
+                    <span>${escapeHtml(item.name)}${item.hookahId ? ` (${item.hookahId})` : ''}</span>
+                    <div><button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button> ${item.quantity} <button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button></div>
+                    <span>R${itemTotal}</span>
+                    <button class="remove-item" onclick="removeFromCart(${idx})">✕</button>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        document.getElementById('cartItemCount').innerText = totalItems;
+        document.getElementById('cartSubtotal').innerText = 'R' + subtotal;
+        document.getElementById('cartTotalItems').innerText = totalItems;
+        document.getElementById('checkoutBtn').disabled = false;
+        document.getElementById('checkoutAmount').innerText = subtotal;
+    }
+
+    window.updateQuantity = function(idx, delta) {
+        if (currentCart[idx]) {
+            currentCart[idx].quantity += delta;
+            if (currentCart[idx].quantity <= 0) currentCart.splice(idx, 1);
+            updateCartDisplay();
+        }
+    };
+
+    window.removeFromCart = function(idx) {
+        currentCart.splice(idx, 1);
+        updateCartDisplay();
+    };
+
+    window.clearCart = function() {
+        currentCart = [];
+        updateCartDisplay();
+    };
+
+    async function loadCustomer() {
+        const identifier = document.getElementById('posBand').value.trim();
+        if (!identifier) { showToast('Enter phone number or band ID', true); return; }
+        
+        // Search by phone or wallet_id
+        let { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`phone.eq.${identifier},wallet_id.eq.${identifier}`)
+            .single();
+        
+        if (error || !profile) {
+            showToast('Customer not found', true);
+            return;
+        }
+        
+        currentCustomer = profile;
+        currentCart = [];
+        
+        document.getElementById('customerBandDisplay').innerText = profile.phone || profile.wallet_id;
+        document.getElementById('customerBalanceDisplay').innerText = 'R' + (profile.wallet_balance || 0);
+        document.getElementById('customerInfoBar').style.display = 'block';
+        updateCartDisplay();
+        showToast(`Welcome ${profile.name || profile.phone}`);
+    }
+
+    window.clearCustomer = function() {
+        currentCustomer = null;
+        currentCart = [];
+        document.getElementById('customerInfoBar').style.display = 'none';
+        document.getElementById('posBand').value = '';
+        updateCartDisplay();
+    };
+
+    async function checkout() {
+        if (!currentCustomer) { showToast('No customer loaded', true); return; }
+        if (!currentCart.length) { showToast('Cart is empty', true); return; }
+        
+        const total = currentCart.reduce((s, i) => s + i.price * i.quantity, 0);
+        const currentBalance = currentCustomer.wallet_balance || 0;
+        
+        if (currentBalance < total) {
+            showToast(`Insufficient balance. Need R${total}, have R${currentBalance}`, true);
+            return;
+        }
+        
+        const newBalance = currentBalance - total;
+        revenue += total;
+        guests++;
+        
+        // Update wallet balance
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ wallet_balance: newBalance })
+            .eq('id', currentCustomer.id);
+        
+        if (updateError) {
+            showToast('Failed to update balance', true);
+            return;
+        }
+        
+        // Create order
+        const orderNumber = 'ORD-' + Date.now();
+        const { error: orderError } = await supabase
+            .from('orders')
+            .insert([{
+                order_number: orderNumber,
+                customer_phone: currentCustomer.phone,
+                customer_name: currentCustomer.name,
+                total_amount: total,
+                total: total,
+                payment_method: 'wallet',
+                payment_status: 'paid',
+                status: 'pending',
+                payment_source: 'vvip_tab',
+                items: currentCart.map(i => ({
+                    product_name: i.name,
+                    quantity: i.quantity,
+                    unit_price: i.price,
+                    subtotal: i.price * i.quantity,
+                    hookah_id: i.hookahId
+                })),
+                is_vvip: true,
+                source: 'vvip_pos'
+            }]);
+        
+        if (orderError) {
+            console.error('Order creation failed:', orderError);
+        }
+        
+        // Update hookah device status if shisha was purchased
+        for (const item of currentCart) {
+            if (item.isShishaProduct && item.hookahId) {
+                await supabase
+                    .from('hookah_devices')
+                    .update({ status: 'in_use' })
+                    .eq('id', item.hookahId);
+            }
+        }
+        
+        // Update local customer balance
+        currentCustomer.wallet_balance = newBalance;
+        document.getElementById('customerBalanceDisplay').innerText = 'R' + newBalance;
+        
+        showToast(`Payment successful! R${total} deducted. New balance: R${newBalance}`);
+        clearCart();
+        updateQuickStats();
+        refreshMenus();
+    }
+
+    function updateQuickStats() {
+        document.getElementById('quickRevenue').innerText = 'R' + revenue;
+        document.getElementById('quickGuests').innerText = guests;
+    }
+
+    // Active Orders
+    async function renderActiveOrders() {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .in('status', ['pending', 'preparing', 'ready'])
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error('Error loading orders:', error);
+            return;
+        }
+        
+        const container = document.getElementById('activeOrdersGrid');
+        if (!data?.length) {
+            container.innerHTML = '<div style="text-align:center; padding:40px;">No active orders</div>';
+            return;
+        }
+        
+        container.innerHTML = data.map(order => {
+            let statusClass = order.status === 'pending' ? 'status-pending' : (order.status === 'preparing' ? 'status-preparing' : 'status-ready');
+            let statusText = order.status.toUpperCase();
+            let items = order.items || [];
+            
+            return `
+                <div class="active-order-card ${order.status === 'ready' ? 'ready' : ''} ${order.is_vvip ? 'vvip-order' : ''}">
+                    <div class="active-order-header">
+                        <span class="active-order-id">#${order.order_number}</span>
+                        <span>${new Date(order.created_at).toLocaleTimeString()}</span>
+                    </div>
+                    <div>Customer: ${order.customer_name || order.customer_phone}</div>
+                    ${order.is_vvip ? '<div class="status-badge" style="background:#ffd700; color:#1a1a1a;">👑 VVIP</div>' : ''}
+                    <div class="status-badge ${statusClass}">${statusText}</div>
+                    <div>${items.map(i => `<div>${i.quantity}x ${i.product_name} - R${i.subtotal}</div>`).join('')}</div>
+                    <div style="margin:15px 0; text-align:right; font-size:20px; font-weight:bold; color:#00ff9c;">Total: R${order.total_amount}</div>
+                    <button class="active-order-btn active-order-btn-collect" onclick="updateOrderStatus('${order.id}', '${order.status}')">
+                        ${order.status === 'pending' ? 'Start Preparing' : (order.status === 'preparing' ? 'Mark Ready' : 'Ready')}
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    window.updateOrderStatus = async function(orderId, currentStatus) {
+        let newStatus;
+        if (currentStatus === 'pending') newStatus = 'preparing';
+        else if (currentStatus === 'preparing') newStatus = 'ready';
+        else return;
+        
+        const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+        if (!error) renderActiveOrders();
+    };
+
+    function switchToPOS() {
+        document.getElementById('pos').classList.add('active');
+        document.getElementById('activeOrders').classList.remove('active');
+        document.getElementById('statusText').innerText = 'POS ACTIVE';
+    }
+
+    function switchToActiveOrders() {
+        document.getElementById('pos').classList.remove('active');
+        document.getElementById('activeOrders').classList.add('active');
+        document.getElementById('statusText').innerText = 'ACTIVE ORDERS';
+        renderActiveOrders();
+    }
+
+    // Bands Management
+    async function renderBandsList() {
+        const { data, error } = await supabase.from('profiles').select('phone, name, wallet_balance, id').limit(50);
+        if (error) return;
+        
+        const html = `
+            <table class="bands-table">
+                <thead><tr><th>Phone</th><th>Name</th><th>Balance</th><th>Action</th></tr></thead>
+                <tbody>
+                    ${data.map(p => `
+                        <tr>
+                            <td>${escapeHtml(p.phone || '-')}</td>
+                            <td>${escapeHtml(p.name || '-')}</td>
+                            <td>R${p.wallet_balance || 0}</td>
+                            <td><button onclick="printBand('${p.id}')" class="btn-small">🖨️ Print</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        document.getElementById('bandsList').innerHTML = html;
+    }
+
+    window.printBand = function(id) {
+        showToast(`Printing band for customer ID: ${id}`);
+    };
+
+    function openBandsModal() {
+        renderBandsList();
+        document.getElementById('bandsModal').style.display = 'flex';
+    }
+
+    function closeBandsModal() { document.getElementById('bandsModal').style.display = 'none'; }
+
+    // Dashboard
+    async function openDashboardModal() {
+        const { data: orders } = await supabase.from('orders').select('total_amount, created_at, is_vvip');
+        const totalRevenue = (orders || []).reduce((sum, o) => sum + (o.total_amount || 0), 0);
+        const vvipRevenue = (orders || []).filter(o => o.is_vvip).reduce((sum, o) => sum + (o.total_amount || 0), 0);
+        
+        document.getElementById('dashboardContent').innerHTML = `
+            <div style="padding:20px;">
+                <div class="stat-card" style="margin-bottom:20px;"><div class="stat-number">R${totalRevenue.toLocaleString()}</div><div>Total Revenue</div></div>
+                <div class="stat-card" style="margin-bottom:20px;"><div class="stat-number">R${vvipRevenue.toLocaleString()}</div><div>VVIP Revenue</div></div>
+                <div class="stat-card"><div class="stat-number">${orders?.length || 0}</div><div>Total Orders</div></div>
+            </div>
+        `;
+        document.getElementById('dashboardModal').style.display = 'flex';
+    }
+
+    function closeDashboardModal() { document.getElementById('dashboardModal').style.display = 'none'; }
+
+    function openVVIPPackages() {
+        window.open('vvip-store.html', '_blank');
+    }
+
+    function switchVendor() { updateVendorMenu(); }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+    }
+
+    // Real-time subscriptions
+    function setupRealtime() {
+        supabase.channel('orders_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                if (document.getElementById('activeOrders').classList.contains('active')) renderActiveOrders();
+            })
+            .subscribe();
+    }
+
+    // Initialization
+    async function init() {
+        await refreshMenus();
+        setupRealtime();
+        updateQuickStats();
+        
+        document.getElementById('nfcButton')?.addEventListener('click', () => showToast('Tap NFC wristband'));
+    }
+
+    // Expose functions to window
+    window.switchToPOS = switchToPOS;
+    window.switchToActiveOrders = switchToActiveOrders;
+    window.openBandsModal = openBandsModal;
+    window.closeBandsModal = closeBandsModal;
+    window.openDashboardModal = openDashboardModal;
+    window.closeDashboardModal = closeDashboardModal;
+    window.openVVIPPackages = openVVIPPackages;
+    window.switchVendor = switchVendor;
+    window.loadCustomer = loadCustomer;
+    window.checkout = checkout;
+    
+    init();
+</script>
+</body>
+</html>
