@@ -242,7 +242,7 @@
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
     .timer-display { font-family: monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.1em; }
 
-    /* ----- TICKET SECTION STYLES (preserved from kiosk-tickets) ----- */
+    /* Ticket section */
     .tickets-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 30px; margin-top: 1rem; }
     .ticket-card { border-radius: 24px; overflow: hidden; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3); transition: all 0.4s ease; display: flex; flex-direction: column; cursor: pointer; }
     .ticket-card:hover { transform: translateY(-8px); box-shadow: 0 25px 45px rgba(227, 6, 19, 0.25); }
@@ -271,7 +271,21 @@
     .ticket-cat-btn { background: transparent; border: 1px solid var(--border-strong); padding: 8px 24px; border-radius: 40px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: 0.2s; }
     .ticket-cat-btn.active { background: var(--red); color: white; border-color: var(--red); }
 
-    /* Responsive */
+    /* Premium Timer Ring & Glassmorphism */
+    .timer-ring { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
+    .timer-ring-svg { transform: rotate(-90deg); }
+    .timer-ring-circle { fill: none; stroke: #10B981; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.3s ease; filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.6)); }
+    .timer-ring-bg { fill: none; stroke: rgba(227, 6, 19, 0.1); stroke-width: 3; }
+    .waiting-modal { position: relative; overflow: hidden; text-align: center; }
+    .status-indicator { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 20px 0; padding: 12px; background: var(--red-subtle); border-radius: var(--radius-full); }
+    .status-dot { width: 10px; height: 10px; background: #10B981; border-radius: 50%; }
+    .status-dot.pulse { animation: pulse-green 1.2s infinite; }
+    @keyframes pulse-green { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } }
+    .brand-highlight { color: var(--red); }
+    .amount-highlight { font-size: 1.8rem; font-weight: 800; color: var(--red); display: inline-block; margin: 8px 0; }
+    .waiting-message { font-size: 1rem; margin-bottom: 16px; }
+    .cancel-btn { margin-top: 16px; background: var(--bone); border: 1px solid var(--border-strong); }
+
     @media (max-width: 900px) {
       .main-body { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; padding: 14px 16px; gap: 6px; flex-wrap: nowrap; }
@@ -281,6 +295,7 @@
       .site-header { padding: 12px 20px; }
       .cart-bar { padding: 12px 20px 16px; }
       .live-time { display: none; }
+      .timer-display { font-size: 2rem; }
     }
     @media (max-width: 600px) {
       .products-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
@@ -294,130 +309,82 @@
   <div class="app-shell">
     <header class="site-header">
       <div class="brand" @click="goHome">
-        <div class="brand-logo"><img src="../assets/images/rands-logo.png" alt="Rands"></div>
+        <div class="brand-logo"><img src="https://placehold.co/100x100/1a1a2e/white?text=R" alt="Rands"></div>
         <div class="brand-text"><h1>Rands</h1><p>Premium Bar & The Butcher</p></div>
       </div>
       <div class="header-right"><div class="live-time">{{ liveTime }}</div><button class="back-btn" @click="goHome"><i class="fas fa-arrow-left"></i> Back</button></div>
     </header>
 
     <div class="main-body">
-      <nav class="sidebar">
-        <div class="sidebar-label">Menu</div>
-        <div v-for="cat in mainCategories" :key="cat.id" class="nav-item" :class="{ active: activeCategory === cat.id }" @click="selectCategory(cat.id)">
-          <div class="nav-item-icon"><i :class="cat.icon"></i></div>{{ cat.name }}
-        </div>
-        <div v-if="activeCategory === 'spirits'" class="sub-nav">
-          <div v-for="sub in spiritSubCategories" :key="sub.id" class="sub-nav-item" :class="{ active: activeSubCategory === sub.id }" @click.stop="activeSubCategory = sub.id">
-            <span>{{ sub.emoji }}</span> {{ sub.name }}
-          </div>
-        </div>
-        <div class="sidebar-divider"></div>
-      </nav>
+      <nav class="sidebar"><div class="sidebar-label">Menu</div><div v-for="cat in mainCategories" :key="cat.id" class="nav-item" :class="{ active: activeCategory === cat.id }" @click="selectCategory(cat.id)"><div class="nav-item-icon"><i :class="cat.icon"></i></div>{{ cat.name }}</div><div v-if="activeCategory === 'spirits'" class="sub-nav"><div v-for="sub in spiritSubCategories" :key="sub.id" class="sub-nav-item" :class="{ active: activeSubCategory === sub.id }" @click.stop="activeSubCategory = sub.id"><span>{{ sub.emoji }}</span> {{ sub.name }}</div></div><div class="sidebar-divider"></div></nav>
 
       <main class="products-area">
-        <!-- SEARCH BAR: only visible for menu categories -->
-        <div class="search-wrap" v-if="activeCategory !== 'tickets'">
-          <i class="fas fa-search search-icon"></i>
-          <input class="search-input" type="text" v-model="searchQuery" placeholder="Search items…" />
-        </div>
+        <div class="search-wrap" v-if="activeCategory !== 'tickets'"><i class="fas fa-search search-icon"></i><input class="search-input" type="text" v-model="searchQuery" placeholder="Search items…" /></div>
+        <div class="section-header"><h2 class="section-title">{{ currentCategoryLabel }}</h2><span class="section-count">{{ activeCategory === 'tickets' ? ticketItemsCount : filteredProducts.length }} items</span></div>
 
-        <div class="section-header">
-          <h2 class="section-title">{{ currentCategoryLabel }}</h2>
-          <span class="section-count">{{ activeCategory === 'tickets' ? ticketItemsCount : filteredProducts.length }} items</span>
-        </div>
-
-        <!-- NORMAL MENU PRODUCTS -->
         <template v-if="activeCategory !== 'tickets'">
           <div v-if="loadingProducts" class="empty-state"><i class="fas fa-spinner fa-pulse"></i><h3>Loading menu...</h3></div>
-          <div v-else-if="filteredProducts.length === 0" class="empty-state"><i class="fas fa-search"></i><h3>No menu items found</h3><p style="font-size:0.8rem;margin-top:8px;">Try checking Supabase connection or add products to the database</p></div>
-          <div class="products-grid" v-else>
-            <div v-for="product in filteredProducts" :key="product.id" class="product-card">
-              <div class="product-image-wrap"><img class="product-image" :src="product.image || getFallbackImage(product)" :alt="product.name" loading="lazy" @error="handleImageError($event, product)" /><div class="product-image-overlay"></div><div class="product-badges"><span v-if="product.alcohol" class="badge badge-alcohol"><i class="fas fa-wine-bottle"></i> Alcohol</span><span v-else class="badge badge-food"><i class="fas fa-utensils"></i> Food</span></div></div>
-              <div class="product-body"><div class="product-name">{{ product.name }}</div><div class="product-desc">{{ product.description || 'House special' }}</div><div class="product-footer"><div class="product-price"><span>R</span> {{ formatPrice(product.price) }}</div><div class="qty-control"><button class="qty-btn" @click="decrement(product)">−</button><span class="qty-num">{{ getQty(product.id) }}</span><button class="qty-btn" @click="increment(product)">+</button></div></div><button class="add-btn" @click="addToCart(product)"><i class="fas fa-bag-shopping"></i> Add to Order</button></div>
-            </div>
-          </div>
+          <div v-else-if="filteredProducts.length === 0" class="empty-state"><i class="fas fa-search"></i><h3>No menu items found</h3></div>
+          <div class="products-grid" v-else><div v-for="product in filteredProducts" :key="product.id" class="product-card"><div class="product-image-wrap"><img class="product-image" :src="product.image || getFallbackImage(product)" :alt="product.name" loading="lazy" @error="handleImageError($event, product)" /><div class="product-image-overlay"></div><div class="product-badges"><span v-if="product.alcohol" class="badge badge-alcohol"><i class="fas fa-wine-bottle"></i> Alcohol</span><span v-else class="badge badge-food"><i class="fas fa-utensils"></i> Food</span></div></div><div class="product-body"><div class="product-name">{{ product.name }}</div><div class="product-desc">{{ product.description || 'House special' }}</div><div class="product-footer"><div class="product-price"><span>R</span> {{ formatPrice(product.price) }}</div><div class="qty-control"><button class="qty-btn" @click="decrement(product)">−</button><span class="qty-num">{{ getQty(product.id) }}</span><button class="qty-btn" @click="increment(product)">+</button></div></div><button class="add-btn" @click="addToCart(product)"><i class="fas fa-bag-shopping"></i> Add to Order</button></div></div></div>
         </template>
 
-        <!-- TICKETS SECTION (EXACT DESIGN FROM KIOSK-TICKETS) -->
-        <template v-else>
-          <div class="event-selector-bar"><label><i class="fas fa-calendar-alt"></i> Active Event:</label><select v-model="selectedEventId" @change="onEventChange"><option v-for="ev in eventsList" :value="ev.id">{{ ev.name }} ({{ ev.date }})</option></select></div>
-          <div class="ticket-category-switch"><button class="ticket-cat-btn" :class="{ active: ticketSubCategory === 'tickets' }" @click="ticketSubCategory = 'tickets'">🎟️ Event Tickets</button><button class="ticket-cat-btn" :class="{ active: ticketSubCategory === 'tables' }" @click="ticketSubCategory = 'tables'">🍾 VVIP Tables</button></div>
-          <div v-if="eventsList.length === 0" class="empty-state"><i class="fas fa-calendar-alt"></i><h3>No events found</h3><p style="font-size:0.8rem;margin-top:8px;">Add events to the database to sell tickets</p></div>
-          <div class="tickets-container" v-else>
-            <div v-for="item in currentTicketProducts" :key="item.id" class="ticket-card" :class="item.classSlug">
-              <div class="ticket-header"><div v-if="item.name === 'VIP Experience'" class="popular-badge">POPULAR</div><div class="ticket-type">{{ item.emoji }} {{ item.name }}<span v-if="item.disabled" class="sold-out-tag">SOLD OUT</span></div><div class="ticket-price">R{{ formatPrice(item.price) }}</div><p class="ticket-description">{{ item.desc }}</p></div>
-              <div class="ticket-body"><ul class="features-list"><li v-for="feat in item.features" :key="feat"><span class="feature-icon"><i class="fas" :class="feat.includes('SOLD') ? 'fa-times-circle' : 'fa-check-circle'"></i></span> {{ feat }}</li></ul><div v-if="item.hasQuantity && !item.disabled" class="quantity-selector"><button class="quantity-btn" @click.stop="adjustTicketQty(item, -1)">−</button><span class="quantity-display">{{ ticketQtys[item.id] || 1 }}</span><button class="quantity-btn" @click.stop="adjustTicketQty(item, 1)">+</button></div></div>
-              <div class="ticket-footer"><button class="buy-btn" @click.stop="addTicketToCart(item)" :disabled="item.disabled">{{ item.disabled ? 'Sold Out' : (item.hasQuantity ? 'Add Tickets' : 'Book Table') }}</button></div>
-            </div>
-          </div>
-        </template>
+        <template v-else><div class="event-selector-bar"><label><i class="fas fa-calendar-alt"></i> Active Event:</label><select v-model="selectedEventId" @change="onEventChange"><option v-for="ev in eventsList" :value="ev.id">{{ ev.name }} ({{ ev.date }})</option></select></div><div class="ticket-category-switch"><button class="ticket-cat-btn" :class="{ active: ticketSubCategory === 'tickets' }" @click="ticketSubCategory = 'tickets'">🎟️ Event Tickets</button><button class="ticket-cat-btn" :class="{ active: ticketSubCategory === 'tables' }" @click="ticketSubCategory = 'tables'">🍾 VVIP Tables</button></div><div v-if="eventsList.length === 0" class="empty-state"><i class="fas fa-calendar-alt"></i><h3>No events found</h3></div><div class="tickets-container" v-else><div v-for="item in currentTicketProducts" :key="item.id" class="ticket-card" :class="item.classSlug"><div class="ticket-header"><div v-if="item.name === 'VIP Experience'" class="popular-badge">POPULAR</div><div class="ticket-type">{{ item.emoji }} {{ item.name }}<span v-if="item.disabled" class="sold-out-tag">SOLD OUT</span></div><div class="ticket-price">R{{ formatPrice(item.price) }}</div><p class="ticket-description">{{ item.desc }}</p></div><div class="ticket-body"><ul class="features-list"><li v-for="feat in item.features" :key="feat"><span class="feature-icon"><i class="fas" :class="feat.includes('SOLD') ? 'fa-times-circle' : 'fa-check-circle'"></i></span> {{ feat }}</li></ul><div v-if="item.hasQuantity && !item.disabled" class="quantity-selector"><button class="quantity-btn" @click.stop="adjustTicketQty(item, -1)">−</button><span class="quantity-display">{{ ticketQtys[item.id] || 1 }}</span><button class="quantity-btn" @click.stop="adjustTicketQty(item, 1)">+</button></div></div><div class="ticket-footer"><button class="buy-btn" @click.stop="addTicketToCart(item)" :disabled="item.disabled">{{ item.disabled ? 'Sold Out' : (item.hasQuantity ? 'Add Tickets' : 'Book Table') }}</button></div></div></div></template>
       </main>
     </div>
 
-    <!-- CART BAR (fully original) -->
-    <footer class="cart-bar">
-      <div class="cart-bar-inner">
-        <div class="cart-left">
-          <div class="cart-pill"><div class="dot" v-if="cartItemCount > 0"></div><i class="fas fa-bag-shopping"></i> {{ cartItemCount }} {{ cartItemCount === 1 ? 'item' : 'items' }}</div>
-          <div class="cart-items-preview" v-if="cart.length > 0"><span v-for="item in cart.slice(0,3)" :key="item.id" class="cart-item-chip">×{{ item.quantity }} {{ item.name }}</span><span v-if="cart.length > 3" class="cart-item-chip">+{{ cart.length - 3 }} more</span></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;"><div class="cart-total-display"><sub>R</sub> {{ formatPrice(cartTotal) }}</div><button class="checkout-btn" @click="openPaymentModal" :disabled="cartItemCount === 0"><i class="fas fa-wallet"></i> Pay Now</button></div>
-      </div>
-    </footer>
+    <footer class="cart-bar"><div class="cart-bar-inner"><div class="cart-left"><div class="cart-pill"><div class="dot" v-if="cartItemCount > 0"></div><i class="fas fa-bag-shopping"></i> {{ cartItemCount }} {{ cartItemCount === 1 ? 'item' : 'items' }}</div><div class="cart-items-preview" v-if="cart.length > 0"><span v-for="item in cart.slice(0,3)" :key="item.id" class="cart-item-chip">×{{ item.quantity }} {{ item.name }}</span><span v-if="cart.length > 3" class="cart-item-chip">+{{ cart.length - 3 }} more</span></div></div><div style="display:flex;align-items:center;gap:20px;"><div class="cart-total-display"><sub>R</sub> {{ formatPrice(cartTotal) }}</div><button class="checkout-btn" @click="openPaymentModal" :disabled="cartItemCount === 0"><i class="fas fa-wallet"></i> Pay Now</button></div></div></footer>
   </div>
 
-  <div class="toast" :class="{ show: toast.visible }"><i :class="toast.icon"></i> {{ toast.text }}</div>
+  <div class="toast" :class="{ show: toast.visible, success: toast.type === 'success', error: toast.type === 'error' }"><i :class="toast.icon"></i> {{ toast.text }}</div>
 
   <!-- PAYMENT MODAL -->
   <div class="modal-backdrop" :class="{ open: paymentModalOpen }" @click.self="closePaymentModal"><div class="modal-box"><div class="modal-header"><div class="modal-emblem"><i class="fas fa-credit-card"></i></div><h2 class="modal-title">Select Payment</h2></div><div class="order-summary-box"><div v-for="item in cart" :key="item.id" class="order-summary-row"><span>{{ item.name }} ×{{ item.quantity }}</span><span>R {{ formatPrice(item.price * item.quantity) }}</span></div><div class="order-summary-row total"><span>Total</span><span style="color:var(--red);">R {{ formatPrice(cartTotal) }}</span></div><div v-if="cartHasAlcohol" class="alcohol-notice"><i class="fas fa-triangle-exclamation"></i> Age verification required</div></div><div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'"><div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-paper-plane"></i></div><div><div class="pay-option-title">Rands Wallet</div></div></div><div v-if="selectedPayMethod === 'wallet'"><input class="field-input" type="tel" v-model="walletId" placeholder="+27 XX XXX XXXX" /><button class="btn-primary" style="margin-top:12px;" @click="sendWalletRequest" :disabled="walletId.trim().length < 10">Send Request</button></div></div><div class="pay-option" :class="{ selected: selectedPayMethod === 'fingerprint' }" @click="selectedPayMethod = 'fingerprint'"><div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-fingerprint"></i></div><div><div class="pay-option-title">Fingerprint</div></div></div><div v-if="selectedPayMethod === 'fingerprint'" class="fp-area"><div class="fp-circle" :class="{ scanning: fpScanning, 'success-fp': fpSuccess }" @click="startFingerprintScan"><i :class="fpSuccess ? 'fas fa-check' : 'fas fa-fingerprint'"></i></div><div v-if="fpError" style="color:var(--red); margin-top:8px;">{{ fpError }}</div></div></div><button class="btn-ghost" @click="closePaymentModal">Cancel</button></div></div>
-  <div class="modal-backdrop" :class="{ open: waitingModalOpen }"><div class="modal-box" style="text-align:center;"><div class="modal-emblem"><i class="fas fa-paper-plane"></i></div><h2>Waiting for Approval</h2><p>Open <strong>Rands Wallet</strong> to approve R {{ formatPrice(cartTotal) }}</p><div class="timer-display">{{ formatTime(remainingSeconds) }}</div><button class="btn-ghost" @click="cancelPayment">Cancel</button></div></div>
-  <div class="modal-backdrop" :class="{ open: successModalOpen }"><div class="modal-box" style="text-align:center;"><div class="modal-emblem" style="background:#059669;"><i class="fas fa-check"></i></div><h2>Payment Approved!</h2><p>{{ orderNumber }}</p><p>Thank you. Receipt printed.</p></div></div>
+
+  <!-- PREMIUM WAITING MODAL WITH COUNTDOWN TIMER -->
+  <div class="modal-backdrop" :class="{ open: waitingModalOpen }">
+    <div class="modal-box waiting-modal">
+      <div class="timer-ring">
+        <svg class="timer-ring-svg" width="120" height="120" viewBox="0 0 120 120">
+          <circle class="timer-ring-bg" cx="60" cy="60" r="45" fill="none" stroke-width="3"/>
+          <circle class="timer-ring-circle" ref="timerCircle" cx="60" cy="60" r="45" fill="none" stroke-width="3" stroke-dasharray="282.743" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-display">{{ formatTime(remainingSeconds) }}</div>
+      </div>
+      <div class="modal-emblem" style="animation: pulse 1.2s infinite;"><i class="fas fa-paper-plane"></i></div>
+      <h2 class="modal-title">Waiting for Approval</h2>
+      <p class="waiting-message">Open <strong class="brand-highlight">Rands Wallet</strong> on your phone to approve<br><span class="amount-highlight">R {{ formatPrice(cartTotal) }}</span></p>
+      <div class="status-indicator"><div class="status-dot pulse"></div><span>Waiting for wallet response...</span></div>
+      <button class="btn-ghost cancel-btn" @click="cancelPayment"><i class="fas fa-times"></i> Cancel Payment</button>
+    </div>
+  </div>
+
+  <!-- SUCCESS MODAL WITH ORDER CONFIRMATION -->
+  <div class="modal-backdrop" :class="{ open: successModalOpen }">
+    <div class="modal-box" style="text-align:center;">
+      <div class="modal-emblem" style="background:#059669;"><i class="fas fa-check"></i></div>
+      <h2>Payment Approved!</h2>
+      <p style="margin: 16px 0;">Order #: <strong>{{ orderNumber }}</strong></p>
+      <p style="margin-bottom: 24px;">Thank you for your purchase.</p>
+      <button class="btn-primary" @click="closeSuccessModal">Continue</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
   import { supabase } from '../config/supabase.js';
   Vue.config.productionTip = false;
   
-  // Debug: log supabase connection
-  console.log('Supabase client loaded:', !!supabase);
-  
   new Vue({
     el: '#app',
     data: {
-      liveTime: '', searchQuery: '', activeCategory: 'all', activeSubCategory: 'rum', selectedPayMethod: 'wallet', walletId: '', paymentModalOpen: false, waitingModalOpen: false, successModalOpen: false, fpScanning: false, fpSuccess: false, fpError: '', remainingSeconds: 120, approvalTimer: null, toast: { visible: false, text: '', icon: '' }, cart: [], pendingQtys: {}, products: [], loadingProducts: true, orderNumber: '',
-      // Ticket specific
+      liveTime: '', searchQuery: '', activeCategory: 'all', activeSubCategory: 'rum', selectedPayMethod: 'wallet', walletId: '', paymentModalOpen: false, waitingModalOpen: false, successModalOpen: false, fpScanning: false, fpSuccess: false, fpError: '', remainingSeconds: 120, approvalTimer: null, toast: { visible: false, text: '', icon: '', type: '' }, cart: [], pendingQtys: {}, products: [], loadingProducts: true, orderNumber: '',
       eventsList: [], selectedEventId: null, ticketSubCategory: 'tickets', ticketQtys: {}, vvipSold: {},
-      // Realtime payment tracking
-      currentPaymentRequestId: null,
-      paymentSubscription: null,
-      currentOrderId: null,
-      // Demo products fallback in case Supabase fails
-      demoProducts: [
-        { id: 'demo1', name: 'Heineken', description: 'Premium Lager', price: 45, alcohol: true, category: 'beer', image: null, is_available: true },
-        { id: 'demo2', name: 'Amstel Lite', description: 'Light Beer', price: 42, alcohol: true, category: 'beer', image: null, is_available: true },
-        { id: 'demo3', name: 'Jack Daniels', description: 'Tennessee Whiskey', price: 85, alcohol: true, category: 'spirits', image: null, is_available: true },
-        { id: 'demo4', name: 'Coca Cola', description: 'Classic Soft Drink', price: 25, alcohol: false, category: 'non-alc', image: null, is_available: true },
-        { id: 'demo5', name: 'Steak Burger', description: 'Grass-fed beef burger', price: 120, alcohol: false, category: 'butcher', image: null, is_available: true }
-      ],
-      VVIP_TABLES: [
-        { id: 'table_paradise', name: 'Paradise Table', price: 10000, emoji: '🍾', desc: 'Luxurious couch • R8,000 Tab • 15 people', features: ['Private table', 'Dedicated waiter', 'R8,000 Tab', 'Skip Queue', 'Only 1 available'], classSlug: 'table', maxQuantity: 1, hasQuantity: false, isTable: true },
-        { id: 'table_vibe', name: '#See You Vibe Table', price: 15000, emoji: '🎧', desc: 'Luxury vibe • R13,000 Tab • 15 people', features: ['Premium lounge', 'Dedicated host', 'R13,000 Tab', 'Skip Queue', 'Only 1 available'], classSlug: 'table', maxQuantity: 1, hasQuantity: false, isTable: true },
-        { id: 'table_wonderland', name: 'Wonderland Table', price: 20000, emoji: '✨', desc: 'Ultimate wonderland • R18,000 Tab • VIP parking', features: ['Private suite', 'Personal concierge', 'R18,000 Tab', 'VIP parking', 'Only 1 available'], classSlug: 'table', maxQuantity: 1, hasQuantity: false, isTable: true }
-      ]
+      currentPaymentRequestId: null, paymentSubscription: null, currentOrderId: null, paymentProcessingLock: false,
+      demoProducts: [{ id: 'demo1', name: 'Heineken', description: 'Premium Lager', price: 45, alcohol: true, category: 'beer', image: null, is_available: true },{ id: 'demo2', name: 'Amstel Lite', description: 'Light Beer', price: 42, alcohol: true, category: 'beer', image: null, is_available: true },{ id: 'demo3', name: 'Jack Daniels', description: 'Tennessee Whiskey', price: 85, alcohol: true, category: 'spirits', image: null, is_available: true },{ id: 'demo4', name: 'Coca Cola', description: 'Classic Soft Drink', price: 25, alcohol: false, category: 'non-alc', image: null, is_available: true },{ id: 'demo5', name: 'Steak Burger', description: 'Grass-fed beef burger', price: 120, alcohol: false, category: 'butcher', image: null, is_available: true }],
+      VVIP_TABLES: [{ id: 'table_paradise', name: 'Paradise Table', price: 10000, emoji: '🍾', desc: 'Luxurious couch • R8,000 Tab • 15 people', features: ['Private table', 'Dedicated waiter', 'R8,000 Tab', 'Skip Queue', 'Only 1 available'], classSlug: 'table', maxQuantity: 1, hasQuantity: false, isTable: true },{ id: 'table_vibe', name: '#See You Vibe Table', price: 15000, emoji: '🎧', desc: 'Luxury vibe • R13,000 Tab • 15 people', features: ['Premium lounge', 'Dedicated host', 'R13,000 Tab', 'Skip Queue', 'Only 1 available'], classSlug: 'table', maxQuantity: 1, hasQuantity: false, isTable: true },{ id: 'table_wonderland', name: 'Wonderland Table', price: 20000, emoji: '✨', desc: 'Ultimate wonderland • R18,000 Tab • VIP parking', features: ['Private suite', 'Personal concierge', 'R18,000 Tab', 'VIP parking', 'Only 1 available'], classSlug: 'table', maxQuantity: 1, hasQuantity: false, isTable: true }]
     },
     computed: {
-      filteredProducts() { 
-        let list = this.products; 
-        if (this.activeCategory !== 'all') { 
-          if (this.activeCategory === 'spirits') list = list.filter(p => p.category === this.activeSubCategory); 
-          else list = list.filter(p => p.category === this.activeCategory); 
-        } 
-        if (this.searchQuery.trim()) { 
-          const q = this.searchQuery.toLowerCase(); 
-          list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q))); 
-        } 
-        return list; 
-      },
+      filteredProducts() { let list = this.products; if (this.activeCategory !== 'all') { if (this.activeCategory === 'spirits') list = list.filter(p => p.category === this.activeSubCategory); else list = list.filter(p => p.category === this.activeCategory); } if (this.searchQuery.trim()) { const q = this.searchQuery.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q))); } return list; },
       cartItemCount() { return this.cart.reduce((s, i) => s + i.quantity, 0); },
       cartTotal() { return this.cart.reduce((s, i) => s + i.price * i.quantity, 0); },
       cartHasAlcohol() { return this.cart.some(i => i.alcohol === true); },
@@ -425,319 +392,241 @@
       mainCategories() { return [{ id: 'all', name: 'All Items', icon: 'fas fa-border-all' },{ id: 'beer', name: 'Beers & Ciders', icon: 'fas fa-beer-mug-empty' },{ id: 'wine', name: 'Wines', icon: 'fas fa-wine-glass' },{ id: 'spirits', name: 'Premium Spirits', icon: 'fas fa-crown' },{ id: 'non-alc', name: 'Non-Alcoholic', icon: 'fas fa-droplet' },{ id: 'butcher', name: 'The Butcher', icon: 'fas fa-utensils' },{ id: 'tickets', name: 'Event Tickets', icon: 'fas fa-ticket-alt' }]; },
       spiritSubCategories() { return [{ id: 'rum', name: 'Rum', emoji: '🏝️' },{ id: 'vodka', name: 'Vodka', emoji: '❄️' },{ id: 'cognac', name: 'Cognac', emoji: '🥃' },{ id: 'tequila', name: 'Tequila', emoji: '🌵' },{ id: 'whisky', name: 'Whisky', emoji: '🥃' }]; },
       ticketItemsCount() { return (this.ticketSubCategory === 'tickets' ? this.currentEventTicketProducts.length : this.vvipTablesWithStatus.length); },
-      currentEventTicketProducts() { 
-        if (!this.selectedEventId) return []; 
-        const ev = this.eventsList.find(e => e.id === this.selectedEventId); 
-        if (!ev || !ev.ticketTypes) return []; 
-        return [ 
-          { id: `${ev.id}_earlyBird`, name: 'Early Bird', price: ev.ticketTypes.earlyBird?.price || 0, emoji: '🐦', desc: 'Limited early bird discount', features: [`Price: R${ev.ticketTypes.earlyBird?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.earlyBird?.capacity || 0) - (ev.ticketTypes.earlyBird?.sold || 0))}`], hasQuantity: true, classSlug: 'earlybird', disabled: ((ev.ticketTypes.earlyBird?.capacity || 0) - (ev.ticketTypes.earlyBird?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'earlyBird', isTable: false, eventName: ev.name }, 
-          { id: `${ev.id}_general`, name: 'General Admission', price: ev.ticketTypes.general?.price || 0, emoji: '🎟️', desc: 'Standard entry', features: [`Price: R${ev.ticketTypes.general?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.general?.capacity || 0) - (ev.ticketTypes.general?.sold || 0))}`], hasQuantity: true, classSlug: 'general', disabled: ((ev.ticketTypes.general?.capacity || 0) - (ev.ticketTypes.general?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'general', isTable: false, eventName: ev.name }, 
-          { id: `${ev.id}_vip`, name: 'VIP Experience', price: ev.ticketTypes.vip?.price || 0, emoji: '👑', desc: 'Premium wristband + drinks', features: [`Price: R${ev.ticketTypes.vip?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.vip?.capacity || 0) - (ev.ticketTypes.vip?.sold || 0))}`], hasQuantity: true, classSlug: 'vip', disabled: ((ev.ticketTypes.vip?.capacity || 0) - (ev.ticketTypes.vip?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'vip', isTable: false, eventName: ev.name } 
-        ]; 
-      },
+      currentEventTicketProducts() { if (!this.selectedEventId) return []; const ev = this.eventsList.find(e => e.id === this.selectedEventId); if (!ev || !ev.ticketTypes) return []; return [{ id: `${ev.id}_earlyBird`, name: 'Early Bird', price: ev.ticketTypes.earlyBird?.price || 0, emoji: '🐦', desc: 'Limited early bird discount', features: [`Price: R${ev.ticketTypes.earlyBird?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.earlyBird?.capacity || 0) - (ev.ticketTypes.earlyBird?.sold || 0))}`], hasQuantity: true, classSlug: 'earlybird', disabled: ((ev.ticketTypes.earlyBird?.capacity || 0) - (ev.ticketTypes.earlyBird?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'earlyBird', isTable: false, eventName: ev.name }, { id: `${ev.id}_general`, name: 'General Admission', price: ev.ticketTypes.general?.price || 0, emoji: '🎟️', desc: 'Standard entry', features: [`Price: R${ev.ticketTypes.general?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.general?.capacity || 0) - (ev.ticketTypes.general?.sold || 0))}`], hasQuantity: true, classSlug: 'general', disabled: ((ev.ticketTypes.general?.capacity || 0) - (ev.ticketTypes.general?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'general', isTable: false, eventName: ev.name }, { id: `${ev.id}_vip`, name: 'VIP Experience', price: ev.ticketTypes.vip?.price || 0, emoji: '👑', desc: 'Premium wristband + drinks', features: [`Price: R${ev.ticketTypes.vip?.price || 0}`, `Remaining: ${Math.max(0, (ev.ticketTypes.vip?.capacity || 0) - (ev.ticketTypes.vip?.sold || 0))}`], hasQuantity: true, classSlug: 'vip', disabled: ((ev.ticketTypes.vip?.capacity || 0) - (ev.ticketTypes.vip?.sold || 0)) <= 0, eventId: ev.id, ticketTypeKey: 'vip', isTable: false, eventName: ev.name }]; },
       vvipTablesWithStatus() { return this.VVIP_TABLES.map(t => ({ ...t, disabled: this.vvipSold[t.id] === true })); },
       currentTicketProducts() { return this.ticketSubCategory === 'tickets' ? this.currentEventTicketProducts : this.vvipTablesWithStatus; }
     },
-    async mounted() { 
-      this.updateTime(); 
-      setInterval(this.updateTime, 1000); 
-      await this.loadProductsFromSupabase(); 
-      await this.loadEventsAndTickets(); 
-      this.loadVVIPSold(); 
-    },
+    async mounted() { this.updateTime(); setInterval(this.updateTime, 1000); await this.loadProductsFromSupabase(); await this.loadEventsAndTickets(); this.loadVVIPSold(); },
     beforeDestroy() { if (this.paymentSubscription) supabase.removeChannel(this.paymentSubscription); if (this.approvalTimer) clearInterval(this.approvalTimer); },
     methods: {
       updateTime() { const now = new Date(); this.liveTime = now.toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); },
-      formatPrice(n) { return Number(n).toFixed(2); }, 
-      formatTime(s) { const m = Math.floor(s/60), sec = s%60; return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; },
-      showToast(text, type='success') { this.toast = { visible: true, text, icon: type==='error' ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle' }; setTimeout(() => this.toast.visible = false, 3000); },
+      formatPrice(n) { return Number(n).toFixed(2); }, formatTime(s) { const m = Math.floor(s/60), sec = s%60; return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; },
+      showToast(text, type='success') { this.toast = { visible: true, text, icon: type==='error' ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle', type }; setTimeout(() => this.toast.visible = false, 3000); },
       selectCategory(id) { this.activeCategory = id; this.searchQuery = ''; if(id === 'tickets' && this.eventsList.length === 0) this.loadEventsAndTickets(); },
-      getQty(id) { return this.pendingQtys[id] || 0; }, 
-      increment(p) { this.$set(this.pendingQtys, p.id, (this.pendingQtys[p.id]||0)+1); }, 
-      decrement(p) { const cur = this.pendingQtys[p.id]||0; if(cur>0) this.$set(this.pendingQtys, p.id, cur-1); },
+      getQty(id) { return this.pendingQtys[id] || 0; }, increment(p) { this.$set(this.pendingQtys, p.id, (this.pendingQtys[p.id]||0)+1); }, decrement(p) { const cur = this.pendingQtys[p.id]||0; if(cur>0) this.$set(this.pendingQtys, p.id, cur-1); },
       addToCart(product) { const qty = this.pendingQtys[product.id] || 1; const existing = this.cart.find(i => i.id === product.id); if(existing) existing.quantity += qty; else this.cart.push({ ...product, quantity: qty, itemType: 'menu' }); this.$set(this.pendingQtys, product.id, 0); this.showToast(`${product.name} added`); },
-      addTicketToCart(item) { if(item.disabled) return; let qty = this.ticketQtys[item.id] || 1; const existing = this.cart.find(i => i.id === item.id); if(existing) { existing.quantity += qty; } else { this.cart.push({ ...item, quantity: qty, itemType: 'ticket', alcohol: false }); } this.showToast(`${qty} x ${item.name} added`); },
+      addTicketToCart(item) { if(item.disabled) return; let qty = this.ticketQtys[item.id] || 1; const existing = this.cart.find(i => i.id === item.id); if(existing) existing.quantity += qty; else this.cart.push({ ...item, quantity: qty, itemType: 'ticket', alcohol: false }); this.showToast(`${qty} x ${item.name} added`); },
       adjustTicketQty(item, delta) { const cur = this.ticketQtys[item.id] || 1; const newVal = Math.min(50, Math.max(1, cur+delta)); this.$set(this.ticketQtys, item.id, newVal); },
-      goHome() { window.location.href = 'index.html'; }, 
-      openPaymentModal() { if(this.cartItemCount===0) return; this.paymentModalOpen=true; }, 
-      closePaymentModal() { if(!this.waitingModalOpen) this.paymentModalOpen=false; },
-      async loadProductsFromSupabase() { 
-        this.loadingProducts = true;
-        try { 
-          // Try different possible column names based on common schemas
-          let { data, error } = await supabase.from('products').select('*');
-          
-          if (error) {
-            console.error('Products query error:', error);
-            throw error;
-          }
-          
-          if (data && data.length > 0) {
-            // Map the data to expected format
-            this.products = data.map(p => ({
-              id: p.id,
-              name: p.name,
-              description: p.description || '',
-              price: p.price || p.unit_price || 0,
-              alcohol: p.alcohol || p.is_alcoholic || false,
-              category: p.category || p.product_type || 'other',
-              image: p.image || p.image_url || null,
-              is_available: p.is_available !== false
-            }));
-            console.log(`Loaded ${this.products.length} products from Supabase`);
-          } else {
-            // No products found, use demo data
-            console.warn('No products found in database, using demo products');
-            this.products = this.demoProducts;
-            this.showToast('Using demo menu - no products found in database', 'error');
-          }
-        } catch(e) { 
-          console.error('Products load error:', e); 
-          // Fallback to demo products
-          this.products = this.demoProducts;
-          this.showToast('Could not load menu from database - using demo items', 'error');
-        } finally { 
-          this.loadingProducts = false; 
-        } 
-      },
-      getFallbackImage(p) { return 'https://picsum.photos/seed/drink/300/200'; }, 
-      handleImageError(e, p) { e.target.src = this.getFallbackImage(p); },
-      async loadEventsAndTickets() { 
-        this.eventsList = [];
-        try { 
-          const { data: eventsData, error } = await supabase.from('events').select('*'); 
-          if (error) {
-            console.error('Events query error:', error);
-            throw error;
-          }
-          
-          if (eventsData && eventsData.length > 0) {
-            for(const ev of eventsData) { 
-              const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id); 
-              const earlyBird = types?.find(t => t.name && (t.name.toLowerCase().includes('early') || t.name.toLowerCase().includes('bird'))) || {price: ev.base_price || 0, capacity: ev.capacity || 0, sold: 0};
-              const general = types?.find(t => t.name && (t.name.toLowerCase().includes('general') || t.name.toLowerCase().includes('ga'))) || {price: ev.base_price || 0, capacity: ev.capacity || 0, sold: 0};
-              const vip = types?.find(t => t.name && t.name.toLowerCase().includes('vip')) || {price: ev.vip_price || 0, capacity: ev.vip_capacity || 0, sold: 0};
-              const ticketTypes = { earlyBird, general, vip }; 
-              this.eventsList.push({ 
-                id: ev.id, 
-                name: ev.name, 
-                date: ev.start_time?.split('T')[0] || ev.date || 'TBD', 
-                location: ev.location, 
-                ticketTypes 
-              }); 
-            } 
-            if(this.eventsList.length && !this.selectedEventId) this.selectedEventId = this.eventsList[0].id; 
-            console.log(`Loaded ${this.eventsList.length} events`);
-          } else {
-            console.warn('No events found in database');
-            this.showToast('No events available - add events to sell tickets', 'error');
-          }
-        } catch(e) { 
-          console.error('Events load error:', e); 
-          this.showToast('Failed to load events: ' + (e.message || 'Unknown error'), 'error');
-        } 
-      },
-      loadVVIPSold() { const stored = localStorage.getItem('vvip_tables_sold'); this.vvipSold = stored ? JSON.parse(stored) : {}; },
-      saveVVIPSold() { localStorage.setItem('vvip_tables_sold', JSON.stringify(this.vvipSold)); },
-      onEventChange() { this.ticketQtys = {}; },
-      cleanupPaymentFlow() { if (this.approvalTimer) { clearInterval(this.approvalTimer); this.approvalTimer = null; } if (this.paymentSubscription) { supabase.removeChannel(this.paymentSubscription); this.paymentSubscription = null; } this.currentPaymentRequestId = null; this.waitingModalOpen = false; },
-      listenForPaymentStatus(requestId) { 
-        if (this.paymentSubscription) supabase.removeChannel(this.paymentSubscription); 
-        this.paymentSubscription = supabase.channel(`payment-${requestId}`)
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `id=eq.${requestId}` }, async payload => { 
-            const updated = payload.new; 
-            if (updated.status === 'approved') { 
-              this.cleanupPaymentFlow(); 
-              await this.finalizeOrderAfterPayment(); 
-            } else if (updated.status === 'rejected') { 
-              this.cleanupPaymentFlow(); 
-              this.showToast('Payment rejected by wallet', 'error'); 
-            } else if (updated.status === 'cancelled') { 
-              this.cleanupPaymentFlow(); 
-              this.showToast('Payment cancelled', 'error'); 
-            } else if (updated.status === 'expired') { 
-              this.cleanupPaymentFlow(); 
-              this.showToast('Payment request expired', 'error'); 
-            } 
-          }).subscribe(); 
-      },
+      goHome() { window.location.href = 'index.html'; }, openPaymentModal() { if(this.cartItemCount===0) return; this.paymentModalOpen=true; }, closePaymentModal() { if(!this.waitingModalOpen) this.paymentModalOpen=false; }, closeSuccessModal() { this.successModalOpen = false; this.cart = []; },
+      async loadProductsFromSupabase() { this.loadingProducts = true; try { let { data, error } = await supabase.from('products').select('*'); if (error) throw error; if (data && data.length > 0) { this.products = data.map(p => ({ id: p.id, name: p.name, description: p.description || '', price: p.price || p.unit_price || 0, alcohol: p.alcohol || p.is_alcoholic || false, category: p.category || p.product_type || 'other', image: p.image || p.image_url || null, is_available: p.is_available !== false })); } else { this.products = this.demoProducts; this.showToast('Using demo menu - no products found', 'error'); } } catch(e) { this.products = this.demoProducts; this.showToast('Could not load menu - using demo items', 'error'); } finally { this.loadingProducts = false; } },
+      getFallbackImage(p) { return 'https://picsum.photos/seed/drink/300/200'; }, handleImageError(e, p) { e.target.src = this.getFallbackImage(p); },
+      async loadEventsAndTickets() { this.eventsList = []; try { const { data: eventsData, error } = await supabase.from('events').select('*'); if (error) throw error; if (eventsData && eventsData.length > 0) { for(const ev of eventsData) { const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id); const earlyBird = types?.find(t => t.name && (t.name.toLowerCase().includes('early') || t.name.toLowerCase().includes('bird'))) || {price: ev.base_price || 0, capacity: ev.capacity || 0, sold: 0}; const general = types?.find(t => t.name && (t.name.toLowerCase().includes('general') || t.name.toLowerCase().includes('ga'))) || {price: ev.base_price || 0, capacity: ev.capacity || 0, sold: 0}; const vip = types?.find(t => t.name && t.name.toLowerCase().includes('vip')) || {price: ev.vip_price || 0, capacity: ev.vip_capacity || 0, sold: 0}; this.eventsList.push({ id: ev.id, name: ev.name, date: ev.start_time?.split('T')[0] || ev.date || 'TBD', location: ev.location, ticketTypes: { earlyBird, general, vip } }); } if(this.eventsList.length && !this.selectedEventId) this.selectedEventId = this.eventsList[0].id; } else { this.showToast('No events available', 'error'); } } catch(e) { this.showToast('Failed to load events', 'error'); } },
+      loadVVIPSold() { const stored = localStorage.getItem('vvip_tables_sold'); this.vvipSold = stored ? JSON.parse(stored) : {}; }, saveVVIPSold() { localStorage.setItem('vvip_tables_sold', JSON.stringify(this.vvipSold)); }, onEventChange() { this.ticketQtys = {}; },
+      cleanupPaymentFlow() { if (this.approvalTimer) { clearInterval(this.approvalTimer); this.approvalTimer = null; } if (this.paymentSubscription) { supabase.removeChannel(this.paymentSubscription); this.paymentSubscription = null; } this.currentPaymentRequestId = null; this.waitingModalOpen = false; this.paymentProcessingLock = false; },
+      
       async sendWalletRequest() { 
-        if (this.walletId.trim().length < 10) { 
-          this.showToast('Valid phone number required (e.g., +27721234567)', 'error'); 
-          return; 
-        } 
-        const cleanedPhone = this.walletId.trim();
+        if (this.walletId.trim().length < 10) { this.showToast('Valid phone number required (e.g., +27721234567)', 'error'); return; } 
+        if (this.paymentProcessingLock) { this.showToast('Payment already in progress', 'error'); return; } 
+        this.paymentProcessingLock = true; 
+        const cleanedPhone = this.walletId.trim(); 
+        this.paymentModalOpen = false; 
+        this.waitingModalOpen = true; 
+        this.remainingSeconds = 120; 
+        this.cleanupPaymentFlow(); 
         
-        // First, find or create a profile for this phone number
-        let customerProfileId = null;
-        try {
-          const { data: existingProfile } = await supabase
+        const timerCircle = this.$refs.timerCircle; 
+        if (timerCircle) { 
+          const radius = 45; 
+          const circumference = 2 * Math.PI * radius; 
+          timerCircle.style.strokeDasharray = circumference; 
+          timerCircle.style.strokeDashoffset = 0; 
+        } 
+        
+        try { 
+          const idempotencyKey = crypto.randomUUID();
+          
+          // Find customer profile using phone number
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('id')
+            .select('id, name, phone')
             .eq('phone', cleanedPhone)
             .single();
           
-          if (existingProfile) {
-            customerProfileId = existingProfile.id;
-          } else {
-            const { data: newProfile, error: createError } = await supabase
-              .from('profiles')
-              .insert({ phone: cleanedPhone, name: 'Kiosk Customer', account_type: 'general', role: 'customer' })
-              .select()
-              .single();
-            if (createError) throw createError;
-            customerProfileId = newProfile.id;
+          if (profileError || !profile) {
+            throw new Error('No wallet account found for this phone number');
           }
-        } catch (err) {
-          console.error('Profile error:', err);
-          this.showToast('Failed to identify customer', 'error');
-          return;
-        }
-        
-        this.paymentModalOpen = false;
-        this.waitingModalOpen = true;
-        this.remainingSeconds = 120;
-        this.cleanupPaymentFlow();
-        
-        try {
-          const { data, error } = await supabase
-            .from('payment_requests')
-            .insert({ 
-              customer_phone: cleanedPhone,
-              customer_profile_id: customerProfileId,
-              quantity: this.cartItemCount,
-              total_amount: this.cartTotal,
-              channel: 'kiosk',
-              status: 'pending',
-              requested_at: new Date().toISOString(),
-              expires_at: new Date(Date.now() + 120000).toISOString(),
-              request_message: `Kiosk payment for ${this.cartItemCount} items`
-            })
-            .select()
+          
+          // Get wallet info
+          const { data: wallet, error: walletError } = await supabase
+            .from('wallets')
+            .select('id, balance')
+            .eq('user_id', profile.id)
             .single();
-            
-          if (error) throw error;
           
-          this.currentPaymentRequestId = data.id;
-          this.listenForPaymentStatus(data.id);
+          if (walletError || !wallet) {
+            throw new Error('Wallet account not found');
+          }
           
-          this.approvalTimer = setInterval(() => { 
-            if (this.remainingSeconds > 0) { 
-              this.remainingSeconds--; 
-              if (this.remainingSeconds === 0 && this.waitingModalOpen) { 
-                supabase.from('payment_requests').update({ status: 'expired' }).eq('id', this.currentPaymentRequestId).then(); 
-                this.cleanupPaymentFlow(); 
-                this.showToast('Request expired', 'error'); 
-              } 
-            } else { 
-              clearInterval(this.approvalTimer); 
-            } 
-          }, 1000); 
-          
-          this.showToast(`Request sent to ${cleanedPhone}`, 'success'); 
-        } catch (err) { 
-          console.error('Payment request error:', err); 
-          this.cleanupPaymentFlow(); 
-          this.showToast('Failed to send request: ' + (err.message || 'Unknown error'), 'error'); 
-        } 
-      },
-      async finalizeOrderAfterPayment() {
-        const cartSnapshot = [...this.cart];
-        if (cartSnapshot.length === 0) {
-          this.showToast('Cart empty', 'error');
-          return;
-        }
-        
-        try {
-          const orderNumber = `KIO-${Date.now().toString().slice(-8)}`;
-          
-          const { data: order, error: orderError } = await supabase
+          // Create the order FIRST (so we have an order_id to link)
+          const { data: newOrder, error: orderError } = await supabase
             .from('orders')
             .insert({
-              order_number: orderNumber,
-              customer_phone: this.walletId,
+              kiosk_id: null,
+              user_id: profile.id,
+              customer_phone: cleanedPhone,
               total_amount: this.cartTotal,
-              payment_status: 'paid',
-              status: 'completed',
-              source: 'kiosk',
+              total: this.cartTotal,
               payment_method: 'wallet',
-              payment_source: 'wallet',
-              created_at: new Date().toISOString(),
-              items: cartSnapshot
+              payment_status: 'pending',
+              status: 'pending',
+              source: 'kiosk',
+              order_number: `KIO-${Date.now()}`,
+              items: this.cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.price }))
             })
             .select()
             .single();
           
           if (orderError) throw orderError;
+          this.currentOrderId = newOrder.id;
           
-          for (const item of cartSnapshot) {
-            const productType = item.itemType === 'ticket' ? 'other' : (item.category || 'other');
+          // Add order items
+          for (const item of this.cart) {
             await supabase.from('order_items').insert({
-              order_id: order.id,
-              product_type: productType,
+              order_id: newOrder.id,
+              product_type: item.itemType === 'ticket' ? 'ticket' : (item.alcohol ? 'spirits' : 'food'),
               product_id: item.id,
-              product_name: item.name,
               quantity: item.quantity,
               unit_price: item.price,
-              subtotal: item.price * item.quantity
-            }).catch(e => console.warn('Order item insert failed', e));
+              subtotal: item.price * item.quantity,
+              product_name: item.name,
+              metadata: { emoji: item.emoji, eventName: item.eventName }
+            });
           }
           
-          for (const ticket of cartSnapshot.filter(i => i.itemType === 'ticket')) {
-            if (ticket.eventId && ticket.ticketTypeKey) {
-              const { data: ticketType } = await supabase
-                .from('ticket_types')
-                .select('id, sold')
-                .eq('event_id', ticket.eventId)
-                .ilike('name', `%${ticket.ticketTypeKey}%`)
-                .single();
-              if (ticketType) {
-                await supabase.from('ticket_types').update({ sold: (ticketType.sold || 0) + ticket.quantity }).eq('id', ticketType.id);
+          // Create payment request linking to the order
+          const { data: paymentRequest, error: insertError } = await supabase
+            .from('payment_requests')
+            .insert({
+              customer_phone: cleanedPhone,
+              customer_profile_id: profile.id,
+              wallet_id: wallet.id,
+              order_id: newOrder.id,
+              quantity: this.cartItemCount,
+              total_amount: this.cartTotal,
+              channel: 'kiosk',
+              request_type: 'kiosk_order',
+              status: 'pending',
+              requested_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 120000).toISOString(),
+              request_message: `Kiosk payment for ${this.cartItemCount} items`,
+              idempotency_key: idempotencyKey,
+              metadata: {
+                source: 'rands_kiosk',
+                customer_name: profile.name,
+                cart_items: this.cart.map(item => ({
+                  name: item.name,
+                  quantity: item.quantity,
+                  price: item.price,
+                  type: item.itemType
+                }))
               }
-            } else if (ticket.isTable && !this.vvipSold[ticket.id]) {
-              this.vvipSold[ticket.id] = true;
-              this.saveVVIPSold();
+            })
+            .select()
+            .single();
+          
+          if (insertError) throw insertError;
+          
+          this.currentPaymentRequestId = paymentRequest.id;
+          this.setupSecurePaymentListener(paymentRequest.id);
+          
+          // Start countdown timer
+          this.approvalTimer = setInterval(() => {
+            if (this.remainingSeconds > 0) {
+              this.remainingSeconds--;
+              const circle = this.$refs.timerCircle;
+              if (circle) {
+                const radius = 45;
+                const circumference = 2 * Math.PI * radius;
+                const offset = circumference - (this.remainingSeconds / 120) * circumference;
+                circle.style.strokeDashoffset = offset;
+                if (this.remainingSeconds <= 30) circle.style.stroke = '#E30613';
+                else if (this.remainingSeconds <= 60) circle.style.stroke = '#FF6B6B';
+                else circle.style.stroke = '#10B981';
+              }
+              if (this.remainingSeconds === 0 && this.waitingModalOpen) {
+                supabase.from('payment_requests').update({ status: 'expired' }).eq('id', this.currentPaymentRequestId).then();
+                this.cleanupPaymentFlow();
+                this.showToast('Request expired', 'error');
+              }
+            } else {
+              clearInterval(this.approvalTimer);
             }
-          }
+          }, 1000);
           
-          if (this.currentPaymentRequestId) {
-            await supabase.from('payment_requests').update({ order_id: order.id, approved_at: new Date().toISOString() }).eq('id', this.currentPaymentRequestId);
-          }
-          
-          await this.printBasedOnCart(cartSnapshot);
-          this.cart = [];
-          this.orderNumber = orderNumber;
-          this.successModalOpen = true;
-          setTimeout(() => this.successModalOpen = false, 3000);
-          
+          this.showToast(`Request sent to ${cleanedPhone}`, 'success');
         } catch (err) {
-          console.error('Order creation failed:', err);
-          this.showToast('Order creation failed: ' + (err.message || 'Unknown error'), 'error');
-        }
-      },
-      async printBasedOnCart(cartItems) { 
-        const menuItems = cartItems.filter(i => i.itemType === 'menu'); 
-        const ticketItems = cartItems.filter(i => i.itemType === 'ticket'); 
-        if(menuItems.length && ticketItems.length) { 
-          this.printNormalOrder(menuItems); 
-          setTimeout(() => this.printTicketReceipt(ticketItems), 500); 
-        } else if(ticketItems.length) { 
-          await this.printTicketReceipt(ticketItems); 
-        } else if(menuItems.length) { 
-          this.printNormalOrder(menuItems); 
+          console.error(err);
+          this.cleanupPaymentFlow();
+          this.showToast('Failed to send request: ' + (err.message || 'Unknown error'), 'error');
         } 
       },
+      
+      setupSecurePaymentListener(paymentRequestId) { 
+        if (this.paymentSubscription) supabase.removeChannel(this.paymentSubscription); 
+        this.paymentSubscription = supabase.channel(`secure-payment-${paymentRequestId}`)
+          .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'payment_requests', 
+            filter: `id=eq.${paymentRequestId}` 
+          }, async (payload) => { 
+            const newStatus = payload.new.status; 
+            await this.handlePaymentStatusUpdate(payload.new); 
+          }).subscribe(); 
+      },
+      
+      async handlePaymentStatusUpdate(paymentRequest) { 
+        const { status, order_id, id } = paymentRequest; 
+        if (status === 'approved' && order_id) { 
+          this.cleanupPaymentFlow();
+          
+          // Update order status to paid
+          await supabase.from('orders').update({ payment_status: 'paid', status: 'placed' }).eq('id', order_id);
+          
+          const { data: order } = await supabase.from('orders').select('order_number').eq('id', order_id).single(); 
+          if (order) { 
+            this.orderNumber = order.order_number; 
+            this.waitingModalOpen = false;
+            this.successModalOpen = true; 
+            this.showToast(`Payment approved! Order: ${order.order_number}`, 'success'); 
+            await this.printOrderReceipt(order_id); 
+          } 
+        } else if (status === 'rejected') { 
+          this.cleanupPaymentFlow(); 
+          this.showToast('Payment rejected by wallet', 'error'); 
+          this.waitingModalOpen = false; 
+        } else if (status === 'expired') { 
+          this.cleanupPaymentFlow(); 
+          this.showToast('Payment request expired', 'error'); 
+          this.waitingModalOpen = false; 
+        } else if (status === 'cancelled') { 
+          this.cleanupPaymentFlow(); 
+          this.showToast('Payment cancelled', 'error'); 
+          this.waitingModalOpen = false; 
+        } 
+      },
+      
+      async printOrderReceipt(orderId) { 
+        const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId); 
+        if (!items) return; 
+        const menuItems = items.filter(i => i.product_type !== 'ticket'); 
+        const ticketItems = items.filter(i => i.product_type === 'ticket'); 
+        if (menuItems.length) this.printNormalOrder(menuItems); 
+        if (ticketItems.length) await this.printTicketReceipt(ticketItems); 
+      },
+      
       printNormalOrder(items) { 
         const printWindow = window.open('', '_blank'); 
-        const content = `<html><head><title>Order Receipt</title><style>body{font-family:monospace;padding:20px;text-align:center;}.receipt{border:1px dashed #000;padding:16px;max-width:300px;margin:auto;}</style></head><body><div class="receipt"><h2>Rands Kiosk</h2><p>Order: ${this.orderNumber}</p><p>${new Date().toLocaleString()}</p><hr>${items.map(i=>`<p>${i.quantity} x ${i.name} - R${(i.price*i.quantity).toFixed(2)}</p>`).join('')}<hr><h3>Total: R${items.reduce((s,i)=>s+i.price*i.quantity,0).toFixed(2)}</h3><p>Thank you!</p></div><script>window.print();setTimeout(()=>window.close(),500);<\/script></body></html>`; 
+        const content = `<html><head><title>Order Receipt</title><style>body{font-family:monospace;padding:20px;text-align:center;}.receipt{border:1px dashed #000;padding:16px;max-width:300px;margin:auto;}</style></head><body><div class="receipt"><h2>Rands Kiosk</h2><p>Order: ${this.orderNumber}</p><p>${new Date().toLocaleString()}</p><hr>${items.map(i=>`<p>${i.quantity} x ${i.product_name} - R${(i.unit_price*i.quantity).toFixed(2)}</p>`).join('')}<hr><h3>Total: R${items.reduce((s,i)=>s+i.unit_price*i.quantity,0).toFixed(2)}</h3><p>Thank you!</p></div><script>window.print();setTimeout(()=>window.close(),500);<\/script></body></html>`; 
         printWindow.document.write(content); 
         printWindow.document.close(); 
       },
+      
       async printTicketReceipt(ticketItems) { 
         const printWindow = window.open('', '_blank'); 
         let ticketsHtml = ''; 
         for (const t of ticketItems) { 
-          const ticketRef = `${this.orderNumber}-${t.id}`; 
+          const ticketRef = `${this.orderNumber}-${t.product_id}`; 
           const qrDataUrl = await new Promise((resolve) => { 
             const canvas = document.createElement('canvas'); 
             QRCode.toCanvas(canvas, ticketRef, { width: 120, margin: 1 }, (error) => { 
@@ -745,26 +634,15 @@
               else resolve(canvas.toDataURL()); 
             }); 
           }); 
-          ticketsHtml += `<div class="ticket"><h2>${t.emoji || '🎟️'} ${t.name}</h2><p><strong>Event:</strong> ${t.eventName || 'Rands Event'}</p><p><strong>Quantity:</strong> ${t.quantity}</p><p><strong>Reference:</strong> ${ticketRef}</p><p><strong>Date:</strong> ${new Date().toLocaleString()}</p><div style="text-align:center;margin:16px 0;"><img src="${qrDataUrl}" alt="QR Code" style="width:120px;height:120px;" /></div><p>Present this QR code at entrance</p></div>`; 
+          ticketsHtml += `<div class="ticket"><h2>${t.metadata?.emoji || '🎟️'} ${t.product_name}</h2><p><strong>Event:</strong> ${t.metadata?.eventName || 'Rands Event'}</p><p><strong>Quantity:</strong> ${t.quantity}</p><p><strong>Reference:</strong> ${ticketRef}</p><p><strong>Date:</strong> ${new Date().toLocaleString()}</p><div style="text-align:center;margin:16px 0;"><img src="${qrDataUrl}" alt="QR Code" style="width:120px;height:120px;" /></div><p>Present this QR code at entrance</p></div>`; 
         } 
         const content = `<html><head><title>Event Tickets</title><style>body{font-family:monospace;padding:20px;}.ticket{border:2px solid #E30613;margin-bottom:20px;padding:16px;border-radius:12px;max-width:360px;margin:auto;page-break-after:always;}</style></head><body>${ticketsHtml}<script>window.print();setTimeout(()=>window.close(),500);<\/script></body></html>`; 
         printWindow.document.write(content); 
         printWindow.document.close(); 
       },
-      startFingerprintScan() { 
-        if(this.fpScanning) return; 
-        this.fpScanning = true; 
-        this.fpError = ''; 
-        setTimeout(() => { 
-          this.fpScanning = false; 
-          this.fpSuccess = true; 
-          setTimeout(() => { 
-            this.fpSuccess = false; 
-            this.selectedPayMethod = 'wallet'; 
-            this.showToast('Fingerprint verified, enter wallet phone', 'success'); 
-          }, 600); 
-        }, 900); 
-      },
+      
+      startFingerprintScan() { if(this.fpScanning) return; this.fpScanning = true; this.fpError = ''; setTimeout(() => { this.fpScanning = false; this.fpSuccess = true; setTimeout(() => { this.fpSuccess = false; this.selectedPayMethod = 'wallet'; this.showToast('Fingerprint verified, enter wallet phone', 'success'); }, 600); }, 900); },
+      
       cancelPayment() { 
         if (this.currentPaymentRequestId) { 
           supabase.from('payment_requests').update({ status: 'cancelled' }).eq('id', this.currentPaymentRequestId).then(); 
