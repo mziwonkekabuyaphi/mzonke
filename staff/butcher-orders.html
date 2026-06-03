@@ -53,57 +53,6 @@
     z-index: 0;
   }
 
-  /* ── Header ── */
-  .site-header {
-    background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%);
-    padding: 1rem 2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-radius: 0 0 32px 32px;
-    box-shadow: var(--shadow-soft);
-    margin-bottom: 30px;
-    position: relative;
-    z-index: 2;
-  }
-  .logo-wrap { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-  .logo-img {
-    height: 44px; width: auto; object-fit: contain;
-    background: rgba(255,255,255,0.15);
-    padding: 4px 12px;
-    border-radius: var(--radius-full);
-    backdrop-filter: blur(4px);
-  }
-  .header-meta { display: flex; align-items: center; gap: 14px; }
-  .status-pill {
-    background: rgba(255,255,255,0.2);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: var(--radius-full);
-    padding: 0.3rem 1rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: white;
-  }
-  .status-pill::before {
-    content: '●';
-    margin-right: 6px;
-    color: #4ade80;
-    font-size: 0.7rem;
-    animation: blink 1.4s infinite;
-  }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .clock {
-    font-size: 1rem; font-weight: 600; letter-spacing: 1px;
-    background: rgba(0,0,0,0.3);
-    padding: 0.3rem 0.9rem;
-    border-radius: var(--radius-full);
-    color: white;
-    backdrop-filter: blur(4px);
-  }
-
   /* ── Stats ── */
   .stats-row {
     display: grid;
@@ -410,8 +359,6 @@
     body { padding: 12px; }
     .stats-row { grid-template-columns: repeat(2,1fr); gap: 12px; }
     .orders-grid { grid-template-columns: 1fr; }
-    .site-header { padding: 0.8rem 1rem; }
-    .clock { display: none; }
   }
   @media (max-width: 480px) {
     .stats-row { grid-template-columns: 1fr; }
@@ -421,19 +368,6 @@
 </style>
 </head>
 <body>
-
-<header class="site-header">
-  <div class="logo-wrap" id="logoWrap">
-    <img class="logo-img" id="logoImg"
-         src="../assets/images/rands-logo3.png"
-         alt="The Butcher Shop"
-         onerror="this.style.display='none'">
-  </div>
-  <div class="header-meta">
-    <div class="status-pill">Butcher Screen · Live</div>
-    <div class="clock" id="liveClock">--:--</div>
-  </div>
-</header>
 
 <div class="stats-row">
   <div class="stat-card">
@@ -502,25 +436,22 @@
     ready:      ['completed', 'collected'],
   };
 
-  // Active statuses shown in the live queue
-  const ACTIVE_STATUSES = ['pending', 'placed', 'preparing', 'ready'];
-
+  // Active statuses shown in the live queue (pending/placed/preparing only)
+  const ACTIVE_STATUSES = ['pending', 'placed', 'preparing'];
+  
   // Completed statuses shown in the history panel
-  const COMPLETED_STATUSES = ['completed', 'collected'];
+  const COMPLETED_STATUSES = ['ready', 'completed', 'collected'];
 
-  let activeOrders    = [];   // normalised rows for the live grid
+  let activeOrders    = [];
   let currentFilter   = 'all';
   let showCompleted   = false;
   let realtimeChannel = null;
-  let refreshDebounce = null; // debounce timer for realtime refreshes
+  let refreshDebounce = null;
 
   /* ─────────────────────────────────────────
      SCHEMA-AWARE NORMALISER
-     prep_start_time is bigint (epoch ms) in the DB.
-     We store & read it as integer milliseconds consistently.
   ───────────────────────────────────────── */
   function normaliseOrder(row) {
-    // Resolve items safely — DB column is jsonb, may arrive as array or null
     let items = [];
     try {
       if (Array.isArray(row.items)) {
@@ -532,60 +463,39 @@
       items = [];
     }
 
-    // Resolve total — schema has both total_amount and total; prefer total
     const total = parseFloat(row.total ?? row.total_amount ?? 0) || 0;
 
-    // prep_start_time is bigint (epoch ms). If somehow an ISO string slipped in,
-    // convert it so all downstream math uses integer ms.
     let prepStartTime = null;
     if (row.prep_start_time !== null && row.prep_start_time !== undefined) {
       const v = row.prep_start_time;
       if (typeof v === 'number') {
         prepStartTime = v;
       } else if (typeof v === 'string') {
-        // Could be ISO string or numeric string
         const parsed = Number(v);
         prepStartTime = isNaN(parsed) ? new Date(v).getTime() : parsed;
       }
     }
 
     return {
-      /* DB identity — NEVER changes */
-      dbId:         row.id,           // UUID PRIMARY KEY — used for all updates
-
-      /* Display only */
+      dbId:         row.id,
       displayNum:   row.order_number ?? row.id,
-
-      /* Status */
       status:       row.status ?? 'pending',
-
-      /* Vendor / source */
       vendor:       row.vendor,
       source:       row.source ?? (row.payment_source === 'wallet' ? 'wallet' : 'kiosk'),
-
-      /* Customer */
       bandName:     row.customer_name ?? (row.source === 'kiosk' ? 'Kiosk Customer' : 'Customer'),
       phoneNumber:  row.phone ?? row.customer_phone ?? '',
-
-      /* Financials */
       total,
       items,
-
-      /* VVIP — DB column is is_vvip */
       isVVIP: row.is_vvip === true,
-
-      /* Timestamps */
       createdAt:    row.created_at ?? null,
       timestamp:    row.created_at ? new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now',
-
-      /* Prep timing — bigint epoch ms */
       prepStartTime,
       prepTime:     row.prep_time ?? null,
     };
   }
 
   /* ─────────────────────────────────────────
-     FETCH — ACTIVE ORDERS
+     FETCH — ACTIVE ORDERS (only pending/placed/preparing)
   ───────────────────────────────────────── */
   async function fetchActiveOrders() {
     const { data, error } = await supabase
@@ -604,14 +514,13 @@
 
     const rows = (data ?? []).map(normaliseOrder);
 
-    // Sort: VVIP first, then kiosk before wallet, then FIFO
     rows.sort((a, b) => {
       if (a.isVVIP !== b.isVVIP) return a.isVVIP ? -1 : 1;
       if (a.source !== b.source) return a.source === 'kiosk' ? -1 : 1;
       return 0;
     });
 
-    console.log(`📦 fetchActiveOrders → ${rows.length} orders`, rows);
+    console.log(`📦 fetchActiveOrders → ${rows.length} active orders`, rows);
     return rows;
   }
 
@@ -644,7 +553,6 @@
 
   /* ─────────────────────────────────────────
      UPDATE ORDER STATUS
-     All DB updates go through here. Always uses id (UUID).
   ───────────────────────────────────────── */
   async function updateOrderStatus(dbId, newStatus, displayNum) {
     if (!dbId) {
@@ -656,11 +564,9 @@
     const label = displayNum ?? dbId;
     console.log(`🔄 Attempting update: dbId=${dbId}  label=#${label}  →  ${newStatus}`);
 
-    // Disable button immediately for UX
     setButtonLoading(dbId, newStatus, true);
 
     try {
-      /* ── Step 1: Fetch current row by UUID ── */
       const { data: row, error: fetchErr } = await supabase
         .from('orders')
         .select('id, status, prep_start_time, vendor')
@@ -677,7 +583,6 @@
 
       console.log('📋 Current row:', row);
 
-      /* ── Step 2: Validate transition ── */
       if (!isTransitionAllowed(row.status, newStatus)) {
         const msg = `⛔ Transition ${row.status} → ${newStatus} is not allowed`;
         console.warn(msg);
@@ -686,10 +591,9 @@
         return false;
       }
 
-      /* ── Step 3: Build update payload ── */
       const now    = new Date();
       const nowIso = now.toISOString();
-      const nowMs  = now.getTime();          // integer epoch ms — matches bigint column
+      const nowMs  = now.getTime();
 
       const payload = {
         status:     newStatus,
@@ -697,15 +601,12 @@
       };
 
       if (newStatus === 'preparing') {
-        // Store epoch ms as bigint — consistent with schema definition
         payload.prep_start_time = nowMs;
         console.log(`⏱️  prep_start_time set to ${nowMs} (epoch ms)`);
       }
 
       if (newStatus === 'ready') {
-        // Compute prep_time in minutes
         let startMs = row.prep_start_time;
-        // Normalise in case a stale ISO string was somehow in the DB
         if (typeof startMs === 'string') {
           const parsed = Number(startMs);
           startMs = isNaN(parsed) ? new Date(startMs).getTime() : parsed;
@@ -713,32 +614,28 @@
         const elapsedMs   = startMs ? (nowMs - startMs) : 0;
         const elapsedMins = Math.max(0, Math.round(elapsedMs / 60_000));
         payload.prep_time = elapsedMins;
-        console.log(`✅ prep_time=${elapsedMins}m  (start=${startMs}, now=${nowMs}, elapsed=${elapsedMs}ms)`);
+        console.log(`✅ prep_time=${elapsedMins}m`);
       }
 
-      /* ── Step 4: Execute update by UUID ── */
-      const { data: updated, error: updateErr } = await supabase
+      const { error: updateErr } = await supabase
         .from('orders')
         .update(payload)
-        .eq('id', dbId)         // ← UUID ONLY — never order_number
-        .select('id, status, prep_time');
+        .eq('id', dbId);
 
       if (updateErr) {
         console.error('❌ Supabase update error:', updateErr);
         throw new Error(updateErr.message ?? 'Update failed');
       }
 
-      console.log(`✅ Order #${label} updated to ${newStatus}:`, updated);
+      console.log(`✅ Order #${label} updated to ${newStatus}`);
 
-      /* ── Step 5: User feedback ── */
       if (newStatus === 'preparing') {
         showToast(`🔥 Order #${label} is now PREPARING`, 'info');
       } else if (newStatus === 'ready') {
         playNotificationSound();
-        showToast(`✅ Order #${label} is READY for collection!`, 'ready');
+        showToast(`✅ Order #${label} is READY! Moved to Collection screen.`, 'ready');
       }
 
-      /* ── Step 6: Refresh UI (realtime may also fire, debounce handles it) ── */
       await refreshAllData();
       return true;
 
@@ -751,9 +648,6 @@
     }
   }
 
-  /* ─────────────────────────────────────────
-     BUTTON LOADING STATE
-  ───────────────────────────────────────── */
   function setButtonLoading(dbId, targetStatus, isLoading) {
     const btnId = targetStatus === 'preparing'
       ? `btn-prepare-${dbId}`
@@ -765,7 +659,6 @@
       btn.disabled = true;
     } else {
       btn.classList.remove('loading');
-      // re-enable will happen naturally on next renderOrders()
     }
   }
 
@@ -793,7 +686,6 @@
       const { dbId, displayNum, status, isVVIP, source, bandName, phoneNumber,
               timestamp, items, total, prepTime } = order;
 
-      /* Status display */
       let statusClass = '', statusText = '', statusIcon = '';
       switch (status) {
         case 'pending':
@@ -801,22 +693,16 @@
           statusClass = 'status-pending'; statusText = 'PENDING';      statusIcon = '📋'; break;
         case 'preparing':
           statusClass = 'status-preparing'; statusText = 'ON THE GRILL'; statusIcon = '🔥'; break;
-        case 'ready':
-          statusClass = 'status-ready'; statusText = 'READY';          statusIcon = '✅'; break;
         default:
           statusClass = ''; statusText = status.toUpperCase(); statusIcon = '📦';
       }
 
-      /* Button enabled states — strict state machine */
       const canPrepare = status === 'pending' || status === 'placed';
       const canReady   = status === 'preparing';
-
-      /* Source badge */
       const sourceBadge = source === 'wallet'
         ? '<span class="order-source-badge source-wallet">💰 Wallet</span>'
         : '<span class="order-source-badge source-kiosk">📱 Kiosk</span>';
 
-      /* Items rows — null-safe */
       const itemRows = (Array.isArray(items) && items.length > 0)
         ? items.map(item => {
             const qty   = item.quantity ?? item.qty ?? 1;
@@ -829,7 +715,6 @@
           }).join('')
         : `<div class="item-row" style="color:var(--mist);font-style:italic;">No item details</div>`;
 
-      /* Prep time display for preparing orders */
       const prepInfo = prepTime != null
         ? `<div style="font-size:11px;color:var(--mist);margin:0 16px 8px 16px;">⏱ Prep time: ${prepTime}m</div>`
         : '';
@@ -914,13 +799,11 @@
      STATS
   ───────────────────────────────────────── */
   async function updateStats() {
-    // Pending / preparing counts come from already-fetched activeOrders
     document.getElementById('pendingCount').innerText =
       activeOrders.filter(o => o.status === 'pending' || o.status === 'placed').length;
     document.getElementById('preparingCount').innerText =
       activeOrders.filter(o => o.status === 'preparing').length;
 
-    // Revenue — today's completed/collected orders
     const todayStr = new Date().toISOString().slice(0, 10);
     const { data: revenueRows, error: revErr } = await supabase
       .from('orders')
@@ -935,7 +818,6 @@
       document.getElementById('todayRevenue').innerText = 'R' + revenue.toFixed(2);
     }
 
-    // Avg prep time — completed orders with prep_time set
     const { data: prepRows, error: prepErr } = await supabase
       .from('orders')
       .select('prep_time')
@@ -951,9 +833,6 @@
     }
   }
 
-  /* ─────────────────────────────────────────
-     FULL REFRESH  (debounced for realtime)
-  ───────────────────────────────────────── */
   async function refreshAllData() {
     activeOrders = await fetchActiveOrders();
     renderOrders();
@@ -966,18 +845,14 @@
     refreshDebounce = setTimeout(() => refreshAllData(), 350);
   }
 
-  /* ─────────────────────────────────────────
-     REALTIME — single channel, vendor-filtered
-  ───────────────────────────────────────── */
   function setupRealtime() {
-    // Tear down any previous subscription cleanly
     if (realtimeChannel) {
       supabase.removeChannel(realtimeChannel);
       realtimeChannel = null;
     }
 
     realtimeChannel = supabase
-      .channel('kds-butcher-v2')   // unique channel name
+      .channel('kds-butcher-v2')
       .on(
         'postgres_changes',
         {
@@ -996,15 +871,11 @@
           console.log('✅ Realtime channel subscribed');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('❌ Realtime channel error:', status, err);
-          // Auto-reconnect after 5 seconds
           setTimeout(setupRealtime, 5_000);
         }
       });
   }
 
-  /* ─────────────────────────────────────────
-     FILTERS
-  ───────────────────────────────────────── */
   function setupFilters() {
     document.querySelectorAll('.filter-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -1016,9 +887,6 @@
     });
   }
 
-  /* ─────────────────────────────────────────
-     COMPLETED PANEL TOGGLE
-  ───────────────────────────────────────── */
   function toggleCompletedOrders() {
     showCompleted = !showCompleted;
     const grid = document.getElementById('completedOrdersGrid');
@@ -1033,9 +901,6 @@
     }
   }
 
-  /* ─────────────────────────────────────────
-     HELPERS
-  ───────────────────────────────────────── */
   function escHtml(str) {
     if (str == null) return '';
     return String(str)
@@ -1046,11 +911,7 @@
   }
 
   function showToast(message, type) {
-    const colors = {
-      ready: '#00cc66',
-      info:  '#f59e0b',
-      error: '#E30613',
-    };
+    const colors = { ready: '#00cc66', info: '#f59e0b', error: '#E30613' };
     const toast = document.createElement('div');
     Object.assign(toast.style, {
       position:     'fixed',
@@ -1066,7 +927,6 @@
       boxShadow:    '0 8px 20px -6px rgba(0,0,0,0.25)',
       animation:    'slideInRight 0.3s ease',
       maxWidth:     '340px',
-      lineHeight:   '1.4',
     });
     toast.innerText = message;
     document.body.appendChild(toast);
@@ -1089,7 +949,7 @@
           osc.stop(ctx.currentTime + dur);
         }, delay * 1000);
       });
-    } catch (_) { /* AudioContext not available */ }
+    } catch (_) {}
   }
 
   function setConnStatus(state, text) {
@@ -1105,45 +965,19 @@
     txt.innerHTML = text;
   }
 
-  function updateClock() {
-    document.getElementById('liveClock').textContent =
-      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  setInterval(updateClock, 1_000);
-  updateClock();
-
-  /* ─────────────────────────────────────────
-     PUBLIC API — called by inline onclick
-  ───────────────────────────────────────── */
   window.__kds = {
     startPreparing: (dbId, displayNum) => updateOrderStatus(dbId, 'preparing', displayNum),
     markReady:      (dbId, displayNum) => updateOrderStatus(dbId, 'ready',     displayNum),
   };
-
-  // Legacy aliases kept for safety
-  window.updateOrderStatus    = (dbId, status, _src, display) => updateOrderStatus(dbId, status, display ?? dbId);
-  window.markOrderReady       = (dbId, _src, display)         => updateOrderStatus(dbId, 'ready', display ?? dbId);
+  window.updateOrderStatus = (dbId, status, _src, display) => updateOrderStatus(dbId, status, display ?? dbId);
+  window.markOrderReady = (dbId, _src, display) => updateOrderStatus(dbId, 'ready', display ?? dbId);
   window.toggleCompletedOrders = toggleCompletedOrders;
 
-  /* ─────────────────────────────────────────
-     INIT
-  ───────────────────────────────────────── */
   (async function init() {
     setupFilters();
-
-    // Connection probe
-    const { error: probeErr } = await supabase
-      .from('orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('vendor', VENDOR_NAME);
-
-    if (probeErr) {
-      console.error('❌ Supabase connection probe failed:', probeErr);
-      setConnStatus('error', `⚠️ Cannot reach Supabase: ${probeErr.message}`);
-    } else {
-      setConnStatus('ok', '✅ Connected · Live (Butcher Orders)');
-    }
-
+    const { error: probeErr } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('vendor', VENDOR_NAME);
+    if (probeErr) setConnStatus('error', `⚠️ Cannot reach Supabase: ${probeErr.message}`);
+    else setConnStatus('ok', '✅ Connected · Live (Butcher Orders)');
     await refreshAllData();
     setupRealtime();
   })();
