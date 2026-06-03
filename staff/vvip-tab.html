@@ -370,6 +370,32 @@ input:focus, select:focus {
     .quick-status { flex-direction: column; align-items: flex-start; }
     .status-buttons { margin-left: 0; margin-top: 8px; width: 100%; justify-content: center; }
 }
+
+/* Request card styling */
+.request-card {
+    background: linear-gradient(135deg, #fff9e6, #fff3d1);
+    border-left: 4px solid var(--gold);
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 16px;
+}
+.request-badge {
+    background: var(--gold);
+    color: #1e293b;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+}
+.btn-small {
+    background: var(--red);
+    border: none;
+    padding: 6px 14px;
+    border-radius: 30px;
+    color: white;
+    cursor: pointer;
+    font-size: 12px;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -388,6 +414,15 @@ input:focus, select:focus {
             <button class="status-btn" onclick="openDashboardModal()">📊 DASHBOARD</button>
             <button class="status-btn" onclick="openVVIPPackages()">🎁 VVIP PKGS</button>
         </div>
+    </div>
+
+    <!-- Pending Service & Shisha Requests Panel -->
+    <div id="pendingRequestsPanel" style="background: white; border-radius: 20px; border: 2px solid var(--gold); margin-bottom: 20px; padding: 12px; display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span><strong>👑 VVIP Pending Requests</strong></span>
+            <span id="requestsCount" style="background: var(--gold); padding: 2px 10px; border-radius: 30px; font-size: 12px;">0</span>
+        </div>
+        <div id="requestsList" style="max-height: 200px; overflow-y: auto;"></div>
     </div>
 
     <div id="pos" class="section active">
@@ -477,6 +512,8 @@ input:focus, select:focus {
     let currentTabBalance = 0;
     let currentPackageInfo = null;
     let isLoadingCheckout = false;
+    let pendingRequests = [];
+    let pendingServiceRequests = [];
 
     function showToast(message, isError = false) {
         const modal = document.getElementById('vvipModal');
@@ -488,6 +525,175 @@ input:focus, select:focus {
     }
     window.closeVVIPModal = () => document.getElementById('vvipModal').classList.remove('active');
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+
+    // ============ PENDING REQUESTS (Service + Shisha) ============
+    async function loadPendingRequests() {
+        // Load service requests (from service_requests table)
+        const { data: serviceData, error: serviceErr } = await supabase
+            .from('service_requests')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true });
+        
+        if (!serviceErr) {
+            pendingServiceRequests = (serviceData || []).map(req => ({
+                id: req.id,
+                type: 'service',
+                customerId: req.customer_id,
+                customerName: req.customer_name,
+                amount: req.remaining_balance,
+                table: req.table_location,
+                status: req.status
+            }));
+        }
+        
+        // Load shisha requests (from shisha_requests table)
+        const { data: shishaData, error: shishaErr } = await supabase
+            .from('shisha_requests')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true });
+        
+        if (!shishaErr) {
+            const shishaRequests = (shishaData || []).map(req => ({
+                id: req.id,
+                type: 'shisha',
+                customerId: req.customer_phone,
+                customerName: req.customer_name || req.customer_phone,
+                amount: 250,
+                flavour: req.flavour_name,
+                location: req.location_name,
+                deviceCode: req.device_code,
+                status: req.status
+            }));
+            pendingRequests = [...pendingServiceRequests, ...shishaRequests];
+        } else {
+            pendingRequests = [...pendingServiceRequests];
+        }
+        
+        renderPendingRequests();
+    }
+
+    function renderPendingRequests() {
+        const panel = document.getElementById('pendingRequestsPanel');
+        const container = document.getElementById('requestsList');
+        const countSpan = document.getElementById('requestsCount');
+        
+        if (pendingRequests.length === 0) { 
+            panel.style.display = 'none'; 
+            return; 
+        }
+        
+        panel.style.display = 'block';
+        countSpan.innerText = pendingRequests.length;
+        
+        container.innerHTML = pendingRequests.map(req => {
+            if (req.type === 'service') {
+                return `<div class="request-card">
+                    <div style="display: flex; justify-content: space-between;">
+                        <div><strong>${escapeHtml(req.customerName)}</strong> <span class="request-badge">VVIP Service</span></div>
+                        <span style="color: var(--gold); font-weight: bold;">R${req.amount}</span>
+                    </div>
+                    <div style="font-size: 12px;">Table: ${escapeHtml(req.table)}</div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button class="btn-small" onclick="acceptServiceRequest('${req.id}')" style="background: var(--success);">✅ Accept & Load</button>
+                        <button class="btn-small" onclick="declineServiceRequest('${req.id}')" style="background: var(--gray-light);">✖ Decline</button>
+                    </div>
+                </div>`;
+            } else {
+                return `<div class="request-card">
+                    <div style="display: flex; justify-content: space-between;">
+                        <div><strong>${escapeHtml(req.customerName)}</strong> <span class="request-badge">💨 Shisha Request</span></div>
+                        <span style="color: var(--gold); font-weight: bold;">R${req.amount}</span>
+                    </div>
+                    <div style="font-size: 12px;">Flavour: ${escapeHtml(req.flavour)} | Location: ${escapeHtml(req.location)}</div>
+                    <div style="font-size: 11px; color: var(--gray-text);">Device: ${escapeHtml(req.deviceCode || 'New')}</div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button class="btn-small" onclick="acceptShishaRequest('${req.id}', '${escapeHtml(req.customerName)}', '${escapeHtml(req.flavour)}', '${escapeHtml(req.location)}')" style="background: var(--success);">✅ Accept & Create</button>
+                        <button class="btn-small" onclick="declineShishaRequest('${req.id}')" style="background: var(--gray-light);">✖ Decline</button>
+                    </div>
+                </div>`;
+            }
+        }).join('');
+    }
+
+    // Service request handlers
+    window.acceptServiceRequest = async function(requestId) {
+        const request = pendingServiceRequests.find(r => r.id == requestId);
+        if (!request) return;
+        
+        const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', request.customerId).single();
+        if (error || !profile) { showToast('Customer not found', true); return; }
+        
+        await loadCustomerByProfile(profile);
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('service_requests').update({ status: 'accepted', accepted_at: new Date(), accepted_by: user?.id }).eq('id', request.id);
+        
+        await loadPendingRequests();
+        showToast(`✅ Loaded ${profile.name} | Balance: R${request.amount}`);
+    };
+
+    window.declineServiceRequest = async function(requestId) {
+        await supabase.from('service_requests').update({ status: 'declined' }).eq('id', requestId);
+        await loadPendingRequests();
+        showToast('Service request declined');
+    };
+
+    // Shisha request handlers
+    window.acceptShishaRequest = async function(requestId, customerName, flavour, location) {
+        try {
+            // Check if customer exists by phone number
+            let customerPhone = customerName;
+            if (!customerPhone.match(/^\d+$/)) {
+                customerPhone = prompt("Enter customer phone number for Shisha session:", "");
+                if (!customerPhone) { showToast("Phone number required", true); return; }
+            }
+            
+            const { data: profile, error } = await supabase.from('profiles').select('*').eq('phone', customerPhone).maybeSingle();
+            
+            if (!profile || error) {
+                showToast(`Customer not found with phone: ${customerPhone}`, true);
+                return;
+            }
+            
+            // Load customer and then send to Shisha Console
+            await loadCustomerByProfile(profile);
+            
+            // Mark request as accepted
+            await supabase.from('shisha_requests').update({ status: 'approved', responded_at: new Date().toISOString() }).eq('id', requestId);
+            
+            await loadPendingRequests();
+            showToast(`✅ Shisha request accepted for ${profile.name}. Ready to order!`);
+        } catch (err) {
+            showToast('Error accepting shisha request', true);
+        }
+    };
+
+    window.declineShishaRequest = async function(requestId) {
+        await supabase.from('shisha_requests').update({ status: 'rejected', responded_at: new Date().toISOString() }).eq('id', requestId);
+        await loadPendingRequests();
+        showToast('Shisha request declined');
+    };
+
+    // Setup realtime subscriptions for both request types
+    function setupRealtimeSubscriptions() {
+        // Service requests subscription
+        supabase.channel('service_requests_vvip')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'service_requests', filter: 'status=eq.pending' }, (payload) => {
+                loadPendingRequests();
+                showToast(`🔔 New VVIP service request from ${payload.new.customer_name}`);
+            })
+            .subscribe();
+        
+        // Shisha requests subscription
+        supabase.channel('shisha_requests_vvip')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shisha_requests', filter: 'status=eq.pending' }, (payload) => {
+                loadPendingRequests();
+                showToast(`💨 New Shisha request from ${payload.new.customer_name || payload.new.customer_phone}`);
+            })
+            .subscribe();
+    }
 
     window.loadCustomerManual = async function() {
         const identifier = document.getElementById('posBand').value.trim();
@@ -639,7 +845,7 @@ input:focus, select:focus {
             request_data: { items, total, is_vvip: true }
         };
         await supabase.from('shisha_requests').insert([requestData]);
-        showToast(`💨 Shisha request sent to staff console!`);
+        return true;
     }
     
     window.checkout = async function() {
@@ -663,7 +869,7 @@ input:focus, select:focus {
             });
             
             const orderPromises = [];
-            let hasShisha = false;
+            let shishaRequestSent = false;
             
             for (const [vendor, items] of vendorGroups.entries()) {
                 const vendorTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -671,8 +877,8 @@ input:focus, select:focus {
                 const orderNumber = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
                 
                 if (vendor === VENDORS.SHISHA) {
-                    hasShisha = true;
                     await sendShishaRequest(items, vendorTotal);
+                    shishaRequestSent = true;
                 } else {
                     orderPromises.push(supabase.from('orders').insert([{
                         order_number: orderNumber,
@@ -715,7 +921,7 @@ input:focus, select:focus {
             document.getElementById('quickGuests').innerText = guests;
             
             const vendorNames = Array.from(vendorGroups.keys()).join(', ');
-            showToast(`✅ Order placed! R${total} deducted. Sent to: ${vendorNames}${hasShisha ? ' (Shisha request sent to staff)' : ''}`);
+            showToast(`✅ Order placed! R${total} deducted. Sent to: ${vendorNames}${shishaRequestSent ? ' (Shisha request sent to staff)' : ''}`);
             
             clearCart();
             if (newTabBalance <= 0) { showToast(`Balance depleted. Customer will be cleared.`); setTimeout(() => clearCustomer(), 2000); }
@@ -745,10 +951,21 @@ input:focus, select:focus {
     
     document.getElementById('nfcButton')?.addEventListener('click', () => showToast('📱 Please enter phone number manually'));
     
-    async function init() { await loadVendorProducts(); updateQuickStats(); }
+    async function init() { 
+        await loadVendorProducts(); 
+        await loadPendingRequests();
+        setupRealtimeSubscriptions();
+        updateQuickStats(); 
+    }
     function updateQuickStats() { document.getElementById('quickRevenue').innerText = 'R' + revenue; document.getElementById('quickGuests').innerText = guests; }
     
-    window.switchToPOS = switchToPOS; window.switchToActiveOrders = switchToActiveOrders; window.openDashboardModal = openDashboardModal; window.closeDashboardModal = closeDashboardModal; window.openVVIPPackages = openVVIPPackages; window.switchVendor = switchVendor;
+    window.switchToPOS = switchToPOS; 
+    window.switchToActiveOrders = switchToActiveOrders; 
+    window.openDashboardModal = openDashboardModal; 
+    window.closeDashboardModal = closeDashboardModal; 
+    window.openVVIPPackages = openVVIPPackages; 
+    window.switchVendor = switchVendor;
+    
     init();
 </script>
 </body>
