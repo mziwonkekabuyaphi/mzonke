@@ -4,11 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
   <title>Rands Smart Counter · Bar Screen</title>
-  <!-- Same fonts & design system as your index/kiosk -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    /* ========== DESIGN SYSTEM (mirrors index.html + keeps original layout) ========== */
     :root {
       --red: #E30613;
       --red-dark: #a0010e;
@@ -54,7 +52,6 @@
       z-index: 0;
     }
 
-    /* Header exactly like index.html */
     .site-header {
       background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%);
       padding: 1rem 2rem;
@@ -127,7 +124,6 @@
       backdrop-filter: blur(4px);
     }
 
-    /* Stats row */
     .stats-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -164,7 +160,6 @@
       margin-top: 6px;
     }
 
-    /* Queue container */
     .queue-container {
       background: var(--white);
       border-radius: var(--radius-xl);
@@ -203,7 +198,6 @@
       letter-spacing: -0.02em;
     }
 
-    /* Filter Tabs */
     .filter-tabs {
       display: flex;
       gap: 10px;
@@ -231,7 +225,6 @@
       color: var(--red);
     }
 
-    /* Orders Grid */
     .orders-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -241,7 +234,6 @@
       padding: 5px;
     }
 
-    /* Order Card */
     .order-card {
       background: var(--white);
       border-radius: var(--radius-xl);
@@ -609,8 +601,8 @@
   let showCompleted = false;
   let realtimeSubscription = null;
 
-  // Drink keywords (same as original)
-  const drinkKeywords = ['coke', 'cola', 'water', 'beer', 'lager', 'stout', 'wine', 'spirit', 'cocktail', 'juice', 'soda', 'fanta', 'sprite'];
+  // Drink keywords
+  const drinkKeywords = ['coke', 'cola', 'water', 'beer', 'lager', 'stout', 'wine', 'spirit', 'cocktail', 'juice', 'soda', 'fanta', 'sprite', 'whiskey', 'vodka', 'gin', 'rum', 'tequila', 'brandy'];
 
   function filterDrinkItems(items) {
     if (!items || !items.length) return [];
@@ -620,7 +612,6 @@
     });
   }
 
-  // ========== FIXED: Use primary key 'id' for all DB operations, 'order_id' only for display ==========
   async function fetchActiveOrders() {
     const { data, error } = await supabase
       .from('orders')
@@ -638,35 +629,31 @@
     
     console.log(`📦 Fetched ${data?.length || 0} raw orders from Supabase:`, data);
     
-    if (!data || data.length === 0) {
-      console.warn("⚠️ No orders returned. Possible reasons: RLS blocking, wrong vendor, or no orders with status pending/preparing/placed/paid.");
-      return [];
-    }
+    if (!data || data.length === 0) return [];
     
     return data.map(order => {
       let displayItems = order.items || [];
       let displayTotal = order.total;
-      let originalTotal = order.original_total || order.total;
       
       if (order.source === 'kiosk') {
         const drinkOnly = filterDrinkItems(order.items || []);
         displayItems = drinkOnly;
-        displayTotal = drinkOnly.reduce((sum, it) => sum + (it.price * it.quantity), 0);
+        displayTotal = drinkOnly.reduce((sum, it) => sum + ((it.price || it.unit_price || 0) * (it.quantity || 1)), 0);
       }
       
       return {
         ...order,
-        id: order.id,                           // UUID primary key - use for ALL updates
-        orderId: order.order_id || order.id,    // Display only - receipt number, falls back to id
+        id: order.id,                           // UUID primary key
+        orderId: order.order_number || order.order_id || order.id,
         items: displayItems,
         total: displayTotal,
-        originalTotal: originalTotal,
+        originalTotal: order.original_total || order.total,
         source: order.source || (order.payment_source === 'wallet' ? 'wallet' : 'kiosk'),
         status: order.status,
         bandName: order.customer_name || (order.source === 'kiosk' ? 'Kiosk Customer' : 'Customer'),
         bandId: order.phone || '',
-        phoneNumber: order.phone || '',
-        timestamp: order.created_at ? new Date(order.created_at).toLocaleTimeString() : '',
+        phoneNumber: order.phone || order.customer_phone || '',
+        timestamp: order.created_at ? new Date(order.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '',
         date: order.created_at ? order.created_at.slice(0,10) : new Date().toISOString().slice(0,10),
         isVVIP: order.is_vvip || false,
         prepStartTime: order.prep_start_time,
@@ -688,7 +675,8 @@
       .select('*')
       .or(`vendor.eq.${VENDOR_NAME},vendor.eq.Rands,vendor.is.null,vendor.eq.`)
       .in('status', ['collected', 'completed', 'ready'])
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
     if (error) return [];
     return data.map(order => {
       let displayItems = order.items || [];
@@ -696,78 +684,109 @@
       if (order.source === 'kiosk') {
         const drinkOnly = filterDrinkItems(order.items || []);
         displayItems = drinkOnly;
-        displayTotal = drinkOnly.reduce((sum, it) => sum + (it.price * it.quantity), 0);
+        displayTotal = drinkOnly.reduce((sum, it) => sum + ((it.price || it.unit_price || 0) * (it.quantity || 1)), 0);
       }
       return {
         ...order,
         id: order.id,
-        orderId: order.order_id || order.id,
+        orderId: order.order_number || order.order_id || order.id,
         items: displayItems,
         total: displayTotal,
         source: order.source,
-        timestamp: order.created_at ? new Date(order.created_at).toLocaleTimeString() : '',
+        timestamp: order.created_at ? new Date(order.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '',
         bandName: order.customer_name || (order.source === 'kiosk' ? 'Kiosk Customer' : 'Customer'),
         prepTime: order.prep_time
       };
     });
   }
 
-  // CRITICAL FIX: Use 'id' (UUID) not 'order_id' for database operations
-  async function updateOrderStatus(orderUuid, newStatus, source) {
+  // FIXED: Use UUID (order.id) for database operations
+  async function updateOrderStatus(orderUuid, newStatus) {
+    if (!orderUuid) {
+      console.error("❌ Missing order UUID");
+      showToast("Missing order ID", "error");
+      return false;
+    }
+    
     try {
-      // Fetch current order state using UUID primary key
+      console.log(`🔄 Updating order ${orderUuid} to status: ${newStatus}`);
+      
+      // Fetch current order state using UUID
       const { data: existing, error: fetchErr } = await supabase
         .from('orders')
         .select('status, prep_start_time')
-        .eq('id', orderUuid)                    // FIXED: use 'id' not 'order_id'
+        .eq('id', orderUuid)
         .single();
       
       if (fetchErr) {
-        console.error("Fetch error for UUID:", orderUuid, fetchErr);
-        throw fetchErr;
+        console.error("❌ Fetch error for UUID:", orderUuid, fetchErr);
+        showToast("Order not found", "error");
+        return false;
       }
       if (!existing) {
-        console.error("No order found with UUID:", orderUuid);
-        throw new Error("Order not found");
+        console.error("❌ No order found with UUID:", orderUuid);
+        showToast("Order not found", "error");
+        return false;
       }
       
-      const updateData = { status: newStatus, updated_at: new Date().toISOString() };
+      console.log(`📋 Current status: ${existing.status}, new status: ${newStatus}`);
       
-      if (newStatus === 'preparing' && existing.status === 'pending') {
+      // Validate transition
+      if (newStatus === 'preparing' && existing.status !== 'pending' && existing.status !== 'placed') {
+        showToast(`Cannot prepare order with status: ${existing.status}`, "error");
+        return false;
+      }
+      if (newStatus === 'ready' && existing.status !== 'preparing') {
+        showToast(`Order must be preparing before marking ready (current: ${existing.status})`, "error");
+        return false;
+      }
+      
+      const updateData = { 
+        status: newStatus, 
+        updated_at: new Date().toISOString() 
+      };
+      
+      if (newStatus === 'preparing' && (existing.status === 'pending' || existing.status === 'placed')) {
         updateData.prep_start_time = Date.now();
+        console.log(`⏱️ Set prep_start_time to ${updateData.prep_start_time}`);
       }
       
       if (newStatus === 'ready' && existing.status === 'preparing') {
         const start = existing.prep_start_time || Date.now();
-        updateData.prep_time = Math.round((Date.now() - start) / 60000);
+        const prepMinutes = Math.round((Date.now() - start) / 60000);
+        updateData.prep_time = prepMinutes;
         updateData.ready_at = new Date().toISOString();
+        console.log(`✅ Prep time: ${prepMinutes} minutes`);
         playNotificationSound();
-        showToast(`✅ Order is READY!`, "ready");
+        showToast(`🍺 Order is READY for collection!`, "ready");
       }
       
       // Update using UUID primary key
       const { error: updateErr } = await supabase
         .from('orders')
         .update(updateData)
-        .eq('id', orderUuid);                   // FIXED: use 'id' not 'order_id'
+        .eq('id', orderUuid);
       
       if (updateErr) {
-        console.error("Update error for UUID:", orderUuid, updateErr);
-        throw updateErr;
+        console.error("❌ Update error for UUID:", orderUuid, updateErr);
+        showToast(`Failed to update status: ${updateErr.message}`, "error");
+        return false;
       }
       
+      console.log(`✅ Order ${orderUuid} updated to ${newStatus}`);
       if (newStatus !== 'ready') showToast(`🍺 Order is now ${newStatus.toUpperCase()}`, "info");
+      
       await refreshAllData();
       return true;
     } catch (err) {
-      console.error("Update order status failed:", err);
+      console.error("❌ Update order status failed:", err);
       showToast("Failed to update status", "error");
       return false;
     }
   }
 
-  async function markOrderReady(orderUuid, source) {
-    await updateOrderStatus(orderUuid, 'ready', source);
+  async function markOrderReady(orderUuid) {
+    await updateOrderStatus(orderUuid, 'ready');
   }
 
   async function updateStats() {
@@ -779,14 +798,14 @@
     const { data: collected } = await supabase
       .from('orders')
       .select('total, source, original_total, items, created_at')
-      .or(`vendor.eq.${VENDOR_NAME},vendor.eq.Rands,vendor.is.null`)
+      .or(`vendor.eq.${VENDOR_NAME},vendor.eq.Rands,vendor.is.null,vendor.eq.`)
       .in('status', ['collected', 'completed', 'ready']);
     let revenue = 0;
     if (collected) {
       for (const order of collected) {
         if (order.created_at?.slice(0,10) === todayStr) {
           if (order.source === 'kiosk') {
-            const drinkTotal = filterDrinkItems(order.items || []).reduce((s,it) => s + (it.price * it.quantity), 0);
+            const drinkTotal = filterDrinkItems(order.items || []).reduce((s,it) => s + ((it.price || it.unit_price || 0) * (it.quantity || 1)), 0);
             revenue += drinkTotal;
           } else {
             revenue += (order.total || 0);
@@ -799,7 +818,7 @@
     const { data: completedTimes } = await supabase
       .from('orders')
       .select('prep_time')
-      .or(`vendor.eq.${VENDOR_NAME},vendor.eq.Rands,vendor.is.null`)
+      .or(`vendor.eq.${VENDOR_NAME},vendor.eq.Rands,vendor.is.null,vendor.eq.`)
       .in('status', ['collected', 'completed'])
       .not('prep_time', 'is', null);
     if (completedTimes && completedTimes.length) {
@@ -817,7 +836,7 @@
     if (currentFilter === "kiosk") filtered = unifiedOrders.filter(o => o.source === "kiosk");
     
     if (filtered.length === 0) {
-      grid.innerHTML = `<div class="empty-state"><span>🍺</span><h3>No Active Orders</h3><p>Orders will appear here when placed from Wallet or Kiosk.</p><p style="font-size:12px; margin-top:8px;">🔍 Check console for debug info</p></div>`;
+      grid.innerHTML = `<div class="empty-state"><span>🍺</span><h3>No Active Orders</h3><p>Orders will appear here when placed from Wallet or Kiosk.</p></div>`;
       return;
     }
     
@@ -836,37 +855,38 @@
       const noteHtml = (order.source === "kiosk" && order.originalTotal && order.originalTotal > order.total) 
         ? `<div style="font-size:10px; color:#ff9800; margin-top:5px;">⚠️ Note: This order also has food items (kitchen screen)</div>` : '';
       
-      // CRITICAL: Pass order.id (UUID) to button actions, NOT order.order_id
+      // CRITICAL: Pass order.id (UUID) to button actions
       const orderUuid = order.id;
       const displayOrderId = order.orderId;
       
       return `
         <div class="order-card ${vvipClass}">
           <div class="order-header">
-            <span class="order-id">#${escapeHtml(displayOrderId)} ${isVVIP ? '👑' : ''} ${sourceBadge}</span>
+            <span class="order-id">#${escapeHtml(String(displayOrderId))} ${isVVIP ? '👑' : ''} ${sourceBadge}</span>
             <span class="order-time">${order.timestamp || 'just now'}</span>
           </div>
           <div class="order-customer">
             <span style="color:var(--mist);">Customer: </span>
             <span class="customer-band">${escapeHtml(order.bandName || order.bandId || 'Customer')}</span>
+            ${order.phoneNumber ? `<span style="font-size:11px;color:var(--mist);margin-left:8px;">📱 ${escapeHtml(order.phoneNumber)}</span>` : ''}
             ${isVVIP ? '<span class="vvip-badge-on-card">👑 VVIP PRIORITY</span>' : ''}
           </div>
           ${noteHtml}
           <div class="status-badge ${statusClass}">${statusIcon} ${statusText}</div>
           <div class="order-items">
-            ${order.items.map(item => `
+            ${order.items && order.items.length ? order.items.map(item => `
               <div class="item-row">
-                <span>${item.quantity}x ${escapeHtml(item.name)}</span>
-                <span>R${(item.price * item.quantity).toFixed(2)}</span>
+                <span>${item.quantity || 1}x ${escapeHtml(item.name || item.product_name || 'Item')}</span>
+                <span>R${((item.price || item.unit_price || 0) * (item.quantity || 1)).toFixed(2)}</span>
               </div>
-            `).join('')}
+            `).join('') : '<div class="item-row" style="color:var(--mist);font-style:italic;">No drink items</div>'}
           </div>
-          <div class="order-total">Total: R${order.total.toFixed(2)}</div>
+          <div class="order-total">Total: R${(order.total || 0).toFixed(2)}</div>
           <div class="order-actions">
-            <button class="btn btn-prepare" onclick="window.updateOrderStatus('${orderUuid}', 'preparing', '${order.source}')" ${order.status !== "pending" && order.status !== "placed" ? "disabled" : ""}>
+            <button class="btn btn-prepare" onclick="window.updateOrderStatus('${orderUuid}', 'preparing')" ${order.status !== "pending" && order.status !== "placed" ? "disabled" : ""}>
               🍳 START PREPARING
             </button>
-            <button class="btn btn-ready" onclick="window.markOrderReady('${orderUuid}', '${order.source}')" ${order.status !== "preparing" ? "disabled" : ""}>
+            <button class="btn btn-ready" onclick="window.markOrderReady('${orderUuid}')" ${order.status !== "preparing" ? "disabled" : ""}>
               ✅ MARK READY → COLLECTION
             </button>
           </div>
@@ -889,14 +909,14 @@
       return `
         <div class="completed-order-card">
           <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-            <span style="color:var(--red); font-weight:bold;">#${order.orderId} ${sourceBadge}</span>
+            <span style="color:var(--red); font-weight:bold;">#${escapeHtml(String(order.orderId))} ${sourceBadge}</span>
             <span style="color:var(--mist); font-size:12px;">${order.timestamp}</span>
           </div>
-          <div style="font-size:13px; color:var(--slate);">${escapeHtml(order.customer_name || order.bandName || 'Customer')}</div>
+          <div style="font-size:13px; color:var(--slate);">${escapeHtml(order.bandName || 'Customer')}</div>
           <div style="margin:10px 0;">
-            ${order.items ? order.items.slice(0,3).map(item => `<div style="font-size:12px;">${item.quantity}x ${escapeHtml(item.name)}</div>`).join('') : ''}
+            ${order.items && order.items.length ? order.items.slice(0,3).map(item => `<div style="font-size:12px;">${item.quantity || 1}x ${escapeHtml(item.name || item.product_name || 'Item')}</div>`).join('') : '<div style="font-size:12px;color:var(--mist);">No items</div>'}
           </div>
-          <div class="order-total">Total: R${order.total.toFixed(2)}</div>
+          <div class="order-total">Total: R${(order.total || 0).toFixed(2)}</div>
           ${order.prepTime ? `<div style="font-size:11px; color:var(--mist); text-align:right;">Prep time: ${order.prepTime}m</div>` : ''}
         </div>
       `;
@@ -907,15 +927,14 @@
     unifiedOrders = await fetchActiveOrders();
     renderOrders();
     await updateStats();
-    await renderCompletedOrders();
+    if (showCompleted) await renderCompletedOrders();
   }
 
   function setupRealtime() {
     if (realtimeSubscription) realtimeSubscription.unsubscribe();
     realtimeSubscription = supabase
       .channel('bar-screen')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => refreshAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_queue' }, () => refreshAllData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `vendor=eq.${VENDOR_NAME}` }, () => refreshAllData())
       .subscribe();
   }
 
@@ -937,6 +956,7 @@
     if (showCompleted) {
       grid.classList.add("show");
       icon.innerHTML = "▼";
+      renderCompletedOrders();
     } else {
       grid.classList.remove("show");
       icon.innerHTML = "▶";
@@ -998,7 +1018,7 @@
   setInterval(updateClock, 1000);
   updateClock();
 
-  // Expose functions globally with UUID parameter
+  // Expose functions globally
   window.updateOrderStatus = updateOrderStatus;
   window.markOrderReady = markOrderReady;
   window.toggleCompletedOrders = toggleCompletedOrders;
