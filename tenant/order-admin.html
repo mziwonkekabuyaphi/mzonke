@@ -3,11 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Menu Manager (Embedded)</title>
+  <title>Menu Manager | Product Images</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
-  <!-- Supabase JS library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -113,7 +112,7 @@
       gap: 8px;
     }
     .product-row:hover { background: #FEF5F5; }
-    .image-thumb { width: 40px; height: 40px; border-radius: 12px; object-fit: cover; cursor: pointer; }
+    .image-thumb { width: 40px; height: 40px; border-radius: 12px; object-fit: cover; cursor: pointer; border: 1px solid #e0e0e0; }
     .search-bar {
       margin-bottom: 24px;
       display: flex;
@@ -145,6 +144,18 @@
     .toast.show { opacity: 1; }
     .toast.success { background: #059669; }
     .toast.error { background: #E30613; }
+    .upload-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid white;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .image-upload-inline { display: flex; gap: 6px; align-items: center; }
   </style>
 </head>
 <body>
@@ -158,31 +169,35 @@
     </div>
 
     <div class="add-product-panel">
-      <h2><i class="fas fa-plus-circle"></i> Add New Product with Image</h2>
+      <h2><i class="fas fa-plus-circle"></i> Add New Product</h2>
       <div class="form-grid">
         <input type="text" v-model="newProduct.name" placeholder="Product name">
         <input type="text" v-model="newProduct.description" placeholder="Description">
         <input type="number" v-model="newProduct.price" placeholder="Price (R)">
         <select v-model="newProduct.category">
-          <option value="beer">Beer</option><option value="wine">Wine</option><option value="rum">Rum</option>
-          <option value="vodka">Vodka</option><option value="cognac">Cognac</option><option value="tequila">Tequila</option>
-          <option value="whisky">Whisky</option><option value="non-alc">Non-Alcoholic</option><option value="butcher">The Butcher</option>
+          <option value="beer">Beer</option>
+          <option value="wine">Wine</option>
+          <option value="spirits">Spirits</option>
+          <option value="food">Food</option>
+          <option value="shisha">Shisha</option>
+          <option value="butcher">Butcher</option>
+          <option value="non_alcoholic">Non-Alcoholic</option>
+          <option value="other">Other</option>
         </select>
       </div>
       <div class="image-upload-row">
         <label class="btn-secondary" style="background:#F0F0F0; margin:0;">
           <i class="fas fa-cloud-upload-alt"></i> Upload Image
-          <input type="file" accept="image/*" @change="handleNewProductImage" style="display:none;">
+          <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" @change="handleNewProductImage" style="display:none;">
         </label>
-        <input type="text" v-model="newProduct.image" placeholder="Or paste image URL" style="flex:1; border-radius:60px;">
         <div v-if="newProduct.imagePreview" style="display:flex; align-items:center; gap:10px;">
           <img :src="newProduct.imagePreview" class="image-preview" alt="preview">
-          <button class="btn-danger btn-sm" @click="clearNewProductImage" style="padding:4px 12px;">✕</button>
+          <button class="btn-danger btn-sm" @click="clearNewProductImage" style="padding:4px 12px;">✕ Remove</button>
         </div>
-        <span v-else style="color:#aaa; font-size:12px;">🏞️ PNG / JPG will be stored as base64</span>
+        <span v-else style="color:#aaa; font-size:12px;">📸 Upload product image (JPEG, PNG, max 2MB)</span>
       </div>
       <div class="checkbox-row"><label><input type="checkbox" v-model="newProduct.alcohol"> Contains Alcohol</label></div>
-      <button class="btn btn-primary" @click="addProduct">+ Add Product</button>
+      <button class="btn btn-primary" @click="addProduct" :disabled="uploadingNewProduct"><span v-if="uploadingNewProduct" class="upload-spinner"></span> {{ uploadingNewProduct ? 'Uploading...' : '+ Add Product' }}</button>
     </div>
 
     <div class="search-bar">
@@ -197,19 +212,23 @@
       </div>
       <div v-for="product in filteredProducts" :key="product.id" class="product-row">
         <span>{{ product.id }}</span>
-        <input type="text" v-model="product.name" @change="saveProducts(product)">
-        <input type="text" v-model="product.description" @change="saveProducts(product)">
-        <input type="number" v-model="product.price" @change="saveProducts(product)" step="1">
-        <select v-model="product.category" @change="saveProducts(product)">
-          <option value="beer">Beer</option><option value="wine">Wine</option><option value="rum">Rum</option>
-          <option value="vodka">Vodka</option><option value="cognac">Cognac</option><option value="tequila">Tequila</option>
-          <option value="whisky">Whisky</option><option value="non-alc">Non-Alc</option><option value="butcher">Butcher</option>
+        <input type="text" v-model="product.name" @change="saveProduct(product)">
+        <input type="text" v-model="product.description" @change="saveProduct(product)">
+        <input type="number" v-model="product.price" @change="saveProduct(product)" step="1">
+        <select v-model="product.category" @change="saveProduct(product)">
+          <option value="beer">Beer</option>
+          <option value="wine">Wine</option>
+          <option value="spirits">Spirits</option>
+          <option value="food">Food</option>
+          <option value="shisha">Shisha</option>
+          <option value="butcher">Butcher</option>
+          <option value="non_alcoholic">Non-Alcoholic</option>
+          <option value="other">Other</option>
         </select>
-        <label style="display:flex;align-items:center;"><input type="checkbox" v-model="product.alcohol" @change="saveProducts(product)"> 🍷</label>
+        <label style="display:flex;align-items:center;"><input type="checkbox" v-model="product.alcohol" @change="saveProduct(product)"> 🍷</label>
         <div class="image-upload-inline">
-          <img :src="product.imageURLForPreview" class="image-thumb" @click="triggerImageUploadForProduct(product)" title="Click to change image">
-          <button @click="openImageUrlDialog(product)" class="btn-sm" style="background:#2c3e50;">URL</button>
-          <input type="file" accept="image/*" :ref="'fileInput'+product.id" style="display:none;" @change="handleProductImageChange($event, product)">
+          <img :src="getValidImageUrl(product.image)" class="image-thumb" @click="triggerImageUploadForProduct(product)" title="Click to change image">
+          <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" :ref="'fileInput'+product.id" style="display:none;" @change="handleProductImageChange($event, product)">
         </div>
         <div class="action-buttons">
           <button class="btn btn-danger" style="padding:6px 12px; font-size:0.75rem;" @click="deleteProduct(product.id)"><i class="fas fa-trash"></i></button>
@@ -221,32 +240,38 @@
 </div>
 
 <script>
-  // ----------------------------------------------
-  // Supabase integration using config file
-  // ----------------------------------------------
+  // Supabase client
   let supabaseClient = null;
+  const STORAGE_BUCKET = 'product-images';
 
   async function initSupabase() {
     try {
-      // Import the supabase client from the relative config path
       const module = await import('../config/supabase.js');
-      // Expecting default export or named export 'supabase'
       supabaseClient = module.default || module.supabase;
-      if (!supabaseClient) throw new Error('No supabase client exported from ../config/supabase.js');
+      if (!supabaseClient) throw new Error('No supabase client exported');
     } catch (err) {
       console.error('Failed to load supabase config:', err);
-      alert('Could not connect to Supabase. Please check that ../config/supabase.js exists and exports a valid supabase client.');
+      alert('Could not connect to Supabase. Please check that ../config/supabase.js exists');
     }
   }
 
-  // Helper: convert file to base64
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  function normalizeCategory(cat) {
+    if (!cat) return 'other';
+    const lower = cat.toLowerCase();
+    const spiritMap = ['rum', 'vodka', 'cognac', 'tequila', 'whisky', 'whiskey', 'gin', 'spirits'];
+    if (spiritMap.includes(lower)) return 'spirits';
+    if (['non-alc', 'non alcoholic', 'non-alcoholic', 'non_alcoholic'].includes(lower)) return 'non_alcoholic';
+    if (['the butcher', 'butcher_shop', 'butcher'].includes(lower)) return 'butcher';
+    const valid = ['beer', 'wine', 'food', 'shisha', 'other'];
+    if (valid.includes(lower)) return lower;
+    return 'other';
+  }
+
+  function generateSafeFileName(productName, fileExt) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const safeName = (productName || 'product').replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+    return `products/${timestamp}-${random}-${safeName}.${fileExt}`;
   }
 
   new Vue({
@@ -257,14 +282,16 @@
         searchQuery: '',
         newProduct: { name: '', description: '', price: 0, category: 'beer', alcohol: false, image: '', imagePreview: null },
         toast: { visible: false, text: '', type: '' },
-        toastTimer: null
+        toastTimer: null,
+        uploadingNewProduct: false,
+        uploadingProducts: new Set()
       };
     },
     computed: {
       filteredProducts() {
         if (!this.searchQuery) return this.products;
         const q = this.searchQuery.toLowerCase();
-        return this.products.filter(p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
+        return this.products.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
       },
       alcoholCount() { return this.products.filter(p => p.alcohol).length; },
       nonAlcoholCount() { return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length; },
@@ -272,7 +299,10 @@
     },
     async mounted() {
       await initSupabase();
-      if (supabaseClient) this.loadProducts();
+      if (supabaseClient) {
+        await this.ensureStorageBucket();
+        await this.loadProducts();
+      }
     },
     methods: {
       showToast(text, type) {
@@ -280,27 +310,120 @@
         this.toast = { visible: true, text, type };
         this.toastTimer = setTimeout(() => { this.toast.visible = false; }, 3000);
       },
+
       getValidImageUrl(img) {
         if (!img) return 'https://placehold.co/400x400?text=No+Image';
-        if (img.startsWith('data:image') || img.startsWith('http')) return img;
+        if (img.startsWith('http://') || img.startsWith('https://')) return img;
+        if (img.startsWith('data:image')) return img;
         return 'https://placehold.co/400x400?text=Invalid+URL';
       },
+
+      async ensureStorageBucket() {
+        try {
+          const { data: buckets } = await supabaseClient.storage.listBuckets();
+          const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET);
+          if (!bucketExists) {
+            await supabaseClient.storage.createBucket(STORAGE_BUCKET, {
+              public: true,
+              allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+              fileSizeLimit: 2097152
+            });
+            this.showToast('Storage bucket created', 'success');
+          }
+        } catch (err) {
+          console.warn('Bucket check failed:', err);
+        }
+      },
+
+      async uploadToStorage(file, productName) {
+        if (!supabaseClient) throw new Error('Supabase not connected');
+        if (!file.type.startsWith('image/')) throw new Error('Please upload an image file');
+        if (file.size > 2 * 1024 * 1024) throw new Error('Image must be less than 2MB');
+
+        const fileExt = file.name.split('.').pop();
+        const filePath = generateSafeFileName(productName, fileExt);
+        
+        const { error } = await supabaseClient.storage.from(STORAGE_BUCKET).upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+        if (error) throw error;
+        
+        const { data: { publicUrl } } = supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+        return publicUrl;
+      },
+
+      async handleNewProductImage(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        try {
+          this.uploadingNewProduct = true;
+          this.showToast('Uploading image...', 'success');
+          const publicUrl = await this.uploadToStorage(file, this.newProduct.name || 'product');
+          this.newProduct.image = publicUrl;
+          this.newProduct.imagePreview = publicUrl;
+          this.showToast('Image uploaded!', 'success');
+        } catch (err) {
+          this.showToast(err.message || 'Upload failed', 'error');
+        } finally {
+          this.uploadingNewProduct = false;
+          e.target.value = '';
+        }
+      },
+
+      clearNewProductImage() {
+        this.newProduct.image = '';
+        this.newProduct.imagePreview = null;
+      },
+
+      triggerImageUploadForProduct(product) {
+        const input = this.$refs['fileInput' + product.id];
+        if (input && input[0]) input[0].click();
+      },
+
+      async handleProductImageChange(e, product) {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (this.uploadingProducts.has(product.id)) {
+          this.showToast('Upload in progress', 'error');
+          return;
+        }
+        
+        this.uploadingProducts.add(product.id);
+        try {
+          this.showToast(`Uploading image for ${product.name}...`, 'success');
+          const publicUrl = await this.uploadToStorage(file, product.name);
+          product.image = publicUrl;
+          await this.saveProduct(product);
+          this.showToast('Image updated!', 'success');
+        } catch (err) {
+          this.showToast(err.message || 'Update failed', 'error');
+        } finally {
+          this.uploadingProducts.delete(product.id);
+          e.target.value = '';
+        }
+      },
+
       async loadProducts() {
         if (!supabaseClient) return;
         const { data, error } = await supabaseClient.from('products').select('*').order('id', { ascending: true });
         if (error) {
-          this.showToast('Error loading products: ' + error.message, 'error');
+          this.showToast('Error loading products', 'error');
           return;
         }
-        // Add computed preview property
         this.products = (data || []).map(p => ({
           ...p,
-          imageURLForPreview: this.getValidImageUrl(p.image)
+          category: normalizeCategory(p.category)
         }));
-        this.showToast('Products loaded from Supabase', 'success');
+        this.showToast('Products loaded', 'success');
       },
-      async saveProducts(product) {
+
+      async saveProduct(product) {
         if (!supabaseClient) return;
+        const normalizedCat = normalizeCategory(product.category);
+        if (normalizedCat !== product.category) product.category = normalizedCat;
+        
         const { error } = await supabaseClient.from('products').update({
           name: product.name,
           description: product.description,
@@ -309,80 +432,46 @@
           alcohol: product.alcohol,
           image: product.image
         }).eq('id', product.id);
+        
         if (error) {
           this.showToast(`Update failed: ${error.message}`, 'error');
         } else {
-          product.imageURLForPreview = this.getValidImageUrl(product.image);
           this.showToast('Product updated', 'success');
         }
       },
-      async handleNewProductImage(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const base64 = await fileToBase64(file);
-          this.newProduct.image = base64;
-          this.newProduct.imagePreview = base64;
-        } catch (err) {
-          this.showToast('Image conversion failed', 'error');
-        }
-      },
-      clearNewProductImage() {
-        this.newProduct.image = '';
-        this.newProduct.imagePreview = null;
-      },
-      triggerImageUploadForProduct(product) {
-        const input = this.$refs['fileInput' + product.id];
-        if (input && input[0]) input[0].click();
-      },
-      async handleProductImageChange(e, product) {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const base64 = await fileToBase64(file);
-          product.image = base64;
-          product.imageURLForPreview = base64;
-          await this.saveProducts(product);
-        } catch (err) {
-          this.showToast('Image update failed', 'error');
-        }
-      },
-      openImageUrlDialog(product) {
-        const newUrl = prompt('Enter image URL:', product.image || '');
-        if (newUrl !== null) {
-          product.image = newUrl;
-          product.imageURLForPreview = this.getValidImageUrl(newUrl);
-          this.saveProducts(product);
-        }
-      },
+
       async addProduct() {
         if (!supabaseClient) return;
         if (!this.newProduct.name.trim()) {
-          this.showToast('Product name is required', 'error');
+          this.showToast('Product name required', 'error');
           return;
         }
+        
         const newItem = {
           name: this.newProduct.name,
           description: this.newProduct.description,
           price: parseFloat(this.newProduct.price) || 0,
-          category: this.newProduct.category,
+          category: normalizeCategory(this.newProduct.category),
           alcohol: this.newProduct.alcohol,
           image: this.newProduct.image || ''
         };
+        
         const { data, error } = await supabaseClient.from('products').insert([newItem]).select();
         if (error) {
           this.showToast('Add failed: ' + error.message, 'error');
           return;
         }
-        const inserted = data[0];
-        inserted.imageURLForPreview = this.getValidImageUrl(inserted.image);
-        this.products.push(inserted);
+        
+        this.products.push({ ...data[0], category: normalizeCategory(data[0].category) });
         this.newProduct = { name: '', description: '', price: 0, category: 'beer', alcohol: false, image: '', imagePreview: null };
         this.showToast('Product added successfully', 'success');
       },
+
       async deleteProduct(id) {
-        if (!confirm('Delete this product?')) return;
+        const product = this.products.find(p => p.id === id);
+        if (!confirm(`Delete "${product?.name || 'product'}"?`)) return;
         if (!supabaseClient) return;
+        
         const { error } = await supabaseClient.from('products').delete().eq('id', id);
         if (error) {
           this.showToast('Delete failed: ' + error.message, 'error');
@@ -391,6 +480,7 @@
           this.showToast('Product deleted', 'success');
         }
       },
+
       refreshData() {
         this.loadProducts();
       }
