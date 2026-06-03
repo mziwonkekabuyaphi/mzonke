@@ -661,6 +661,8 @@
     
     let currentWalletRowId = null;
     let walletChannel = null;
+    let paymentChannel = null;
+    let currentPaymentId = null;
     
     // Generate barcode from the 16-digit wallet_id from profiles
     function generateRealBarcode(walletIdNumber) {
@@ -670,7 +672,6 @@
         barcodeInner.innerHTML = '';
         const idString = String(walletIdNumber);
         
-        // Create a deterministic pattern based on wallet_id string
         let binaryPattern = [];
         for (let i = 0; i < idString.length; i++) {
             const charCode = idString.charCodeAt(i);
@@ -679,7 +680,6 @@
             }
         }
         
-        // Add Code128-like start/stop patterns
         const startPattern = [1,0,1,1,0,0,1,0];
         const stopPattern = [1,1,0,0,1,0,1,1];
         const fullPattern = [...startPattern, ...binaryPattern, ...stopPattern];
@@ -722,12 +722,10 @@
         });
     }
     
-    // Format the 16-digit wallet number as card number with spaces (XXXX XXXX XXXX XXXX)
     function formatCardNumber(walletNumber) {
         if (!walletNumber) return "•••• •••• •••• ••••";
         const walletStr = String(walletNumber);
         if (walletStr.length !== 16) {
-            // If not 16 digits, pad or truncate for display
             if (walletStr.length < 16) {
                 const padded = walletStr.padEnd(16, '•');
                 const groups = padded.match(/.{1,4}/g);
@@ -739,7 +737,6 @@
         return groups ? groups.join(' ') : walletStr;
     }
     
-    // Update the card number display using the 16-digit wallet_id from profiles
     function updateCardNumber(walletIdNumber) {
         const cardNumberEl = document.getElementById('dynamicCardNumber');
         if (cardNumberEl) {
@@ -766,7 +763,6 @@
         
         console.log('Loading user data for:', session.user.email);
         
-        // SOURCE OF TRUTH: Get profile with wallet_id (16-digit plain number)
         const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone, wallet_id').eq('id', session.user.id).maybeSingle();
         if (pErr) console.error("Profile fetch error:", pErr);
         
@@ -783,13 +779,11 @@
         if (phoneRaw && phoneRaw.match(/^\d+$/)) formattedPhone = phoneRaw.replace(/(\d{3})(?=\d)/g, '$1 ');
         if($('accountPhoneNumber')) $('accountPhoneNumber').textContent = formattedPhone || "—";
         
-        // Get wallet for balance only (this is the wallets.id UUID row)
         const { data: wallet, error: wErr } = await supabase.from('wallets').select('id, balance').eq('user_id', session.user.id).maybeSingle();
         if (wErr) console.warn("Wallet query error:", wErr);
         const balanceNum = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         window.updateUserBalance(balanceNum);
         
-        // SOURCE OF TRUTH: Use wallet_id from profiles for card number display and barcode
         const walletIdNumber = profile?.wallet_id;
         if (walletIdNumber) {
             const walletIdStr = String(walletIdNumber);
@@ -799,7 +793,6 @@
         } else {
             console.warn("No wallet_id found in profiles table for this user");
             updateCardNumber(null);
-            // Optional: Show a message to the user
             const toast = $('customToast');
             if (toast) {
                 toast.textContent = 'Wallet ID not found. Please contact support.';
@@ -813,6 +806,7 @@
             currentWalletRowId = wallet.id;
             window.currentWalletRowId = currentWalletRowId;
             setupWalletRealtime();
+            setupPaymentListener(session.user.id);
         }
     }
     
@@ -832,8 +826,187 @@
         }, async (payload) => { if (payload.new?.balance !== undefined) window.updateUserBalance(payload.new.balance); }).subscribe();
     }
     
+    // FIXED: Payment request listener that actually works
+    async function setupPaymentListener(userId) {
+        if (paymentChannel) {
+            await supabase.removeChannel(paymentChannel);
+            paymentChannel = null;
+        }
+        
+        // Get the user's profile
+        const { data: profile } = await supabase.from('profiles').select('id').eq('id', userId).single();
+        if (!profile) return;
+        
+        console.log('Setting up payment listener for profile:', profile.id);
+        
+        // Listen for INSERT on payment_requests where this user is the customer
+        paymentChannel = supabase.channel(`payment-requests-${profile.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'payment_requests',
+                filter: `customer_profile_id=eq.${profile.id}`
+            }, async (payload) => {
+                const request = payload.new;
+                console.log('New payment request received:', request);
+                
+                if (request.status !== 'pending') return;
+                if (request.expires_at && new Date(request.expires_at) < new Date()) return;
+                
+                currentPaymentId = request.id;
+                
+                // Get sender info (kiosk name)
+                let senderName = 'Kiosk';
+                if (request.kiosk_id) {
+                    const { data: kiosk } = await supabase.from('kiosks').select('name').eq('id', request.kiosk_id).single();
+                    if (kiosk) senderName = kiosk.name;
+                } else if (request.metadata?.source === 'rands_kiosk') {
+                    senderName = 'Rands Kiosk';
+                }
+                
+                document.getElementById('popupSenderName').textContent = senderName;
+                document.getElementById('popupAmount').textContent = `R ${(request.total_amount || 0).toFixed(2)}`;
+                document.getElementById('popupReason').textContent = request.request_message || `Payment for ${request.request_type || 'order'}`;
+                document.getElementById('incomingRequestPopup').classList.add('active');
+                
+                // Play notification sound
+                try {
+                    const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
+                    audio.volume = 0.3;
+                    audio.play().catch(e => console.log('Audio play failed:', e));
+                } catch(e) {}
+            })
+            .subscribe();
+    }
+    
+    // ACCEPT PAYMENT - Deducts from wallet and updates status
+    async function acceptPayment() {
+        if (!currentPaymentId) return;
+        
+        const acceptBtn = document.getElementById('acceptRequestBtn');
+        acceptBtn.disabled = true;
+        acceptBtn.textContent = 'Processing...';
+        
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error('Not authenticated');
+            
+            // Get payment request details
+            const { data: payment, error: fetchError } = await supabase
+                .from('payment_requests')
+                .select('*, wallets!inner(balance, user_id)')
+                .eq('id', currentPaymentId)
+                .single();
+            
+            if (fetchError) throw fetchError;
+            if (!payment) throw new Error('Payment not found');
+            
+            // Check if user has enough balance
+            const { data: wallet } = await supabase
+                .from('wallets')
+                .select('balance')
+                .eq('user_id', session.user.id)
+                .single();
+            
+            if (!wallet || wallet.balance < payment.total_amount) {
+                throw new Error(`Insufficient balance. Need R${payment.total_amount}, have R${wallet?.balance || 0}`);
+            }
+            
+            // 1. Deduct from wallet
+            const newBalance = wallet.balance - payment.total_amount;
+            const { error: walletError } = await supabase
+                .from('wallets')
+                .update({ balance: newBalance })
+                .eq('user_id', session.user.id);
+            
+            if (walletError) throw walletError;
+            
+            // 2. Create transaction record
+            await supabase.from('wallet_transactions').insert({
+                wallet_id: payment.wallet_id,
+                user_id: session.user.id,
+                amount: -payment.total_amount,
+                type: 'payment',
+                direction: 'debit',
+                description: `Payment: ${payment.request_message || 'Kiosk order'}`,
+                status: 'completed',
+                metadata: { payment_request_id: currentPaymentId, order_id: payment.order_id }
+            });
+            
+            // 3. Update payment request status
+            await supabase
+                .from('payment_requests')
+                .update({ 
+                    status: 'approved', 
+                    approved_at: new Date().toISOString(),
+                    approved_by: session.user.id
+                })
+                .eq('id', currentPaymentId);
+            
+            // 4. Update order if exists
+            if (payment.order_id) {
+                await supabase
+                    .from('orders')
+                    .update({ payment_status: 'paid', status: 'placed' })
+                    .eq('id', payment.order_id);
+            }
+            
+            showToastMessage(`✅ Payment of R${payment.total_amount} approved!`, false);
+            document.getElementById('incomingRequestPopup').classList.remove('active');
+            currentPaymentId = null;
+            
+            // Refresh balance display
+            const { data: newWalletData } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
+            window.updateUserBalance(newWalletData?.balance || 0);
+            
+        } catch (err) {
+            console.error('Accept error:', err);
+            showToastMessage(err.message || 'Payment failed', true);
+        } finally {
+            acceptBtn.disabled = false;
+            acceptBtn.textContent = 'Accept & Pay';
+        }
+    }
+    
+    // REJECT PAYMENT
+    async function rejectPayment() {
+        if (!currentPaymentId) return;
+        
+        const rejectBtn = document.getElementById('rejectRequestBtn');
+        rejectBtn.disabled = true;
+        rejectBtn.textContent = 'Rejecting...';
+        
+        try {
+            await supabase
+                .from('payment_requests')
+                .update({ status: 'rejected' })
+                .eq('id', currentPaymentId);
+            
+            showToastMessage('❌ Payment request rejected', false);
+            document.getElementById('incomingRequestPopup').classList.remove('active');
+            currentPaymentId = null;
+        } catch (err) {
+            console.error('Reject error:', err);
+            showToastMessage('Failed to reject request', true);
+        } finally {
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = 'Decline';
+        }
+    }
+    
+    function showToastMessage(message, isError = false) {
+        const toast = document.getElementById('customToast');
+        if (toast) {
+            toast.textContent = message;
+            toast.style.background = isError ? '#E30613' : '#1e293b';
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        } else alert(message);
+    }
+    
     async function performLogout() { 
         if (walletChannel) supabase.removeChannel(walletChannel);
+        if (paymentChannel) supabase.removeChannel(paymentChannel);
         await supabase.auth.signOut(); 
         window.location.href = '../login.html'; 
     }
@@ -842,8 +1015,25 @@
     if (profileIcon) profileIcon.addEventListener('click', (e) => { e.stopPropagation(); window.location.href = 'profile.html'; });
     const headerLogoutBtn = $('logoutBtn');
     if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', performLogout);
+    
+    // Attach payment action handlers
+    const acceptBtn = document.getElementById('acceptRequestBtn');
+    const rejectBtn = document.getElementById('rejectRequestBtn');
+    const closePopupBtn = document.getElementById('closePopupBtn');
+    const popup = document.getElementById('incomingRequestPopup');
+    
+    if (acceptBtn) acceptBtn.addEventListener('click', acceptPayment);
+    if (rejectBtn) rejectBtn.addEventListener('click', rejectPayment);
+    if (closePopupBtn) closePopupBtn.addEventListener('click', () => {
+        if (popup) popup.classList.remove('active');
+        currentPaymentId = null;
+    });
+    
     document.addEventListener('DOMContentLoaded', () => { loadUserData(); });
-    window.addEventListener('beforeunload', () => { if (walletChannel) supabase.removeChannel(walletChannel); });
+    window.addEventListener('beforeunload', () => { 
+        if (walletChannel) supabase.removeChannel(walletChannel);
+        if (paymentChannel) supabase.removeChannel(paymentChannel);
+    });
 </script>
 
 <script src="assets/js/home.js"></script>
@@ -925,216 +1115,6 @@
     })();
 </script>
 <script>
-    (function initSecurePaymentRequests() {
-        let currentRequestId = null;
-        let realtimeChannel = null;
-        let processingAccept = false, processingReject = false;
-        
-        function showToast(message, isError = false) {
-            const toast = document.getElementById('customToast');
-            if (toast) {
-                toast.textContent = message;
-                toast.style.background = isError ? '#E30613' : '#1e293b';
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 3000);
-            } else alert(message);
-        }
-        
-        function showAlert(message) {
-            const alertModal = document.getElementById('alertModalOverlay');
-            const alertBody = document.querySelector('#alertModalOverlay .alert-modal-body');
-            if (alertModal && alertBody) {
-                alertBody.innerHTML = message;
-                alertModal.classList.add('active');
-            } else alert(message);
-        }
-        
-        async function setupRealtimeListener() {
-            if (realtimeChannel) { 
-                await window.supabase.removeChannel(realtimeChannel); 
-                realtimeChannel = null; 
-            }
-            
-            const { data: { session } } = await window.supabase.auth.getSession();
-            if (!session) return;
-            
-            // Get the user's profile ID (this matches customer_profile_id in payment_requests)
-            const { data: profile } = await window.supabase
-                .from('profiles')
-                .select('id')
-                .eq('id', session.user.id)
-                .single();
-            
-            if (!profile) return;
-            
-            console.log('Setting up payment request listener for profile:', profile.id);
-            
-            // Listen for payment requests where THIS user is the customer
-            realtimeChannel = window.supabase.channel(`payment-requests-${profile.id}`).on('postgres_changes', {
-                event: 'INSERT', 
-                schema: 'public', 
-                table: 'payment_requests', 
-                filter: `customer_profile_id=eq.${profile.id}`
-            }, async (payload) => {
-                const newRequest = payload.new;
-                console.log('New payment request received:', newRequest);
-                
-                // Don't show popup for expired or non-pending
-                if (newRequest.status !== 'pending') return;
-                if (newRequest.expires_at && new Date(newRequest.expires_at) < new Date()) return;
-                
-                currentRequestId = newRequest.id;
-                
-                let senderInfo = 'Kiosk';
-                let kioskName = '';
-                
-                // Get kiosk name if this came from a kiosk
-                if (newRequest.kiosk_id) {
-                    const { data: kiosk } = await window.supabase
-                        .from('kiosks')
-                        .select('name, location')
-                        .eq('id', newRequest.kiosk_id)
-                        .single();
-                    if (kiosk) {
-                        kioskName = kiosk.name;
-                        senderInfo = kiosk.name;
-                    }
-                }
-                
-                // If no kiosk, try to get sender from customer_profile_id (if different from current user)
-                if (!newRequest.kiosk_id && newRequest.customer_profile_id && newRequest.customer_profile_id !== profile.id) {
-                    const { data: senderProfile } = await window.supabase
-                        .from('profiles')
-                        .select('full_name, phone')
-                        .eq('id', newRequest.customer_profile_id)
-                        .single();
-                    if (senderProfile) {
-                        senderInfo = senderProfile.full_name?.split(' ')[0] || senderProfile.phone || 'Customer';
-                    }
-                }
-                
-                const popup = document.getElementById('incomingRequestPopup');
-                const popupSenderName = document.getElementById('popupSenderName');
-                const popupAmount = document.getElementById('popupAmount');
-                const popupReason = document.getElementById('popupReason');
-                
-                if (popupSenderName) popupSenderName.textContent = senderInfo;
-                if (popupAmount) popupAmount.textContent = `R ${(newRequest.total_amount || 0).toFixed(2)}`;
-                if (popupReason) popupReason.textContent = newRequest.request_message || `Payment for ${newRequest.request_type || 'service'}`;
-                if (popup) popup.classList.add('active');
-                
-                // Optional: Play a sound notification
-                try {
-                    const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
-                    audio.volume = 0.3;
-                    audio.play().catch(e => console.log('Audio play failed:', e));
-                } catch(e) {}
-            }).subscribe();
-        }
-        
-        // Accept payment handler
-        const acceptBtn = document.getElementById('acceptRequestBtn');
-        if (acceptBtn) {
-            acceptBtn.addEventListener('click', async () => {
-                if (!currentRequestId || processingAccept) return;
-                processingAccept = true;
-                acceptBtn.disabled = true;
-                acceptBtn.textContent = 'Processing...';
-                
-                try {
-                    const { data: { session } } = await window.supabase.auth.getSession();
-                    if (!session) throw new Error('Not authenticated');
-                    
-                    // Update the payment request status to approved
-                    const { error } = await window.supabase
-                        .from('payment_requests')
-                        .update({ 
-                            status: 'approved', 
-                            approved_at: new Date().toISOString(),
-                            approved_by: session.user.id
-                        })
-                        .eq('id', currentRequestId);
-                        
-                    if (error) throw error;
-                    
-                    showToast('✅ Payment approved!');
-                    const popup = document.getElementById('incomingRequestPopup');
-                    if (popup) popup.classList.remove('active');
-                    
-                    // Refresh balance after approval
-                    const { data: wallet } = await window.supabase
-                        .from('wallets')
-                        .select('balance')
-                        .eq('user_id', session.user.id)
-                        .single();
-                    if (wallet && window.updateUserBalance) window.updateUserBalance(wallet.balance);
-                    
-                } catch (err) {
-                    console.error('Accept error:', err);
-                    showToast(err.message || 'Failed to approve payment', true);
-                } finally {
-                    processingAccept = false;
-                    acceptBtn.disabled = false;
-                    acceptBtn.textContent = 'Accept & Pay';
-                    currentRequestId = null;
-                }
-            });
-        }
-        
-        // Reject payment handler
-        const rejectBtn = document.getElementById('rejectRequestBtn');
-        if (rejectBtn) {
-            rejectBtn.addEventListener('click', async () => {
-                if (!currentRequestId || processingReject) return;
-                processingReject = true;
-                rejectBtn.disabled = true;
-                rejectBtn.textContent = 'Rejecting...';
-                
-                try {
-                    const { error } = await window.supabase
-                        .from('payment_requests')
-                        .update({ status: 'rejected' })
-                        .eq('id', currentRequestId);
-                        
-                    if (error) throw error;
-                    
-                    showToast('❌ Payment request rejected');
-                    const popup = document.getElementById('incomingRequestPopup');
-                    if (popup) popup.classList.remove('active');
-                    
-                } catch (err) {
-                    console.error('Reject error:', err);
-                    showToast(err.message || 'Failed to reject request', true);
-                } finally {
-                    processingReject = false;
-                    rejectBtn.disabled = false;
-                    rejectBtn.textContent = 'Decline';
-                    currentRequestId = null;
-                }
-            });
-        }
-        
-        // Close popup button
-        const closePopupBtn = document.getElementById('closePopupBtn');
-        const popup = document.getElementById('incomingRequestPopup');
-        if (closePopupBtn) {
-            closePopupBtn.addEventListener('click', () => {
-                if (popup) popup.classList.remove('active');
-                currentRequestId = null;
-            });
-        }
-        
-        // Initialize the listener after user data loads
-        window.addEventListener('load', async () => { 
-            await new Promise(r => setTimeout(r, 1500)); 
-            await setupRealtimeListener(); 
-        });
-        
-        window.addEventListener('beforeunload', () => { 
-            if (realtimeChannel) window.supabase.removeChannel(realtimeChannel); 
-        });
-    })();
-
     (function addButtonNavigation() {
         const initNav = () => {
             const topUpBtn = document.getElementById('instantTopUpBtn');
