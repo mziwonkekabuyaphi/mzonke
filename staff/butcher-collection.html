@@ -370,11 +370,10 @@
     import { supabase } from '../config/supabase.js';
 
     // ======================== PURE COLLECTION SCREEN — ONLY READY ORDERS (BUTCHER SHOP) ========================
-    // No vendor tabs, no "butcher only" text — clean red & white interface.
     const BUTCHER_VENDOR = "The Butcher Shop";
     let lastReadyCount = 0;
     let realtimeSub = null;
-    let soundEnabled = true;   // subtle beep for new orders, adds life
+    let soundEnabled = true;
 
     // simple inline notification (non-intrusive)
     function showBriefMessage(msg, isNewOrder = false, isVVIP = false) {
@@ -386,7 +385,6 @@
                 if (connSpan) connSpan.innerText = original;
             }, 2500);
         }
-        // sound only for new ready orders (optional, but makes it lively)
         if (isNewOrder && soundEnabled) {
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -411,95 +409,88 @@
 
     // fetch ONLY ready orders for The Butcher Shop (status = 'ready')
     async function fetchReadyOrders() {
+        console.log("🔄 Fetching ready orders for vendor:", BUTCHER_VENDOR);
+        
         const { data, error } = await supabase
             .from('orders')
             .select('*')
             .eq('vendor', BUTCHER_VENDOR)
             .eq('status', 'ready')
             .order('is_vvip', { ascending: false })
-            .order('ready_at', { ascending: true, nullsLast: true })
-            .order('created_at', { ascending: true });
+            .order('updated_at', { ascending: true });
         
         if (error) {
-            console.error("Supabase error:", error);
+            console.error("❌ Supabase error:", error);
             return [];
         }
-        if (!data) return [];
+        
+        console.log(`📦 Found ${data?.length || 0} ready orders`);
+        
+        if (!data || data.length === 0) return [];
         
         return data.map(order => ({
             ...order,
-            orderId: order.order_number || order.order_id,
+            orderId: order.order_number || order.id,
+            orderNumber: order.order_number,
             items: order.items || [],
-            total: order.total || 0,
+            total: order.total || order.total_amount || 0,
             source: order.source || (order.payment_source === 'wallet' ? 'wallet' : 'kiosk'),
             status: order.status,
             bandName: order.customer_name || (order.source === 'kiosk' ? 'Guest' : 'Customer'),
             phoneNumber: order.phone || order.customer_phone || '',
             timestamp: order.created_at ? new Date(order.created_at).toLocaleTimeString() : '',
             isVVIP: order.is_vvip === true,
-            readyAt: order.ready_at || order.updated_at,
+            readyAt: order.updated_at,
             vendor: order.vendor
         }));
     }
 
     // mark order as collected (update status to 'collected')
-    async function markCollected(orderId) {
+    async function markCollected(orderNumber, orderId) {
         try {
-            // double-check it's ready & belongs to butcher
-            const { data: check, error: fetchErr } = await supabase
-                .from('orders')
-                .select('status, vendor')
-                .eq('order_number', orderId)
-                .maybeSingle();
+            console.log(`🔄 Marking order #${orderNumber} as collected`);
             
-            if (fetchErr || !check) {
-                showBriefMessage(`Order #${orderId} not found`, false);
-                return false;
-            }
-            if (check.status !== 'ready') {
-                showBriefMessage(`Order #${orderId} is not ready`, false);
-                return false;
-            }
-            if (check.vendor !== BUTCHER_VENDOR) {
-                showBriefMessage(`Invalid order`, false);
-                return false;
-            }
-            
+            // Use the order_number to find and update
             const { error: updateErr } = await supabase
                 .from('orders')
                 .update({ 
                     status: 'collected', 
-                    collected_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 })
-                .eq('order_number', orderId);
+                .eq('order_number', orderNumber)
+                .eq('vendor', BUTCHER_VENDOR)
+                .eq('status', 'ready');
             
-            if (updateErr) throw updateErr;
-            showBriefMessage(`✅ Order #${orderId} collected`, false);
+            if (updateErr) {
+                console.error("❌ Update error:", updateErr);
+                throw updateErr;
+            }
+            
+            showBriefMessage(`✅ Order #${orderNumber} collected!`, false);
             await renderOrders(); // refresh grid
             return true;
         } catch (err) {
-            console.error(err);
-            showBriefMessage(`Failed to collect #${orderId}`, false);
+            console.error("❌ Failed to collect order:", err);
+            showBriefMessage(`Failed to collect #${orderNumber}`, false);
             return false;
         }
     }
 
-    // render orders into grid (clean red/white, no vendor labels, no "butcher" wording)
+    // render orders into grid
     async function renderOrders() {
         const orders = await fetchReadyOrders();
+        
         // sort VVIP on top
-        orders.sort((a,b) => (b.isVVIP ? 1 : 0) - (a.isVVIP ? 1 : 0));
+        orders.sort((a, b) => (b.isVVIP ? 1 : 0) - (a.isVVIP ? 1 : 0));
         
         const readyCount = orders.length;
         document.getElementById('readyCountValue').innerText = readyCount;
         
-        // new order detection + sound (only if count increased)
+        // new order detection + sound
         if (readyCount > lastReadyCount && lastReadyCount !== 0) {
             const newCount = readyCount - lastReadyCount;
-            const newOrdersSlice = orders.slice(0, newCount);
-            const hasVVIP = newOrdersSlice.some(o => o.isVVIP);
-            showBriefMessage(`${newCount} new order(s) ready`, true, hasVVIP);
+            const hasVVIP = orders.slice(0, newCount).some(o => o.isVVIP);
+            showBriefMessage(`${newCount} new order(s) ready!`, true, hasVVIP);
         }
         lastReadyCount = readyCount;
         
@@ -529,12 +520,12 @@
             }
             
             // safe item display
-            const itemsToShow = order.items && order.items.length ? order.items : [];
+            const itemsToShow = order.items && Array.isArray(order.items) && order.items.length ? order.items : [];
             
             return `
                 <div class="order-card ${vvipCardClass}">
                     <div class="card-header">
-                        <span class="order-number">#${escapeHtml(order.orderId)}</span>
+                        <span class="order-number">#${escapeHtml(String(order.orderNumber || order.orderId))}</span>
                         <div style="display: flex; gap: 6px;">
                             <span class="source-badge">${sourceLabel}</span>
                             <span class="ready-badge"><i class="fas fa-check-circle"></i> READY</span>
@@ -555,8 +546,8 @@
                     <div class="items-preview">
                         ${itemsToShow.length ? itemsToShow.slice(0, 4).map(item => `
                             <div class="item-row">
-                                <span class="item-name">${item.quantity}× ${escapeHtml(item.name)}</span>
-                                <span class="item-price">R${(item.price * item.quantity).toFixed(2)}</span>
+                                <span class="item-name">${item.quantity || 1}× ${escapeHtml(item.name || item.product_name || 'Item')}</span>
+                                <span class="item-price">R${((item.price || item.unit_price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                             </div>
                         `).join('') : '<div class="item-row"><span>Butcher special selection</span></div>'}
                         ${itemsToShow.length > 4 ? `<div style="font-size: 10px; color: #a0a0a0; margin-top: 4px;">+${itemsToShow.length-4} more items</div>` : ''}
@@ -568,7 +559,7 @@
                     </div>
                     
                     <div class="collect-action">
-                        <button class="btn-collect" onclick="window.handleCollect('${order.orderId}')">
+                        <button class="btn-collect" onclick="window.handleCollect('${order.orderNumber}', '${order.id}')">
                             <i class="fas fa-hand-peace"></i> Confirm Collection
                         </button>
                     </div>
@@ -588,13 +579,16 @@
     }
 
     // expose global collect function for inline onclick
-    window.handleCollect = async (orderId) => {
-        await markCollected(orderId);
+    window.handleCollect = async (orderNumber, orderId) => {
+        await markCollected(orderNumber, orderId);
     };
 
-    // setup realtime subscription (only for The Butcher Shop)
+    // setup realtime subscription
     function setupRealtimeSubscription() {
-        if (realtimeSub) realtimeSub.unsubscribe();
+        if (realtimeSub) {
+            try { realtimeSub.unsubscribe(); } catch(e) {}
+        }
+        
         realtimeSub = supabase
             .channel('butcher-collection-clean')
             .on('postgres_changes', { 
@@ -602,18 +596,12 @@
                 schema: 'public', 
                 table: 'orders',
                 filter: `vendor=eq.${BUTCHER_VENDOR}` 
-            }, () => {
-                renderOrders();
-            })
-            .on('postgres_changes', { 
-                event: 'UPDATE', 
-                schema: 'public', 
-                table: 'orders',
-                filter: `status=eq.ready`
-            }, () => {
+            }, (payload) => {
+                console.log("🔔 Realtime change:", payload.eventType, payload.new?.status);
                 renderOrders();
             })
             .subscribe((status) => {
+                console.log("📡 Realtime subscription status:", status);
                 const connSpan = document.getElementById('connText');
                 if (connSpan) {
                     if (status === 'SUBSCRIBED') connSpan.innerText = 'Live · ready orders';
@@ -622,16 +610,18 @@
             });
     }
 
-    // periodic refresh as fallback (every 8 seconds)
-    let intervalRefresh = setInterval(() => {
-        renderOrders();
-    }, 8000);
-
     // init everything
     async function init() {
+        console.log("🚀 Initializing Collection Screen...");
         await renderOrders();
         setupRealtimeSubscription();
-        // test connection and display friendly status
+        
+        // periodic refresh as fallback (every 5 seconds)
+        setInterval(() => {
+            renderOrders();
+        }, 5000);
+        
+        // test connection
         const { error } = await supabase.from('orders').select('count', { count: 'exact', head: true });
         const connSpan = document.getElementById('connText');
         if (connSpan) {
