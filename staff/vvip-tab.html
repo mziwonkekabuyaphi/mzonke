@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<title>VVIP POS | Sovereign Terminal with Product Images</title>
+<title>VVIP POS | Sovereign Terminal | Smart Routing</title>
 <style>
 * {
     margin: 0;
@@ -105,7 +105,6 @@ body {
     margin-left: auto;
     color: var(--red);
 }
-/* New cart item with image */
 .cart-item-row {
     display: flex;
     align-items: center;
@@ -115,7 +114,6 @@ body {
     padding: 10px;
     border-radius: 16px;
     border: 1px solid var(--gray-border);
-    transition: all 0.2s;
 }
 .cart-item-img {
     width: 48px;
@@ -123,24 +121,11 @@ body {
     border-radius: 12px;
     object-fit: cover;
     background: #f1f5f9;
-    border: 1px solid var(--gray-border);
 }
-.cart-item-details {
-    flex: 2;
-}
-.cart-item-name {
-    font-weight: 700;
-    font-size: 0.85rem;
-}
-.cart-item-price {
-    font-size: 0.7rem;
-    color: var(--gray-text);
-}
-.cart-item-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
+.cart-item-details { flex: 2; }
+.cart-item-name { font-weight: 700; font-size: 0.85rem; }
+.cart-item-price { font-size: 0.7rem; color: var(--gray-text); }
+.cart-item-controls { display: flex; align-items: center; gap: 8px; }
 .quantity-btn {
     width: 28px;
     height: 28px;
@@ -163,7 +148,6 @@ body {
 }
 .remove-item:hover { color: var(--red); }
 
-/* Menu item with consistent image */
 .menu-item {
     background: var(--white);
     border-radius: 16px;
@@ -178,7 +162,6 @@ body {
     box-shadow: 0 4px 12px rgba(227,6,19,0.1);
 }
 .product-image-wrap {
-    position: relative;
     width: 100%;
     height: 130px;
     border-radius: 12px;
@@ -190,7 +173,6 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.3s ease;
 }
 .add-to-cart-btn {
     background: var(--red);
@@ -260,10 +242,7 @@ body {
     text-align: left;
     border-bottom: 1px solid var(--gray-border);
 }
-.bands-table th {
-    background: var(--red);
-    color: white;
-}
+.bands-table th { background: var(--red); color: white; }
 .btn-small {
     background: var(--red);
     border: none;
@@ -565,18 +544,22 @@ input:focus, select:focus {
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    // ----- STATE -----
+    // Vendor routing constants
+    const VENDOR_SMART_COUNTER = "Rands Smart Counter";
+    const VENDOR_BUTCHER = "The Butcher Shop";
+    const VENDOR_SMART_COUNTER_DISPLAY = "Rands Smart Counter";
+    const VENDOR_BUTCHER_DISPLAY = "The Butcher Shop";
+    
     let currentCustomer = null;
-    let currentCart = [];          // each item: { id, name, price, vendor, quantity, productId, imageUrl }
+    let currentCart = [];
     let vendorMenus = {};
     let revenue = 0;
     let guests = 0;
     let currentTabBalance = 0;
     let currentPackageInfo = null;
     let pendingRequests = [];
-    let productImageCache = new Map(); // id -> image_url
+    let productImageCache = new Map();
 
-    // Helper: generate product image from unsplash or seed but ensures consistent pics for identical products
     function getProductImageUrl(itemName, productId) {
         if (productImageCache.has(productId)) return productImageCache.get(productId);
         const seed = encodeURIComponent(itemName.toLowerCase().replace(/[^a-z0-9]/g, ''));
@@ -596,7 +579,7 @@ input:focus, select:focus {
     window.closeVVIPModal = () => document.getElementById('vvipModal').classList.remove('active');
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
 
-    // ----- SERVICE REQUESTS (unchanged but working) -----
+    // Service requests
     async function loadPendingRequestsFromSupabase() {
         const { data, error } = await supabase.from('service_requests').select('*').eq('status', 'pending').order('created_at', { ascending: true });
         if (error) { console.error(error); return; }
@@ -641,7 +624,6 @@ input:focus, select:focus {
         }).subscribe();
     }
 
-    // ----- CUSTOMER LOADING (unchanged core) -----
     async function loadCustomerByProfile(profile) {
         const { data: activeBooking } = await supabase.from('vvip_bookings').select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price)`).eq('customer_id', profile.id).in('status', ['confirmed', 'checked_in', 'seated']).order('created_at', { ascending: false }).limit(1).maybeSingle();
         if (activeBooking && activeBooking.packages) {
@@ -679,19 +661,18 @@ input:focus, select:focus {
         updateCartDisplay();
     };
 
-    // ----- MENU & PRODUCTS (fetch with image attribute but fallback) -----
     async function loadProducts() { const { data } = await supabase.from('products').select('*').eq('is_available', true); return data || []; }
     async function loadShishaProducts() { const { data } = await supabase.from('shisha_products').select('*').eq('is_available', true); return data || []; }
     async function buildVendorMenus() {
         const products = await loadProducts(); 
         const shisha = await loadShishaProducts();
-        const menus = { 'Rands Smart Counter': [], 'Shisha Lounge': [], 'The Butcher Shop': [] };
-        const catMap = { 'beer': 'Rands Smart Counter', 'wine': 'Rands Smart Counter', 'spirits': 'Rands Smart Counter', 'non_alcoholic': 'Rands Smart Counter', 'butcher': 'The Butcher Shop', 'food': 'The Butcher Shop' };
+        const menus = { [VENDOR_SMART_COUNTER]: [], 'Shisha Lounge': [], [VENDOR_BUTCHER]: [] };
+        const catMap = { 'beer': VENDOR_SMART_COUNTER, 'wine': VENDOR_SMART_COUNTER, 'spirits': VENDOR_SMART_COUNTER, 'non_alcoholic': VENDOR_SMART_COUNTER, 'butcher': VENDOR_BUTCHER, 'food': VENDOR_BUTCHER };
         products.forEach(p => { 
-            const vendor = catMap[p.category] || 'Rands Smart Counter'; 
-            if (menus[vendor]) menus[vendor].push({ ...p, isShishaProduct: false, image_url: p.image_url || getProductImageUrl(p.name, p.id) }); 
+            const vendor = catMap[p.category] || VENDOR_SMART_COUNTER; 
+            if (menus[vendor]) menus[vendor].push({ ...p, isShishaProduct: false, image_url: p.image_url || getProductImageUrl(p.name, p.id), vendor: vendor }); 
         });
-        shisha.forEach(s => { menus['Shisha Lounge'].push({ id: s.id, name: s.name, price: s.price, isShishaProduct: true, image_url: s.image_url || getProductImageUrl(s.name, s.id) }); });
+        shisha.forEach(s => { menus['Shisha Lounge'].push({ id: s.id, name: s.name, price: s.price, isShishaProduct: true, image_url: s.image_url || getProductImageUrl(s.name, s.id), vendor: 'Shisha Lounge' }); });
         return menus;
     }
     async function refreshMenus() { vendorMenus = await buildVendorMenus(); updateVendorSelect(); updateVendorMenu(); }
@@ -703,9 +684,9 @@ input:focus, select:focus {
         if (!items.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No items</div>'; return; }
         container.innerHTML = items.map(item => {
             const imgSrc = item.image_url || getProductImageUrl(item.name, item.id);
-            return `<div class="menu-item"><div class="product-image-wrap"><img class="product-image" src="${imgSrc}" onerror="this.src='https://picsum.photos/seed/fallback/300/200'"></div><div style="display:flex; justify-content:space-between;"><strong>${escapeHtml(item.name)}</strong><span style="color:var(--red);">R${item.price}</span></div><button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-image="${imgSrc}">➕ ADD</button></div>`;
+            return `<div class="menu-item"><div class="product-image-wrap"><img class="product-image" src="${imgSrc}" onerror="this.src='https://picsum.photos/seed/fallback/300/200'"></div><div style="display:flex; justify-content:space-between;"><strong>${escapeHtml(item.name)}</strong><span style="color:var(--red);">R${item.price}</span></div><button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-image="${imgSrc}" data-vendor="${item.vendor}">➕ ADD</button></div>`;
         }).join('');
-        container.querySelectorAll('.add-to-cart-btn').forEach(btn => { btn.onclick = () => { const name = btn.dataset.name; const price = parseFloat(btn.dataset.price); const productId = btn.dataset.id; const imageUrl = btn.dataset.image; addToCart(name, price, vendor, productId, imageUrl); }; });
+        container.querySelectorAll('.add-to-cart-btn').forEach(btn => { btn.onclick = () => { const name = btn.dataset.name; const price = parseFloat(btn.dataset.price); const productId = btn.dataset.id; const imageUrl = btn.dataset.image; const vendor = btn.dataset.vendor; addToCart(name, price, vendor, productId, imageUrl); }; });
     }
     function addToCart(name, price, vendor, productId, imageUrl) { 
         if (!currentCustomer) { showToast('Load a customer first', true); return; } 
@@ -715,7 +696,6 @@ input:focus, select:focus {
         updateCartDisplay(); 
     }
     
-    // ----- CART WITH IMAGES (MAJOR ENHANCEMENT) -----
     function updateCartDisplay() {
         const container = document.getElementById('cartItems');
         let subtotal = 0, totalItems = 0;
@@ -738,7 +718,7 @@ input:focus, select:focus {
                         <img class="cart-item-img" src="${item.imageUrl || getProductImageUrl(item.name, item.productId)}" onerror="this.src='https://picsum.photos/seed/default/48/48'">
                         <div class="cart-item-details">
                             <div class="cart-item-name">${escapeHtml(item.name)}</div>
-                            <div class="cart-item-price">R${item.price} each</div>
+                            <div class="cart-item-price">R${item.price} each · ${escapeHtml(item.vendor)}</div>
                         </div>
                         <div class="cart-item-controls">
                             <button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button>
@@ -763,42 +743,104 @@ input:focus, select:focus {
     window.removeFromCart = function(idx) { currentCart.splice(idx, 1); updateCartDisplay(); };
     window.clearCart = function() { currentCart = []; updateCartDisplay(); };
     
+    // Enhanced checkout - routes orders to correct vendor queues
     async function checkout() {
         if (!currentCustomer) { showToast('No customer loaded', true); return; }
         if (!currentCart.length) { showToast('Cart empty', true); return; }
         const total = currentCart.reduce((s, i) => s + i.price * i.quantity, 0);
         if (currentTabBalance < total) { showToast(`Insufficient balance. Need R${total}, have R${currentTabBalance}`, true); return; }
+        
         const newTabBalance = currentTabBalance - total;
         revenue += total; guests++;
-        if (currentPackageInfo) { await supabase.from('vvip_bookings').update({ remaining_balance: newTabBalance }).eq('id', currentPackageInfo.id); } 
-        else { await supabase.from('wallets').update({ balance: newTabBalance }).eq('user_id', currentCustomer.id); }
-        const orderNumber = 'ORD-' + Date.now();
-        // preserve images in order items for future reference (optional metadata)
-        await supabase.from('orders').insert([{ order_number: orderNumber, customer_phone: currentCustomer.phone, customer_name: currentCustomer.name, total_amount: total, payment_method: 'vvip_tab', payment_status: 'paid', status: 'pending', items: currentCart.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity, product_image: i.imageUrl })), is_vvip: true, source: 'vvip_pos' }]);
+        
+        // Group cart items by vendor
+        const vendorGroups = new Map();
+        currentCart.forEach(item => {
+            if (!vendorGroups.has(item.vendor)) vendorGroups.set(item.vendor, []);
+            vendorGroups.get(item.vendor).push(item);
+        });
+        
+        // Create separate order for each vendor
+        const orderPromises = [];
+        for (const [vendor, items] of vendorGroups.entries()) {
+            const vendorTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+            const orderNumber = `${vendor === VENDOR_SMART_COUNTER ? 'SC' : vendor === VENDOR_BUTCHER ? 'BT' : 'SH'}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            
+            const orderData = {
+                order_number: orderNumber,
+                customer_phone: currentCustomer.phone || '',
+                customer_name: currentCustomer.name,
+                total: vendorTotal,
+                total_amount: vendorTotal,
+                payment_method: 'vvip_tab',
+                payment_status: 'paid',
+                status: 'pending',
+                vendor: vendor,
+                source: 'wallet',
+                is_vvip: true,
+                customer_id: currentCustomer.id,
+                items: items.map(i => ({ 
+                    product_name: i.name, 
+                    quantity: i.quantity, 
+                    unit_price: i.price, 
+                    subtotal: i.price * i.quantity,
+                    product_image: i.imageUrl 
+                })),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+            
+            orderPromises.push(supabase.from('orders').insert([orderData]));
+        }
+        
+        // Update balance
+        if (currentPackageInfo) { 
+            await supabase.from('vvip_bookings').update({ remaining_balance: newTabBalance }).eq('id', currentPackageInfo.id); 
+        } else { 
+            await supabase.from('wallets').update({ balance: newTabBalance }).eq('user_id', currentCustomer.id); 
+        }
+        
+        // Execute all order inserts
+        const results = await Promise.all(orderPromises);
+        const errors = results.filter(r => r.error);
+        if (errors.length > 0) {
+            console.error('Order creation errors:', errors);
+            showToast(`Some orders failed: ${errors.length} errors`, true);
+        } else {
+            const vendorNames = Array.from(vendorGroups.keys()).join(', ');
+            showToast(`✅ R${total} deducted. Orders sent to: ${vendorNames}. Remaining: R${newTabBalance}`);
+        }
+        
         currentTabBalance = newTabBalance;
-        if (currentPackageInfo) { currentPackageInfo.remaining = newTabBalance; document.getElementById('packageRemaining').innerHTML = `R${newTabBalance.toFixed(2)}`; }
+        if (currentPackageInfo) { 
+            currentPackageInfo.remaining = newTabBalance; 
+            document.getElementById('packageRemaining').innerHTML = `R${newTabBalance.toFixed(2)}`; 
+        }
         document.getElementById('customerBalanceDisplay').innerHTML = `R${newTabBalance.toFixed(2)}`;
-        showToast(`✅ R${total} deducted. Remaining: R${newTabBalance}`);
         clearCart();
         updateQuickStats();
-        if (newTabBalance <= 0) { showToast(`Balance depleted. Customer auto-cleared.`); clearCustomer(); }
+        
+        if (newTabBalance <= 0) { 
+            showToast(`Balance depleted. Customer auto-cleared.`); 
+            clearCustomer(); 
+        }
     }
     
     function updateQuickStats() { document.getElementById('quickRevenue').innerText = 'R' + revenue; document.getElementById('quickGuests').innerText = guests; }
     async function renderActiveOrders() { 
-        const { data } = await supabase.from('orders').select('*').in('status', ['pending', 'preparing', 'ready']).order('created_at', { ascending: false }); 
+        const { data } = await supabase.from('orders').select('*').in('status', ['pending', 'preparing', 'ready']).order('is_vvip', { ascending: false }).order('created_at', { ascending: false }); 
         const container = document.getElementById('activeOrdersGrid'); 
         if (!data?.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No active orders</div>'; return; } 
-        container.innerHTML = data.map(order => `<div class="active-order-card ${order.is_vvip ? 'vvip-order' : ''}"><div class="active-order-header"><span class="active-order-id">#${order.order_number}</span><span>${new Date(order.created_at).toLocaleTimeString()}</span></div><div><strong>${order.customer_name}</strong></div>${order.is_vvip ? '<div style="background:#fef3c7; padding:2px 8px; border-radius:12px; display:inline-block;">👑 VVIP</div>' : ''}<div class="status-badge status-${order.status}">${order.status.toUpperCase()}</div><div style="margin:12px 0;">${(order.items || []).map(i => `<div>${i.quantity}x ${i.product_name} - R${i.subtotal}</div>`).join('')}</div><div style="text-align:right;"><strong>Total: R${order.total_amount}</strong></div><button class="active-order-btn active-order-btn-collect" onclick="updateOrderStatus('${order.id}', '${order.status}')">${order.status === 'pending' ? 'Start' : (order.status === 'preparing' ? 'Mark Ready' : 'Ready')}</button></div>`).join(''); 
+        container.innerHTML = data.map(order => `<div class="active-order-card ${order.is_vvip ? 'vvip-order' : ''}"><div class="active-order-header"><span class="active-order-id">#${order.order_number}</span><span>${new Date(order.created_at).toLocaleTimeString()}</span></div><div><strong>${order.customer_name}</strong> <span style="font-size:10px;color:var(--mist);">${order.vendor || 'Unknown'}</span></div>${order.is_vvip ? '<div style="background:#fef3c7; padding:2px 8px; border-radius:12px; display:inline-block;">👑 VVIP</div>' : ''}<div class="status-badge status-${order.status}">${order.status.toUpperCase()}</div><div style="margin:12px 0;">${(order.items || []).map(i => `<div>${i.quantity}x ${i.product_name} - R${i.subtotal}</div>`).join('')}</div><div style="text-align:right;"><strong>Total: R${order.total}</strong></div><button class="active-order-btn active-order-btn-collect" onclick="updateOrderStatus('${order.id}', '${order.status}')">${order.status === 'pending' ? 'Start' : (order.status === 'preparing' ? 'Mark Ready' : 'Ready')}</button></div>`).join(''); 
     }
-    window.updateOrderStatus = async function(orderId, currentStatus) { let newStatus = currentStatus === 'pending' ? 'preparing' : (currentStatus === 'preparing' ? 'ready' : null); if (!newStatus) return; await supabase.from('orders').update({ status: newStatus }).eq('id', orderId); renderActiveOrders(); };
+    window.updateOrderStatus = async function(orderId, currentStatus) { let newStatus = currentStatus === 'pending' ? 'preparing' : (currentStatus === 'preparing' ? 'ready' : null); if (!newStatus) return; await supabase.from('orders').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', orderId); renderActiveOrders(); };
     function switchToPOS() { document.getElementById('pos').classList.add('active'); document.getElementById('activeOrders').classList.remove('active'); document.getElementById('statusText').innerText = 'POS ACTIVE'; }
     function switchToActiveOrders() { document.getElementById('pos').classList.remove('active'); document.getElementById('activeOrders').classList.add('active'); document.getElementById('statusText').innerText = 'ACTIVE ORDERS'; renderActiveOrders(); }
     async function renderBandsList() { const { data } = await supabase.from('profiles').select('phone, name, id').limit(50); document.getElementById('bandsList').innerHTML = `<table class="bands-table"><thead><tr><th>Phone</th><th>Name</th><th>Action</th></tr></thead><tbody>${(data || []).map(p => `<tr><td>${escapeHtml(p.phone || '-')}</td><td>${escapeHtml(p.name || '-')}</td><td><button onclick="printBand('${p.id}')" class="btn-small">🖨️ Print</button></td></tr>`).join('')}</tbody></table>`; }
     window.printBand = (id) => showToast(`Printing VVIP band for customer`);
     function openBandsModal() { renderBandsList(); document.getElementById('bandsModal').style.display = 'flex'; }
     function closeBandsModal() { document.getElementById('bandsModal').style.display = 'none'; }
-    async function openDashboardModal() { const { data: orders } = await supabase.from('orders').select('total_amount'); const totalRevenue = (orders || []).reduce((s, o) => s + (o.total_amount || 0), 0); document.getElementById('dashboardContent').innerHTML = `<div style="padding:20px;"><div style="background:var(--gray-bg); padding:20px; border-radius:20px;"><div style="font-size:28px; font-weight:800; color:var(--red);">R${totalRevenue.toLocaleString()}</div><div>Total Revenue</div></div></div>`; document.getElementById('dashboardModal').style.display = 'flex'; }
+    async function openDashboardModal() { const { data: orders } = await supabase.from('orders').select('total'); const totalRevenue = (orders || []).reduce((s, o) => s + (o.total || 0), 0); document.getElementById('dashboardContent').innerHTML = `<div style="padding:20px;"><div style="background:var(--gray-bg); padding:20px; border-radius:20px;"><div style="font-size:28px; font-weight:800; color:var(--red);">R${totalRevenue.toLocaleString()}</div><div>Total Revenue</div></div></div>`; document.getElementById('dashboardModal').style.display = 'flex'; }
     function closeDashboardModal() { document.getElementById('dashboardModal').style.display = 'none'; }
     function openVVIPPackages() { window.open('vvip-store.html', '_blank'); }
     function switchVendor() { updateVendorMenu(); }
