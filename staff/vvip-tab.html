@@ -16,6 +16,7 @@ body {
     color: #1e293b;
     min-height: 100vh;
     padding: 16px;
+    padding-bottom: 0;
 }
 .container { max-width: 1600px; margin: 0 auto; }
 
@@ -78,6 +79,7 @@ body {
     display: grid;
     grid-template-columns: 2fr 1fr;
     gap: 20px;
+    margin-bottom: 20px;
 }
 .cart-container {
     background: var(--white);
@@ -121,6 +123,7 @@ body {
 .cart-item-details { flex: 2; min-width: 0; }
 .cart-item-name { font-weight: 700; font-size: 0.85rem; }
 .cart-item-price { font-size: 0.7rem; color: var(--gray-text); }
+.cart-item-id { font-size: 0.65rem; color: var(--red); font-family: monospace; margin-top: 2px; }
 .cart-item-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .quantity-btn {
     width: 30px;
@@ -432,6 +435,7 @@ input:focus, select:focus {
     .main-layout { grid-template-columns: 1fr; }
     .cart-container { position: static; margin-top: 20px; }
     .product-image-wrap { height: 140px; }
+    body { padding-bottom: 16px; }
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -649,35 +653,38 @@ input:focus, select:focus {
             
             if (!flavour || !device) { showToast('Please select flavour and hookah device', true); return; }
             
-            const deviceAlreadyInCart = currentCart.some(item => item.vendor === VENDORS.SHISHA && item.deviceId === device.id);
-            if (deviceAlreadyInCart) { showToast(`⚠️ Hookah device ${device.device_code} is already in cart. Cannot add duplicate.`, true); return; }
-            
             addShishaToCart(flavour, device, location);
         });
+    }
+
+    function generateShishaSessionId() {
+        return 'SHS-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
     }
 
     function addShishaToCart(flavour, device, location) {
         if (!currentCustomer) { showToast('Load a customer first', true); return; }
         
+        const sessionId = generateShishaSessionId();
         const itemName = `🍃 ${flavour.name} Hookah`;
         const itemPrice = flavour.price || 250;
-        const productId = `shisha_${flavour.id}_${device.id}`;
         
         currentCart.push({
+            id: sessionId,
             name: itemName,
             price: itemPrice,
             vendor: VENDORS.SHISHA,
             quantity: 1,
-            productId: productId,
+            productId: `shisha_${flavour.id}`,
             flavourId: flavour.id,
             flavourName: flavour.name,
             deviceId: device.id,
             deviceCode: device.device_code,
             locationId: location?.id,
-            locationName: location?.name
+            locationName: location?.name,
+            sessionId: sessionId
         });
         updateCartDisplay();
-        showToast(`✓ Added ${flavour.name} Hookah on ${device.device_code}`);
+        showToast(`✓ Added ${flavour.name} Hookah on ${device.device_code} (ID: ${sessionId})`);
     }
 
     async function loadPendingRequests() {
@@ -744,7 +751,6 @@ input:focus, select:focus {
     };
 
     async function loadCustomerByProfile(profile) {
-        // Get active VVIP booking with remaining balance (THIS IS THE TAB BALANCE)
         const { data: activeBooking } = await supabase
             .from('vvip_bookings')
             .select(`id, remaining_balance, total_amount, packages:vvip_packages(name)`)
@@ -754,7 +760,6 @@ input:focus, select:focus {
             .maybeSingle();
         
         if (activeBooking && activeBooking.remaining_balance !== undefined && activeBooking.remaining_balance > 0) {
-            // Use the VVIP package remaining balance as tab balance
             currentTabBalance = activeBooking.remaining_balance;
             currentPackageInfo = { 
                 id: activeBooking.id, 
@@ -763,7 +768,6 @@ input:focus, select:focus {
                 total: activeBooking.total_amount
             };
         } else if (activeBooking && activeBooking.total_amount) {
-            // Fallback: if remaining_balance not set, use total_amount
             currentTabBalance = activeBooking.total_amount;
             currentPackageInfo = { 
                 id: activeBooking.id, 
@@ -772,7 +776,6 @@ input:focus, select:focus {
                 total: activeBooking.total_amount
             };
         } else {
-            // No active VVIP package - tab balance is 0
             currentTabBalance = 0;
             currentPackageInfo = null;
         }
@@ -842,7 +845,7 @@ input:focus, select:focus {
         if (!currentCustomer) { showToast('Load a customer first', true); return; }
         const existing = currentCart.find(i => i.productId === productId && i.vendor === vendor);
         if (existing) existing.quantity++;
-        else currentCart.push({ name, price, vendor, quantity: 1, productId });
+        else currentCart.push({ id: Date.now() + '-' + productId, name, price, vendor, quantity: 1, productId });
         updateCartDisplay();
         showToast(`✓ Added ${name}`);
     }
@@ -868,7 +871,8 @@ input:focus, select:focus {
             let icon = item.vendor === VENDORS.SHISHA ? '💨' : (item.vendor === VENDORS.BUTCHER ? '🥩' : '🍺');
             let vendorShort = item.vendor === VENDORS.SHISHA ? 'Hookah' : (item.vendor === VENDORS.BUTCHER ? 'Butcher' : 'Drinks');
             let details = item.deviceCode ? ` · ${item.deviceCode}` : '';
-            html += `<div class="cart-item-row"><div style="width:40px; text-align:center; font-size:24px;">${icon}</div><div class="cart-item-details"><div class="cart-item-name">${escapeHtml(item.name)}</div><div class="cart-item-price">R${item.price} · ${vendorShort}${details}</div></div><div class="cart-item-controls"><button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button><span style="min-width:28px; text-align:center;">${item.quantity}</span><button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button><button class="remove-item" onclick="removeFromCart(${idx})">✕</button></div><span style="color:var(--red); font-weight:700;">R${itemTotal.toFixed(2)}</span></div>`;
+            let sessionDisplay = item.sessionId ? `<div class="cart-item-id">🆔 ${item.sessionId}</div>` : '';
+            html += `<div class="cart-item-row"><div style="width:40px; text-align:center; font-size:24px;">${icon}</div><div class="cart-item-details"><div class="cart-item-name">${escapeHtml(item.name)}</div><div class="cart-item-price">R${item.price} · ${vendorShort}${details}</div>${sessionDisplay}</div><div class="cart-item-controls"><button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button><span style="min-width:28px; text-align:center;">${item.quantity}</span><button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button><button class="remove-item" onclick="removeFromCart(${idx})">✕</button></div><span style="color:var(--red); font-weight:700;">R${itemTotal.toFixed(2)}</span></div>`;
         });
         container.innerHTML = html;
         document.getElementById('cartItemCount').innerText = totalItems;
@@ -891,7 +895,16 @@ input:focus, select:focus {
         const vendorTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
         const prefix = vendor === VENDORS.SMART_COUNTER ? 'SC' : (vendor === VENDORS.BUTCHER ? 'BT' : 'SH');
         const orderNumber = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        const orderItems = items.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity, device_id: i.deviceId, flavour_name: i.flavourName, device_code: i.deviceCode }));
+        const orderItems = items.map(i => ({ 
+            product_name: i.name, 
+            quantity: i.quantity, 
+            unit_price: i.price, 
+            subtotal: i.price * i.quantity, 
+            device_id: i.deviceId, 
+            flavour_name: i.flavourName, 
+            device_code: i.deviceCode,
+            session_id: i.sessionId
+        }));
         
         const { error } = await supabase.from('orders').insert([{
             order_number: orderNumber,
