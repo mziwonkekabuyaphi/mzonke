@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VVIP Packages Admin - Debug</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f0f0f;
+            color: #ffffff;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #b30000;
+        }
+        .btn {
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary { background: #b30000; color: white; }
+        .btn-secondary { background: #2a2a2a; color: white; border: 1px solid #b30000; }
+        .packages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .package-card {
+            background: #1a1a1a;
+            border-radius: 24px;
+            padding: 20px;
+            border: 1px solid #b30000;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #ff4d4d; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            background: #2a2a2a;
+            border: 1px solid #b30000;
+            border-radius: 12px;
+            color: white;
+        }
+        .debug-panel {
+            background: #1a1a1a;
+            border: 1px solid #ffaa00;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error { color: #ff4d4d; }
+        .success { color: #00ff9c; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-crown"></i> VVIP Packages Admin</h1>
+        <button class="btn btn-primary" onclick="openPackageModal()">+ Create Package</button>
+    </div>
+
+    <!-- Debug Panel -->
+    <div class="debug-panel" id="debugPanel">
+        <strong>🔍 Debug Status:</strong> <span id="debugStatus">Checking Supabase connection...</span><br>
+        <strong>📦 Tables:</strong> <span id="debugTables">-</span><br>
+        <strong>⚠️ Errors:</strong> <span id="debugErrors">None</span>
+    </div>
+
+    <div id="packagesGrid" class="packages-grid">
+        <div style="text-align: center; padding: 40px;">Loading packages...</div>
+    </div>
+</div>
+
+<!-- Package Modal -->
+<div id="packageModal" class="modal">
+    <div class="modal-content">
+        <h2 style="color: #ff4d4d; margin-bottom: 20px;">Create VVIP Package</h2>
+        <form id="packageForm">
+            <div class="form-group">
+                <label>Package Name *</label>
+                <input type="text" id="packageName" required>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="packageDescription" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Price (R) *</label>
+                <input type="number" id="packagePrice" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label>Capacity *</label>
+                <input type="number" id="packageCapacity" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Image URL</label>
+                <input type="text" id="packageImage" placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label>Benefits (comma separated)</label>
+                <input type="text" id="packageBenefits" placeholder="VIP Access, Free Drinks, Priority Seating">
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="button" class="btn-secondary" onclick="closePackageModal()">Cancel</button>
+                <button type="submit" class="btn-primary">Save Package</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script type="module">
+    // Try multiple import paths
+    let supabase = null;
+    let importError = null;
+    
+    async function loadSupabase() {
+        try {
+            // Try relative path from staff folder to config
+            const module = await import('../../config/supabase.js');
+            supabase = module.default || module.supabase;
+            console.log('✅ Supabase loaded from ../../config/supabase.js');
+            return true;
+        } catch (e1) {
+            console.error('First import attempt failed:', e1.message);
+            try {
+                // Try alternative path
+                const module = await import('../config/supabase.js');
+                supabase = module.default || module.supabase;
+                console.log('✅ Supabase loaded from ../config/supabase.js');
+                return true;
+            } catch (e2) {
+                console.error('Second import attempt failed:', e2.message);
+                importError = e2.message;
+                return false;
+            }
+        }
+    }
+
+    // Update debug panel
+    function updateDebug(status, tables = '-', errors = 'None') {
+        const statusEl = document.getElementById('debugStatus');
+        const tablesEl = document.getElementById('debugTables');
+        const errorsEl = document.getElementById('debugErrors');
+        if (statusEl) statusEl.innerHTML = status;
+        if (tablesEl) tablesEl.innerHTML = tables;
+        if (errorsEl) errorsEl.innerHTML = errors;
+    }
+
+    async function checkTables() {
+        if (!supabase) return;
+        
+        try {
+            // Check if vvip_packages table exists
+            const { data, error } = await supabase.from('vvip_packages').select('count', { count: 'exact', head: true });
+            if (error) {
+                updateDebug('❌ Table error', error.message, error.message);
+                return false;
+            }
+            updateDebug('✅ Connected to Supabase', 'vvip_packages exists', 'None');
+            return true;
+        } catch (e) {
+            updateDebug('❌ Connection failed', '-', e.message);
+            return false;
+        }
+    }
+
+    async function loadPackages() {
+        if (!supabase) {
+            document.getElementById('packagesGrid').innerHTML = '<div style="text-align:center; padding:40px; color:#ff4d4d;">❌ Supabase not loaded. Check console for errors.</div>';
+            return;
+        }
+        
+        try {
+            const { data, error } = await supabase
+                .from('vvip_packages')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            const container = document.getElementById('packagesGrid');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:40px;">No packages yet. Click "Create Package" to add one.</div>';
+                return;
+            }
+            
+            container.innerHTML = data.map(pkg => `
+                <div class="package-card">
+                    <h3 style="color: #ff4d4d;">${escapeHtml(pkg.name)}</h3>
+                    <p style="color: #aaa; margin: 10px 0;">${escapeHtml(pkg.description || 'No description')}</p>
+                    <div style="display: flex; justify-content: space-between; margin-top: 15px;">
+                        <span style="color: #ffd700; font-size: 24px;">R${pkg.price}</span>
+                        <span style="color: #888;">Capacity: ${pkg.capacity}</span>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        ${(pkg.benefits || []).map(b => `<span style="background:#2a2a2a; padding:2px 8px; border-radius:20px; font-size:11px; margin-right:5px;">${escapeHtml(b)}</span>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Load error:', error);
+            document.getElementById('packagesGrid').innerHTML = `<div style="text-align:center; padding:40px; color:#ff4d4d;">Error: ${error.message}</div>`;
+            updateDebug('❌ Query failed', '-', error.message);
+        }
+    }
+
+    window.openPackageModal = function() {
+        document.getElementById('packageModal').style.display = 'flex';
+    };
+
+    window.closePackageModal = function() {
+        document.getElementById('packageModal').style.display = 'none';
+        document.getElementById('packageForm').reset();
+    };
+
+    // Handle form submission
+    document.getElementById('packageForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!supabase) {
+            alert('Supabase not connected. Check debug panel.');
+            return;
+        }
+        
+        const benefitsStr = document.getElementById('packageBenefits').value;
+        const benefits = benefitsStr ? benefitsStr.split(',').map(b => b.trim()) : [];
+        
+        const packageData = {
+            name: document.getElementById('packageName').value.trim(),
+            description: document.getElementById('packageDescription').value.trim(),
+            price: parseFloat(document.getElementById('packagePrice').value),
+            capacity: parseInt(document.getElementById('packageCapacity').value),
+            image: document.getElementById('packageImage').value.trim() || null,
+            benefits: benefits,
+            status: 'active',
+            sold_count: 0
+        };
+        
+        console.log('Attempting to insert:', packageData);
+        
+        try {
+            const { data, error } = await supabase
+                .from('vvip_packages')
+                .insert([packageData])
+                .select();
+            
+            if (error) throw error;
+            
+            console.log('Insert successful:', data);
+            alert('Package created successfully!');
+            closePackageModal();
+            loadPackages();
+        } catch (error) {
+            console.error('Insert error:', error);
+            alert(`Error creating package: ${error.message}\n\nCheck console for details.`);
+            updateDebug('❌ Insert failed', '-', error.message);
+        }
+    });
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+    }
+
+    // Initialize
+    async function init() {
+        const loaded = await loadSupabase();
+        if (!loaded) {
+            updateDebug('❌ Import failed', '-', importError || 'Could not load supabase.js');
+            document.getElementById('packagesGrid').innerHTML = `<div style="text-align:center; padding:40px; color:#ff4d4d;">
+                <strong>⚠️ Supabase configuration not found</strong><br>
+                Make sure config/supabase.js exists at the correct path.<br>
+                <br>
+                Looking for: ../../config/supabase.js or ../config/supabase.js<br>
+                <br>
+                Error: ${importError || 'File not found'}
+            </div>`;
+            return;
+        }
+        
+        const tablesOk = await checkTables();
+        if (tablesOk) {
+            await loadPackages();
+        }
+    }
+    
+    init();
+</script>
+</body>
+</html>
