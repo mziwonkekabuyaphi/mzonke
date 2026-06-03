@@ -65,10 +65,11 @@
             padding: 8px;
             border-radius: 60px;
             border: 1px solid var(--gray-border);
+            flex-wrap: wrap;
         }
         .tab-btn {
             flex: 1;
-            padding: 12px;
+            padding: 10px 16px;
             border-radius: 60px;
             border: none;
             background: transparent;
@@ -76,6 +77,7 @@
             font-weight: 600;
             cursor: pointer;
             transition: 0.2s;
+            font-size: 13px;
         }
         .tab-btn.active {
             background: var(--red);
@@ -86,6 +88,7 @@
             display: flex;
             gap: 12px;
             margin-bottom: 24px;
+            flex-wrap: wrap;
         }
         .search-bar input {
             flex: 1;
@@ -94,6 +97,7 @@
             border: 1px solid var(--gray-border);
             border-radius: 40px;
             color: #1e293b;
+            font-size: 14px;
         }
         .btn-refresh {
             background: var(--white);
@@ -103,6 +107,7 @@
             color: var(--gray-text);
             cursor: pointer;
             transition: 0.2s;
+            font-weight: 600;
         }
         .btn-refresh:hover {
             background: var(--red);
@@ -213,6 +218,8 @@
             max-width: 500px;
             border-radius: 24px;
             padding: 24px;
+            max-height: 80vh;
+            overflow-y: auto;
         }
         .modal-header {
             display: flex;
@@ -228,14 +235,15 @@
             border: none;
             font-size: 24px;
             cursor: pointer;
+            color: var(--gray-text);
         }
         .detail-row {
             display: flex;
-            padding: 8px 0;
+            padding: 10px 0;
             border-bottom: 1px solid var(--gray-border);
         }
         .detail-label {
-            width: 100px;
+            width: 110px;
             font-weight: 600;
             color: var(--gray-text);
         }
@@ -253,6 +261,13 @@
             border-radius: 60px;
             z-index: 3000;
             display: none;
+            font-size: 14px;
+        }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 60px;
+            color: var(--gray-text);
         }
         
         @media (max-width: 768px) {
@@ -260,6 +275,8 @@
             .stats-row { grid-template-columns: 1fr 1fr; }
             .booking-actions { flex-direction: column; }
             .action-btn { width: 100%; }
+            .tabs { flex-wrap: wrap; }
+            .tab-btn { min-width: 100px; }
         }
     </style>
 </head>
@@ -293,7 +310,7 @@
 
     <div id="bookingsPanel" class="panel active">
         <div id="bookingsGrid" class="bookings-grid">
-            <div style="text-align: center; padding: 40px; color: var(--gray-text);">Loading bookings...</div>
+            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Loading bookings...</div>
         </div>
     </div>
 </div>
@@ -317,6 +334,7 @@
     let allBookings = [];
     let currentFilter = 'all';
     let currentSearch = '';
+    let packagesCache = {};
 
     function showToast(message, isError = false) {
         const toast = document.getElementById('toast');
@@ -326,42 +344,87 @@
         setTimeout(() => { toast.style.display = 'none'; }, 3000);
     }
 
-    async function loadStats() {
-        const { data: bookings } = await supabase.from('vvip_bookings').select('status, total_amount, created_at');
+    async function loadPackages() {
+        const { data, error } = await supabase
+            .from('vvip_packages')
+            .select('id, name, price, capacity, image, benefits');
         
-        const total = bookings?.length || 0;
-        const checkedIn = bookings?.filter(b => b.status === 'checked_in').length || 0;
-        const seated = bookings?.filter(b => b.status === 'seated').length || 0;
-        
-        const today = new Date().toISOString().split('T')[0];
-        const todayRevenue = bookings?.filter(b => b.created_at?.startsWith(today) && b.status === 'completed')
-            .reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
-        
-        document.getElementById('totalBookings').innerText = total;
-        document.getElementById('checkedInCount').innerText = checkedIn;
-        document.getElementById('seatedCount').innerText = seated;
-        document.getElementById('revenueToday').innerText = 'R' + todayRevenue.toLocaleString();
+        if (!error && data) {
+            packagesCache = {};
+            data.forEach(pkg => {
+                packagesCache[pkg.id] = pkg;
+            });
+        }
+        return packagesCache;
     }
 
+    async function loadStats() {
+        try {
+            const { data: bookings } = await supabase
+                .from('vvip_bookings')
+                .select('status, total_amount, created_at');
+            
+            const total = bookings?.length || 0;
+            const checkedIn = bookings?.filter(b => b.status === 'checked_in').length || 0;
+            const seated = bookings?.filter(b => b.status === 'seated').length || 0;
+            
+            const today = new Date().toISOString().split('T')[0];
+            const todayRevenue = bookings?.filter(b => b.created_at?.startsWith(today) && b.status === 'completed')
+                .reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
+            
+            document.getElementById('totalBookings').innerText = total;
+            document.getElementById('checkedInCount').innerText = checkedIn;
+            document.getElementById('seatedCount').innerText = seated;
+            document.getElementById('revenueToday').innerText = 'R' + todayRevenue.toLocaleString();
+        } catch (error) {
+            console.error('Stats error:', error);
+        }
+    }
+
+    // Load bookings without the problematic join
     async function loadBookings() {
         try {
-            const { data, error } = await supabase
+            // First load all packages for reference
+            await loadPackages();
+            
+            // Load bookings without join to avoid ambiguity
+            const { data: bookings, error } = await supabase
                 .from('vvip_bookings')
-                .select(`
-                    *,
-                    packages:vvip_packages(name, price, capacity, image, benefits),
-                    customer:profiles(name, phone)
-                `)
+                .select('*')
                 .order('created_at', { ascending: false });
             
             if (error) throw error;
             
-            allBookings = data || [];
+            // Load customer profiles separately for each unique customer_id
+            const customerIds = [...new Set(bookings.map(b => b.customer_id).filter(id => id))];
+            const customers = {};
+            
+            if (customerIds.length > 0) {
+                const { data: profiles } = await supabase
+                    .from('profiles')
+                    .select('id, name, phone')
+                    .in('id', customerIds);
+                
+                if (profiles) {
+                    profiles.forEach(p => {
+                        customers[p.id] = p;
+                    });
+                }
+            }
+            
+            // Combine data
+            allBookings = bookings.map(booking => ({
+                ...booking,
+                packages: packagesCache[booking.package_id] || null,
+                customer: customers[booking.customer_id] || null
+            }));
+            
             renderBookings();
             loadStats();
         } catch (error) {
             console.error('Error loading bookings:', error);
             showToast('Error loading bookings: ' + error.message, true);
+            document.getElementById('bookingsGrid').innerHTML = '<div class="loading-spinner" style="color: var(--red);"><i class="fas fa-exclamation-triangle"></i> Error loading bookings. Please refresh.</div>';
         }
     }
 
@@ -377,7 +440,9 @@
             filtered = filtered.filter(b => 
                 (b.booking_reference || '').toLowerCase().includes(searchLower) ||
                 (b.customer_name || '').toLowerCase().includes(searchLower) ||
-                (b.customer_phone || '').includes(searchLower)
+                (b.customer_phone || '').includes(searchLower) ||
+                (b.customer?.name || '').toLowerCase().includes(searchLower) ||
+                (b.customer?.phone || '').includes(searchLower)
             );
         }
         
@@ -389,8 +454,11 @@
         
         container.innerHTML = filtered.map(booking => {
             const statusClass = `status-${booking.status}`;
-            const statusText = (booking.status === 'checked_in' ? 'CHECKED IN' : booking.status.toUpperCase());
-            const packageName = booking.packages?.name || 'VVIP Package';
+            const packageInfo = booking.packages || {};
+            const packageName = packageInfo.name || 'VVIP Package';
+            const customerName = booking.customer_name || booking.customer?.name || 'Guest';
+            const customerPhone = booking.customer_phone || booking.customer?.phone || '-';
+            
             const statusMap = {
                 'confirmed': 'Pending Check-in',
                 'checked_in': 'Checked In',
@@ -417,24 +485,30 @@
                     <button class="action-btn action-complete" onclick="updateBookingStatus('${booking.id}', 'completed')"><i class="fas fa-check-double"></i> Complete</button>
                     <button class="action-btn action-view" onclick="viewBookingDetails('${booking.id}')"><i class="fas fa-eye"></i> Details</button>
                 `;
+            } else if (booking.status === 'completed') {
+                actionButtons = `<button class="action-btn action-view" onclick="viewBookingDetails('${booking.id}')"><i class="fas fa-eye"></i> View Details</button>`;
             } else {
                 actionButtons = `<button class="action-btn action-view" onclick="viewBookingDetails('${booking.id}')"><i class="fas fa-eye"></i> View Details</button>`;
             }
             
-            // Calculate remaining balance if exists
-            const remainingBalance = booking.remaining_balance !== null ? booking.remaining_balance : booking.total_amount;
-            const usedAmount = booking.used_amount !== null ? booking.used_amount : 0;
+            // Calculate remaining balance
+            const remainingBalance = booking.remaining_balance !== null && booking.remaining_balance !== undefined 
+                ? booking.remaining_balance 
+                : booking.total_amount;
+            const usedAmount = booking.used_amount !== null && booking.used_amount !== undefined 
+                ? booking.used_amount 
+                : 0;
             
             return `
                 <div class="booking-card ${booking.status}">
                     <div class="booking-header">
-                        <span class="booking-ref"><i class="fas fa-ticket-alt"></i> ${booking.booking_reference}</span>
-                        <span class="booking-status ${statusClass}">${statusMap[booking.status] || statusText}</span>
+                        <span class="booking-ref"><i class="fas fa-ticket-alt"></i> ${escapeHtml(booking.booking_reference)}</span>
+                        <span class="booking-status ${statusClass}">${statusMap[booking.status] || booking.status}</span>
                     </div>
                     <div><strong>${escapeHtml(packageName)}</strong> <span style="color: var(--gold);">R${booking.total_amount}</span></div>
                     <div class="booking-details">
-                        <div><i class="fas fa-user"></i> ${escapeHtml(booking.customer_name || booking.customer_phone)}</div>
-                        <div><i class="fas fa-phone"></i> ${booking.customer_phone || '-'}</div>
+                        <div><i class="fas fa-user"></i> ${escapeHtml(customerName)}</div>
+                        <div><i class="fas fa-phone"></i> ${escapeHtml(customerPhone)}</div>
                         <div><i class="fas fa-calendar"></i> Booked: ${new Date(booking.created_at).toLocaleDateString()}</div>
                         <div><i class="fas fa-clock"></i> Time: ${new Date(booking.created_at).toLocaleTimeString()}</div>
                         ${remainingBalance !== booking.total_amount ? `<div><i class="fas fa-chart-line"></i> Remaining Credit: <strong style="color: var(--success);">R${remainingBalance.toFixed(2)}</strong></div>` : ''}
@@ -452,18 +526,23 @@
         if (!booking) return;
         
         const packageInfo = booking.packages || {};
-        const remainingBalance = booking.remaining_balance !== null ? booking.remaining_balance : booking.total_amount;
-        const usedAmount = booking.used_amount !== null ? booking.used_amount : 0;
+        const customerInfo = booking.customer || {};
+        const remainingBalance = booking.remaining_balance !== null && booking.remaining_balance !== undefined 
+            ? booking.remaining_balance 
+            : booking.total_amount;
+        const usedAmount = booking.used_amount !== null && booking.used_amount !== undefined 
+            ? booking.used_amount 
+            : 0;
         
         const modalContent = document.getElementById('modalDetails');
         modalContent.innerHTML = `
-            <div class="detail-row"><div class="detail-label">Reference:</div><div class="detail-value"><strong>${booking.booking_reference}</strong></div></div>
+            <div class="detail-row"><div class="detail-label">Reference:</div><div class="detail-value"><strong>${escapeHtml(booking.booking_reference)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Package:</div><div class="detail-value">${escapeHtml(packageInfo.name || 'VVIP Package')}</div></div>
             <div class="detail-row"><div class="detail-label">Total Amount:</div><div class="detail-value"><strong style="color: var(--red);">R${booking.total_amount}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Remaining:</div><div class="detail-value"><strong style="color: var(--success);">R${remainingBalance.toFixed(2)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Used:</div><div class="detail-value">R${usedAmount.toFixed(2)}</div></div>
-            <div class="detail-row"><div class="detail-label">Customer:</div><div class="detail-value">${escapeHtml(booking.customer_name || '-')}</div></div>
-            <div class="detail-row"><div class="detail-label">Phone:</div><div class="detail-value">${booking.customer_phone || '-'}</div></div>
+            <div class="detail-row"><div class="detail-label">Customer:</div><div class="detail-value">${escapeHtml(booking.customer_name || customerInfo.name || '-')}</div></div>
+            <div class="detail-row"><div class="detail-label">Phone:</div><div class="detail-value">${escapeHtml(booking.customer_phone || customerInfo.phone || '-')}</div></div>
             <div class="detail-row"><div class="detail-label">Status:</div><div class="detail-value"><span class="booking-status status-${booking.status}">${booking.status.toUpperCase()}</span></div></div>
             <div class="detail-row"><div class="detail-label">Booked:</div><div class="detail-value">${new Date(booking.created_at).toLocaleString()}</div></div>
             ${booking.check_in_time ? `<div class="detail-row"><div class="detail-label">Checked In:</div><div class="detail-value">${new Date(booking.check_in_time).toLocaleString()}</div></div>` : ''}
