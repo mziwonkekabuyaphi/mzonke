@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>VVIP Packages Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f0f0f;
+            color: #ffffff;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #b30000;
+        }
+        .header h1 {
+            color: #ff4d4d;
+            font-size: 28px;
+        }
+        .btn {
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        .btn-primary {
+            background: #b30000;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #ff4d4d;
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background: #2a2a2a;
+            color: white;
+            border: 1px solid #b30000;
+        }
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 20px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #b30000;
+        }
+        .stat-number {
+            font-size: 32px;
+            font-weight: 800;
+            color: #ff4d4d;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 8px;
+        }
+        .packages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .package-card {
+            background: #1a1a1a;
+            border-radius: 24px;
+            border: 2px solid #b30000;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+        .package-card:hover {
+            transform: translateY(-4px);
+        }
+        .package-image {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+        }
+        .package-content {
+            padding: 20px;
+        }
+        .package-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .package-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #ff4d4d;
+        }
+        .package-price {
+            font-size: 24px;
+            font-weight: 800;
+            color: #00ff9c;
+        }
+        .package-description {
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        .package-meta {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #888;
+        }
+        .benefits-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .benefit-tag {
+            background: #2a2a2a;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            color: #ffd700;
+        }
+        .package-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .package-actions button {
+            flex: 1;
+            padding: 10px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid #b30000;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ff4d4d;
+            font-weight: 600;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            background: #2a2a2a;
+            border: 1px solid #b30000;
+            border-radius: 12px;
+            color: white;
+            font-family: inherit;
+        }
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .benefits-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .benefits-input input {
+            flex: 1;
+        }
+        .benefit-item {
+            background: #2a2a2a;
+            padding: 6px 12px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px;
+        }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #1e293b;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 60px;
+            z-index: 1100;
+            display: none;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #aaa;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .status-active { background: #00a86b; color: white; }
+        .status-inactive { background: #666; color: white; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-crown"></i> VVIP Packages Management</h1>
+        <button class="btn btn-primary" onclick="openPackageModal()">
+            <i class="fas fa-plus"></i> Create Package
+        </button>
+    </div>
+
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+            <div class="stat-number" id="totalPackages">-</div>
+            <div class="stat-label">Total Packages</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="totalBookings">-</div>
+            <div class="stat-label">Total Bookings</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="totalRevenue">-</div>
+            <div class="stat-label">Total Revenue</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="occupancyRate">-</div>
+            <div class="stat-label">Occupancy %</div>
+        </div>
+    </div>
+
+    <div class="packages-grid" id="packagesGrid">
+        <div class="loading">Loading packages...</div>
+    </div>
+</div>
+
+<!-- Package Modal -->
+<div id="packageModal" class="modal">
+    <div class="modal-content">
+        <h2 id="modalTitle" style="color: #ff4d4d; margin-bottom: 20px;">Create VVIP Package</h2>
+        <form id="packageForm">
+            <div class="form-group">
+                <label>Package Name *</label>
+                <input type="text" id="packageName" required>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="packageDescription"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Price (R) *</label>
+                <input type="number" id="packagePrice" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label>Capacity (Number of guests) *</label>
+                <input type="number" id="packageCapacity" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="packageStatus">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="archived">Archived</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Image URL</label>
+                <input type="text" id="packageImage" placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label>Benefits (comma separated or click add)</label>
+                <div class="benefits-input">
+                    <input type="text" id="benefitInput" placeholder="e.g., VIP Lounge Access">
+                    <button type="button" class="btn-secondary" onclick="addBenefit()" style="padding: 8px 16px;">Add</button>
+                </div>
+                <div id="benefitsList" class="benefits-list"></div>
+            </div>
+            <div class="form-group">
+                <label>Event (Optional)</label>
+                <select id="packageEventId">
+                    <option value="">-- No event --</option>
+                </select>
+            </div>
+            <div class="package-actions" style="margin-top: 20px;">
+                <button type="button" class="btn-secondary" onclick="closePackageModal()">Cancel</button>
+                <button type="submit" class="btn-primary">Save Package</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    let currentEditingPackage = null;
+    let benefitsArray = [];
+
+    // Helper functions
+    function showToast(message, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.style.background = isError ? '#dc2626' : '#1e293b';
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    }
+
+    function getBenefitTags() {
+        return benefitsArray.map(b => `<span class="benefit-item">${escapeHtml(b)} <button type="button" onclick="removeBenefit('${escapeHtml(b)}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer;">✕</button></span>`).join('');
+    }
+
+    window.addBenefit = function() {
+        const input = document.getElementById('benefitInput');
+        const benefit = input.value.trim();
+        if (benefit && !benefitsArray.includes(benefit)) {
+            benefitsArray.push(benefit);
+            document.getElementById('benefitsList').innerHTML = getBenefitTags();
+            input.value = '';
+        }
+    };
+
+    window.removeBenefit = function(benefit) {
+        benefitsArray = benefitsArray.filter(b => b !== benefit);
+        document.getElementById('benefitsList').innerHTML = getBenefitTags();
+    };
+
+    async function loadEvents() {
+        const { data, error } = await supabase.from('events').select('id, name').eq('is_active', true);
+        if (error) {
+            console.error('Error loading events:', error);
+            return;
+        }
+        const select = document.getElementById('packageEventId');
+        select.innerHTML = '<option value="">-- No event --</option>' + 
+            (data || []).map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join('');
+    }
+
+    async function loadStats() {
+        // Get total packages
+        const { count: packageCount } = await supabase.from('vvip_packages').select('*', { count: 'exact', head: true });
+        document.getElementById('totalPackages').innerText = packageCount || 0;
+
+        // Get total bookings
+        const { count: bookingCount, data: bookings } = await supabase.from('vvip_bookings').select('*', { count: 'exact' });
+        document.getElementById('totalBookings').innerText = bookingCount || 0;
+
+        // Get total revenue
+        const { data: revenueData } = await supabase.from('vvip_bookings').select('total_amount').eq('status', 'completed');
+        const totalRevenue = (revenueData || []).reduce((sum, b) => sum + (b.total_amount || 0), 0);
+        document.getElementById('totalRevenue').innerText = 'R' + totalRevenue.toLocaleString();
+
+        // Get occupancy rate (based on packages sold vs capacity)
+        const { data: packages } = await supabase.from('vvip_packages').select('capacity, sold_count');
+        let totalCapacity = 0, totalSold = 0;
+        (packages || []).forEach(p => {
+            totalCapacity += p.capacity;
+            totalSold += p.sold_count || 0;
+        });
+        const occupancy = totalCapacity > 0 ? Math.round((totalSold / totalCapacity) * 100) : 0;
+        document.getElementById('occupancyRate').innerText = `${occupancy}%`;
+    }
+
+    async function loadPackages() {
+        const { data, error } = await supabase.from('vvip_packages').select('*').order('created_at', { ascending: false });
+        if (error) {
+            showToast('Error loading packages: ' + error.message, true);
+            return;
+        }
+        const container = document.getElementById('packagesGrid');
+        if (!data || data.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-crown" style="font-size: 48px; margin-bottom: 16px;"></i><p>No packages created yet.</p><button class="btn btn-primary" onclick="openPackageModal()">Create First Package</button></div>';
+            return;
+        }
+        container.innerHTML = data.map(pkg => `
+            <div class="package-card">
+                ${pkg.image ? `<img class="package-image" src="${pkg.image}" alt="${escapeHtml(pkg.name)}" onerror="this.src='https://placehold.co/400x200?text=VVIP'">` : '<div class="package-image" style="background: linear-gradient(135deg, #b30000, #660000); display: flex; align-items: center; justify-content: center;"><i class="fas fa-crown" style="font-size: 48px; color: #ffd700;"></i></div>'}
+                <div class="package-content">
+                    <div class="package-header">
+                        <span class="package-name">${escapeHtml(pkg.name)}</span>
+                        <span class="package-price">R${pkg.price}</span>
+                    </div>
+                    <div class="package-meta">
+                        <span><i class="fas fa-users"></i> Capacity: ${pkg.capacity}</span>
+                        <span><i class="fas fa-ticket-alt"></i> Sold: ${pkg.sold_count || 0}</span>
+                        <span class="status-badge ${pkg.status === 'active' ? 'status-active' : 'status-inactive'}">${pkg.status}</span>
+                    </div>
+                    <div class="package-description">${pkg.description || 'No description'}</div>
+                    <div class="benefits-list">
+                        ${(pkg.benefits || []).map(b => `<span class="benefit-tag"><i class="fas fa-check"></i> ${escapeHtml(b)}</span>`).join('')}
+                    </div>
+                    <div class="package-actions">
+                        <button class="btn-secondary" onclick="editPackage('${pkg.id}')"><i class="fas fa-edit"></i> Edit</button>
+                        <button class="btn-danger" onclick="deletePackage('${pkg.id}')"><i class="fas fa-trash"></i> Delete</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        loadStats();
+    }
+
+    window.editPackage = async function(id) {
+        const { data, error } = await supabase.from('vvip_packages').select('*').eq('id', id).single();
+        if (error) {
+            showToast('Error loading package: ' + error.message, true);
+            return;
+        }
+        currentEditingPackage = data;
+        document.getElementById('modalTitle').innerText = 'Edit VVIP Package';
+        document.getElementById('packageName').value = data.name;
+        document.getElementById('packageDescription').value = data.description || '';
+        document.getElementById('packagePrice').value = data.price;
+        document.getElementById('packageCapacity').value = data.capacity;
+        document.getElementById('packageStatus').value = data.status;
+        document.getElementById('packageImage').value = data.image || '';
+        benefitsArray = data.benefits || [];
+        document.getElementById('benefitsList').innerHTML = getBenefitTags();
+        if (data.event_id) {
+            document.getElementById('packageEventId').value = data.event_id;
+        }
+        openPackageModal();
+    };
+
+    window.deletePackage = async function(id) {
+        if (!confirm('Are you sure you want to delete this package? This will not affect existing bookings.')) return;
+        const { error } = await supabase.from('vvip_packages').update({ status: 'archived' }).eq('id', id);
+        if (error) {
+            showToast('Error deleting package: ' + error.message, true);
+        } else {
+            showToast('Package archived successfully');
+            loadPackages();
+        }
+    };
+
+    function openPackageModal() {
+        document.getElementById('packageModal').style.display = 'flex';
+    }
+
+    window.closePackageModal = function() {
+        document.getElementById('packageModal').style.display = 'none';
+        currentEditingPackage = null;
+        benefitsArray = [];
+        document.getElementById('packageForm').reset();
+        document.getElementById('benefitsList').innerHTML = '';
+        document.getElementById('modalTitle').innerText = 'Create VVIP Package';
+    };
+
+    document.getElementById('packageForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const packageData = {
+            name: document.getElementById('packageName').value.trim(),
+            description: document.getElementById('packageDescription').value.trim(),
+            price: parseFloat(document.getElementById('packagePrice').value),
+            capacity: parseInt(document.getElementById('packageCapacity').value),
+            status: document.getElementById('packageStatus').value,
+            image: document.getElementById('packageImage').value.trim() || null,
+            benefits: benefitsArray,
+            event_id: document.getElementById('packageEventId').value || null
+        };
+
+        if (!packageData.name || !packageData.price || !packageData.capacity) {
+            showToast('Please fill in all required fields', true);
+            return;
+        }
+
+        let result;
+        if (currentEditingPackage) {
+            result = await supabase.from('vvip_packages').update(packageData).eq('id', currentEditingPackage.id);
+        } else {
+            result = await supabase.from('vvip_packages').insert([packageData]);
+        }
+
+        if (result.error) {
+            showToast('Error saving package: ' + result.error.message, true);
+        } else {
+            showToast(currentEditingPackage ? 'Package updated' : 'Package created');
+            closePackageModal();
+            loadPackages();
+        }
+    });
+
+    // Real-time subscription for packages
+    supabase.channel('vvip_packages_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_packages' }, () => {
+            loadPackages();
+        })
+        .subscribe();
+
+    // Initial load
+    loadEvents();
+    loadPackages();
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+</script>
+</body>
+</html>
