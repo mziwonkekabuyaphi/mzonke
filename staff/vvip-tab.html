@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-<title>VVIP POS | Shisha + Multi-Vendor Routing</title>
+<title>VVIP POS | Shisha + Multi-Vendor</title>
 <style>
 * {
     margin: 0;
@@ -30,7 +30,6 @@ body {
     --gray-light: #94a3b8;
     --success: #10b981;
     --gold: #f59e0b;
-    --purple: #8B5CF6;
 }
 
 .quick-status {
@@ -186,16 +185,17 @@ body {
 }
 .add-to-cart-btn:active { transform: scale(0.97); }
 
-/* Shisha customizer styles */
+/* Shisha customizer - Red/White theme */
 .shisha-customizer {
-    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+    background: var(--white);
     border-radius: 18px;
     padding: 16px;
     margin-bottom: 16px;
-    border: 2px solid var(--purple);
+    border: 2px solid var(--red);
+    box-shadow: 0 2px 8px rgba(227,6,19,0.1);
 }
 .shisha-customizer h4 {
-    color: var(--purple);
+    color: var(--red);
     margin-bottom: 12px;
     display: flex;
     align-items: center;
@@ -220,13 +220,13 @@ body {
     font-size: 0.85rem;
 }
 .shisha-preview {
-    background: white;
+    background: var(--red-soft);
     border-radius: 12px;
     padding: 10px;
     margin-top: 12px;
     text-align: center;
     font-size: 0.75rem;
-    border: 1px dashed var(--purple);
+    border: 1px dashed var(--red);
 }
 .price-display {
     font-weight: 800;
@@ -530,17 +530,12 @@ input:focus, select:focus {
     let shishaFlavours = [];
     let shishaDevices = [];
     let shishaLocations = [];
-    let selectedShishaFlavour = null;
-    let selectedShishaDevice = null;
-    let selectedShishaLocation = null;
     let revenue = 0;
     let guests = 0;
     let currentTabBalance = 0;
     let currentPackageInfo = null;
     let isLoadingCheckout = false;
     let pendingRequests = [];
-
-    const SHISHA_PRICE = 250;
 
     function showToast(message, isError = false) {
         const modal = document.getElementById('vvipModal');
@@ -553,29 +548,26 @@ input:focus, select:focus {
     window.closeVVIPModal = () => document.getElementById('vvipModal').classList.remove('active');
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
 
-    // Load all Shisha data from database
+    function getProductImage(product) {
+        if (product.image && product.image.trim()) return product.image;
+        return 'https://placehold.co/300x200/e2e8f0/475569?text=No+Image';
+    }
+
     async function loadShishaData() {
         const [flavoursRes, devicesRes, locationsRes] = await Promise.all([
-            supabase.from('shisha_products').select('id, name, price').eq('is_available', true),
+            supabase.from('shisha_products').select('id, name, price, image').eq('is_available', true),
             supabase.from('hookah_devices').select('id, device_code, status').eq('status', 'available'),
             supabase.from('shisha_locations').select('id, name').eq('is_active', true)
         ]);
         shishaFlavours = flavoursRes.data || [];
         shishaDevices = devicesRes.data || [];
         shishaLocations = locationsRes.data || [];
-        
-        if (shishaFlavours.length) selectedShishaFlavour = shishaFlavours[0];
-        if (shishaDevices.length) selectedShishaDevice = shishaDevices[0];
-        if (shishaLocations.length) selectedShishaLocation = shishaLocations[0];
-        
         renderShishaCustomizer();
     }
 
-    // Render Shisha customizer UI when Shisha Lounge is selected
     function renderShishaCustomizer() {
         const container = document.getElementById('vendorMenu');
         const currentVendor = document.getElementById('vendor').value;
-        
         if (currentVendor !== VENDORS.SHISHA) return;
         
         if (!shishaFlavours.length || !shishaDevices.length) {
@@ -586,40 +578,34 @@ input:focus, select:focus {
         container.innerHTML = `
             <div class="shisha-customizer">
                 <h4><i class="fas fa-smoking"></i> Customize Your Hookah Session</h4>
-                
                 <div class="shisha-select-group">
                     <label><i class="fas fa-leaf"></i> Select Flavour</label>
                     <select id="shishaFlavourSelect">
                         ${shishaFlavours.map(f => `<option value="${f.id}" data-price="${f.price}" data-name="${escapeHtml(f.name)}">${escapeHtml(f.name)} - R${f.price}</option>`).join('')}
                     </select>
                 </div>
-                
                 <div class="shisha-select-group">
                     <label><i class="fas fa-smoking"></i> Select Hookah Device</label>
                     <select id="shishaDeviceSelect">
                         ${shishaDevices.map(d => `<option value="${d.id}" data-code="${d.device_code}">${d.device_code} (Available)</option>`).join('')}
                     </select>
                 </div>
-                
                 <div class="shisha-select-group">
                     <label><i class="fas fa-map-marker-alt"></i> Select Location</label>
                     <select id="shishaLocationSelect">
                         ${shishaLocations.map(l => `<option value="${l.id}" data-name="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
                     </select>
                 </div>
-                
                 <div class="shisha-preview">
                     <i class="fas fa-fire"></i> Session: <strong id="previewFlavour">${escapeHtml(shishaFlavours[0]?.name || '-')}</strong> on <strong id="previewDevice">${escapeHtml(shishaDevices[0]?.device_code || '-')}</strong> @ <strong id="previewLocation">${escapeHtml(shishaLocations[0]?.name || '-')}</strong><br>
-                    <span class="price-display">💰 R${shishaFlavours[0]?.price || SHISHA_PRICE}</span> (60 min session)
+                    <span class="price-display">💰 R${shishaFlavours[0]?.price || 250}</span> (60 min session)
                 </div>
-                
-                <button class="add-to-cart-btn" id="addShishaToCartBtn" style="background: var(--purple); margin-top: 16px;">
+                <button class="add-to-cart-btn" id="addShishaToCartBtn" style="background: var(--red); margin-top: 16px;">
                     🍃 Add Hookah Session to Cart
                 </button>
             </div>
         `;
         
-        // Update preview on selection change
         document.getElementById('shishaFlavourSelect')?.addEventListener('change', (e) => {
             const selected = shishaFlavours.find(f => f.id == e.target.value);
             if (selected) {
@@ -645,10 +631,10 @@ input:focus, select:focus {
             const device = shishaDevices.find(d => d.id == deviceSelect.value);
             const location = shishaLocations.find(l => l.id == locationSelect.value);
             
-            if (!flavour || !device) {
-                showToast('Please select flavour and hookah device', true);
-                return;
-            }
+            if (!flavour || !device) { showToast('Please select flavour and hookah device', true); return; }
+            
+            const deviceAlreadyInCart = currentCart.some(item => item.vendor === VENDORS.SHISHA && item.deviceId === device.id);
+            if (deviceAlreadyInCart) { showToast(`⚠️ Hookah device ${device.device_code} is already in cart. Cannot add duplicate.`, true); return; }
             
             addShishaToCart(flavour, device, location);
         });
@@ -657,35 +643,30 @@ input:focus, select:focus {
     function addShishaToCart(flavour, device, location) {
         if (!currentCustomer) { showToast('Load a customer first', true); return; }
         
-        const itemName = `🍃 ${flavour.name} Hookah (${device.device_code})`;
-        const itemPrice = flavour.price || SHISHA_PRICE;
+        const itemName = `🍃 ${flavour.name} Hookah`;
+        const itemPrice = flavour.price || 250;
         const productId = `shisha_${flavour.id}_${device.id}`;
         
-        const existing = currentCart.find(i => i.productId === productId);
-        if (existing) {
-            existing.quantity++;
-        } else {
-            currentCart.push({
-                name: itemName,
-                price: itemPrice,
-                vendor: VENDORS.SHISHA,
-                quantity: 1,
-                productId: productId,
-                flavourId: flavour.id,
-                flavourName: flavour.name,
-                deviceId: device.id,
-                deviceCode: device.device_code,
-                locationId: location?.id,
-                locationName: location?.name
-            });
-        }
+        currentCart.push({
+            name: itemName,
+            price: itemPrice,
+            vendor: VENDORS.SHISHA,
+            quantity: 1,
+            productId: productId,
+            flavourId: flavour.id,
+            flavourName: flavour.name,
+            deviceId: device.id,
+            deviceCode: device.device_code,
+            locationId: location?.id,
+            locationName: location?.name
+        });
         updateCartDisplay();
         showToast(`✓ Added ${flavour.name} Hookah on ${device.device_code}`);
     }
 
     async function loadPendingRequests() {
-        const { data: serviceData } = await supabase.from('service_requests').select('*').eq('status', 'pending');
-        pendingRequests = (serviceData || []).map(r => ({ ...r, type: 'service', customerName: r.customer_name, amount: r.remaining_balance, table: r.table_location }));
+        const { data } = await supabase.from('service_requests').select('*').eq('status', 'pending').order('created_at', { ascending: true });
+        pendingRequests = (data || []).map(r => ({ ...r, customerName: r.customer_name, amount: r.remaining_balance, table: r.table_location }));
         renderPendingRequests();
     }
 
@@ -693,11 +674,9 @@ input:focus, select:focus {
         const panel = document.getElementById('pendingRequestsPanel');
         const container = document.getElementById('requestsList');
         const countSpan = document.getElementById('requestsCount');
-        
         if (pendingRequests.length === 0) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
         countSpan.innerText = pendingRequests.length;
-        
         container.innerHTML = pendingRequests.map(req => `
             <div class="request-card">
                 <div style="display:flex; justify-content:space-between;">
@@ -716,12 +695,12 @@ input:focus, select:focus {
     window.acceptServiceRequest = async function(requestId) {
         const request = pendingRequests.find(r => r.id == requestId);
         if (!request) return;
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', request.customerId).single();
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', request.customer_id).single();
         if (!profile) { showToast('Customer not found', true); return; }
         await loadCustomerByProfile(profile);
-        await supabase.from('service_requests').update({ status: 'accepted' }).eq('id', request.id);
+        await supabase.from('service_requests').update({ status: 'accepted', accepted_at: new Date() }).eq('id', request.id);
         await loadPendingRequests();
-        showToast(`✅ Loaded ${profile.name}`);
+        showToast(`✅ Loaded ${profile.name || profile.phone}`);
     };
 
     window.declineServiceRequest = async function(requestId) {
@@ -731,7 +710,7 @@ input:focus, select:focus {
     };
 
     function setupRealtimeSubscriptions() {
-        supabase.channel('requests_vvip').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'service_requests', filter: 'status=eq.pending' }, () => loadPendingRequests()).subscribe();
+        supabase.channel('requests_vvip').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'service_requests' }, () => loadPendingRequests()).subscribe();
     }
 
     window.loadCustomerManual = async function() {
@@ -769,7 +748,7 @@ input:focus, select:focus {
             document.getElementById('packageInfoCard').style.display = 'block';
         } else { document.getElementById('packageInfoCard').style.display = 'none'; }
         updateCartDisplay();
-        showToast(`✅ Welcome ${profile.name}`);
+        showToast(`✅ Welcome ${profile.name || profile.phone}`);
     }
 
     window.clearCustomer = function() {
@@ -785,34 +764,26 @@ input:focus, select:focus {
         const allProducts = products || [];
         vendorProducts[VENDORS.SMART_COUNTER] = allProducts.filter(p => ['beer', 'wine', 'spirits', 'non_alcoholic'].includes(p.category));
         vendorProducts[VENDORS.BUTCHER] = allProducts.filter(p => ['butcher', 'food', 'steak', 'burger'].includes(p.category));
-        
         await loadShishaData();
         updateVendorMenu();
     }
 
     function updateVendorMenu() {
         const vendor = document.getElementById('vendor').value;
-        
-        if (vendor === VENDORS.SHISHA) {
-            renderShishaCustomizer();
-            return;
-        }
-        
+        if (vendor === VENDORS.SHISHA) { renderShishaCustomizer(); return; }
         const items = vendorProducts[vendor] || [];
         const container = document.getElementById('vendorMenu');
         if (!items.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No items available</div>'; return; }
-        
         const icon = vendor === VENDORS.BUTCHER ? '🥩' : '🍺';
-        const color = vendor === VENDORS.BUTCHER ? '#E30613' : '#E30613';
-        
         container.innerHTML = items.map(item => `
             <div class="menu-item">
-                <div class="product-image-wrap" style="background:${color}10; display:flex; align-items:center; justify-content:center;"><span style="font-size:48px;">${icon}</span></div>
+                <div class="product-image-wrap">
+                    <img class="product-image" src="${getProductImage(item)}" alt="${escapeHtml(item.name)}" onerror="this.src='https://placehold.co/300x200/e2e8f0/475569?text=No+Image'">
+                </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><strong>${escapeHtml(item.name)}</strong><span style="color:var(--red); font-weight:700;">R${item.price}</span></div>
-                <button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-vendor="${vendor}" style="background:${color};">➕ ADD</button>
+                <button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-vendor="${vendor}">➕ ADD</button>
             </div>
         `).join('');
-        
         container.querySelectorAll('.add-to-cart-btn').forEach(btn => {
             btn.onclick = () => addRegularItemToCart(btn.dataset.name, parseFloat(btn.dataset.price), btn.dataset.vendor, btn.dataset.id);
         });
@@ -867,27 +838,27 @@ input:focus, select:focus {
     window.removeFromCart = function(idx) { currentCart.splice(idx, 1); updateCartDisplay(); };
     window.clearCart = function() { currentCart = []; updateCartDisplay(); };
     
-    async function sendShishaRequest(item) {
-        const requestData = {
-            customer_phone: currentCustomer.phone,
+    async function createOrderForVendor(vendor, items) {
+        const vendorTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+        const prefix = vendor === VENDORS.SMART_COUNTER ? 'SC' : (vendor === VENDORS.BUTCHER ? 'BT' : 'SH');
+        const orderNumber = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const orderItems = items.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity, device_id: i.deviceId, flavour_name: i.flavourName, device_code: i.deviceCode }));
+        
+        const { error } = await supabase.from('orders').insert([{
+            order_number: orderNumber,
+            customer_phone: currentCustomer.phone || '',
             customer_name: currentCustomer.name,
-            request_type: 'new_order',
-            location_name: item.locationName || 'Main Lounge',
-            flavour_name: item.flavourName || item.name,
-            device_code: item.deviceCode || 'New',
-            amount: item.price,
+            total: vendorTotal,
+            payment_method: 'vvip_tab',
+            payment_status: 'paid',
             status: 'pending',
-            created_at: new Date().toISOString(),
-            request_data: { 
-                items: [item], 
-                total: item.price * item.quantity, 
-                is_vvip: true, 
-                paymentMethod: 'wallet',
-                device_id: item.deviceId,
-                flavour_id: item.flavourId
-            }
-        };
-        const { error } = await supabase.from('shisha_requests').insert([requestData]);
+            vendor: vendor,
+            source: 'wallet',
+            is_vvip: true,
+            customer_id: currentCustomer.id,
+            items: orderItems,
+            created_at: new Date().toISOString()
+        }]);
         if (error) throw error;
         return true;
     }
@@ -912,40 +883,9 @@ input:focus, select:focus {
                 vendorGroups.get(item.vendor).push(item);
             });
             
-            const orderPromises = [];
-            let shishaRequests = [];
-            
             for (const [vendor, items] of vendorGroups.entries()) {
-                const vendorTotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-                const prefix = vendor === VENDORS.SMART_COUNTER ? 'SC' : (vendor === VENDORS.BUTCHER ? 'BT' : 'SH');
-                const orderNumber = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                
-                if (vendor === VENDORS.SHISHA) {
-                    for (const item of items) {
-                        await sendShishaRequest(item);
-                        shishaRequests.push(item);
-                    }
-                } else {
-                    orderPromises.push(supabase.from('orders').insert([{
-                        order_number: orderNumber,
-                        customer_phone: currentCustomer.phone || '',
-                        customer_name: currentCustomer.name,
-                        total: vendorTotal,
-                        payment_method: 'vvip_tab',
-                        payment_status: 'paid',
-                        status: 'pending',
-                        vendor: vendor,
-                        source: 'wallet',
-                        is_vvip: true,
-                        customer_id: currentCustomer.id,
-                        items: items.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity })),
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }]));
-                }
+                await createOrderForVendor(vendor, items);
             }
-            
-            await Promise.all(orderPromises);
             
             const newTabBalance = currentTabBalance - total;
             if (currentPackageInfo) {
@@ -967,9 +907,7 @@ input:focus, select:focus {
             document.getElementById('quickGuests').innerText = guests;
             
             const vendorNames = Array.from(vendorGroups.keys()).join(', ');
-            const shishaMsg = shishaRequests.length ? ` (${shishaRequests.length} Hookah request${shishaRequests.length > 1 ? 's' : ''} sent to staff)` : '';
-            showToast(`✅ Order placed! R${total} deducted. Sent to: ${vendorNames}${shishaMsg}`);
-            
+            showToast(`✅ Order placed! R${total} deducted. Sent to: ${vendorNames}`);
             clearCart();
             if (newTabBalance <= 0) { showToast(`Balance depleted. Customer cleared.`); setTimeout(() => clearCustomer(), 2000); }
         } catch (err) {
