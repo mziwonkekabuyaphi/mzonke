@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<title>VVIP POS | Sovereign Terminal</title>
+<title>VVIP POS | Sovereign Terminal with Product Images</title>
 <style>
 * {
     margin: 0;
@@ -105,16 +105,40 @@ body {
     margin-left: auto;
     color: var(--red);
 }
-.vendor-group-item {
+/* New cart item with image */
+.cart-item-row {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 10px;
+    gap: 12px;
     background: var(--white);
-    margin-bottom: 8px;
-    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 16px;
     border: 1px solid var(--gray-border);
-    flex-wrap: wrap;
+    transition: all 0.2s;
+}
+.cart-item-img {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: #f1f5f9;
+    border: 1px solid var(--gray-border);
+}
+.cart-item-details {
+    flex: 2;
+}
+.cart-item-name {
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+.cart-item-price {
+    font-size: 0.7rem;
+    color: var(--gray-text);
+}
+.cart-item-controls {
+    display: flex;
+    align-items: center;
     gap: 8px;
 }
 .quantity-btn {
@@ -134,13 +158,58 @@ body {
     border: none; 
     color: var(--gray-light); 
     cursor: pointer; 
-    font-size: 16px;
+    font-size: 18px;
+    margin-left: 6px;
 }
 .remove-item:hover { color: var(--red); }
+
+/* Menu item with consistent image */
+.menu-item {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 12px;
+    border: 1px solid var(--gray-border);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.menu-item:hover { 
+    border-color: var(--red); 
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(227,6,19,0.1);
+}
+.product-image-wrap {
+    position: relative;
+    width: 100%;
+    height: 130px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    background: #f1f5f9;
+}
+.product-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+.add-to-cart-btn {
+    background: var(--red);
+    border: none;
+    padding: 8px;
+    border-radius: 40px;
+    color: white;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 8px;
+}
+.add-to-cart-btn:hover { background: var(--red-dark); }
+
 .cart-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
+    margin-top: 12px;
 }
 .cart-btn {
     background: var(--red);
@@ -159,46 +228,7 @@ body {
     color: var(--gray-text);
 }
 .cart-btn.secondary:hover { background: var(--gray-bg); transform: translateY(-2px); }
-.menu-item {
-    background: var(--white);
-    border-radius: 16px;
-    padding: 12px;
-    border: 1px solid var(--gray-border);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.menu-item:hover { 
-    border-color: var(--red); 
-    transform: scale(1.02);
-    box-shadow: 0 4px 12px rgba(227,6,19,0.1);
-}
-.add-to-cart-btn {
-    background: var(--red);
-    border: none;
-    padding: 8px;
-    border-radius: 40px;
-    color: white;
-    font-weight: 600;
-    width: 100%;
-    cursor: pointer;
-    margin-top: 8px;
-}
-.add-to-cart-btn:hover { background: var(--red-dark); }
-.product-image-wrap {
-    position: relative;
-    width: 100%;
-    height: 130px;
-    border-radius: 12px 12px 0 0;
-    overflow: hidden;
-    margin: -12px -12px 12px -12px;
-    width: calc(100% + 24px);
-}
-.product-image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.3s ease;
-}
+
 .modal {
     display: none;
     position: fixed;
@@ -455,7 +485,6 @@ input:focus, select:focus {
         </div>
     </div>
 
-    <!-- Pending Service Requests Panel -->
     <div id="pendingRequestsPanel" style="background: white; border-radius: 20px; border: 2px solid var(--gold); margin-bottom: 20px; padding: 12px; display: none;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <span><strong>👑 VVIP Service Requests</strong></span>
@@ -536,48 +565,44 @@ input:focus, select:focus {
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    // State
+    // ----- STATE -----
     let currentCustomer = null;
-    let currentCart = [];
+    let currentCart = [];          // each item: { id, name, price, vendor, quantity, productId, imageUrl }
     let vendorMenus = {};
     let revenue = 0;
     let guests = 0;
     let currentTabBalance = 0;
     let currentPackageInfo = null;
     let pendingRequests = [];
+    let productImageCache = new Map(); // id -> image_url
 
-    // Helper functions
+    // Helper: generate product image from unsplash or seed but ensures consistent pics for identical products
+    function getProductImageUrl(itemName, productId) {
+        if (productImageCache.has(productId)) return productImageCache.get(productId);
+        const seed = encodeURIComponent(itemName.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        const url = `https://picsum.photos/seed/${seed || productId}/300/200`;
+        productImageCache.set(productId, url);
+        return url;
+    }
+
     function showToast(message, isError = false) {
         const modal = document.getElementById('vvipModal');
         document.getElementById('vvipModalTitle').innerText = isError ? 'Error' : 'Success';
         document.getElementById('vvipModalMessage').innerHTML = message;
         document.getElementById('vvipModalIcon').innerHTML = isError ? '⚠️' : '✓';
         modal.classList.add('active');
-        setTimeout(() => modal.classList.remove('active'), 3000);
+        setTimeout(() => modal.classList.remove('active'), 2800);
     }
     window.closeVVIPModal = () => document.getElementById('vvipModal').classList.remove('active');
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
-    function getProductImage(item) { return `https://picsum.photos/seed/${encodeURIComponent(item.name || 'product')}/300/200`; }
 
-    // Load pending service requests from Supabase
+    // ----- SERVICE REQUESTS (unchanged but working) -----
     async function loadPendingRequestsFromSupabase() {
-        const { data, error } = await supabase
-            .from('service_requests')
-            .select('*')
-            .eq('status', 'pending')
-            .order('created_at', { ascending: true });
-        if (error) { console.error('Error loading requests:', error); return; }
-        pendingRequests = (data || []).map(req => ({
-            id: req.id,
-            customerId: req.customer_id,
-            customerName: req.customer_name,
-            amount: req.remaining_balance,
-            table: req.table_location,
-            status: req.status
-        }));
+        const { data, error } = await supabase.from('service_requests').select('*').eq('status', 'pending').order('created_at', { ascending: true });
+        if (error) { console.error(error); return; }
+        pendingRequests = (data || []).map(req => ({ id: req.id, customerId: req.customer_id, customerName: req.customer_name, amount: req.remaining_balance, table: req.table_location, status: req.status }));
         renderPendingRequests();
     }
-
     function renderPendingRequests() {
         const panel = document.getElementById('pendingRequestsPanel');
         const container = document.getElementById('requestsList');
@@ -585,21 +610,8 @@ input:focus, select:focus {
         if (pendingRequests.length === 0) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
         countSpan.innerText = pendingRequests.length;
-        container.innerHTML = pendingRequests.map(req => `
-            <div class="request-card">
-                <div style="display: flex; justify-content: space-between;">
-                    <div><strong>${escapeHtml(req.customerName)}</strong> <span class="request-badge">VVIP</span></div>
-                    <span style="color: var(--gold); font-weight: bold;">R${req.amount}</span>
-                </div>
-                <div style="font-size: 12px;">Table: ${escapeHtml(req.table)}</div>
-                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                    <button class="btn-small" onclick="acceptServiceRequest('${req.id}')" style="background: var(--success);">✅ Accept & Load</button>
-                    <button class="btn-small" onclick="declineServiceRequest('${req.id}')" style="background: var(--gray-light);">✖ Decline</button>
-                </div>
-            </div>
-        `).join('');
+        container.innerHTML = pendingRequests.map(req => `<div class="request-card"><div style="display:flex; justify-content:space-between;"><div><strong>${escapeHtml(req.customerName)}</strong> <span class="request-badge">VVIP</span></div><span style="color:var(--gold); font-weight:bold;">R${req.amount}</span></div><div style="font-size:12px;">Table: ${escapeHtml(req.table)}</div><div style="display:flex; gap:8px; margin-top:8px;"><button class="btn-small" onclick="acceptServiceRequest('${req.id}')" style="background:var(--success);">✅ Accept & Load</button><button class="btn-small" onclick="declineServiceRequest('${req.id}')" style="background:var(--gray-light);">✖ Decline</button></div></div>`).join('');
     }
-
     window.acceptServiceRequest = async function(requestId) {
         const request = pendingRequests.find(r => r.id == requestId);
         if (!request) return;
@@ -612,42 +624,26 @@ input:focus, select:focus {
         renderPendingRequests();
         showToast(`✅ Loaded ${profile.name} | Balance: R${request.amount}`);
     };
-
     window.declineServiceRequest = async function(requestId) {
         await supabase.from('service_requests').update({ status: 'declined' }).eq('id', requestId);
         pendingRequests = pendingRequests.filter(r => r.id != requestId);
         renderPendingRequests();
         showToast('Request declined');
     };
-
-    // Subscribe to real-time service requests
     function setupServiceRequestsSubscription() {
-        supabase.channel('service_requests_pending')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'service_requests', filter: 'status=eq.pending' }, (payload) => {
-                const newReq = payload.new;
-                if (!pendingRequests.some(r => r.id === newReq.id)) {
-                    pendingRequests.push({
-                        id: newReq.id,
-                        customerId: newReq.customer_id,
-                        customerName: newReq.customer_name,
-                        amount: newReq.remaining_balance,
-                        table: newReq.table_location,
-                        status: 'pending'
-                    });
-                    renderPendingRequests();
-                    showToast(`🔔 New VVIP request from ${newReq.customer_name}`);
-                }
-            }).subscribe();
+        supabase.channel('service_requests_pending').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'service_requests', filter: 'status=eq.pending' }, (payload) => {
+            const newReq = payload.new;
+            if (!pendingRequests.some(r => r.id === newReq.id)) {
+                pendingRequests.push({ id: newReq.id, customerId: newReq.customer_id, customerName: newReq.customer_name, amount: newReq.remaining_balance, table: newReq.table_location, status: 'pending' });
+                renderPendingRequests();
+                showToast(`🔔 New VVIP request from ${newReq.customer_name}`);
+            }
+        }).subscribe();
     }
 
+    // ----- CUSTOMER LOADING (unchanged core) -----
     async function loadCustomerByProfile(profile) {
-        const { data: activeBooking } = await supabase
-            .from('vvip_bookings')
-            .select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price)`)
-            .eq('customer_id', profile.id)
-            .in('status', ['confirmed', 'checked_in', 'seated'])
-            .order('created_at', { ascending: false })
-            .limit(1).maybeSingle();
+        const { data: activeBooking } = await supabase.from('vvip_bookings').select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price)`).eq('customer_id', profile.id).in('status', ['confirmed', 'checked_in', 'seated']).order('created_at', { ascending: false }).limit(1).maybeSingle();
         if (activeBooking && activeBooking.packages) {
             currentTabBalance = activeBooking.remaining_balance || activeBooking.total_amount;
             currentPackageInfo = { id: activeBooking.id, name: activeBooking.packages.name, total: activeBooking.total_amount, remaining: currentTabBalance };
@@ -668,7 +664,6 @@ input:focus, select:focus {
         } else { document.getElementById('packageInfoCard').style.display = 'none'; }
         updateCartDisplay();
     }
-
     window.loadCustomerManual = async function() {
         const identifier = document.getElementById('posBand').value.trim();
         if (!identifier) { showToast('Enter QR / Phone / ID', true); return; }
@@ -676,7 +671,6 @@ input:focus, select:focus {
         if (error || !profile) { showToast('Customer not found', true); return; }
         await loadCustomerByProfile(profile);
     };
-
     window.clearCustomer = function() {
         currentCustomer = null; currentCart = []; currentTabBalance = 0; currentPackageInfo = null;
         document.getElementById('customerInfoBar').style.display = 'none';
@@ -685,14 +679,19 @@ input:focus, select:focus {
         updateCartDisplay();
     };
 
+    // ----- MENU & PRODUCTS (fetch with image attribute but fallback) -----
     async function loadProducts() { const { data } = await supabase.from('products').select('*').eq('is_available', true); return data || []; }
     async function loadShishaProducts() { const { data } = await supabase.from('shisha_products').select('*').eq('is_available', true); return data || []; }
     async function buildVendorMenus() {
-        const products = await loadProducts(); const shisha = await loadShishaProducts();
+        const products = await loadProducts(); 
+        const shisha = await loadShishaProducts();
         const menus = { 'Rands Smart Counter': [], 'Shisha Lounge': [], 'The Butcher Shop': [] };
         const catMap = { 'beer': 'Rands Smart Counter', 'wine': 'Rands Smart Counter', 'spirits': 'Rands Smart Counter', 'non_alcoholic': 'Rands Smart Counter', 'butcher': 'The Butcher Shop', 'food': 'The Butcher Shop' };
-        products.forEach(p => { const vendor = catMap[p.category] || 'Rands Smart Counter'; if (menus[vendor]) menus[vendor].push({ ...p, isShishaProduct: false }); });
-        shisha.forEach(s => { menus['Shisha Lounge'].push({ id: s.id, name: s.name, price: s.price, isShishaProduct: true }); });
+        products.forEach(p => { 
+            const vendor = catMap[p.category] || 'Rands Smart Counter'; 
+            if (menus[vendor]) menus[vendor].push({ ...p, isShishaProduct: false, image_url: p.image_url || getProductImageUrl(p.name, p.id) }); 
+        });
+        shisha.forEach(s => { menus['Shisha Lounge'].push({ id: s.id, name: s.name, price: s.price, isShishaProduct: true, image_url: s.image_url || getProductImageUrl(s.name, s.id) }); });
         return menus;
     }
     async function refreshMenus() { vendorMenus = await buildVendorMenus(); updateVendorSelect(); updateVendorMenu(); }
@@ -702,23 +701,63 @@ input:focus, select:focus {
         const items = vendorMenus[vendor] || [];
         const container = document.getElementById('vendorMenu');
         if (!items.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No items</div>'; return; }
-        container.innerHTML = items.map(item => `<div class="menu-item"><div class="product-image-wrap"><img class="product-image" src="${getProductImage(item)}" onerror="this.src='https://picsum.photos/seed/fallback/300/200'"></div><div style="display:flex; justify-content:space-between;"><strong>${escapeHtml(item.name)}</strong><span style="color:var(--red);">R${item.price}</span></div><button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}">➕ ADD</button></div>`).join('');
-        container.querySelectorAll('.add-to-cart-btn').forEach(btn => { btn.onclick = () => { const name = btn.dataset.name; const price = parseFloat(btn.dataset.price); addToCart(name, price, vendor, btn.dataset.id); }; });
+        container.innerHTML = items.map(item => {
+            const imgSrc = item.image_url || getProductImageUrl(item.name, item.id);
+            return `<div class="menu-item"><div class="product-image-wrap"><img class="product-image" src="${imgSrc}" onerror="this.src='https://picsum.photos/seed/fallback/300/200'"></div><div style="display:flex; justify-content:space-between;"><strong>${escapeHtml(item.name)}</strong><span style="color:var(--red);">R${item.price}</span></div><button class="add-to-cart-btn" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-image="${imgSrc}">➕ ADD</button></div>`;
+        }).join('');
+        container.querySelectorAll('.add-to-cart-btn').forEach(btn => { btn.onclick = () => { const name = btn.dataset.name; const price = parseFloat(btn.dataset.price); const productId = btn.dataset.id; const imageUrl = btn.dataset.image; addToCart(name, price, vendor, productId, imageUrl); }; });
     }
-    function addToCart(name, price, vendor, productId) { if (!currentCustomer) { showToast('Load a customer first', true); return; } const existing = currentCart.find(i => i.name === name && i.vendor === vendor); if (existing) existing.quantity++; else currentCart.push({ name, price, vendor, quantity: 1, productId }); updateCartDisplay(); }
+    function addToCart(name, price, vendor, productId, imageUrl) { 
+        if (!currentCustomer) { showToast('Load a customer first', true); return; } 
+        const existing = currentCart.find(i => i.productId === productId && i.vendor === vendor); 
+        if (existing) existing.quantity++; 
+        else currentCart.push({ name, price, vendor, quantity: 1, productId, imageUrl: imageUrl || getProductImageUrl(name, productId) }); 
+        updateCartDisplay(); 
+    }
+    
+    // ----- CART WITH IMAGES (MAJOR ENHANCEMENT) -----
     function updateCartDisplay() {
         const container = document.getElementById('cartItems');
         let subtotal = 0, totalItems = 0;
-        if (!currentCart.length) { container.innerHTML = '<div style="text-align:center; padding:30px;">Cart empty</div>'; document.getElementById('cartItemCount').innerText = '0'; document.getElementById('cartSubtotal').innerText = 'R0'; document.getElementById('checkoutBtn').disabled = true; document.getElementById('checkoutAmount').innerText = '0'; return; }
+        if (!currentCart.length) { 
+            container.innerHTML = '<div style="text-align:center; padding:30px;">Cart empty</div>'; 
+            document.getElementById('cartItemCount').innerText = '0'; 
+            document.getElementById('cartSubtotal').innerText = 'R0'; 
+            document.getElementById('checkoutBtn').disabled = true; 
+            document.getElementById('checkoutAmount').innerText = '0';
+            if(currentCustomer) document.getElementById('customerCartCount').innerText = '0';
+            document.getElementById('customerCartTotal').innerHTML = 'R0';
+            return; 
+        }
         let html = '';
-        currentCart.forEach((item, idx) => { const itemTotal = item.price * item.quantity; subtotal += itemTotal; totalItems += item.quantity; html += `<div class="vendor-group-item"><span><strong>${escapeHtml(item.name)}</strong></span><div><button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button><span style="margin:0 12px;">${item.quantity}</span><button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button></div><span style="color:var(--red);">R${itemTotal}</span><button class="remove-item" onclick="removeFromCart(${idx})">✕</button></div>`; });
+        currentCart.forEach((item, idx) => { 
+            const itemTotal = item.price * item.quantity; 
+            subtotal += itemTotal; 
+            totalItems += item.quantity; 
+            html += `<div class="cart-item-row">
+                        <img class="cart-item-img" src="${item.imageUrl || getProductImageUrl(item.name, item.productId)}" onerror="this.src='https://picsum.photos/seed/default/48/48'">
+                        <div class="cart-item-details">
+                            <div class="cart-item-name">${escapeHtml(item.name)}</div>
+                            <div class="cart-item-price">R${item.price} each</div>
+                        </div>
+                        <div class="cart-item-controls">
+                            <button class="quantity-btn" onclick="updateQuantity(${idx}, -1)">-</button>
+                            <span style="min-width:28px; text-align:center;">${item.quantity}</span>
+                            <button class="quantity-btn" onclick="updateQuantity(${idx}, 1)">+</button>
+                            <button class="remove-item" onclick="removeFromCart(${idx})">✕</button>
+                        </div>
+                        <span style="color:var(--red); font-weight:600; min-width:60px; text-align:right;">R${itemTotal}</span>
+                    </div>`; 
+        });
         container.innerHTML = html;
         document.getElementById('cartItemCount').innerText = totalItems;
-        document.getElementById('cartSubtotal').innerText = 'R' + subtotal;
+        document.getElementById('cartSubtotal').innerText = 'R' + subtotal.toFixed(2);
         document.getElementById('checkoutBtn').disabled = false;
-        document.getElementById('checkoutAmount').innerText = subtotal;
-        document.getElementById('customerCartCount').innerText = totalItems;
-        document.getElementById('customerCartTotal').innerHTML = 'R' + subtotal;
+        document.getElementById('checkoutAmount').innerText = subtotal.toFixed(2);
+        if(currentCustomer) {
+            document.getElementById('customerCartCount').innerText = totalItems;
+            document.getElementById('customerCartTotal').innerHTML = 'R' + subtotal.toFixed(2);
+        }
     }
     window.updateQuantity = function(idx, delta) { if (currentCart[idx]) { currentCart[idx].quantity += delta; if (currentCart[idx].quantity <= 0) currentCart.splice(idx, 1); updateCartDisplay(); } };
     window.removeFromCart = function(idx) { currentCart.splice(idx, 1); updateCartDisplay(); };
@@ -734,7 +773,8 @@ input:focus, select:focus {
         if (currentPackageInfo) { await supabase.from('vvip_bookings').update({ remaining_balance: newTabBalance }).eq('id', currentPackageInfo.id); } 
         else { await supabase.from('wallets').update({ balance: newTabBalance }).eq('user_id', currentCustomer.id); }
         const orderNumber = 'ORD-' + Date.now();
-        await supabase.from('orders').insert([{ order_number: orderNumber, customer_phone: currentCustomer.phone, customer_name: currentCustomer.name, total_amount: total, payment_method: 'vvip_tab', payment_status: 'paid', status: 'pending', items: currentCart.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity })), is_vvip: true, source: 'vvip_pos' }]);
+        // preserve images in order items for future reference (optional metadata)
+        await supabase.from('orders').insert([{ order_number: orderNumber, customer_phone: currentCustomer.phone, customer_name: currentCustomer.name, total_amount: total, payment_method: 'vvip_tab', payment_status: 'paid', status: 'pending', items: currentCart.map(i => ({ product_name: i.name, quantity: i.quantity, unit_price: i.price, subtotal: i.price * i.quantity, product_image: i.imageUrl })), is_vvip: true, source: 'vvip_pos' }]);
         currentTabBalance = newTabBalance;
         if (currentPackageInfo) { currentPackageInfo.remaining = newTabBalance; document.getElementById('packageRemaining').innerHTML = `R${newTabBalance.toFixed(2)}`; }
         document.getElementById('customerBalanceDisplay').innerHTML = `R${newTabBalance.toFixed(2)}`;
@@ -745,12 +785,17 @@ input:focus, select:focus {
     }
     
     function updateQuickStats() { document.getElementById('quickRevenue').innerText = 'R' + revenue; document.getElementById('quickGuests').innerText = guests; }
-    async function renderActiveOrders() { const { data } = await supabase.from('orders').select('*').in('status', ['pending', 'preparing', 'ready']).order('created_at', { ascending: false }); const container = document.getElementById('activeOrdersGrid'); if (!data?.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No active orders</div>'; return; } container.innerHTML = data.map(order => `<div class="active-order-card ${order.is_vvip ? 'vvip-order' : ''}"><div class="active-order-header"><span class="active-order-id">#${order.order_number}</span><span>${new Date(order.created_at).toLocaleTimeString()}</span></div><div><strong>${order.customer_name}</strong></div>${order.is_vvip ? '<div style="background:#fef3c7; padding:2px 8px; border-radius:12px; display:inline-block;">👑 VVIP</div>' : ''}<div class="status-badge status-${order.status}">${order.status.toUpperCase()}</div><div style="margin:12px 0;">${(order.items || []).map(i => `<div>${i.quantity}x ${i.product_name} - R${i.subtotal}</div>`).join('')}</div><div style="text-align:right;"><strong>Total: R${order.total_amount}</strong></div><button class="active-order-btn active-order-btn-collect" onclick="updateOrderStatus('${order.id}', '${order.status}')">${order.status === 'pending' ? 'Start' : (order.status === 'preparing' ? 'Mark Ready' : 'Ready')}</button></div>`).join(''); }
+    async function renderActiveOrders() { 
+        const { data } = await supabase.from('orders').select('*').in('status', ['pending', 'preparing', 'ready']).order('created_at', { ascending: false }); 
+        const container = document.getElementById('activeOrdersGrid'); 
+        if (!data?.length) { container.innerHTML = '<div style="text-align:center; padding:40px;">No active orders</div>'; return; } 
+        container.innerHTML = data.map(order => `<div class="active-order-card ${order.is_vvip ? 'vvip-order' : ''}"><div class="active-order-header"><span class="active-order-id">#${order.order_number}</span><span>${new Date(order.created_at).toLocaleTimeString()}</span></div><div><strong>${order.customer_name}</strong></div>${order.is_vvip ? '<div style="background:#fef3c7; padding:2px 8px; border-radius:12px; display:inline-block;">👑 VVIP</div>' : ''}<div class="status-badge status-${order.status}">${order.status.toUpperCase()}</div><div style="margin:12px 0;">${(order.items || []).map(i => `<div>${i.quantity}x ${i.product_name} - R${i.subtotal}</div>`).join('')}</div><div style="text-align:right;"><strong>Total: R${order.total_amount}</strong></div><button class="active-order-btn active-order-btn-collect" onclick="updateOrderStatus('${order.id}', '${order.status}')">${order.status === 'pending' ? 'Start' : (order.status === 'preparing' ? 'Mark Ready' : 'Ready')}</button></div>`).join(''); 
+    }
     window.updateOrderStatus = async function(orderId, currentStatus) { let newStatus = currentStatus === 'pending' ? 'preparing' : (currentStatus === 'preparing' ? 'ready' : null); if (!newStatus) return; await supabase.from('orders').update({ status: newStatus }).eq('id', orderId); renderActiveOrders(); };
     function switchToPOS() { document.getElementById('pos').classList.add('active'); document.getElementById('activeOrders').classList.remove('active'); document.getElementById('statusText').innerText = 'POS ACTIVE'; }
     function switchToActiveOrders() { document.getElementById('pos').classList.remove('active'); document.getElementById('activeOrders').classList.add('active'); document.getElementById('statusText').innerText = 'ACTIVE ORDERS'; renderActiveOrders(); }
     async function renderBandsList() { const { data } = await supabase.from('profiles').select('phone, name, id').limit(50); document.getElementById('bandsList').innerHTML = `<table class="bands-table"><thead><tr><th>Phone</th><th>Name</th><th>Action</th></tr></thead><tbody>${(data || []).map(p => `<tr><td>${escapeHtml(p.phone || '-')}</td><td>${escapeHtml(p.name || '-')}</td><td><button onclick="printBand('${p.id}')" class="btn-small">🖨️ Print</button></td></tr>`).join('')}</tbody></table>`; }
-    window.printBand = (id) => showToast(`Printing VVIP band`);
+    window.printBand = (id) => showToast(`Printing VVIP band for customer`);
     function openBandsModal() { renderBandsList(); document.getElementById('bandsModal').style.display = 'flex'; }
     function closeBandsModal() { document.getElementById('bandsModal').style.display = 'none'; }
     async function openDashboardModal() { const { data: orders } = await supabase.from('orders').select('total_amount'); const totalRevenue = (orders || []).reduce((s, o) => s + (o.total_amount || 0), 0); document.getElementById('dashboardContent').innerHTML = `<div style="padding:20px;"><div style="background:var(--gray-bg); padding:20px; border-radius:20px;"><div style="font-size:28px; font-weight:800; color:var(--red);">R${totalRevenue.toLocaleString()}</div><div>Total Revenue</div></div></div>`; document.getElementById('dashboardModal').style.display = 'flex'; }
