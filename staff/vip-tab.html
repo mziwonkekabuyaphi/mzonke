@@ -326,6 +326,37 @@ input, select {
     .status-buttons { margin-left: 0; margin-top: 10px; }
     .active-orders-grid { grid-template-columns: 1fr; }
 }
+/* Package info card styles */
+.package-info-card {
+    background: #1a1a1a;
+    border-radius: 16px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    border-left: 4px solid #ffd700;
+}
+.package-info-title {
+    font-size: 11px;
+    color: #ffd700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+.package-info-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 4px;
+}
+.package-info-credit {
+    font-size: 18px;
+    font-weight: 800;
+    color: #00ff9c;
+}
+.package-info-used {
+    font-size: 11px;
+    color: #888;
+    margin-top: 4px;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -367,11 +398,19 @@ input, select {
         <div id="customerInfoBar" style="display:none; background:#222; padding:15px; border-radius:20px; margin-bottom:20px; border-left:4px solid #00ff9c;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
                 <div><span style="color:#aaa;">Customer:</span> <span style="color:#00ff9c; font-weight:bold;" id="customerBandDisplay"></span></div>
-                <div><span style="color:#aaa;">Balance:</span> <span style="color:#ff4d4d; font-weight:bold;" id="customerBalanceDisplay"></span></div>
+                <div><span style="color:#aaa;">Tab Balance:</span> <span style="color:#ffd700; font-weight:bold;" id="customerBalanceDisplay">R0</span></div>
                 <div><span style="color:#aaa;">Cart Items:</span> <span id="customerCartCount">0</span></div>
                 <div><span style="color:#aaa;">Cart Total:</span> <span id="customerCartTotal">R0</span></div>
                 <button style="padding:8px 15px; background:#333; border:none; border-radius:40px; color:white; cursor:pointer;" onclick="clearCustomer()">NEW CUSTOMER</button>
             </div>
+        </div>
+
+        <!-- Active Package Info Card (shows current VVIP package credit) -->
+        <div id="packageInfoCard" style="display:none; background:#1a1a1a; border-radius:16px; padding:12px 16px; margin-bottom:20px; border-left:4px solid #ffd700;">
+            <div class="package-info-title"><i class="fas fa-gem"></i> ACTIVE VVIP PACKAGE</div>
+            <div class="package-info-name" id="packageName">-</div>
+            <div class="package-info-credit" id="packageRemaining">R0.00</div>
+            <div class="package-info-used" id="packageUsed">Used: R0.00 of R0.00</div>
         </div>
 
         <div class="main-layout">
@@ -423,6 +462,8 @@ input, select {
     let globalOrders = [];
     let revenue = 0;
     let guests = 0;
+    let currentTabBalance = 0;
+    let currentPackageInfo = null;
 
     // Helper functions
     function showToast(message, isError = false) {
@@ -473,7 +514,6 @@ input, select {
         const vendors = ['Rands Smart Counter', 'Shisha Lounge', 'The Butcher Shop'];
         const menus = { 'Rands Smart Counter': [], 'Shisha Lounge': [], 'The Butcher Shop': [] };
         
-        // Map products to vendors by category
         const categoryToVendor = {
             'beer': 'Rands Smart Counter', 'wine': 'Rands Smart Counter', 'spirits': 'Rands Smart Counter',
             'non_alcoholic': 'Rands Smart Counter', 'butcher': 'The Butcher Shop', 'food': 'The Butcher Shop'
@@ -530,7 +570,6 @@ input, select {
             </div>
         `).join('');
         
-        // Attach events
         container.querySelectorAll('.add-to-cart-btn').forEach(btn => {
             btn.onclick = () => {
                 const name = btn.dataset.name;
@@ -545,7 +584,6 @@ input, select {
     async function initiateShishaOrder(name, price, productId) {
         if (!currentCustomer) { showToast('Load a customer first', true); return; }
         
-        // Get available hookah devices
         const { data: devices, error } = await supabase
             .from('hookah_devices')
             .select('*')
@@ -632,11 +670,12 @@ input, select {
         updateCartDisplay();
     };
 
+    // ========== LOAD CUSTOMER WITH TAB BALANCE ==========
     async function loadCustomer() {
         const identifier = document.getElementById('posBand').value.trim();
         if (!identifier) { showToast('Enter phone number or band ID', true); return; }
         
-        // Search by phone or wallet_id
+        // Get profile
         let { data: profile, error } = await supabase
             .from('profiles')
             .select('*')
@@ -648,12 +687,55 @@ input, select {
             return;
         }
         
+        // Get active VVIP package (tab balance)
+        const { data: activeBooking } = await supabase
+            .from('vvip_bookings')
+            .select(`
+                id,
+                booking_reference,
+                total_amount,
+                status,
+                packages:vvip_packages(name, price)
+            `)
+            .eq('customer_id', profile.id)
+            .in('status', ['confirmed', 'checked_in', 'seated'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        
+        if (activeBooking && activeBooking.packages) {
+            // Calculate remaining balance (you can track spent amount in a separate table)
+            // For now, we'll use total_amount as remaining
+            currentTabBalance = activeBooking.total_amount;
+            currentPackageInfo = {
+                id: activeBooking.id,
+                name: activeBooking.packages.name,
+                total: activeBooking.total_amount,
+                remaining: activeBooking.total_amount,
+                reference: activeBooking.booking_reference
+            };
+        } else {
+            currentTabBalance = 0;
+            currentPackageInfo = null;
+        }
+        
         currentCustomer = profile;
         currentCart = [];
         
         document.getElementById('customerBandDisplay').innerText = profile.phone || profile.wallet_id;
-        document.getElementById('customerBalanceDisplay').innerText = 'R' + (profile.wallet_balance || 0);
+        document.getElementById('customerBalanceDisplay').innerHTML = `R${currentTabBalance.toFixed(2)}`;
         document.getElementById('customerInfoBar').style.display = 'block';
+        
+        // Show/hide package info card
+        if (currentPackageInfo) {
+            document.getElementById('packageName').innerText = currentPackageInfo.name;
+            document.getElementById('packageRemaining').innerHTML = `R${currentPackageInfo.remaining.toFixed(2)}`;
+            document.getElementById('packageUsed').innerHTML = `Used: R${(currentPackageInfo.total - currentPackageInfo.remaining).toFixed(2)} of R${currentPackageInfo.total.toFixed(2)}`;
+            document.getElementById('packageInfoCard').style.display = 'block';
+        } else {
+            document.getElementById('packageInfoCard').style.display = 'none';
+        }
+        
         updateCartDisplay();
         showToast(`Welcome ${profile.name || profile.phone}`);
     }
@@ -661,36 +743,46 @@ input, select {
     window.clearCustomer = function() {
         currentCustomer = null;
         currentCart = [];
+        currentTabBalance = 0;
+        currentPackageInfo = null;
         document.getElementById('customerInfoBar').style.display = 'none';
+        document.getElementById('packageInfoCard').style.display = 'none';
         document.getElementById('posBand').value = '';
         updateCartDisplay();
     };
 
+    // ========== CHECKOUT - DEDUCT FROM TAB BALANCE ==========
     async function checkout() {
         if (!currentCustomer) { showToast('No customer loaded', true); return; }
         if (!currentCart.length) { showToast('Cart is empty', true); return; }
         
         const total = currentCart.reduce((s, i) => s + i.price * i.quantity, 0);
-        const currentBalance = currentCustomer.wallet_balance || 0;
         
-        if (currentBalance < total) {
-            showToast(`Insufficient balance. Need R${total}, have R${currentBalance}`, true);
+        if (currentTabBalance < total) {
+            showToast(`Insufficient tab balance. Need R${total}, have R${currentTabBalance}`, true);
             return;
         }
         
-        const newBalance = currentBalance - total;
+        const newTabBalance = currentTabBalance - total;
         revenue += total;
         guests++;
         
-        // Update wallet balance
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ wallet_balance: newBalance })
-            .eq('id', currentCustomer.id);
-        
-        if (updateError) {
-            showToast('Failed to update balance', true);
-            return;
+        // Update the booking's remaining balance
+        if (currentPackageInfo) {
+            const usedAmount = (currentPackageInfo.total - newTabBalance);
+            const { error: updateError } = await supabase
+                .from('vvip_bookings')
+                .update({ 
+                    remaining_balance: newTabBalance,
+                    used_amount: usedAmount
+                })
+                .eq('id', currentPackageInfo.id);
+            
+            if (updateError) {
+                console.error('Failed to update tab balance:', updateError);
+                showToast('Failed to update tab balance', true);
+                return;
+            }
         }
         
         // Create order
@@ -703,7 +795,7 @@ input, select {
                 customer_name: currentCustomer.name,
                 total_amount: total,
                 total: total,
-                payment_method: 'wallet',
+                payment_method: 'tab',
                 payment_status: 'paid',
                 status: 'pending',
                 payment_source: 'vvip_tab',
@@ -732,11 +824,16 @@ input, select {
             }
         }
         
-        // Update local customer balance
-        currentCustomer.wallet_balance = newBalance;
-        document.getElementById('customerBalanceDisplay').innerText = 'R' + newBalance;
+        // Update local state
+        currentTabBalance = newTabBalance;
+        if (currentPackageInfo) {
+            currentPackageInfo.remaining = newTabBalance;
+            document.getElementById('packageRemaining').innerHTML = `R${newTabBalance.toFixed(2)}`;
+            document.getElementById('packageUsed').innerHTML = `Used: R${(currentPackageInfo.total - newTabBalance).toFixed(2)} of R${currentPackageInfo.total.toFixed(2)}`;
+        }
+        document.getElementById('customerBalanceDisplay').innerHTML = `R${newTabBalance.toFixed(2)}`;
         
-        showToast(`Payment successful! R${total} deducted. New balance: R${newBalance}`);
+        showToast(`Payment successful! R${total} deducted from tab balance. Remaining: R${newTabBalance}`);
         clearCart();
         updateQuickStats();
         refreshMenus();
@@ -815,19 +912,18 @@ input, select {
 
     // Bands Management
     async function renderBandsList() {
-        const { data, error } = await supabase.from('profiles').select('phone, name, wallet_balance, id').limit(50);
+        const { data, error } = await supabase.from('profiles').select('phone, name, id').limit(50);
         if (error) return;
         
         const html = `
             <table class="bands-table">
-                <thead><tr><th>Phone</th><th>Name</th><th>Balance</th><th>Action</th></tr></thead>
+                <thead><tr><th>Phone</th><th>Name</th><th>Action</th> </thead>
                 <tbody>
                     ${data.map(p => `
                         <tr>
                             <td>${escapeHtml(p.phone || '-')}</td>
                             <td>${escapeHtml(p.name || '-')}</td>
-                            <td>R${p.wallet_balance || 0}</td>
-                            <td><button onclick="printBand('${p.id}')" class="btn-small">🖨️ Print</button></td>
+                            <td><button onclick="printBand('${p.id}')" class="btn-small">🖨️ Print Band</button></td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -837,7 +933,7 @@ input, select {
     }
 
     window.printBand = function(id) {
-        showToast(`Printing band for customer ID: ${id}`);
+        showToast(`Printing VVIP band for customer ID: ${id}`);
     };
 
     function openBandsModal() {
@@ -855,9 +951,18 @@ input, select {
         
         document.getElementById('dashboardContent').innerHTML = `
             <div style="padding:20px;">
-                <div class="stat-card" style="margin-bottom:20px;"><div class="stat-number">R${totalRevenue.toLocaleString()}</div><div>Total Revenue</div></div>
-                <div class="stat-card" style="margin-bottom:20px;"><div class="stat-number">R${vvipRevenue.toLocaleString()}</div><div>VVIP Revenue</div></div>
-                <div class="stat-card"><div class="stat-number">${orders?.length || 0}</div><div>Total Orders</div></div>
+                <div style="background:#2a2a2a; padding:20px; border-radius:20px; margin-bottom:20px; text-align:center;">
+                    <div style="font-size:28px; font-weight:800; color:#ff4d4d;">R${totalRevenue.toLocaleString()}</div>
+                    <div style="font-size:12px; color:#aaa;">Total Revenue</div>
+                </div>
+                <div style="background:#2a2a2a; padding:20px; border-radius:20px; margin-bottom:20px; text-align:center;">
+                    <div style="font-size:28px; font-weight:800; color:#ffd700;">R${vvipRevenue.toLocaleString()}</div>
+                    <div style="font-size:12px; color:#aaa;">VVIP Revenue</div>
+                </div>
+                <div style="background:#2a2a2a; padding:20px; border-radius:20px; text-align:center;">
+                    <div style="font-size:28px; font-weight:800; color:#00ff9c;">${orders?.length || 0}</div>
+                    <div style="font-size:12px; color:#aaa;">Total Orders</div>
+                </div>
             </div>
         `;
         document.getElementById('dashboardModal').style.display = 'flex';
@@ -881,6 +986,13 @@ input, select {
         supabase.channel('orders_changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
                 if (document.getElementById('activeOrders').classList.contains('active')) renderActiveOrders();
+            })
+            .subscribe();
+        
+        // Also listen for booking changes to update tab balance in real-time
+        supabase.channel('booking_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => {
+                if (currentCustomer) loadCustomer(); // Reload customer data
             })
             .subscribe();
     }
