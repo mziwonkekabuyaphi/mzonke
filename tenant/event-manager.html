@@ -172,55 +172,41 @@
 <script type="module">
   import { supabase } from '../config/supabase.js';
 
-  // ========== STATE ==========
   let events = [];
   let selectedEventId = null;
   let isCreatingEvent = false;
   let pendingDeleteEventId = null;
 
-  // Helper functions
   function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
   
   function showToast(message, type = 'success') {
     const toast = document.getElementById('toast');
     const icon = document.getElementById('toastIcon');
     const msgEl = document.getElementById('toastMessage');
-    
-    if (type === 'success') { icon.innerText = '✅'; toast.className = 'toast success show'; }
-    else if (type === 'error') { icon.innerText = '❌'; toast.className = 'toast error show'; }
-    else { icon.innerText = '⚠️'; toast.className = 'toast warning show'; }
-    
+    icon.innerText = type === 'success' ? '✅' : '❌';
+    toast.className = `toast ${type === 'success' ? 'success' : 'error'} show`;
     msgEl.innerText = message;
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
-  function loadTicketsFromStorage() {
-    const stored = localStorage.getItem('rands_tickets');
-    return stored ? JSON.parse(stored) : [];
-  }
-
-  // Get counts for all related data
   async function getRelatedCounts(eventId) {
     try {
-      // Get ticket IDs for this event
-      const { data: tickets, error: ticketsError } = await supabase
+      const { data: tickets, error } = await supabase
         .from('tickets')
         .select('id')
         .eq('event_id', eventId);
       
-      if (ticketsError) throw ticketsError;
+      if (error) throw error;
       
       const ticketIds = tickets.map(t => t.id);
       let checkinsCount = 0;
       
-      // If there are tickets, count checkins
       if (ticketIds.length > 0) {
-        const { count, error: checkinsError } = await supabase
+        const { count } = await supabase
           .from('checkins')
           .select('*', { count: 'exact', head: true })
           .in('ticket_id', ticketIds);
-        
-        if (!checkinsError) checkinsCount = count || 0;
+        checkinsCount = count || 0;
       }
       
       return { ticketsCount: tickets.length, checkinsCount };
@@ -230,10 +216,8 @@
     }
   }
 
-  // Complete cascade delete: checkins -> tickets -> event
   async function deleteEventWithFullCascade(eventId) {
     try {
-      // Step 1: Get all ticket IDs for this event
       const { data: tickets, error: ticketsFetchError } = await supabase
         .from('tickets')
         .select('id')
@@ -243,39 +227,31 @@
       
       const ticketIds = tickets.map(t => t.id);
       
-      // Step 2: Delete checkins for these tickets (if any)
       if (ticketIds.length > 0) {
         const { error: checkinsDeleteError } = await supabase
           .from('checkins')
           .delete()
           .in('ticket_id', ticketIds);
-        
         if (checkinsDeleteError) throw checkinsDeleteError;
       }
       
-      // Step 3: Delete all tickets for this event
       const { error: ticketsDeleteError } = await supabase
         .from('tickets')
         .delete()
         .eq('event_id', eventId);
-      
       if (ticketsDeleteError) throw ticketsDeleteError;
       
-      // Step 4: Delete the event
+      const { error: ticketTypesDeleteError } = await supabase
+        .from('ticket_types')
+        .delete()
+        .eq('event_id', eventId);
+      if (ticketTypesDeleteError) throw ticketTypesDeleteError;
+      
       const { error: eventDeleteError } = await supabase
         .from('events')
         .delete()
         .eq('id', eventId);
-      
       if (eventDeleteError) throw eventDeleteError;
-      
-      // Step 5: Clean up localStorage
-      const storedTickets = loadTicketsFromStorage();
-      const eventToDelete = events.find(e => e.id === eventId);
-      const filteredTickets = storedTickets.filter(t => 
-        t.eventId !== eventId && t.eventName !== eventToDelete?.name
-      );
-      localStorage.setItem('rands_tickets', JSON.stringify(filteredTickets));
       
       return { success: true };
     } catch (err) {
@@ -286,31 +262,47 @@
 
   async function loadEventsFromSupabase() {
     try {
-      const { data, error } = await supabase.from('events').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('*')
+        .order('created_at', { ascending: false });
       
-      const formatted = data.map(ev => ({
-        id: ev.id,
-        name: ev.name,
-        date: ev.start_time ? ev.start_time.split('T')[0] : new Date().toISOString().split('T')[0],
-        location: ev.location || 'Rands Cape Town',
-        status: ev.status || 'active',
-        ticketTypes: {
-          earlyBird: { price: 250, capacity: 200, sold: 0 },
-          general: { price: ev.base_price || 350, capacity: 400, sold: 0 },
-          vip: { price: ev.vip_price || 550, capacity: 80, sold: 0 }
-        }
-      }));
+      if (eventsError) throw eventsError;
       
-      data.forEach((ev, idx) => {
-        if (ev.description) {
-          const ebMatch = ev.description.match(/EarlyBird R(\d+)\/(\d+)/);
-          if (ebMatch) { formatted[idx].ticketTypes.earlyBird.price = parseInt(ebMatch[1]); formatted[idx].ticketTypes.earlyBird.capacity = parseInt(ebMatch[2]); }
-          const genMatch = ev.description.match(/General R(\d+)\/(\d+)/);
-          if (genMatch) { formatted[idx].ticketTypes.general.price = parseInt(genMatch[1]); formatted[idx].ticketTypes.general.capacity = parseInt(genMatch[2]); }
-          const vipMatch = ev.description.match(/VIP R(\d+)\/(\d+)/);
-          if (vipMatch) { formatted[idx].ticketTypes.vip.price = parseInt(vipMatch[1]); formatted[idx].ticketTypes.vip.capacity = parseInt(vipMatch[2]); }
-        }
+      const { data: ticketTypesData, error: ticketTypesError } = await supabase
+        .from('ticket_types')
+        .select('*');
+      
+      if (ticketTypesError) throw ticketTypesError;
+      
+      const formatted = eventsData.map(ev => {
+        const eventTicketTypes = ticketTypesData.filter(tt => tt.event_id === ev.id);
+        
+        const ticketTypes = {
+          earlyBird: { price: 0, capacity: 0, sold: 0, id: null },
+          general: { price: ev.base_price || 0, capacity: 0, sold: 0, id: null },
+          vip: { price: ev.vip_price || 0, capacity: 0, sold: 0, id: null }
+        };
+        
+        eventTicketTypes.forEach(tt => {
+          const name = tt.name?.toLowerCase() || '';
+          if (name.includes('early') || name === 'earlybird') {
+            ticketTypes.earlyBird = { price: tt.price, capacity: tt.capacity, sold: tt.sold || 0, id: tt.id };
+          } else if (name.includes('general') || name === 'general') {
+            ticketTypes.general = { price: tt.price, capacity: tt.capacity, sold: tt.sold || 0, id: tt.id };
+          } else if (name.includes('vip') || name === 'vip') {
+            ticketTypes.vip = { price: tt.price, capacity: tt.capacity, sold: tt.sold || 0, id: tt.id };
+          }
+        });
+        
+        return {
+          id: ev.id,
+          name: ev.name,
+          date: ev.start_time ? ev.start_time.split('T')[0] : new Date().toISOString().split('T')[0],
+          location: ev.location || 'Rands Cape Town',
+          status: ev.status || 'active',
+          ticketTypes: ticketTypes
+        };
       });
       
       return formatted;
@@ -321,7 +313,7 @@
   }
 
   function updateStats() {
-    const tickets = loadTicketsFromStorage();
+    const tickets = JSON.parse(localStorage.getItem('rands_tickets') || '[]');
     document.getElementById('totalTickets').innerText = tickets.length;
     document.getElementById('totalEvents').innerText = events.filter(e => e.status === 'active').length;
     const uniqueHolders = new Set(tickets.map(t => t.ticketId?.split('_')[0])).size;
@@ -383,14 +375,15 @@
     const types = [{ key: 'earlyBird', label: '🐦 Early Bird' }, { key: 'general', label: '🎟️ General' }, { key: 'vip', label: '👑 VIP' }];
     container.innerHTML = types.map(t => { 
       const data = ev.ticketTypes[t.key]; 
-      if (!data) return ''; 
+      if (!data || data.capacity === 0) return ''; 
       return `<div class="transaction-item"><div><i class="fas fa-ticket-alt"></i> ${t.label}</div><div>R${data.price} | Cap: ${data.capacity}</div><div>Sold: ${data.sold} | Left: ${data.capacity - data.sold}</div></div>`; 
     }).join('');
+    if (container.innerHTML === '') container.innerHTML = '<div class="empty-state">No ticket types configured</div>';
   }
 
   function renderEventPurchases(ev) {
     const container = document.getElementById('eventPurchases');
-    const tickets = loadTicketsFromStorage();
+    const tickets = JSON.parse(localStorage.getItem('rands_tickets') || '[]');
     const eventTickets = tickets.filter(t => t.eventName === ev.name);
     if (!eventTickets.length) { 
       container.innerHTML = '<div class="empty-state">No tickets purchased</div>'; 
@@ -424,18 +417,12 @@
       return; 
     }
     
-    const ebPrice = parseFloat(document.getElementById('newEarlyBirdPrice').value) || 0;
-    const ebCap = parseInt(document.getElementById('newEarlyBirdCapacity').value) || 0;
-    const genPrice = parseFloat(document.getElementById('newGeneralPrice').value) || 0;
-    const genCap = parseInt(document.getElementById('newGeneralCapacity').value) || 0;
-    const vipPrice = parseFloat(document.getElementById('newVipPrice').value) || 0;
-    const vipCap = parseInt(document.getElementById('newVipCapacity').value) || 0;
-    
-    let descParts = [];
-    if (ebPrice && ebCap) descParts.push(`EarlyBird R${ebPrice}/${ebCap}`);
-    if (genPrice && genCap) descParts.push(`General R${genPrice}/${genCap}`);
-    if (vipPrice && vipCap) descParts.push(`VIP R${vipPrice}/${vipCap}`);
-    const description = descParts.join(' | ') || 'Ticket info';
+    const ebPrice = parseFloat(document.getElementById('newEarlyBirdPrice').value);
+    const ebCap = parseInt(document.getElementById('newEarlyBirdCapacity').value);
+    const genPrice = parseFloat(document.getElementById('newGeneralPrice').value);
+    const genCap = parseInt(document.getElementById('newGeneralCapacity').value);
+    const vipPrice = parseFloat(document.getElementById('newVipPrice').value);
+    const vipCap = parseInt(document.getElementById('newVipCapacity').value);
     
     isCreatingEvent = true;
     const createBtn = document.getElementById('confirmCreateEventBtn');
@@ -444,13 +431,66 @@
     createBtn.disabled = true;
     
     try {
-      const { error } = await supabase.from('events').insert([{
-        name, location, start_time: date, description,
-        base_price: genPrice || 0, vip_price: vipPrice || 0, status: 'active'
-      }]);
-      if (error) throw error;
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .insert([{
+          name, location, start_time: date,
+          base_price: genPrice || 0, vip_price: vipPrice || 0, status: 'active'
+        }])
+        .select()
+        .single();
       
-      showToast(`Event "${name}" created!`, 'success');
+      if (eventError) throw eventError;
+      
+      const ticketTypesToInsert = [];
+      
+      if (ebPrice && ebCap && ebPrice > 0 && ebCap > 0) {
+        ticketTypesToInsert.push({
+          event_id: eventData.id,
+          name: 'Early Bird',
+          price: ebPrice,
+          capacity: ebCap,
+          sold: 0
+        });
+      }
+      
+      if (genPrice && genCap && genPrice > 0 && genCap > 0) {
+        ticketTypesToInsert.push({
+          event_id: eventData.id,
+          name: 'General Admission',
+          price: genPrice,
+          capacity: genCap,
+          sold: 0
+        });
+      }
+      
+      if (vipPrice && vipCap && vipPrice > 0 && vipCap > 0) {
+        ticketTypesToInsert.push({
+          event_id: eventData.id,
+          name: 'VIP Experience',
+          price: vipPrice,
+          capacity: vipCap,
+          sold: 0
+        });
+      }
+      
+      if (ticketTypesToInsert.length === 0) {
+        ticketTypesToInsert.push({
+          event_id: eventData.id,
+          name: 'General Admission',
+          price: genPrice || 100,
+          capacity: genCap || 100,
+          sold: 0
+        });
+      }
+      
+      const { error: ticketTypesError } = await supabase
+        .from('ticket_types')
+        .insert(ticketTypesToInsert);
+      
+      if (ticketTypesError) throw ticketTypesError;
+      
+      showToast(`Event "${name}" created with ${ticketTypesToInsert.length} ticket type(s)!`, 'success');
       
       document.getElementById('newEventName').value = '';
       document.getElementById('newEventDate').value = '';
@@ -485,19 +525,13 @@
     
     document.getElementById('deleteEventName').innerText = eventToDelete.name;
     
-    let warningHtml = '';
-    let detailsHtml = '';
-    
     if (counts.ticketsCount > 0) {
-      warningHtml = `<i class="fas fa-exclamation-circle"></i> Warning: This event has ${counts.ticketsCount} ticket(s) associated!`;
-      detailsHtml = `<strong>Related data:</strong><br>• ${counts.ticketsCount} ticket(s)<br>• ${counts.checkinsCount} check-in record(s)<br><br>All related data will be permanently deleted.`;
+      document.getElementById('deleteWarningMsg').innerHTML = `<i class="fas fa-exclamation-circle"></i> Warning: This event has ${counts.ticketsCount} ticket(s) associated!`;
+      document.getElementById('relatedDataMsg').innerHTML = `<strong>Related data:</strong><br>• ${counts.ticketsCount} ticket(s)<br>• ${counts.checkinsCount} check-in record(s)<br><br>All related data will be permanently deleted.`;
     } else {
-      warningHtml = `No tickets have been sold for this event yet.`;
-      detailsHtml = `The event will be permanently removed.`;
+      document.getElementById('deleteWarningMsg').innerHTML = `No tickets have been sold for this event yet.`;
+      document.getElementById('relatedDataMsg').innerHTML = `The event will be permanently removed.`;
     }
-    
-    document.getElementById('deleteWarningMsg').innerHTML = warningHtml;
-    document.getElementById('relatedDataMsg').innerHTML = detailsHtml;
     
     pendingDeleteEventId = selectedEventId;
     document.getElementById('deleteConfirmModal').classList.add('active');
@@ -531,6 +565,81 @@
     }
   }
 
+  async function confirmEditTickets() {
+    if (!selectedEventId) return;
+    
+    const ebPrice = parseFloat(document.getElementById('editEarlyBirdPrice').value);
+    const ebCap = parseInt(document.getElementById('editEarlyBirdCapacity').value);
+    const genPrice = parseFloat(document.getElementById('editGeneralPrice').value);
+    const genCap = parseInt(document.getElementById('editGeneralCapacity').value);
+    const vipPrice = parseFloat(document.getElementById('editVipPrice').value);
+    const vipCap = parseInt(document.getElementById('editVipCapacity').value);
+    
+    try {
+      const { data: existingTypes, error: fetchError } = await supabase
+        .from('ticket_types')
+        .select('*')
+        .eq('event_id', selectedEventId);
+      
+      if (fetchError) throw fetchError;
+      
+      for (const existing of existingTypes) {
+        await supabase.from('ticket_types').delete().eq('id', existing.id);
+      }
+      
+      const ticketTypesToInsert = [];
+      
+      if (ebPrice && ebCap && ebPrice > 0 && ebCap > 0) {
+        ticketTypesToInsert.push({
+          event_id: selectedEventId,
+          name: 'Early Bird',
+          price: ebPrice,
+          capacity: ebCap,
+          sold: 0
+        });
+      }
+      
+      if (genPrice && genCap && genPrice > 0 && genCap > 0) {
+        ticketTypesToInsert.push({
+          event_id: selectedEventId,
+          name: 'General Admission',
+          price: genPrice,
+          capacity: genCap,
+          sold: 0
+        });
+      }
+      
+      if (vipPrice && vipCap && vipPrice > 0 && vipCap > 0) {
+        ticketTypesToInsert.push({
+          event_id: selectedEventId,
+          name: 'VIP Experience',
+          price: vipPrice,
+          capacity: vipCap,
+          sold: 0
+        });
+      }
+      
+      if (ticketTypesToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('ticket_types')
+          .insert(ticketTypesToInsert);
+        
+        if (insertError) throw insertError;
+      }
+      
+      await supabase
+        .from('events')
+        .update({ base_price: genPrice || 0, vip_price: vipPrice || 0 })
+        .eq('id', selectedEventId);
+      
+      showToast('Tickets updated successfully', 'success');
+      await refreshAllEvents();
+      document.getElementById('editTicketModal').classList.remove('active');
+    } catch (err) { 
+      showToast(err.message, 'error'); 
+    }
+  }
+
   function openEditTicketModal() {
     if (!selectedEventId) { 
       showToast('Select event first', 'error'); 
@@ -547,38 +656,6 @@
     document.getElementById('editVipPrice').value = ev.ticketTypes.vip?.price || '';
     document.getElementById('editVipCapacity').value = ev.ticketTypes.vip?.capacity || '';
     document.getElementById('editTicketModal').classList.add('active');
-  }
-  
-  async function confirmEditTickets() {
-    if (!selectedEventId) return;
-    
-    const ebPrice = parseFloat(document.getElementById('editEarlyBirdPrice').value);
-    const ebCap = parseInt(document.getElementById('editEarlyBirdCapacity').value);
-    const genPrice = parseFloat(document.getElementById('editGeneralPrice').value);
-    const genCap = parseInt(document.getElementById('editGeneralCapacity').value);
-    const vipPrice = parseFloat(document.getElementById('editVipPrice').value);
-    const vipCap = parseInt(document.getElementById('editVipCapacity').value);
-    
-    let descParts = [];
-    if (ebPrice && ebCap) descParts.push(`EarlyBird R${ebPrice}/${ebCap}`);
-    if (genPrice && genCap) descParts.push(`General R${genPrice}/${genCap}`);
-    if (vipPrice && vipCap) descParts.push(`VIP R${vipPrice}/${vipCap}`);
-    const description = descParts.join(' | ');
-    
-    try {
-      const { error } = await supabase.from('events').update({ 
-        description, 
-        base_price: genPrice || 0, 
-        vip_price: vipPrice || 0 
-      }).eq('id', selectedEventId);
-      
-      if (error) throw error;
-      showToast('Tickets updated', 'success');
-      await refreshAllEvents();
-      document.getElementById('editTicketModal').classList.remove('active');
-    } catch (err) { 
-      showToast(err.message, 'error'); 
-    }
   }
   
   function closeEditTicketModal() { 
