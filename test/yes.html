@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Rands Wallet | Pay Now</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+            }
+        }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f4f6fa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .pay-standalone {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 40px;
+            box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            position: relative;
+            padding-bottom: 20px;
+        }
+        .close-pay-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: #f8fafc;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid rgba(227,6,19,0.15);
+            color: #E30613;
+            font-size: 1.1rem;
+            z-index: 10;
+        }
+        .close-pay-btn:active { transform: scale(0.94); background: #ffffff; }
+        .pay-content {
+            padding: 24px 20px 32px;
+        }
+        .pay-heading {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #E30613 0%, #b0020e 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-align: center;
+        }
+        .balance-card {
+            background: linear-gradient(135deg, #E30613 0%, #b71c1c 100%);
+            border-radius: 28px;
+            padding: 20px;
+            margin-bottom: 24px;
+            text-align: center;
+            color: white;
+        }
+        .balance-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            opacity: 0.9;
+            letter-spacing: 1px;
+        }
+        .balance-amount {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-top: 8px;
+        }
+        .barcode-container {
+            background: #ffffff;
+            padding: 12px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            border: 1px solid #ecf0f5;
+        }
+        #barcodeCanvas {
+            max-width: 280px;
+            width: 100%;
+            height: auto;
+        }
+        .qr-large {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eef2f8;
+            text-align: center;
+        }
+        #qrcode {
+            width: 160px;
+            height: 160px;
+            margin: 0 auto 12px;
+            display: flex;
+            justify-content: center;
+        }
+        .qr-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            font-weight: 500;
+            margin-top: 8px;
+            word-break: break-all;
+            background: #f8fafc;
+            padding: 8px 12px;
+            border-radius: 60px;
+            display: inline-block;
+        }
+        
+        /* Box Office Payment Requests Section */
+        .boxoffice-requests-section {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 8px solid #f1f5f9;
+        }
+        .boxoffice-title {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #1e293b;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .boxoffice-title i {
+            color: #E30613;
+        }
+        .boxoffice-badge {
+            background: #E30613;
+            color: white;
+            border-radius: 20px;
+            padding: 2px 10px;
+            font-size: 0.7rem;
+            margin-left: auto;
+        }
+        .boxoffice-request-card {
+            background: #f8fafd;
+            border-radius: 24px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #eef2f8;
+            transition: all 0.2s;
+        }
+        .boxoffice-request-card.expired {
+            opacity: 0.6;
+            background: #f1f5f9;
+        }
+        .boxoffice-request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .boxoffice-event-name {
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: #E30613;
+        }
+        .boxoffice-timer {
+            font-family: monospace;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            color: #f59e0b;
+        }
+        .boxoffice-timer.expired {
+            color: #E30613;
+            background: #fee2e2;
+        }
+        .boxoffice-request-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .boxoffice-detail {
+            flex: 1;
+            min-width: 80px;
+        }
+        .boxoffice-detail-label {
+            font-size: 0.6rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .boxoffice-detail-value {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+        .boxoffice-amount {
+            font-size: 0.9rem;
+            font-weight: 800;
+            color: #E30613;
+        }
+        .boxoffice-pay-btn {
+            width: 100%;
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .boxoffice-pay-btn:active { transform: scale(0.96); }
+        .boxoffice-pay-btn:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+        .boxoffice-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #94a3b8;
+            font-size: 0.8rem;
+        }
+        .boxoffice-empty i {
+            font-size: 2rem;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+        
+        .toast-msg {
+            position: fixed;
+            bottom: 100px;
+            left: 20px;
+            right: 20px;
+            background: #1e2a3a;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 60px;
+            text-align: center;
+            z-index: 3500;
+            display: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .toast-msg.show { display: block; }
+        .toast-msg.success { background: #10b981; }
+        .toast-msg.error { background: #E30613; }
+        
+        @media (max-width: 480px) {
+            .pay-content { padding: 20px 16px; }
+            .pay-heading { font-size: 1.3rem; }
+            .close-pay-btn { top: 12px; right: 12px; width: 36px; height: 36px; font-size: 1rem; }
+            .balance-amount { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="pay-standalone">
+    <div class="close-pay-btn" id="closePayBtn">
+        <i class="fas fa-times"></i>
+    </div>
+    <div class="pay-content">
+        <div class="pay-heading">
+            <i class="fas fa-qrcode" style="margin-right: 8px;"></i> Scan to Pay
+        </div>
+        
+        <!-- Balance Display -->
+        <div class="balance-card">
+            <div class="balance-label">AVAILABLE BALANCE</div>
+            <div class="balance-amount" id="walletBalance">R 0.00</div>
+        </div>
+        
+        <div class="barcode-container">
+            <svg id="barcodeCanvas"></svg>
+        </div>
+        <div class="qr-large">
+            <div id="qrcode"></div>
+            <p class="qr-label">
+                <i class="fas fa-wallet"></i> Rands Account: <span id="qrAccountLabel"></span>
+            </p>
+        </div>
+
+        <!-- BOX OFFICE PAYMENT REQUESTS SECTION -->
+        <div class="boxoffice-requests-section" id="boxofficeRequestsSection">
+            <div class="boxoffice-title">
+                <i class="fas fa-ticket-alt"></i> BOX OFFICE REQUESTS
+                <span class="boxoffice-badge" id="boxofficeCount">0</span>
+            </div>
+            <div id="boxofficeRequestsList">
+                <div class="boxoffice-empty">
+                    <i class="fas fa-clock"></i>
+                    <p>No pending payment requests</p>
+                    <p style="font-size: 0.7rem; margin-top: 8px;">When you buy tickets at Box Office, requests appear here</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="globalToast" class="toast-msg"></div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    const toast = document.getElementById('globalToast');
+    const qrLabel = document.getElementById('qrAccountLabel');
+    const barcodeCanvas = document.getElementById('barcodeCanvas');
+    const qrcodeDiv = document.getElementById('qrcode');
+    const closePayBtn = document.getElementById('closePayBtn');
+    const walletBalanceEl = document.getElementById('walletBalance');
+    
+    let currentUserId = null;
+    let currentProfileId = null;
+    let currentBalance = 0;
+    let boxofficeRequests = [];
+    let boxofficeCountdowns = new Map();
+    let boxofficeChannel = null;
+    let walletChannel = null;
+
+    function showToastMsg(message, type = 'info') {
+        toast.innerText = message;
+        toast.className = `toast-msg ${type}`;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+    
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    function generateBarcode(text) {
+        if (barcodeCanvas && text) {
+            try {
+                JsBarcode("#barcodeCanvas", text, { format: "CODE128", width: 2, height: 50, displayValue: false });
+            } catch(e) { console.warn(e); }
+        }
+    }
+    
+    function generateQRCode(text) {
+        if (qrcodeDiv && text) {
+            qrcodeDiv.innerHTML = "";
+            try {
+                new QRCode(qrcodeDiv, { text: text, width: 140, height: 140, colorDark: "#E30613" });
+            } catch(e) { console.warn(e); }
+        }
+    }
+    
+    async function loadUserData() {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) {
+            showToastMsg("Please log in first", 'error');
+            setTimeout(() => window.location.href = '../login.html', 1500);
+            return false;
+        }
+        currentUserId = session.user.id;
+        
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('phone, id')
+            .eq('id', currentUserId)
+            .maybeSingle();
+        
+        if (profileErr) console.warn("Profile fetch error:", profileErr);
+        const userPhone = profile?.phone || session.user.user_metadata?.phone || session.user.email?.split('@')[0] || "MEMBER";
+        currentProfileId = profile?.id;
+        
+        console.log("Current Profile ID:", currentProfileId);
+        console.log("Current User Phone:", userPhone);
+        
+        const { data: wallet, error: walletErr } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', currentUserId)
+            .maybeSingle();
+        
+        if (walletErr) console.warn("Wallet error:", walletErr);
+        currentBalance = wallet?.balance || 0;
+        walletBalanceEl.textContent = `R ${currentBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+        
+        if (qrLabel) qrLabel.innerText = userPhone;
+        generateBarcode(userPhone);
+        generateQRCode(userPhone);
+        
+        // Setup wallet realtime listener
+        setupWalletListener();
+        
+        return true;
+    }
+    
+    function setupWalletListener() {
+        if (walletChannel) {
+            supabase.removeChannel(walletChannel);
+        }
+        
+        walletChannel = supabase
+            .channel(`wallet-${currentUserId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'wallets',
+                filter: `user_id=eq.${currentUserId}`
+            }, (payload) => {
+                if (payload.new?.balance !== undefined) {
+                    currentBalance = payload.new.balance;
+                    walletBalanceEl.textContent = `R ${currentBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+                }
+            })
+            .subscribe();
+    }
+    
+    function startBoxofficeCountdown(requestId, expiresAt) {
+        if (boxofficeCountdowns.has(requestId)) clearInterval(boxofficeCountdowns.get(requestId));
+        
+        const updateTimer = () => {
+            const timerEl = document.getElementById(`boxoffice-timer-${requestId}`);
+            if (!timerEl) return;
+            const now = new Date();
+            const expiry = new Date(expiresAt);
+            const diff = Math.max(0, Math.floor((expiry - now) / 1000));
+            if (diff <= 0) {
+                timerEl.textContent = 'EXPIRED';
+                timerEl.classList.add('expired');
+                clearInterval(boxofficeCountdowns.get(requestId));
+                boxofficeCountdowns.delete(requestId);
+                markBoxofficeRequestExpired(requestId);
+            } else {
+                timerEl.textContent = formatTime(diff);
+            }
+        };
+        
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        boxofficeCountdowns.set(requestId, interval);
+    }
+    
+    async function markBoxofficeRequestExpired(requestId) {
+        const { error } = await supabase
+            .from('payment_requests')
+            .update({ status: 'expired' })
+            .eq('id', requestId);
+        if (!error) {
+            boxofficeRequests = boxofficeRequests.filter(r => r.id !== requestId);
+            renderBoxofficeRequests();
+        }
+    }
+    
+    async function processBoxofficePayment(request) {
+        const amount = request.total_amount;
+        
+        if (currentBalance < amount) {
+            showToastMsg(`Insufficient balance. Need R${amount.toFixed(2)}`, 'error');
+            return;
+        }
+        
+        const payBtn = document.getElementById(`boxoffice-pay-${request.id}`);
+        if (payBtn) {
+            payBtn.disabled = true;
+            payBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing...';
+        }
+        
+        try {
+            const newBalance = currentBalance - amount;
+            
+            const { error: walletError } = await supabase
+                .from('wallets')
+                .update({ balance: newBalance })
+                .eq('user_id', currentUserId);
+            if (walletError) throw walletError;
+            
+            await supabase.from('wallet_transactions').insert({
+                user_id: currentUserId,
+                amount: -amount,
+                type: 'payment',
+                direction: 'debit',
+                description: `Box Office: ${request.events?.name || 'Event'} - ${request.ticket_types?.name || 'Ticket'} x${request.quantity}`,
+                status: 'completed',
+                metadata: { payment_request_id: request.id, order_id: request.order_id }
+            });
+            
+            await supabase
+                .from('payment_requests')
+                .update({ 
+                    status: 'approved', 
+                    approved_at: new Date().toISOString(),
+                    approved_by: currentUserId,
+                    transaction_id: currentUserId
+                })
+                .eq('id', request.id);
+            
+            if (request.order_id) {
+                await supabase
+                    .from('orders')
+                    .update({ payment_status: 'paid', status: 'placed' })
+                    .eq('id', request.order_id);
+            }
+            
+            currentBalance = newBalance;
+            walletBalanceEl.textContent = `R ${currentBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+            
+            boxofficeRequests = boxofficeRequests.filter(r => r.id !== request.id);
+            renderBoxofficeRequests();
+            
+            if (boxofficeCountdowns.has(request.id)) {
+                clearInterval(boxofficeCountdowns.get(request.id));
+                boxofficeCountdowns.delete(request.id);
+            }
+            
+            showToastMsg(`✅ Payment of R${amount.toFixed(2)} successful!`, 'success');
+            
+        } catch (err) {
+            console.error('Payment error:', err);
+            showToastMsg(err.message || 'Payment failed', 'error');
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.innerHTML = '<i class="fas fa-credit-card"></i> Pay Now';
+            }
+        }
+    }
+    
+    function renderBoxofficeRequests() {
+        const container = document.getElementById('boxofficeRequestsList');
+        if (!container) return;
+        
+        const activeRequests = boxofficeRequests.filter(r => r.status === 'pending' && new Date(r.expires_at) > new Date());
+        
+        document.getElementById('boxofficeCount').textContent = activeRequests.length;
+        
+        if (activeRequests.length === 0) {
+            container.innerHTML = `
+                <div class="boxoffice-empty">
+                    <i class="fas fa-clock"></i>
+                    <p>No pending payment requests</p>
+                    <p style="font-size: 0.7rem; margin-top: 8px;">When you buy tickets at Box Office, requests appear here</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = activeRequests.map(request => {
+            const eventName = request.events?.name || 'Event';
+            const ticketType = request.ticket_types?.name || 'Ticket';
+            const expiry = new Date(request.expires_at);
+            const isExpired = expiry <= new Date();
+            const orderNumber = request.id.slice(0, 8).toUpperCase();
+            
+            return `
+                <div class="boxoffice-request-card ${isExpired ? 'expired' : ''}">
+                    <div class="boxoffice-request-header">
+                        <div class="boxoffice-event-name">🎟️ ${escapeHtml(eventName)}</div>
+                        <div class="boxoffice-timer ${isExpired ? 'expired' : ''}" id="boxoffice-timer-${request.id}">
+                            ${isExpired ? 'EXPIRED' : formatTime(Math.max(0, Math.floor((expiry - new Date()) / 1000)))}
+                        </div>
+                    </div>
+                    <div class="boxoffice-request-details">
+                        <div class="boxoffice-detail">
+                            <div class="boxoffice-detail-label">Ticket Type</div>
+                            <div class="boxoffice-detail-value">${escapeHtml(ticketType)}</div>
+                        </div>
+                        <div class="boxoffice-detail">
+                            <div class="boxoffice-detail-label">Quantity</div>
+                            <div class="boxoffice-detail-value">x${request.quantity || 1}</div>
+                        </div>
+                        <div class="boxoffice-detail">
+                            <div class="boxoffice-detail-label">Order #</div>
+                            <div class="boxoffice-detail-value">${orderNumber}</div>
+                        </div>
+                        <div class="boxoffice-detail">
+                            <div class="boxoffice-detail-label">Amount</div>
+                            <div class="boxoffice-detail-value boxoffice-amount">R ${(request.total_amount || 0).toFixed(2)}</div>
+                        </div>
+                    </div>
+                    ${!isExpired ? `
+                        <button class="boxoffice-pay-btn" id="boxoffice-pay-${request.id}">
+                            <i class="fas fa-credit-card"></i> Pay Now
+                        </button>
+                    ` : `
+                        <button class="boxoffice-pay-btn" disabled style="background:#94a3b8;">
+                            <i class="fas fa-clock"></i> Expired
+                        </button>
+                    `}
+                </div>
+            `;
+        }).join('');
+        
+        activeRequests.forEach(request => {
+            if (new Date(request.expires_at) > new Date()) {
+                const payBtn = document.getElementById(`boxoffice-pay-${request.id}`);
+                if (payBtn) payBtn.addEventListener('click', () => processBoxofficePayment(request));
+                startBoxofficeCountdown(request.id, request.expires_at);
+            }
+        });
+    }
+    
+    async function loadBoxofficeRequests() {
+        if (!currentProfileId) return;
+        
+        console.log("Loading requests for profile ID:", currentProfileId);
+        
+        const { data, error } = await supabase
+            .from('payment_requests')
+            .select('*, events(name), ticket_types(name, price)')
+            .eq('customer_profile_id', currentProfileId)
+            .in('status', ['pending'])
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error('Error loading boxoffice requests:', error);
+            return;
+        }
+        
+        console.log("Loaded requests:", data?.length || 0, data);
+        
+        boxofficeRequests = data || [];
+        renderBoxofficeRequests();
+    }
+    
+    function subscribeBoxofficeRequests() {
+        if (!currentProfileId) return;
+        
+        if (boxofficeChannel) {
+            supabase.removeChannel(boxofficeChannel);
+        }
+        
+        console.log("Subscribing to boxoffice requests for profile:", currentProfileId);
+        
+        boxofficeChannel = supabase
+            .channel(`boxoffice-requests-${currentProfileId}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'payment_requests',
+                filter: `customer_profile_id=eq.${currentProfileId}`
+            }, async (payload) => {
+                console.log("NEW PAYMENT REQUEST INSERT:", payload.new);
+                const newRequest = payload.new;
+                if (newRequest.status === 'pending') {
+                    const { data: fullRequest } = await supabase
+                        .from('payment_requests')
+                        .select('*, events(name), ticket_types(name, price)')
+                        .eq('id', newRequest.id)
+                        .single();
+                    
+                    console.log("Full request details:", fullRequest);
+                    
+                    if (fullRequest) {
+                        boxofficeRequests.unshift(fullRequest);
+                        renderBoxofficeRequests();
+                        showToastMsg(`📱 New Box Office request: R${fullRequest.total_amount?.toFixed(2)}`, 'info');
+                        // Play notification sound
+                        try {
+                            const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
+                            audio.volume = 0.3;
+                            audio.play().catch(e => console.log('Audio play failed:', e));
+                        } catch(e) {}
+                    }
+                }
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'payment_requests',
+                filter: `customer_profile_id=eq.${currentProfileId}`
+            }, (payload) => {
+                const updated = payload.new;
+                console.log("PAYMENT REQUEST UPDATE:", updated);
+                if (updated.status === 'approved' || updated.status === 'rejected' || updated.status === 'expired') {
+                    boxofficeRequests = boxofficeRequests.filter(r => r.id !== updated.id);
+                    renderBoxofficeRequests();
+                    if (boxofficeCountdowns.has(updated.id)) {
+                        clearInterval(boxofficeCountdowns.get(updated.id));
+                        boxofficeCountdowns.delete(updated.id);
+                    }
+                    if (updated.status === 'approved') {
+                        showToastMsg(`✅ Payment completed!`, 'success');
+                    } else if (updated.status === 'rejected') {
+                        showToastMsg(`❌ Payment rejected`, 'error');
+                    } else if (updated.status === 'expired') {
+                        showToastMsg(`⏰ Payment request expired`, 'error');
+                    }
+                }
+            })
+            .subscribe();
+    }
+    
+    if (closePayBtn) {
+        closePayBtn.addEventListener('click', () => {
+            window.location.href = 'home.html';
+        });
+    }
+    
+    async function init() {
+        const userLoaded = await loadUserData();
+        if (!userLoaded) return;
+        
+        await loadBoxofficeRequests();
+        subscribeBoxofficeRequests();
+    }
+    
+    init();
+</script>
+</body>
+</html>
