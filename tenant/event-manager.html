@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-  /* ========== CORE STYLES ========== */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Inter', sans-serif; background: transparent; padding: 0; }
   .module-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
@@ -152,14 +151,14 @@
   </div>
 </div>
 
-<!-- Delete Confirmation Modal (with related tickets warning) -->
+<!-- Delete Confirmation Modal -->
 <div class="modal" id="deleteConfirmModal">
   <div class="modal-content">
     <div class="modal-header"><h3><i class="fas fa-exclamation-triangle"></i> Delete Event</h3></div>
     <div class="modal-body">
       <p id="deleteWarningMsg" style="margin-bottom: 16px; color: #b71c1c;"></p>
       <p><strong id="deleteEventName"></strong> will be permanently deleted.</p>
-      <p id="relatedTicketsMsg" style="margin-top: 12px; font-size: 0.85rem; color: #666;"></p>
+      <div id="relatedDataMsg" style="margin-top: 12px; font-size: 0.85rem; color: #666;"></div>
     </div>
     <div class="modal-footer">
       <button class="modal-btn cancel" id="cancelDeleteBtn">Cancel</button>
@@ -195,31 +194,66 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
-  // Load tickets from localStorage (preserving existing functionality)
   function loadTicketsFromStorage() {
     const stored = localStorage.getItem('rands_tickets');
     return stored ? JSON.parse(stored) : [];
   }
 
-  // Count tickets for an event from the database (check related tickets)
-  async function countEventTickets(eventId) {
+  // Get counts for all related data
+  async function getRelatedCounts(eventId) {
     try {
-      const { count, error } = await supabase
+      // Get ticket IDs for this event
+      const { data: tickets, error: ticketsError } = await supabase
         .from('tickets')
-        .select('*', { count: 'exact', head: true })
+        .select('id')
         .eq('event_id', eventId);
-      if (error) throw error;
-      return count || 0;
+      
+      if (ticketsError) throw ticketsError;
+      
+      const ticketIds = tickets.map(t => t.id);
+      let checkinsCount = 0;
+      
+      // If there are tickets, count checkins
+      if (ticketIds.length > 0) {
+        const { count, error: checkinsError } = await supabase
+          .from('checkins')
+          .select('*', { count: 'exact', head: true })
+          .in('ticket_id', ticketIds);
+        
+        if (!checkinsError) checkinsCount = count || 0;
+      }
+      
+      return { ticketsCount: tickets.length, checkinsCount };
     } catch (err) {
-      console.error('Error counting tickets:', err);
-      return 0;
+      console.error('Error getting counts:', err);
+      return { ticketsCount: 0, checkinsCount: 0 };
     }
   }
 
-  // Delete event with proper cascade handling
-  async function deleteEventWithCascade(eventId) {
+  // Complete cascade delete: checkins -> tickets -> event
+  async function deleteEventWithFullCascade(eventId) {
     try {
-      // First, delete all tickets associated with this event
+      // Step 1: Get all ticket IDs for this event
+      const { data: tickets, error: ticketsFetchError } = await supabase
+        .from('tickets')
+        .select('id')
+        .eq('event_id', eventId);
+      
+      if (ticketsFetchError) throw ticketsFetchError;
+      
+      const ticketIds = tickets.map(t => t.id);
+      
+      // Step 2: Delete checkins for these tickets (if any)
+      if (ticketIds.length > 0) {
+        const { error: checkinsDeleteError } = await supabase
+          .from('checkins')
+          .delete()
+          .in('ticket_id', ticketIds);
+        
+        if (checkinsDeleteError) throw checkinsDeleteError;
+      }
+      
+      // Step 3: Delete all tickets for this event
       const { error: ticketsDeleteError } = await supabase
         .from('tickets')
         .delete()
@@ -227,7 +261,7 @@
       
       if (ticketsDeleteError) throw ticketsDeleteError;
       
-      // Then delete the event
+      // Step 4: Delete the event
       const { error: eventDeleteError } = await supabase
         .from('events')
         .delete()
@@ -235,9 +269,12 @@
       
       if (eventDeleteError) throw eventDeleteError;
       
-      // Also clean up any local storage entries for this event's tickets
+      // Step 5: Clean up localStorage
       const storedTickets = loadTicketsFromStorage();
-      const filteredTickets = storedTickets.filter(t => t.eventId !== eventId && t.eventName !== events.find(e => e.id === eventId)?.name);
+      const eventToDelete = events.find(e => e.id === eventId);
+      const filteredTickets = storedTickets.filter(t => 
+        t.eventId !== eventId && t.eventName !== eventToDelete?.name
+      );
       localStorage.setItem('rands_tickets', JSON.stringify(filteredTickets));
       
       return { success: true };
@@ -247,7 +284,6 @@
     }
   }
 
-  // Load events from Supabase
   async function loadEventsFromSupabase() {
     try {
       const { data, error } = await supabase.from('events').select('*').order('created_at', { ascending: false });
@@ -266,7 +302,6 @@
         }
       }));
       
-      // Restore ticket info from description
       data.forEach((ev, idx) => {
         if (ev.description) {
           const ebMatch = ev.description.match(/EarlyBird R(\d+)\/(\d+)/);
@@ -374,7 +409,6 @@
     showToast('Events refreshed', 'success');
   }
 
-  // Create Event
   async function confirmAddEvent() {
     if (isCreatingEvent) { 
       showToast('Already creating event, please wait', 'error'); 
@@ -418,7 +452,6 @@
       
       showToast(`Event "${name}" created!`, 'success');
       
-      // Reset form
       document.getElementById('newEventName').value = '';
       document.getElementById('newEventDate').value = '';
       document.getElementById('newEarlyBirdPrice').value = '';
@@ -428,10 +461,7 @@
       document.getElementById('newVipPrice').value = '';
       document.getElementById('newVipCapacity').value = '';
       
-      // Close modal
       document.getElementById('addEventModal').classList.remove('active');
-      
-      // Refresh events
       await refreshAllEvents();
     } catch (err) { 
       showToast(err.message, 'error'); 
@@ -442,7 +472,6 @@
     }
   }
 
-  // Delete with confirmation and cascade
   async function deleteSelectedEvent() {
     if (!selectedEventId) { 
       showToast('Select an event first', 'error'); 
@@ -452,16 +481,23 @@
     const eventToDelete = events.find(e => e.id === selectedEventId);
     if (!eventToDelete) return;
     
-    // Check for existing tickets
-    const ticketCount = await countEventTickets(selectedEventId);
+    const counts = await getRelatedCounts(selectedEventId);
     
-    // Show custom confirmation modal with ticket count info
     document.getElementById('deleteEventName').innerText = eventToDelete.name;
-    document.getElementById('deleteWarningMsg').innerHTML = ticketCount > 0 ? 
-      `<i class="fas fa-exclamation-circle"></i> Warning: This event has ${ticketCount} ticket(s) associated with it!` :
-      `No tickets have been sold for this event yet.`;
-    document.getElementById('relatedTicketsMsg').innerHTML = ticketCount > 0 ? 
-      `All ${ticketCount} ticket(s) will be permanently deleted along with the event.` : '';
+    
+    let warningHtml = '';
+    let detailsHtml = '';
+    
+    if (counts.ticketsCount > 0) {
+      warningHtml = `<i class="fas fa-exclamation-circle"></i> Warning: This event has ${counts.ticketsCount} ticket(s) associated!`;
+      detailsHtml = `<strong>Related data:</strong><br>• ${counts.ticketsCount} ticket(s)<br>• ${counts.checkinsCount} check-in record(s)<br><br>All related data will be permanently deleted.`;
+    } else {
+      warningHtml = `No tickets have been sold for this event yet.`;
+      detailsHtml = `The event will be permanently removed.`;
+    }
+    
+    document.getElementById('deleteWarningMsg').innerHTML = warningHtml;
+    document.getElementById('relatedDataMsg').innerHTML = detailsHtml;
     
     pendingDeleteEventId = selectedEventId;
     document.getElementById('deleteConfirmModal').classList.add('active');
@@ -476,9 +512,9 @@
     deleteBtn.disabled = true;
     
     try {
-      const result = await deleteEventWithCascade(pendingDeleteEventId);
+      const result = await deleteEventWithFullCascade(pendingDeleteEventId);
       if (result.success) {
-        showToast('Event and all associated tickets deleted successfully', 'success');
+        showToast('Event and all associated data deleted successfully', 'success');
         selectedEventId = null;
         document.getElementById('selectedEventInfo').style.display = 'none';
         await refreshAllEvents();
@@ -495,7 +531,6 @@
     }
   }
 
-  // Edit tickets
   function openEditTicketModal() {
     if (!selectedEventId) { 
       showToast('Select event first', 'error'); 
@@ -516,7 +551,6 @@
   
   async function confirmEditTickets() {
     if (!selectedEventId) return;
-    const ev = events.find(e => e.id === selectedEventId);
     
     const ebPrice = parseFloat(document.getElementById('editEarlyBirdPrice').value);
     const ebCap = parseInt(document.getElementById('editEarlyBirdCapacity').value);
@@ -551,7 +585,6 @@
     document.getElementById('editTicketModal').classList.remove('active'); 
   }
 
-  // Carousel setup
   function setupCarousel() {
     const wrapper = document.getElementById('carouselTrackWrapper');
     const prev = document.getElementById('prevEventArrow');
@@ -579,12 +612,10 @@
     }
   }
 
-  // Initialize
   async function init() {
     await refreshAllEvents();
     setupCarousel();
     
-    // Event listeners
     document.getElementById('openAddEventBtn').addEventListener('click', () => document.getElementById('addEventModal').classList.add('active'));
     document.getElementById('closeAddEventModalBtn').addEventListener('click', () => document.getElementById('addEventModal').classList.remove('active'));
     document.getElementById('confirmCreateEventBtn').addEventListener('click', confirmAddEvent);
