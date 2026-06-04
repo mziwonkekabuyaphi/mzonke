@@ -6,11 +6,11 @@
   <title>Box Office · Payment Request</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script type="importmap">
     {
       "imports": {
-        "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm",
-        "qrcodejs": "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"
+        "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
       }
     }
   </script>
@@ -344,7 +344,7 @@
 
     .toast.show { transform: translateX(0); }
 
-    /* Professional Wristband Styles - Thermal Printer Optimized (2" x 8") */
+    /* Professional Wristband Styles */
     @media print {
       body * { visibility: hidden; }
       .wristband-print, .wristband-print * { visibility: visible; }
@@ -648,7 +648,6 @@
 
 <script type="module">
   import { supabase } from '../config/supabase.js';
-  import QRCode from 'qrcodejs';
 
   // STATE
   let events = [];
@@ -717,7 +716,6 @@
     return 'badge-general';
   }
 
-  // Wristband Generation Service
   async function generateWristbandHTML(ticket, event, ticketType, customerName = '') {
     const typeClass = getTicketTypeClass(ticketType.name);
     const badgeClass = getTicketTypeBadgeClass(ticketType.name);
@@ -757,15 +755,17 @@
     
     setTimeout(() => {
       const qrDiv = document.getElementById(`qr-${ticket.id}`);
-      if (qrDiv && QRCode) {
+      if (qrDiv && window.QRCode) {
         qrDiv.innerHTML = '';
         new QRCode(qrDiv, {
           text: JSON.stringify({ ticket_id: ticket.id, event_id: event.id, check: true }),
           width: 140,
           height: 140
         });
+        setTimeout(() => window.print(), 200);
+      } else {
+        window.print();
       }
-      window.print();
     }, 100);
   }
 
@@ -776,7 +776,7 @@
     
     setTimeout(() => {
       const qrDiv = document.getElementById(`qr-${ticket.id}`);
-      if (qrDiv && QRCode) {
+      if (qrDiv && window.QRCode) {
         qrDiv.innerHTML = '';
         new QRCode(qrDiv, {
           text: JSON.stringify({ ticket_id: ticket.id, event_id: event.id, check: true }),
@@ -821,6 +821,7 @@
       if (events.length === 0) {
         eventSelect.innerHTML = '<option>No active events</option>';
         eventInfoDiv.innerHTML = '<div style="color: var(--mist); text-align: center; padding: 20px;">No active events found</div>';
+        ticketContainer.innerHTML = '<div class="ticket-card disabled">No events available</div>';
         return;
       }
       
@@ -832,6 +833,8 @@
       const eventsWithTickets = events.filter(ev => ev.ticketTypes.length > 0);
       if (eventsWithTickets.length === 0) {
         eventSelect.innerHTML = '<option>No events with tickets</option>';
+        eventInfoDiv.innerHTML = '<div style="color: var(--mist); text-align: center; padding: 20px;">No ticket types configured</div>';
+        ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types available</div>';
         return;
       }
       
@@ -841,6 +844,7 @@
       renderEvent();
       renderTickets();
     } catch (err) {
+      console.error('Load events error:', err);
       showToast('Failed to load events: ' + err.message, 'error');
     }
   }
@@ -978,7 +982,6 @@
     return tickets;
   }
 
-  // Cash Payment
   async function processCashPayment() {
     if (!selectedTicketType) { showToast('Select a ticket type', 'error'); return false; }
     if (ticketQuantity > selectedTicketType.available) { showToast(`Only ${selectedTicketType.available} tickets available`, 'error'); return false; }
@@ -1019,7 +1022,6 @@
     }
   }
 
-  // Card Payment
   async function processCardPayment() {
     if (!selectedTicketType) { showToast('Select a ticket type', 'error'); return false; }
     if (ticketQuantity > selectedTicketType.available) { showToast(`Only ${selectedTicketType.available} tickets available`, 'error'); return false; }
@@ -1085,7 +1087,6 @@
     }
   }
 
-  // Wallet Payment
   async function processWalletPayment() {
     const phone = customerPhoneInput.value.trim();
     if (!phone || !validatePhone(phone)) { showToast('Enter valid 10-digit phone number', 'error'); return false; }
