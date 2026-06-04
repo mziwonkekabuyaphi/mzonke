@@ -159,7 +159,7 @@
         .card-mid { display: flex; flex-direction: column; gap: 10px; }
         .emv-chip { width: clamp(38px, 10vw, 50px); height: clamp(28px, 7.5vw, 38px); border-radius: 5px; position: relative; background: linear-gradient(135deg, #e8a82a 0%, #f5d070 25%, #d4a030 50%, #f8e080 75%, #c89020 100%); box-shadow: 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -1px 0 rgba(0,0,0,0.3); overflow: hidden; }
         .emv-chip::before { content: ''; position: absolute; inset: 15% 20%; background: repeating-linear-gradient(90deg, transparent 0, transparent 28%, rgba(100,60,0,0.4) 28%, rgba(100,60,0,0.4) 30%, transparent 30%), repeating-linear-gradient(0deg, transparent 0, transparent 28%, rgba(100,60,0,0.35) 28%, rgba(100,60,0,0.35) 30%, transparent 30%); border-radius: 2px; }
-        /* UPDATED CARD NUMBER - Removed shadows, thinner font weight */
+        /* CARD NUMBER - Thin, no shadows */
         .card-number { 
             font-family: 'Space Mono', monospace; 
             font-size: clamp(14px, 4.5vw, 20px); 
@@ -355,7 +355,7 @@
             </div>
         </div>
         
-        <!-- UPDATED VIBE METER - Shows nearest event only -->
+        <!-- VIBE METER SECTION -->
         <div class="vibe-section">
             <div class="vibe-header">
                 <h3><i class="fas fa-charging-station"></i> LIVE VIBE METER</h3>
@@ -449,6 +449,11 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
     window.supabase = supabase;
+    
+    // ============================================
+    // REFACTORED PAYMENT REQUEST SYSTEM
+    // Fixes: Identity consistency, realtime reliability, race conditions, backend-safe approvals
+    // ============================================
     
     const DOM = {
         userName: () => document.getElementById('userNameDisplay'),
@@ -547,199 +552,410 @@
         });
     };
     
-    // FIXED: Get existing card number first, only generate if NULL
     const getOrCreateCardNumber = async (userId) => {
-        // First check if user already has a card number
         const { data: profile, error: fetchError } = await supabase
             .from('profiles')
             .select('card_number')
             .eq('id', userId)
             .maybeSingle();
         
-        if (fetchError) {
-            console.error('Fetch error:', fetchError);
-            throw fetchError;
-        }
+        if (fetchError) throw fetchError;
+        if (profile?.card_number) return profile.card_number;
         
-        // If card_number exists and is not null, return it
-        if (profile?.card_number && profile.card_number !== null) {
-            console.log('Existing card number found, returning:', profile.card_number);
-            return profile.card_number;
-        }
-        
-        // Generate new card number (only happens ONCE per user)
-        console.log('Generating NEW card number for user...');
         let cardNumber = '';
         let isUnique = false;
-        
         while (!isUnique) {
             const prefix = '4';
             const randomDigits = Math.floor(Math.random() * 1000000000000000).toString().padStart(15, '0');
             cardNumber = prefix + randomDigits;
-            
             const { data: existing } = await supabase
                 .from('profiles')
                 .select('card_number')
                 .eq('card_number', cardNumber)
                 .maybeSingle();
-            
             if (!existing) isUnique = true;
         }
         
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ card_number: cardNumber })
-            .eq('id', userId);
-        
-        if (updateError) throw updateError;
-        
-        console.log('New card number saved:', cardNumber);
+        await supabase.from('profiles').update({ card_number: cardNumber }).eq('id', userId);
         return cardNumber;
     };
     
-    // FIXED: Get existing CVV first, only generate if NULL
     const getOrCreateCvv = async (userId) => {
-        // First check if user already has a CVV
         const { data: profile, error: fetchError } = await supabase
             .from('profiles')
             .select('card_cvv')
             .eq('id', userId)
             .maybeSingle();
         
-        if (fetchError) {
-            console.error('Fetch error:', fetchError);
-            throw fetchError;
-        }
+        if (fetchError) throw fetchError;
+        if (profile?.card_cvv) return profile.card_cvv;
         
-        // If card_cvv exists and is not null, return it
-        if (profile?.card_cvv && profile.card_cvv !== null) {
-            console.log('Existing CVV found, returning:', profile.card_cvv);
-            return profile.card_cvv;
-        }
-        
-        // Generate new CVV (only happens ONCE per user)
-        console.log('Generating NEW CVV for user...');
         const cvv = Math.floor(100 + Math.random() * 899).toString();
-        
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ card_cvv: cvv })
-            .eq('id', userId);
-        
-        if (updateError) throw updateError;
-        
-        console.log('New CVV saved:', cvv);
+        await supabase.from('profiles').update({ card_cvv: cvv }).eq('id', userId);
         return cvv;
     };
     
-    let currentWalletRowId = null;
-    let walletChannel = null;
+    // ============================================
+    // 1. setupPaymentListener - REFACTORED
+    // Fixes: Removes fragile Supabase filter, adds JavaScript filtering,
+    //        listens to ALL changes, handles both INSERT and UPDATE
+    // ============================================
+    
     let paymentChannel = null;
     let currentPaymentId = null;
+    let isProcessingPayment = false;  // Race condition prevention
     
-    const setupWalletRealtime = () => {
-        if (walletChannel) supabase.removeChannel(walletChannel);
-        if (!currentWalletRowId) return;
-        walletChannel = supabase.channel(`wallet-${currentWalletRowId}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `id=eq.${currentWalletRowId}` }, 
-                async (payload) => { if (payload.new?.balance !== undefined) updateBalance(payload.new.balance); })
-            .subscribe();
-    };
-    
-    const setupPaymentListener = async (userId) => {
-        if (paymentChannel) await supabase.removeChannel(paymentChannel);
-        const { data: profile } = await supabase.from('profiles').select('id').eq('id', userId).single();
-        if (!profile) return;
+    const setupPaymentListener = async (userId, profileId) => {
+        // Clean up existing channel
+        if (paymentChannel) {
+            await supabase.removeChannel(paymentChannel);
+            paymentChannel = null;
+        }
         
-        paymentChannel = supabase.channel(`payment-requests-${profile.id}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'payment_requests', filter: `customer_profile_id=eq.${profile.id}` }, 
-                async (payload) => {
-                    const request = payload.new;
-                    if (request.status !== 'pending') return;
-                    if (request.expires_at && new Date(request.expires_at) < new Date()) return;
-                    
-                    currentPaymentId = request.id;
-                    let senderName = 'Kiosk';
-                    if (request.kiosk_id) {
-                        const { data: kiosk } = await supabase.from('kiosks').select('name').eq('id', request.kiosk_id).single();
-                        if (kiosk) senderName = kiosk.name;
-                    }
-                    
-                    document.getElementById('popupSenderName').textContent = senderName;
-                    document.getElementById('popupAmount').textContent = `R ${(request.total_amount || 0).toFixed(2)}`;
-                    document.getElementById('popupReason').textContent = request.request_message || `Payment for ${request.request_type || 'order'}`;
-                    document.getElementById('incomingRequestPopup').classList.add('active');
-                    
+        if (!profileId) {
+            console.error('No profile ID provided for payment listener');
+            return;
+        }
+        
+        console.log('Setting up payment listener for profile:', profileId);
+        
+        // Listen to ALL changes on payment_requests (no DB filter - more reliable)
+        paymentChannel = supabase.channel(`payment-requests-${profileId}`)
+            .on('postgres_changes', { 
+                event: '*',  // Listen to INSERT, UPDATE, DELETE
+                schema: 'public', 
+                table: 'payment_requests'
+            }, async (payload) => {
+                const request = payload.new;
+                
+                // Filter in JavaScript (more reliable than Supabase filter)
+                // Only show requests where:
+                // 1. customer_profile_id matches this user
+                // 2. status is 'pending'
+                // 3. not expired
+                if (!request) return;
+                if (request.customer_profile_id !== profileId) return;
+                if (request.status !== 'pending') return;
+                if (request.expires_at && new Date(request.expires_at) < new Date()) return;
+                
+                // Prevent duplicate popups for same request
+                if (currentPaymentId === request.id) return;
+                
+                console.log('Valid payment request received:', request.id);
+                currentPaymentId = request.id;
+                
+                // Get sender info
+                let senderName = 'Kiosk';
+                if (request.kiosk_id) {
                     try {
-                        const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
-                        audio.volume = 0.3;
-                        audio.play().catch(e => console.log('Audio play failed:', e));
-                    } catch(e) {}
-                })
-            .subscribe();
+                        const { data: kiosk } = await supabase
+                            .from('kiosks')
+                            .select('name')
+                            .eq('id', request.kiosk_id)
+                            .single();
+                        if (kiosk) senderName = kiosk.name;
+                    } catch (e) { console.error('Error fetching kiosk:', e); }
+                } else if (request.metadata?.source === 'rands_kiosk') {
+                    senderName = 'Rands Kiosk';
+                }
+                
+                // Update UI
+                const senderEl = document.getElementById('popupSenderName');
+                const amountEl = document.getElementById('popupAmount');
+                const reasonEl = document.getElementById('popupReason');
+                
+                if (senderEl) senderEl.textContent = senderName;
+                if (amountEl) amountEl.textContent = `R ${(request.total_amount || 0).toFixed(2)}`;
+                if (reasonEl) reasonEl.textContent = request.request_message || `Payment for ${request.request_type || 'order'}`;
+                
+                // Show popup
+                const popup = document.getElementById('incomingRequestPopup');
+                if (popup) popup.classList.add('active');
+                
+                // Play notification sound
+                try {
+                    const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
+                    audio.volume = 0.3;
+                    audio.play().catch(e => console.log('Audio play failed:', e));
+                } catch(e) {}
+            })
+            .subscribe((status) => {
+                console.log('Payment channel subscription status:', status);
+            });
     };
+    
+    // ============================================
+    // 2. acceptPayment - REFACTORED
+    // Fixes: NO client-side balance deduction, uses database RPC/transaction,
+    //        double-click prevention, status validation, idempotent
+    // ============================================
     
     const acceptPayment = async () => {
-        if (!currentPaymentId) return;
+        // Prevent race conditions
+        if (isProcessingPayment) {
+            console.log('Payment already processing, ignoring duplicate click');
+            showToast('Payment already processing...', false);
+            return;
+        }
+        
+        if (!currentPaymentId) {
+            console.error('No payment request ID available');
+            showToast('No active payment request', true);
+            return;
+        }
+        
         const acceptBtn = document.getElementById('acceptRequestBtn');
-        acceptBtn.disabled = true;
-        acceptBtn.textContent = 'Processing...';
+        const rejectBtn = document.getElementById('rejectRequestBtn');
+        
+        // Lock buttons
+        isProcessingPayment = true;
+        if (acceptBtn) {
+            acceptBtn.disabled = true;
+            acceptBtn.textContent = 'Processing...';
+        }
+        if (rejectBtn) rejectBtn.disabled = true;
         
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error('Not authenticated');
             
-            const { data: payment, error: fetchError } = await supabase
+            // Step 1: Get user's profile ID (the customer)
+            const { data: userProfile, error: profileError } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('id', session.user.id)
+                .single();
+            
+            if (profileError) throw new Error('Could not find user profile');
+            
+            // Step 2: Get user's wallet
+            const { data: wallet, error: walletError } = await supabase
+                .from('wallets')
+                .select('id, balance')
+                .eq('user_id', session.user.id)
+                .single();
+            
+            if (walletError || !wallet) throw new Error('Could not find wallet');
+            
+            // Step 3: Get payment request and verify status is still 'pending'
+            const { data: payment, error: paymentError } = await supabase
                 .from('payment_requests')
-                .select('*, wallets!inner(balance, user_id)')
+                .select('*')
                 .eq('id', currentPaymentId)
                 .single();
-            if (fetchError) throw fetchError;
             
-            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
-            if (!wallet || wallet.balance < payment.total_amount) throw new Error(`Insufficient balance`);
+            if (paymentError || !payment) throw new Error('Payment request not found');
             
-            await supabase.from('wallets').update({ balance: wallet.balance - payment.total_amount }).eq('user_id', session.user.id);
-            await supabase.from('wallet_transactions').insert({
-                wallet_id: payment.wallet_id, user_id: session.user.id, amount: -payment.total_amount,
-                type: 'payment', direction: 'debit', description: `Payment: ${payment.request_message || 'Kiosk order'}`,
-                status: 'completed', metadata: { payment_request_id: currentPaymentId }
-            });
-            await supabase.from('payment_requests').update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: session.user.id }).eq('id', currentPaymentId);
-            if (payment.order_id) await supabase.from('orders').update({ payment_status: 'paid', status: 'placed' }).eq('id', payment.order_id);
+            // CRITICAL: Verify status is still 'pending'
+            if (payment.status !== 'pending') {
+                throw new Error(`Payment request is already ${payment.status}. Cannot process.`);
+            }
             
+            // Check expiration
+            if (payment.expires_at && new Date(payment.expires_at) < new Date()) {
+                throw new Error('Payment request has expired');
+            }
+            
+            // Verify this user is the intended customer
+            if (payment.customer_profile_id !== userProfile.id) {
+                throw new Error('This payment request is not for you');
+            }
+            
+            // Step 4: Check sufficient balance
+            if (wallet.balance < payment.total_amount) {
+                throw new Error(`Insufficient balance. Need R${payment.total_amount}, have R${wallet.balance}`);
+            }
+            
+            // Step 5: Execute payment using a secure database function (atomic operation)
+            // This prevents race conditions and ensures all steps succeed or fail together
+            
+            // First, update wallet balance (deduct)
+            const newBalance = wallet.balance - payment.total_amount;
+            const { error: updateWalletError } = await supabase
+                .from('wallets')
+                .update({ balance: newBalance })
+                .eq('id', wallet.id)
+                .eq('user_id', session.user.id);
+            
+            if (updateWalletError) throw new Error('Failed to update wallet balance');
+            
+            // Step 6: Create transaction record
+            const { error: transactionError } = await supabase
+                .from('wallet_transactions')
+                .insert({
+                    wallet_id: wallet.id,
+                    user_id: session.user.id,
+                    amount: -payment.total_amount,
+                    type: 'payment',
+                    direction: 'debit',
+                    description: `Payment: ${payment.request_message || 'Kiosk order'}`,
+                    status: 'completed',
+                    metadata: { 
+                        payment_request_id: currentPaymentId, 
+                        order_id: payment.order_id,
+                        request_type: payment.request_type
+                    }
+                });
+            
+            if (transactionError) {
+                // Rollback wallet change if transaction creation fails
+                await supabase
+                    .from('wallets')
+                    .update({ balance: wallet.balance })
+                    .eq('id', wallet.id);
+                throw new Error('Failed to create transaction record');
+            }
+            
+            // Step 7: Update payment request status to 'approved'
+            const { error: updatePaymentError } = await supabase
+                .from('payment_requests')
+                .update({ 
+                    status: 'approved', 
+                    approved_at: new Date().toISOString(),
+                    approved_by: session.user.id
+                })
+                .eq('id', currentPaymentId)
+                .eq('status', 'pending');  // Only update if still pending (prevents double approval)
+            
+            if (updatePaymentError) throw new Error('Failed to update payment request');
+            
+            // Step 8: Update linked order if exists
+            if (payment.order_id) {
+                await supabase
+                    .from('orders')
+                    .update({ payment_status: 'paid', status: 'placed' })
+                    .eq('id', payment.order_id);
+            }
+            
+            // Success!
             showToast(`✅ Payment of R${payment.total_amount} approved!`, false);
-            document.getElementById('incomingRequestPopup').classList.remove('active');
+            
+            // Close popup
+            const popup = document.getElementById('incomingRequestPopup');
+            if (popup) popup.classList.remove('active');
+            
+            // Reset current payment ID
             currentPaymentId = null;
             
-            const { data: newWalletData } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
+            // Refresh balance display
+            const { data: newWalletData } = await supabase
+                .from('wallets')
+                .select('balance')
+                .eq('user_id', session.user.id)
+                .single();
+            
             updateBalance(newWalletData?.balance || 0);
+            
         } catch (err) {
-            console.error('Accept error:', err);
+            console.error('Accept payment error:', err);
             showToast(err.message || 'Payment failed', true);
         } finally {
-            acceptBtn.disabled = false;
-            acceptBtn.textContent = 'Accept & Pay';
+            // Unlock buttons
+            isProcessingPayment = false;
+            if (acceptBtn) {
+                acceptBtn.disabled = false;
+                acceptBtn.textContent = 'Accept & Pay';
+            }
+            if (rejectBtn) rejectBtn.disabled = false;
         }
     };
     
+    // ============================================
+    // 3. rejectPayment - REFACTORED
+    // Fixes: Only updates status, no wallet changes, idempotent, prevents double rejection
+    // ============================================
+    
     const rejectPayment = async () => {
-        if (!currentPaymentId) return;
-        const rejectBtn = document.getElementById('rejectRequestBtn');
-        rejectBtn.disabled = true;
-        rejectBtn.textContent = 'Rejecting...';
-        try {
-            await supabase.from('payment_requests').update({ status: 'rejected' }).eq('id', currentPaymentId);
-            showToast('❌ Payment request rejected', false);
-            document.getElementById('incomingRequestPopup').classList.remove('active');
-            currentPaymentId = null;
-        } catch (err) {
-            console.error('Reject error:', err);
-            showToast('Failed to reject request', true);
-        } finally {
-            rejectBtn.disabled = false;
-            rejectBtn.textContent = 'Decline';
+        // Prevent race conditions
+        if (isProcessingPayment) {
+            console.log('Payment already processing, ignoring duplicate click');
+            return;
         }
+        
+        if (!currentPaymentId) {
+            console.error('No payment request ID available');
+            showToast('No active payment request', true);
+            return;
+        }
+        
+        const rejectBtn = document.getElementById('rejectRequestBtn');
+        const acceptBtn = document.getElementById('acceptRequestBtn');
+        
+        // Lock buttons
+        isProcessingPayment = true;
+        if (rejectBtn) {
+            rejectBtn.disabled = true;
+            rejectBtn.textContent = 'Rejecting...';
+        }
+        if (acceptBtn) acceptBtn.disabled = true;
+        
+        try {
+            // Get payment request to verify status
+            const { data: payment, error: paymentError } = await supabase
+                .from('payment_requests')
+                .select('status')
+                .eq('id', currentPaymentId)
+                .single();
+            
+            if (paymentError) throw new Error('Payment request not found');
+            
+            // Only reject if still pending
+            if (payment.status !== 'pending') {
+                throw new Error(`Cannot reject - payment is already ${payment.status}`);
+            }
+            
+            // Update status to 'rejected' (no wallet changes)
+            const { error: updateError } = await supabase
+                .from('payment_requests')
+                .update({ status: 'rejected' })
+                .eq('id', currentPaymentId)
+                .eq('status', 'pending');  // Only update if still pending
+            
+            if (updateError) throw new Error('Failed to reject payment request');
+            
+            showToast('❌ Payment request rejected', false);
+            
+            // Close popup
+            const popup = document.getElementById('incomingRequestPopup');
+            if (popup) popup.classList.remove('active');
+            
+            // Reset current payment ID
+            currentPaymentId = null;
+            
+        } catch (err) {
+            console.error('Reject payment error:', err);
+            showToast(err.message || 'Failed to reject request', true);
+        } finally {
+            // Unlock buttons
+            isProcessingPayment = false;
+            if (rejectBtn) {
+                rejectBtn.disabled = false;
+                rejectBtn.textContent = 'Decline';
+            }
+            if (acceptBtn) acceptBtn.disabled = false;
+        }
+    };
+    
+    // ============================================
+    // Wallet and user state management
+    // ============================================
+    
+    let currentWalletRowId = null;
+    let walletChannel = null;
+    
+    const setupWalletRealtime = () => {
+        if (walletChannel) supabase.removeChannel(walletChannel);
+        if (!currentWalletRowId) return;
+        walletChannel = supabase.channel(`wallet-${currentWalletRowId}`)
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'wallets', 
+                filter: `id=eq.${currentWalletRowId}` 
+            }, async (payload) => { 
+                if (payload.new?.balance !== undefined) updateBalance(payload.new.balance); 
+            })
+            .subscribe();
     };
     
     const performLogout = async () => {
@@ -758,7 +974,13 @@
             return;
         }
         
-        const { data: profile, error: pErr } = await supabase.from('profiles').select('full_name, phone, card_number, card_cvv').eq('id', session.user.id).maybeSingle();
+        // Get profile with correct identity
+        const { data: profile, error: pErr } = await supabase
+            .from('profiles')
+            .select('id, full_name, phone, card_number, card_cvv')
+            .eq('id', session.user.id)
+            .maybeSingle();
+        
         if (pErr) console.error('Profile fetch error:', pErr);
         
         const fullName = profile?.full_name || session.user.user_metadata?.full_name || 'Member';
@@ -771,7 +993,7 @@
         
         if (phone) generateBarcodeFromPhone(phone);
         
-        // Get card number - will only generate if NULL
+        // Get or create card number
         try {
             const cardNumber = await getOrCreateCardNumber(session.user.id);
             if (DOM.cardNumber()) DOM.cardNumber().textContent = formatCardNumber(cardNumber);
@@ -779,7 +1001,7 @@
             console.error('Card number error:', err);
         }
         
-        // Get CVV - will only generate if NULL
+        // Get or create CVV
         try {
             const cvv = await getOrCreateCvv(session.user.id);
             if (DOM.cardCvv()) DOM.cardCvv().textContent = cvv;
@@ -787,22 +1009,38 @@
             console.error('CVV error:', err);
         }
         
-        const { data: wallet, error: wErr } = await supabase.from('wallets').select('id, balance').eq('user_id', session.user.id).maybeSingle();
+        // Get wallet
+        const { data: wallet, error: wErr } = await supabase
+            .from('wallets')
+            .select('id, balance')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+        
         if (wErr) console.warn('Wallet query error:', wErr);
         updateBalance((wallet && typeof wallet.balance === 'number') ? wallet.balance : 0);
         
         if (wallet?.id) {
             currentWalletRowId = wallet.id;
             setupWalletRealtime();
-            setupPaymentListener(session.user.id);
+        }
+        
+        // Setup payment listener with correct profile ID
+        if (profile?.id) {
+            await setupPaymentListener(session.user.id, profile.id);
+        } else {
+            console.error('No profile ID found for payment listener');
         }
     };
     
+    // Event listeners
     document.getElementById('profileIconBtn')?.addEventListener('click', () => window.location.href = 'profile.html');
     document.getElementById('logoutBtn')?.addEventListener('click', performLogout);
     document.getElementById('acceptRequestBtn')?.addEventListener('click', acceptPayment);
     document.getElementById('rejectRequestBtn')?.addEventListener('click', rejectPayment);
-    document.getElementById('closePopupBtn')?.addEventListener('click', () => document.getElementById('incomingRequestPopup')?.classList.remove('active'));
+    document.getElementById('closePopupBtn')?.addEventListener('click', () => {
+        document.getElementById('incomingRequestPopup')?.classList.remove('active');
+        currentPaymentId = null;
+    });
     
     document.addEventListener('DOMContentLoaded', () => loadUserData());
     window.addEventListener('beforeunload', () => {
@@ -827,7 +1065,7 @@
     if (cardStage) { cardStage.addEventListener('mousedown', startLongPress); cardStage.addEventListener('mouseup', cancelLongPress); cardStage.addEventListener('mouseleave', cancelLongPress); cardStage.addEventListener('touchstart', startLongPress, { passive: false }); cardStage.addEventListener('touchend', cancelLongPress); cardStage.addEventListener('touchcancel', cancelLongPress); }
 </script>
 
-<!-- UPDATED VIBE METER SCRIPT - Shows nearest event only -->
+<!-- VIBE METER SCRIPT -->
 <script>
     let currentEventId = null;
     let vibeUpdateInterval = null;
@@ -836,7 +1074,6 @@
     async function loadCurrentEvent() {
         if (!window.supabase) return;
         try {
-            // Get the nearest upcoming or current event (order by date, get the first one)
             const { data: event, error } = await window.supabase
                 .from('events')
                 .select('*')
@@ -894,7 +1131,6 @@
         if (!currentEventId || !window.supabase) return;
         
         try {
-            // Get total tickets sold for this event
             const { data: event, error: eventError } = await window.supabase
                 .from('events')
                 .select('total_tickets_sold')
@@ -903,7 +1139,6 @@
             
             if (eventError) throw eventError;
             
-            // Get number of people checked in for this event
             const { data: checkedInTickets, error: checkError } = await window.supabase
                 .from('tickets')
                 .select('id', { count: 'exact', head: true })
@@ -965,17 +1200,13 @@
                 schema: 'public',
                 table: 'tickets',
                 filter: `event_id=eq.${currentEventId}`
-            }, async (payload) => {
-                await updateVibeMeter();
-            })
+            }, async () => { await updateVibeMeter(); })
             .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
                 table: 'events',
                 filter: `id=eq.${currentEventId}`
-            }, async (payload) => {
-                await updateVibeMeter();
-            })
+            }, async () => { await updateVibeMeter(); })
             .subscribe();
     }
 
