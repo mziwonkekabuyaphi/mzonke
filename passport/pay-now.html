@@ -133,7 +133,6 @@
             display: inline-block;
         }
         
-        /* Box Office Payment Requests Section */
         .boxoffice-requests-section {
             margin-top: 24px;
             padding-top: 20px;
@@ -291,7 +290,6 @@
             <i class="fas fa-qrcode" style="margin-right: 8px;"></i> Scan to Pay
         </div>
         
-        <!-- Balance Display -->
         <div class="balance-card">
             <div class="balance-label">AVAILABLE BALANCE</div>
             <div class="balance-amount" id="walletBalance">R 0.00</div>
@@ -307,7 +305,6 @@
             </p>
         </div>
 
-        <!-- BOX OFFICE PAYMENT REQUESTS SECTION -->
         <div class="boxoffice-requests-section" id="boxofficeRequestsSection">
             <div class="boxoffice-title">
                 <i class="fas fa-ticket-alt"></i> BOX OFFICE REQUESTS
@@ -338,6 +335,7 @@
     
     let currentUserId = null;
     let currentProfileId = null;
+    let currentUserPhone = null;
     let currentBalance = 0;
     let boxofficeRequests = [];
     let boxofficeCountdowns = new Map();
@@ -400,11 +398,13 @@
             .maybeSingle();
         
         if (profileErr) console.warn("Profile fetch error:", profileErr);
-        const userPhone = profile?.phone || session.user.user_metadata?.phone || session.user.email?.split('@')[0] || "MEMBER";
+        currentUserPhone = profile?.phone || session.user.user_metadata?.phone || session.user.email?.split('@')[0] || "MEMBER";
         currentProfileId = profile?.id;
         
-        console.log("Current Profile ID:", currentProfileId);
-        console.log("Current User Phone:", userPhone);
+        console.log("=== USER INFO ===");
+        console.log("Profile ID:", currentProfileId);
+        console.log("Phone:", currentUserPhone);
+        console.log("User ID:", currentUserId);
         
         const { data: wallet, error: walletErr } = await supabase
             .from('wallets')
@@ -416,20 +416,17 @@
         currentBalance = wallet?.balance || 0;
         walletBalanceEl.textContent = `R ${currentBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         
-        if (qrLabel) qrLabel.innerText = userPhone;
-        generateBarcode(userPhone);
-        generateQRCode(userPhone);
+        if (qrLabel) qrLabel.innerText = currentUserPhone;
+        generateBarcode(currentUserPhone);
+        generateQRCode(currentUserPhone);
         
-        // Setup wallet realtime listener
         setupWalletListener();
         
         return true;
     }
     
     function setupWalletListener() {
-        if (walletChannel) {
-            supabase.removeChannel(walletChannel);
-        }
+        if (walletChannel) supabase.removeChannel(walletChannel);
         
         walletChannel = supabase
             .channel(`wallet-${currentUserId}`)
@@ -473,14 +470,9 @@
     }
     
     async function markBoxofficeRequestExpired(requestId) {
-        const { error } = await supabase
-            .from('payment_requests')
-            .update({ status: 'expired' })
-            .eq('id', requestId);
-        if (!error) {
-            boxofficeRequests = boxofficeRequests.filter(r => r.id !== requestId);
-            renderBoxofficeRequests();
-        }
+        await supabase.from('payment_requests').update({ status: 'expired' }).eq('id', requestId);
+        boxofficeRequests = boxofficeRequests.filter(r => r.id !== requestId);
+        renderBoxofficeRequests();
     }
     
     async function processBoxofficePayment(request) {
@@ -500,11 +492,7 @@
         try {
             const newBalance = currentBalance - amount;
             
-            const { error: walletError } = await supabase
-                .from('wallets')
-                .update({ balance: newBalance })
-                .eq('user_id', currentUserId);
-            if (walletError) throw walletError;
+            await supabase.from('wallets').update({ balance: newBalance }).eq('user_id', currentUserId);
             
             await supabase.from('wallet_transactions').insert({
                 user_id: currentUserId,
@@ -513,25 +501,13 @@
                 direction: 'debit',
                 description: `Box Office: ${request.events?.name || 'Event'} - ${request.ticket_types?.name || 'Ticket'} x${request.quantity}`,
                 status: 'completed',
-                metadata: { payment_request_id: request.id, order_id: request.order_id }
+                metadata: { payment_request_id: request.id }
             });
             
             await supabase
                 .from('payment_requests')
-                .update({ 
-                    status: 'approved', 
-                    approved_at: new Date().toISOString(),
-                    approved_by: currentUserId,
-                    transaction_id: currentUserId
-                })
+                .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: currentUserId })
                 .eq('id', request.id);
-            
-            if (request.order_id) {
-                await supabase
-                    .from('orders')
-                    .update({ payment_status: 'paid', status: 'placed' })
-                    .eq('id', request.order_id);
-            }
             
             currentBalance = newBalance;
             walletBalanceEl.textContent = `R ${currentBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
@@ -631,16 +607,25 @@
     }
     
     async function loadBoxofficeRequests() {
-        if (!currentProfileId) return;
+        if (!currentProfileId && !currentUserPhone) return;
         
-        console.log("Loading requests for profile ID:", currentProfileId);
+        console.log("=== LOADING REQUESTS ===");
+        console.log("By Profile ID:", currentProfileId);
+        console.log("By Phone:", currentUserPhone);
         
-        const { data, error } = await supabase
+        // Try by profile ID first, then by phone
+        let query = supabase
             .from('payment_requests')
             .select('*, events(name), ticket_types(name, price)')
-            .eq('customer_profile_id', currentProfileId)
-            .in('status', ['pending'])
-            .order('created_at', { ascending: false });
+            .in('status', ['pending']);
+        
+        if (currentProfileId) {
+            query = query.eq('customer_profile_id', currentProfileId);
+        } else if (currentUserPhone) {
+            query = query.eq('customer_phone', currentUserPhone);
+        }
+        
+        const { data, error } = await query.order('created_at', { ascending: false });
         
         if (error) {
             console.error('Error loading boxoffice requests:', error);
@@ -654,38 +639,40 @@
     }
     
     function subscribeBoxofficeRequests() {
-        if (!currentProfileId) return;
-        
         if (boxofficeChannel) {
             supabase.removeChannel(boxofficeChannel);
         }
         
-        console.log("Subscribing to boxoffice requests for profile:", currentProfileId);
+        console.log("=== SUBSCRIBING TO REQUESTS ===");
         
+        // Listen for ALL pending requests for this user (by profile OR phone)
         boxofficeChannel = supabase
-            .channel(`boxoffice-requests-${currentProfileId}`)
+            .channel(`boxoffice-requests-all`)
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
-                table: 'payment_requests',
-                filter: `customer_profile_id=eq.${currentProfileId}`
+                table: 'payment_requests'
             }, async (payload) => {
-                console.log("NEW PAYMENT REQUEST INSERT:", payload.new);
                 const newRequest = payload.new;
-                if (newRequest.status === 'pending') {
+                console.log("NEW REQUEST INSERT:", newRequest);
+                
+                // Check if this request belongs to the current user
+                const belongsToUser = (newRequest.customer_profile_id === currentProfileId) || 
+                                     (newRequest.customer_phone === currentUserPhone);
+                
+                if (belongsToUser && newRequest.status === 'pending') {
+                    console.log("Request belongs to current user, adding to list");
+                    
                     const { data: fullRequest } = await supabase
                         .from('payment_requests')
                         .select('*, events(name), ticket_types(name, price)')
                         .eq('id', newRequest.id)
                         .single();
                     
-                    console.log("Full request details:", fullRequest);
-                    
                     if (fullRequest) {
                         boxofficeRequests.unshift(fullRequest);
                         renderBoxofficeRequests();
                         showToastMsg(`📱 New Box Office request: R${fullRequest.total_amount?.toFixed(2)}`, 'info');
-                        // Play notification sound
                         try {
                             const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
                             audio.volume = 0.3;
@@ -697,12 +684,15 @@
             .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
-                table: 'payment_requests',
-                filter: `customer_profile_id=eq.${currentProfileId}`
+                table: 'payment_requests'
             }, (payload) => {
                 const updated = payload.new;
-                console.log("PAYMENT REQUEST UPDATE:", updated);
-                if (updated.status === 'approved' || updated.status === 'rejected' || updated.status === 'expired') {
+                console.log("REQUEST UPDATE:", updated);
+                
+                const belongsToUser = (updated.customer_profile_id === currentProfileId) || 
+                                     (updated.customer_phone === currentUserPhone);
+                
+                if (belongsToUser && (updated.status === 'approved' || updated.status === 'rejected' || updated.status === 'expired')) {
                     boxofficeRequests = boxofficeRequests.filter(r => r.id !== updated.id);
                     renderBoxofficeRequests();
                     if (boxofficeCountdowns.has(updated.id)) {
