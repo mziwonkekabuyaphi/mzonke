@@ -6,7 +6,6 @@
   <title>Box Office · Payment Request</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script type="importmap">
     {
       "imports": {
@@ -273,6 +272,36 @@
       color: var(--mist);
     }
 
+    .phone-input-group {
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+      display: none;
+    }
+
+    .phone-input-group.visible {
+      display: block;
+    }
+
+    .phone-input-group label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .phone-input-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 60px;
+      border: 1px solid var(--border-strong);
+      font-size: 1rem;
+    }
+
+    .phone-input-group input:focus {
+      outline: none;
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px var(--red-glow);
+    }
+
     .btn-primary {
       background: var(--red);
       color: white;
@@ -289,30 +318,6 @@
     .btn-primary:disabled {
       opacity: 0.5;
       cursor: not-allowed;
-    }
-
-    .input-group {
-      margin-bottom: 20px;
-    }
-
-    .input-group label {
-      font-weight: 600;
-      display: block;
-      margin-bottom: 8px;
-    }
-
-    .input-group input {
-      width: 100%;
-      padding: 12px 16px;
-      border-radius: 60px;
-      border: 1px solid var(--border-strong);
-      font-size: 1rem;
-    }
-
-    .input-group input:focus {
-      outline: none;
-      border-color: var(--red);
-      box-shadow: 0 0 0 3px var(--red-glow);
     }
 
     .status-panel {
@@ -506,12 +511,13 @@
         </div>
       </div>
 
-      <div class="input-group">
+      <!-- Phone input - ONLY visible for Wallet payment -->
+      <div class="phone-input-group" id="phoneInputGroup">
         <label><i class="fas fa-phone-alt"></i> Customer phone number</label>
-        <input type="tel" id="customerPhone" placeholder="e.g. 0712345678" required>
+        <input type="tel" id="customerPhone" placeholder="e.g. 0712345678">
       </div>
 
-      <button class="btn-primary" id="requestPaymentBtn">💳 Process Payment</button>
+      <button class="btn-primary" id="requestPaymentBtn">💰 Process Cash Payment</button>
 
       <div id="requestStatus" class="status-panel" style="display:none;"></div>
     </div>
@@ -558,6 +564,7 @@
   const requestPaymentBtn = document.getElementById('requestPaymentBtn');
   const requestStatusDiv = document.getElementById('requestStatus');
   const syncBtn = document.getElementById('syncBtn');
+  const phoneInputGroup = document.getElementById('phoneInputGroup');
 
   function showToast(msg, type = 'info') {
     const toast = document.getElementById('toastMsg');
@@ -680,7 +687,7 @@
   incQty.addEventListener('click', () => { if (selectedTicketType && ticketQuantity < selectedTicketType.available && ticketQuantity < 10) { ticketQuantity++; qtyDisplay.textContent = ticketQuantity; updateSummary(); updateQuantityLimit(); } });
   eventSelect.addEventListener('change', () => { selectedEvent = events.find(ev => ev.id === eventSelect.value); selectedTicketType = null; ticketQuantity = 1; qtyDisplay.textContent = '1'; renderEvent(); renderTickets(); });
 
-  // Payment method selection
+  // Payment method selection - Phone field ONLY shows for Wallet
   document.getElementById('cashOption').addEventListener('click', () => {
     selectedPaymentMethod = 'cash';
     document.getElementById('cashSelectedIndicator').style.display = 'block';
@@ -689,8 +696,10 @@
     document.getElementById('cashOption').classList.add('selected');
     document.getElementById('cardOption').classList.remove('selected');
     document.getElementById('walletOption').classList.remove('selected');
+    phoneInputGroup.classList.remove('visible');
     requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
   });
+  
   document.getElementById('cardOption').addEventListener('click', () => {
     selectedPaymentMethod = 'card';
     document.getElementById('cardSelectedIndicator').style.display = 'block';
@@ -699,8 +708,10 @@
     document.getElementById('cardOption').classList.add('selected');
     document.getElementById('cashOption').classList.remove('selected');
     document.getElementById('walletOption').classList.remove('selected');
+    phoneInputGroup.classList.remove('visible');
     requestPaymentBtn.innerHTML = '💳 Pay with Card';
   });
+  
   document.getElementById('walletOption').addEventListener('click', () => {
     selectedPaymentMethod = 'wallet';
     document.getElementById('walletSelectedIndicator').style.display = 'block';
@@ -709,6 +720,7 @@
     document.getElementById('walletOption').classList.add('selected');
     document.getElementById('cashOption').classList.remove('selected');
     document.getElementById('cardOption').classList.remove('selected');
+    phoneInputGroup.classList.add('visible');
     requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
   });
 
@@ -754,7 +766,7 @@
         <div style="font-size: 28px; font-weight: 800;">R${selectedTicketType.price}</div>
         <div style="margin-top: 12px;"><i class="fas fa-qrcode" style="font-size: 48px;"></i></div>
         <div style="font-size: 10px; margin-top: 8px;">ID: ${ticket.id.slice(0, 8)}</div>
-        <div style="font-size: 10px;">${customerPhone}</div>
+        ${customerPhone && customerPhone !== 'cash_customer' && customerPhone !== 'card_customer' ? `<div style="font-size: 10px;">${customerPhone}</div>` : ''}
         <div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.3); font-size: 10px;">x${ticketQuantity} Ticket(s)</div>
       </div>
     `;
@@ -763,9 +775,8 @@
     document.getElementById('closePrintBtn').onclick = () => modal.classList.remove('show');
   }
 
+  // Cash Payment - No phone number required
   async function processCashPayment() {
-    const phone = customerPhoneInput.value.trim();
-    if (!phone || !validatePhone(phone)) { showToast('Enter valid 10-digit phone number', 'error'); return false; }
     if (!selectedTicketType) { showToast('Select a ticket type', 'error'); return false; }
     if (ticketQuantity > selectedTicketType.available) { showToast(`Only ${selectedTicketType.available} tickets available`, 'error'); return false; }
     
@@ -776,18 +787,23 @@
     requestStatusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing cash payment...';
     
     try {
-      const customer = await getOrCreateCustomerProfile(phone);
-      const tickets = await issueTickets(phone, customer.id);
+      const tickets = await issueTickets('cash_customer', null);
       lastIssuedTickets = tickets;
       await supabase.from('payment_requests').insert({
-        customer_phone: phone, customer_profile_id: customer.id, event_id: selectedEvent.id,
-        ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: selectedTicketType.price * ticketQuantity,
-        channel: 'boxoffice', status: 'completed', payment_method: 'cash', metadata: { cash_payment: true }
+        customer_phone: 'cash_customer',
+        event_id: selectedEvent.id,
+        ticket_type_id: selectedTicketType.id,
+        quantity: ticketQuantity,
+        total_amount: selectedTicketType.price * ticketQuantity,
+        channel: 'boxoffice',
+        status: 'completed',
+        payment_method: 'cash',
+        metadata: { cash_payment: true, no_phone_required: true }
       });
       requestStatusDiv.innerHTML = `<i class="fas fa-check-circle"></i> Success! ${ticketQuantity} ticket(s) issued.`;
       requestStatusDiv.className = 'status-panel success';
       showToast(`✅ ${ticketQuantity} ticket(s) issued!`, 'success');
-      showWristbandPrintModal(tickets, phone);
+      showWristbandPrintModal(tickets, '');
       await loadEvents();
       return true;
     } catch (err) {
@@ -802,9 +818,8 @@
     }
   }
 
+  // Card Payment - Uses Yoco edge function, no phone required
   async function processCardPayment() {
-    const phone = customerPhoneInput.value.trim();
-    if (!phone || !validatePhone(phone)) { showToast('Enter valid 10-digit phone number', 'error'); return false; }
     if (!selectedTicketType) { showToast('Select a ticket type', 'error'); return false; }
     if (ticketQuantity > selectedTicketType.available) { showToast(`Only ${selectedTicketType.available} tickets available`, 'error'); return false; }
     
@@ -812,24 +827,54 @@
     requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Initializing payment...';
     
     try {
-      const customer = await getOrCreateCustomerProfile(phone);
       const totalAmount = selectedTicketType.price * ticketQuantity;
       const amountCents = Math.round(totalAmount * 100);
       
       const { data: pendingTx, error: insertError } = await supabase.from('wallet_transactions').insert({
-        user_id: customer.id, amount: totalAmount, type: 'topup', status: 'pending',
-        provider: 'yoco', direction: 'credit', description: `Box office: ${ticketQuantity} x ${selectedTicketType.name} for ${selectedEvent.name}`,
-        created_at: new Date().toISOString(), metadata: { payment_method: 'yoco_card', event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity }
+        amount: totalAmount,
+        type: 'topup',
+        status: 'pending',
+        provider: 'yoco',
+        direction: 'credit',
+        description: `Box office: ${ticketQuantity} x ${selectedTicketType.name} for ${selectedEvent.name}`,
+        created_at: new Date().toISOString(),
+        metadata: { 
+          payment_method: 'yoco_card', 
+          event_id: selectedEvent.id, 
+          ticket_type_id: selectedTicketType.id, 
+          quantity: ticketQuantity,
+          box_office: true
+        }
       }).select('id').single();
       if (insertError) throw new Error('Could not initialize payment');
       
       const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', {
-        body: { wallet_transaction_id: pendingTx.id, amount_cents: amountCents, currency: 'ZAR', metadata: { box_office: true, customer_phone: phone, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity } }
+        body: { 
+          wallet_transaction_id: pendingTx.id, 
+          amount_cents: amountCents, 
+          currency: 'ZAR', 
+          metadata: { 
+            box_office: true, 
+            event_id: selectedEvent.id, 
+            ticket_type_id: selectedTicketType.id, 
+            quantity: ticketQuantity,
+            ticket_name: selectedTicketType.name,
+            event_name: selectedEvent.name
+          } 
+        }
       });
       if (edgeError) throw new Error(edgeError.message || 'Payment gateway error');
       if (!edgeResponse?.checkout_url) throw new Error('Invalid response from payment gateway');
       
-      sessionStorage.setItem('pendingBoxOfficePayment', JSON.stringify({ customer_phone: phone, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: totalAmount, transaction_id: pendingTx.id }));
+      sessionStorage.setItem('pendingBoxOfficePayment', JSON.stringify({ 
+        event_id: selectedEvent.id, 
+        ticket_type_id: selectedTicketType.id, 
+        quantity: ticketQuantity, 
+        total_amount: totalAmount, 
+        transaction_id: pendingTx.id,
+        ticket_name: selectedTicketType.name,
+        event_name: selectedEvent.name
+      }));
       window.location.href = edgeResponse.checkout_url;
     } catch (err) {
       showToast(err.message, 'error');
@@ -839,6 +884,7 @@
     }
   }
 
+  // Wallet Payment - Requires phone number, sends approval request
   async function processWalletPayment() {
     const phone = customerPhoneInput.value.trim();
     if (!phone || !validatePhone(phone)) { showToast('Enter valid 10-digit phone number', 'error'); return false; }
@@ -852,10 +898,17 @@
       const customer = await getOrCreateCustomerProfile(phone);
       const totalAmount = selectedTicketType.price * ticketQuantity;
       const { data, error } = await supabase.from('payment_requests').insert({
-        customer_phone: phone, customer_profile_id: customer.id, event_id: selectedEvent.id,
-        ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: totalAmount,
-        channel: 'boxoffice', status: 'pending', requested_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 5 * 60000).toISOString(), metadata: { payment_method: 'wallet' }
+        customer_phone: phone,
+        customer_profile_id: customer.id,
+        event_id: selectedEvent.id,
+        ticket_type_id: selectedTicketType.id,
+        quantity: ticketQuantity,
+        total_amount: totalAmount,
+        channel: 'boxoffice',
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 5 * 60000).toISOString(),
+        metadata: { payment_method: 'wallet' }
       }).select().single();
       if (error) throw error;
       
@@ -904,7 +957,9 @@
     if (requestSubscription) { requestSubscription.unsubscribe(); requestSubscription = null; }
     currentRequestId = null;
     requestPaymentBtn.disabled = false;
-    requestPaymentBtn.innerHTML = selectedPaymentMethod === 'cash' ? '💰 Process Cash Payment' : selectedPaymentMethod === 'card' ? '💳 Pay with Card' : '📲 Request Wallet Payment';
+    if (selectedPaymentMethod === 'cash') requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
+    else if (selectedPaymentMethod === 'card') requestPaymentBtn.innerHTML = '💳 Pay with Card';
+    else requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
     setTimeout(() => { if (requestStatusDiv.className !== 'status-panel success') requestStatusDiv.style.display = 'none'; }, 3000);
   }
 
@@ -917,7 +972,7 @@
   syncBtn.addEventListener('click', () => { loadEvents(); showToast('Refreshed', 'info'); });
   customerPhoneInput.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); });
 
-  // Check for returning from card payment
+  // Check for returning from card payment (Yoco webhook callback)
   const pendingPayment = sessionStorage.getItem('pendingBoxOfficePayment');
   if (pendingPayment) {
     sessionStorage.removeItem('pendingBoxOfficePayment');
@@ -925,19 +980,31 @@
     showToast('Payment successful! Processing tickets...', 'success');
     (async () => {
       try {
-        const customer = await getOrCreateCustomerProfile(payment.customer_phone);
         selectedEvent = events.find(e => e.id === payment.event_id);
-        selectedTicketType = { id: payment.ticket_type_id, price: payment.total_amount / payment.quantity, name: 'Ticket' };
+        selectedTicketType = { id: payment.ticket_type_id, price: payment.total_amount / payment.quantity, name: payment.ticket_name || 'Ticket' };
         ticketQuantity = payment.quantity;
-        const tickets = await issueTickets(payment.customer_phone, customer.id);
+        const tickets = await issueTickets('card_customer', null);
         await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id);
+        await supabase.from('payment_requests').insert({
+          customer_phone: 'card_customer',
+          event_id: payment.event_id,
+          ticket_type_id: payment.ticket_type_id,
+          quantity: payment.quantity,
+          total_amount: payment.total_amount,
+          channel: 'boxoffice',
+          status: 'completed',
+          payment_method: 'card',
+          metadata: { card_payment: true, transaction_id: payment.transaction_id }
+        });
         showToast(`✅ ${payment.quantity} ticket(s) issued!`, 'success');
-        showWristbandPrintModal(tickets, payment.customer_phone);
+        showWristbandPrintModal(tickets, '');
         await loadEvents();
       } catch (err) { showToast('Failed to process: ' + err.message, 'error'); }
     })();
   }
 
+  // Initialize - phone input hidden by default
+  phoneInputGroup.classList.remove('visible');
   loadEvents();
 </script>
 </body>
