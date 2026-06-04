@@ -173,12 +173,11 @@
                 </div>
                 <div v-else class="empty-state"><i class="fas fa-user-clock"></i><p>No staff currently on shift</p></div>
                 <div class="section-header"><h2>Recent Staff Activity</h2></div>
-                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><table><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td><td>{{ staff.hours_today?.toFixed(1) || '0' }}h</td></tr><tr v-if="staffList.length === 0"><td colspan="4" class="empty-state" style="text-align:center;">No staff members found</td></tr></tbody></table></div>
+                <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Today's Hours</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td><strong>{{ staff.name }} {{ staff.surname }}</strong></td><td><span class="role-badge">{{ getRoleDisplay(staff.role) }}</span></td><td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td><td>{{ staff.hours_today?.toFixed(1) || '0' }}h</td></tr><tr v-if="staffList.length === 0"><td colspan="4" class="empty-state" style="text-align:center;">No staff members found</td></tr></tbody></table></div>
             </div>
 
-            <!-- DYNAMIC MODULES (Staff Management, Private Label, etc) -->
+            <!-- DYNAMIC MODULES -->
             <div v-for="module in enabledModulesList" :key="'module_view_' + module.id" v-if="currentSection === 'module_' + module.id">
-                <!-- PRIVATE LABEL MODULE -->
                 <template v-if="module.name === 'Private Label'">
                     <div class="section-header"><h2><i class="fas fa-palette"></i> Venue Branding</h2><button class="btn-outline" @click="currentSection = 'dashboard'"><i class="fas fa-arrow-left"></i> Back</button></div>
                     <div class="settings-panel">
@@ -189,7 +188,6 @@
                     </div>
                 </template>
 
-                <!-- STAFF MANAGEMENT MODULE -->
                 <template v-if="module.name === 'Staff Management'">
                     <div class="section-header"><h2><i class="fas fa-users"></i> Staff Management</h2><button class="btn-outline" @click="currentSection = 'dashboard'">Back</button></div>
                     <div class="tabs-container">
@@ -208,7 +206,6 @@
                     <div v-if="staffModuleTab === 'reports'" class="empty-state"><button class="btn-primary" @click="exportAttendanceReport"><i class="fas fa-download"></i> Export Report</button></div>
                 </template>
 
-                <!-- Generic external module iframe handler -->
                 <template v-if="module.name !== 'Staff Management' && module.name !== 'Private Label' && externalModulePath[module.name]">
                     <div class="external-module">
                         <iframe :src="externalModulePath[module.name]" class="external-iframe" title="Module Content"></iframe>
@@ -221,14 +218,15 @@
         </div>
     </div>
 
-    <!-- STAFF MODAL -->
+    <!-- MODALS -->
     <div class="modal-mask" :class="{ active: showStaffModal }"><div class="modal-container"><h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3><div class="form-group"><label>Name *</label><input class="form-control" v-model="staffForm.name" placeholder="First name"></div><div class="form-group"><label>Surname *</label><input class="form-control" v-model="staffForm.surname" placeholder="Last name"></div><div class="form-group"><label>Email *</label><input class="form-control" v-model="staffForm.email" placeholder="staff@example.com" type="email"></div><div class="form-group" v-if="!isEditing"><label>Password *</label><input class="form-control" v-model="staffForm.password" placeholder="Min 6 characters" type="password"></div><div class="form-group"><label>Role *</label><select class="form-control" v-model="staffForm.role"><option value="staff">Staff</option><option value="scanner">Scanner</option><option value="cleaner">Cleaner</option><option value="shisha">Shisha Master</option><option value="cashier">Cashier</option><option value="vvip">VVIP Concierge</option><option value="security">Security</option></select></div><div class="form-group"><label>Hourly Rate (ZAR) *</label><input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50" placeholder="e.g., 45.00"></div><div class="modal-buttons"><button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button><button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button></div></div></div>
 
     <div class="modal-mask" :class="{ active: showInfoModal }"><div class="modal-container"><div class="modal-icon"><i :class="infoIcon" :style="{ color: infoIconColor }"></i></div><h3>{{ infoTitle }}</h3><p>{{ infoMessage }}</p><button class="modal-btn" @click="showInfoModal = false">Got it</button></div></div>
 </div>
 
 <script type="module">
-    import { supabase } from '../config/supabase.js';
+    import { supabase } from '../../config/supabase.js';
+    import { getCurrentUser, getUserRole } from '../../config/auth.js';
     
     const STORAGE_KEYS = { SHIFTS: 'qless_shifts' };
     const externalModulePath = {
@@ -255,6 +253,7 @@
             tenantName: 'My Venue',
             adminName: 'Admin',
             adminEmail: '',
+            adminRole: '',
             branding: { primaryColor: '#E30613', logoUrl: '', faviconUrl: '' },
             tenantModules: [],
             staffList: [],
@@ -325,35 +324,80 @@
             testNotification(){ this.showAlert('Notification Center', 'You have no new notifications', 'fas fa-bell', '#E30613'); },
             goToModuleSection(module) { this.currentSection = 'module_' + module.id; if (module.name === 'Staff Management') this.staffModuleTab = 'accounts'; this.closeSidebar(); },
             closeSidebar(){ if(window.innerWidth<=768) this.sidebarOpen=false; },
+            
             async initDashboard() {
                 this.isLoading = true;
                 try {
-                    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-                    if (sessionError || !session) throw new Error('No active session');
-                    console.log('✅ Session user:', session.user.email);
-                    this.adminEmail = session.user.email;
-                    this.adminName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Admin';
+                    // Use the auth.js helper to get current user
+                    const { user, error: userError } = await getCurrentUser();
+                    if (userError || !user) {
+                        console.error('No user found, redirecting to login');
+                        window.location.href = '../login.html';
+                        return;
+                    }
                     
-                    let tenantId = session.user.user_metadata?.tenant_id;
+                    console.log('✅ Dashboard: User authenticated', user.email);
+                    this.adminEmail = user.email;
+                    this.adminName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin';
+                    
+                    // Get user role from auth.js helper
+                    const { role, error: roleError } = await getUserRole(user.id);
+                    if (roleError === 'NO_ROLE' || !role) {
+                        throw new Error('Your account role is not configured. Please contact support.');
+                    }
+                    this.adminRole = role;
+                    console.log('👤 User role:', this.adminRole);
+                    
+                    // Get tenant_id from user metadata or profiles
+                    let tenantId = user.user_metadata?.tenant_id;
                     if (!tenantId) {
-                        const { data: profile, error: profErr } = await supabase.from('profiles').select('tenant_id').eq('id', session.user.id).maybeSingle();
+                        const { data: profile, error: profErr } = await supabase
+                            .from('profiles')
+                            .select('tenant_id')
+                            .eq('id', user.id)
+                            .maybeSingle();
                         if (!profErr && profile?.tenant_id) tenantId = profile.tenant_id;
                     }
+                    
                     if (!tenantId) {
-                        const { data: tenants, error: tErr } = await supabase.from('tenants').select('id, name').limit(1);
-                        if (!tErr && tenants?.length) tenantId = tenants[0].id;
-                        else throw new Error('No tenant assigned');
+                        // For tenant_admin role, fetch their assigned tenant
+                        if (this.adminRole === 'tenant_admin') {
+                            const { data: tenantData, error: tErr } = await supabase
+                                .from('tenants')
+                                .select('id, name')
+                                .limit(1);
+                            if (!tErr && tenantData?.length) {
+                                tenantId = tenantData[0].id;
+                                this.tenantName = tenantData[0].name;
+                            }
+                        }
                     }
-                    const { data: tenantData } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+                    
+                    if (!tenantId) {
+                        throw new Error('No tenant assigned to your account');
+                    }
+                    
+                    // Fetch tenant details
+                    const { data: tenantData } = await supabase
+                        .from('tenants')
+                        .select('name')
+                        .eq('id', tenantId)
+                        .single();
                     if (tenantData) this.tenantName = tenantData.name;
+                    
                     this.tenantId = tenantId;
                     this.currentUserTenantId = tenantId;
                     
+                    console.log('🏢 Tenant ID:', this.tenantId, 'Name:', this.tenantName);
+                    
+                    // Load all data
                     await this.loadStaffFromSupabase();
                     await this.loadTenantModules();
                     this.loadLocalData();
+                    
                     console.log('📦 Final modules from DB:', this.enabledModulesList);
                     this.isLoading = false;
+                    
                 } catch (err) {
                     console.error('Init error:', err);
                     this.isLoading = false;
@@ -361,19 +405,39 @@
                     setTimeout(() => { window.location.href = '../login.html'; }, 2000);
                 }
             },
+            
             async loadStaffFromSupabase() {
                 if (!this.tenantId) return;
-                const { data, error } = await supabase.from('profiles').select('id, name, surname, email, role, phone, hourly_rate, status, created_at').eq('tenant_id', this.tenantId).order('created_at', { ascending: false });
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, name, surname, email, role, phone, hourly_rate, status, created_at')
+                    .eq('tenant_id', this.tenantId)
+                    .order('created_at', { ascending: false });
                 if (!error) this.staffList = data || [];
                 else console.error('Staff load err:', error);
             },
+            
             async loadTenantModules() {
                 if (!this.tenantId) return;
-                const { data: modules, error } = await supabase.from('tenant_modules').select(`id, enabled, module:module_id (id, name, description, icon)`).eq('tenant_id', this.tenantId);
-                if (error) { console.error('Module fetch error:', error); this.tenantModules = []; return; }
-                this.tenantModules = modules ? modules.map(m => ({ id: m.module.id, name: m.module.name, enabled: m.enabled, description: m.module.description, icon: m.module.icon })) : [];
+                const { data: modules, error } = await supabase
+                    .from('tenant_modules')
+                    .select(`id, enabled, module:module_id (id, name, description, icon)`)
+                    .eq('tenant_id', this.tenantId);
+                if (error) { 
+                    console.error('Module fetch error:', error); 
+                    this.tenantModules = []; 
+                    return; 
+                }
+                this.tenantModules = modules ? modules.map(m => ({ 
+                    id: m.module.id, 
+                    name: m.module.name, 
+                    enabled: m.enabled, 
+                    description: m.module.description, 
+                    icon: m.module.icon 
+                })) : [];
                 console.log('🔍 Module API Response:', this.tenantModules);
             },
+            
             loadLocalData() {
                 try {
                     const allShifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]');
@@ -383,17 +447,23 @@
                     this.calcTotals();
                 } catch (err) { console.error('Local data error:', err); }
             },
+            
             calcTotals(){
                 let todayTotal=0; const today = new Date().setHours(0,0,0,0);
                 this.shifts.forEach(s=>{ const shiftDate = new Date(s.login_time).setHours(0,0,0,0); if(shiftDate === today){ if(s.hours_worked) todayTotal+=s.hours_worked; else if(s.status==='active') todayTotal+=(new Date()-new Date(s.login_time))/(1000*60*60); } });
                 this.totalHoursToday=todayTotal; this.avgHoursPerStaff=this.staffList.length?todayTotal/this.staffList.length:0;
             },
+            
             saveShifts(){ const all=JSON.parse(localStorage.getItem(STORAGE_KEYS.SHIFTS)||'[]'); const filtered=all.filter(s=>s.tenant_id!==this.tenantId); localStorage.setItem(STORAGE_KEYS.SHIFTS,JSON.stringify([...filtered,...this.shifts])); },
+            
             async forceLogout(shift){ if(!confirm(`Force logout ${shift.staff_name}?`)) return; const idx=this.shifts.findIndex(s=>s.shift_id===shift.shift_id); if(idx!==-1){ const hrs=(new Date()-new Date(shift.login_time))/(1000*60*60); this.shifts[idx].logout_time=new Date().toISOString(); this.shifts[idx].status='completed'; this.shifts[idx].hours_worked=hrs; this.saveShifts(); this.showAlert('Force Logout',`${shift.staff_name} logged out. Hours: ${hrs.toFixed(2)}h`,'fas fa-sign-out-alt','#10b981'); this.calcTotals(); } },
+            
             saveBranding(){ const data={tenantName:this.tenantName,branding:this.branding}; localStorage.setItem(`qless_tenant_branding_${this.tenantId}`,JSON.stringify(data)); this.showAlert('Branding Saved','Venue identity updated','fas fa-palette','#E30613'); },
+            
             openCreateStaffModal(){ this.isEditing=false; this.editingStaffId=null; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.showStaffModal=true; },
             editStaff(staff){ this.isEditing=true; this.editingStaffId=staff.id; this.staffForm={ name:staff.name, surname:staff.surname, email:staff.email, password:'', role:staff.role, hourly_rate:staff.hourly_rate }; this.showStaffModal=true; },
             closeStaffModal(){ this.showStaffModal=false; this.staffForm={ name:'', surname:'', email:'', password:'', role:'staff', hourly_rate:0 }; this.saving=false; },
+            
             async saveStaff(){
                 if(!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) return this.showAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation', '#dc2626');
                 if(!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) return this.showAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock', '#dc2626');
@@ -411,12 +481,26 @@
                 } catch (err) { console.error(err); this.showAlert('Creation failed', err.message, 'fas fa-exclamation', '#dc2626'); } 
                 finally { this.saving = false; }
             },
+            
             async toggleStaffStatus(id){ const staff = this.staffList.find(s => s.id === id); if(!staff) return; const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active'; const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', id); if(error){ console.error(error); return this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation', '#dc2626'); } await this.loadStaffFromSupabase(); this.showAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on', '#10b981'); },
+            
             async deleteStaff(id){ const staff = this.staffList.find(s => s.id === id); if(staff && confirm(`Delete ${staff.name} ${staff.surname}?`)){ const { error } = await supabase.from('profiles').delete().eq('id', id); if(error){ console.error(error); return this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation', '#dc2626'); } await this.loadStaffFromSupabase(); this.showAlert('Deleted', 'Staff profile removed', 'fas fa-trash', '#dc2626'); } },
+            
             exportAttendanceReport(){ this.showAlert('Report Ready', 'Attendance data exported', 'fas fa-download', '#10b981'); },
-            logout(){ supabase.auth.signOut().then(() => { localStorage.removeItem('supabase-auth-token'); window.location.href = '../login.html'; }).catch(() => { window.location.href = '../login.html'; }); }
+            
+            async logout(){ 
+                const { error } = await supabase.auth.signOut();
+                localStorage.removeItem('supabase-auth-token');
+                window.location.href = '../login.html';
+            }
         },
-        async mounted() { await this.initDashboard(); setInterval(() => { this.loadLocalData(); this.calcTotals(); }, 5000); }
+        async mounted() { 
+            await this.initDashboard(); 
+            setInterval(() => { 
+                this.loadLocalData(); 
+                this.calcTotals(); 
+            }, 5000); 
+        }
     });
 </script>
 </body>
