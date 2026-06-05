@@ -133,6 +133,12 @@
       box-shadow: 0 0 0 3px var(--red-glow);
     }
 
+    select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: var(--bone);
+    }
+
     /* ========== BOX OFFICE PAYMENT STYLES (COPIED) ========== */
     .payment-methods-section { margin-bottom: 24px; }
 
@@ -154,6 +160,11 @@
     .payment-option.selected {
       border-color: var(--red);
       background: rgba(227,6,19,0.05);
+    }
+
+    .payment-option.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .payment-option-header {
@@ -372,12 +383,6 @@
     .status-badge.expired { background: #6b7280; color: white; }
     .status-badge.paused { background: #ff9800; color: white; }
 
-    .timer {
-      font-family: monospace;
-      font-size: 1.1rem;
-      font-weight: 700;
-      margin: 8px 0;
-    }
     .session-actions {
       display: flex;
       gap: 8px;
@@ -415,6 +420,84 @@
       opacity: 1;
     }
 
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal-container {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      max-width: 400px;
+      width: 90%;
+      padding: 28px 24px;
+      text-align: center;
+      box-shadow: var(--shadow-card);
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+    }
+    .modal-overlay.active .modal-container {
+      transform: scale(1);
+    }
+    .modal-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+    }
+    .modal-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      color: var(--ink);
+    }
+    .modal-message {
+      color: var(--slate);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .modal-btn {
+      padding: 10px 24px;
+      border-radius: var(--radius-full);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .modal-btn.confirm {
+      background: var(--red);
+      color: white;
+    }
+    .modal-btn.cancel {
+      background: var(--bone);
+      color: var(--ink);
+      border: 1px solid var(--border-strong);
+    }
+    .modal-btn.confirm:hover {
+      background: var(--red-dark);
+    }
+    .modal-btn.cancel:hover {
+      background: var(--border-strong);
+    }
+
     @media (max-width: 900px) {
       .pos-embedded-grid { grid-template-columns: 1fr; gap: 20px; }
       body { padding: 16px; }
@@ -444,7 +527,9 @@
       </div>
       <div class="form-group">
         <label><i class="fas fa-smoking"></i> Hookah station</label>
-        <select id="shishaSelect"><option>Loading...</option></select>
+        <select id="shishaSelect">
+          <option value="">Loading stations...</option>
+        </select>
       </div>
 
       <!-- BOX OFFICE PAYMENT SECTION (COPIED) -->
@@ -489,7 +574,7 @@
         <div class="price-amount">R250.00</div>
       </div>
 
-      <button class="btn-primary" id="requestPaymentBtn" disabled>💰 Select payment method first</button>
+      <button class="btn-primary" id="requestPaymentBtn" disabled>⚠️ Select payment method first</button>
       <div id="requestStatus" class="status-panel"></div>
     </div>
   </div>
@@ -498,7 +583,6 @@
   <div class="card">
     <div class="card-header">
       <span><i class="fas fa-list-ul"></i> Active hookah sessions</span>
-      <button id="openAdminPanelBtn" class="stat-badge" style="background:var(--red-subtle); color:var(--red); border:none; cursor:pointer;">🛠️ Admin panel</button>
     </div>
     <div class="card-body">
       <div id="sessionsList" class="sessions-scroll">
@@ -510,24 +594,88 @@
 
 <div id="toastMsg" class="toast-pos"></div>
 
+<!-- Modal Component -->
+<div id="modalOverlay" class="modal-overlay">
+  <div class="modal-container">
+    <div id="modalIcon" class="modal-icon"></div>
+    <div id="modalTitle" class="modal-title"></div>
+    <div id="modalMessage" class="modal-message"></div>
+    <div id="modalButtons" class="modal-buttons"></div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase } from '../../config/supabase.js';
 
   // ============ SHISHA POS BUSINESS LOGIC (PRESERVED) ==========
   const SESSION_PRICE = 250;
   const REFILL_PRICE = 250;
-  const COAL_DURATION = 60; // minutes
 
   let activeSessions = [];
   let availableHookahs = [];
-  let countdownInterval = null;
+  let occupiedHookahIds = new Set();
   
-  // Payment state variables (copied from box-office)
+  // Payment state variables
   let selectedPaymentMethod = null;
   let currentRequestId = null;
   let requestSubscription = null;
   let walletCountdownInterval = null;
+  let currentSelectedStationId = null; // Track user's selected station
 
+  // Modal system
+  function showModal(type, title, message, onConfirm = null, onCancel = null) {
+    const overlay = document.getElementById('modalOverlay');
+    const iconEl = document.getElementById('modalIcon');
+    const titleEl = document.getElementById('modalTitle');
+    const messageEl = document.getElementById('modalMessage');
+    const buttonsEl = document.getElementById('modalButtons');
+    
+    const icons = {
+      success: '✅',
+      error: '❌',
+      warning: '⚠️',
+      confirm: '❓'
+    };
+    
+    iconEl.innerHTML = icons[type] || icons.warning;
+    titleEl.innerText = title;
+    messageEl.innerText = message;
+    
+    buttonsEl.innerHTML = '';
+    
+    if (type === 'confirm' && onConfirm) {
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'modal-btn confirm';
+      confirmBtn.innerText = 'Confirm';
+      confirmBtn.onclick = () => {
+        closeModal();
+        onConfirm();
+      };
+      buttonsEl.appendChild(confirmBtn);
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'modal-btn cancel';
+      cancelBtn.innerText = 'Cancel';
+      cancelBtn.onclick = () => {
+        closeModal();
+        if (onCancel) onCancel();
+      };
+      buttonsEl.appendChild(cancelBtn);
+    } else {
+      const okBtn = document.createElement('button');
+      okBtn.className = 'modal-btn confirm';
+      okBtn.innerText = 'OK';
+      okBtn.onclick = closeModal;
+      buttonsEl.appendChild(okBtn);
+    }
+    
+    overlay.classList.add('active');
+  }
+  
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('active');
+  }
+  
   function showToast(message, isError = false) {
     const toast = document.getElementById('toastMsg');
     toast.innerText = message;
@@ -549,13 +697,85 @@
     if (flavours?.length) flavourSelect.value = flavours[0].id;
   }
 
-  async function loadAvailableHookahs() {
-    const { data, error } = await supabase.from('hookah_devices').select('id, device_code').eq('status', 'available');
-    if (error) console.error(error);
-    availableHookahs = data || [];
+  async function loadAvailableHookahs(preserveSelection = true) {
+    // Get all hookah devices
+    const { data: allHookahs, error } = await supabase
+      .from('hookah_devices')
+      .select('id, device_code, status')
+      .order('device_code');
+    
+    if (error) {
+      console.error(error);
+      return;
+    }
+    
+    // Get occupied hookah IDs from active sessions
+    const { data: activeSessionsData } = await supabase
+      .from('shisha_sessions')
+      .select('device_id')
+      .in('status', ['active', 'refill', 'paused']);
+    
+    occupiedHookahIds.clear();
+    if (activeSessionsData) {
+      activeSessionsData.forEach(session => occupiedHookahIds.add(session.device_id));
+    }
+    
+    // Mark occupied hookahs and filter available ones
+    availableHookahs = allHookahs.map(hookah => ({
+      ...hookah,
+      isOccupied: occupiedHookahIds.has(hookah.id)
+    }));
+    
     const select = document.getElementById('shishaSelect');
-    if (!availableHookahs.length) select.innerHTML = '<option>❌ No available hookahs</option>';
-    else select.innerHTML = availableHookahs.map(h => `<option value="${h.id}">${h.device_code}</option>`).join('');
+    const previousValue = preserveSelection ? select.value : null;
+    
+    if (!availableHookahs.length) {
+      select.innerHTML = '<option value="">❌ No hookah devices found</option>';
+    } else {
+      select.innerHTML = availableHookahs.map(h => 
+        `<option value="${h.id}" ${h.isOccupied ? 'disabled' : ''}>
+          ${h.device_code} ${h.isOccupied ? '🔴 OCCUPIED' : '✅ AVAILABLE'}
+        </option>`
+      ).join('');
+    }
+    
+    // Restore selection if valid and not occupied
+    if (previousValue && !occupiedHookahIds.has(parseInt(previousValue))) {
+      if (select.querySelector(`option[value="${previousValue}"]`)) {
+        select.value = previousValue;
+        currentSelectedStationId = previousValue;
+      } else {
+        // Try to select first available
+        const firstAvailable = availableHookahs.find(h => !h.isOccupied);
+        if (firstAvailable) {
+          select.value = firstAvailable.id;
+          currentSelectedStationId = firstAvailable.id;
+        } else {
+          select.value = '';
+          currentSelectedStationId = null;
+        }
+      }
+    } else if (!previousValue) {
+      // First load - select first available
+      const firstAvailable = availableHookahs.find(h => !h.isOccupied);
+      if (firstAvailable) {
+        select.value = firstAvailable.id;
+        currentSelectedStationId = firstAvailable.id;
+      }
+    }
+  }
+
+  // Validate hookah availability before creating session
+  async function validateHookahAvailability(deviceId) {
+    const { data, error } = await supabase
+      .from('shisha_sessions')
+      .select('id, status')
+      .eq('device_id', deviceId)
+      .in('status', ['active', 'refill', 'paused'])
+      .maybeSingle();
+    
+    if (error) throw error;
+    return !data; // Returns true if available (no active session)
   }
 
   async function loadActiveSessions() {
@@ -564,19 +784,24 @@
       .select(`
         id, device_id, hookah_devices!inner(device_code), product_id, shisha_products!inner(name),
         location_id, shisha_locations!inner(name), start_time, last_refill_time,
-        remaining_time_seconds, total_amount, refill_count, status, paused
+        total_amount, refill_count, status, paused
       `)
       .in('status', ['active', 'refill', 'paused']);
-    if (error) { console.error(error); return; }
+    if (error) { 
+      console.error(error); 
+      return; 
+    }
     activeSessions = data.map(s => ({
       ...s,
       device_code: s.hookah_devices?.device_code,
       flavour_name: s.shisha_products?.name,
-      location_name: s.shisha_locations?.name,
-      remainingTime: s.remaining_time_seconds
+      location_name: s.shisha_locations?.name
     }));
     updateStats();
     renderSessions();
+    
+    // Refresh hookah availability after sessions change
+    await loadAvailableHookahs(true);
   }
 
   function updateStats() {
@@ -591,59 +816,6 @@
     document.getElementById('statRefill').innerText = refill;
   }
 
-  function getLiveRemainingSeconds(session) {
-    if (session.paused || session.status === 'expired') {
-      return session.remaining_time_seconds;
-    }
-    const referenceTime = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
-    const now = new Date();
-    const elapsedSeconds = (now - referenceTime) / 1000;
-    const totalDuration = COAL_DURATION * 60;
-    let remaining = totalDuration - elapsedSeconds;
-    return remaining > 0 ? remaining : 0;
-  }
-
-  function formatTime(seconds) {
-    if (seconds <= 0) return "EXPIRED";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
-  }
-
-  function updateAllTimers() {
-    document.querySelectorAll('.timer-value').forEach(elem => {
-      const sessionId = elem.getAttribute('data-session-id');
-      if (!sessionId) return;
-      const session = activeSessions.find(s => s.id === sessionId);
-      if (!session) return;
-      let remainingSec = getLiveRemainingSeconds(session);
-      if (remainingSec <= 0 && !session.paused && session.status !== 'expired') {
-        elem.innerText = "EXPIRED";
-        elem.style.color = "var(--red)";
-        const parentItem = elem.closest('.session-item');
-        if (parentItem && !parentItem.classList.contains('expired')) {
-          parentItem.classList.add('expired');
-          const badge = parentItem.querySelector('.status-badge');
-          if (badge) {
-            badge.innerText = "EXPIRED";
-            badge.classList.remove('active', 'refill', 'paused');
-            badge.classList.add('expired');
-          }
-        }
-      } else {
-        elem.innerText = formatTime(remainingSec);
-        elem.style.color = "";
-      }
-    });
-  }
-
-  function startCountdownUpdater() {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(() => {
-      updateAllTimers();
-    }, 1000);
-  }
-
   function renderSessions() {
     const container = document.getElementById('sessionsList');
     if (!activeSessions.length) {
@@ -655,9 +827,7 @@
       if (s.paused) { statusClass = 'paused'; statusText = 'PAUSED'; }
       else if (s.status === 'expired') { statusClass = 'expired'; statusText = 'EXPIRED'; }
       else if (s.status === 'refill') { statusClass = 'refill'; statusText = 'REFILL SOON'; }
-      let initialRemaining = getLiveRemainingSeconds(s);
-      let timerDisplay = formatTime(initialRemaining);
-      if (initialRemaining <= 0 && !s.paused && s.status !== 'expired') timerDisplay = "EXPIRED";
+      
       return `
         <div class="session-item ${statusClass}" data-session-id="${s.id}">
           <div class="session-header">
@@ -666,7 +836,6 @@
           </div>
           <div><small>📍 ${s.location_name} | 🍃 ${s.flavour_name}</small></div>
           <div><small>💰 Total: R${s.total_amount} | ♻️ Refills: ${s.refill_count || 0}</small></div>
-          <div class="timer">⏱️ <span class="timer-value" data-session-id="${s.id}">${timerDisplay}</span></div>
           <div class="session-actions">
             <button class="btn-refill" data-id="${s.id}">🔄 Refill (R${REFILL_PRICE})</button>
             <button class="btn-end" data-id="${s.id}">❌ End</button>
@@ -676,45 +845,61 @@
     }).join('');
     document.querySelectorAll('.btn-refill').forEach(btn => btn.addEventListener('click', () => refillSession(btn.dataset.id)));
     document.querySelectorAll('.btn-end').forEach(btn => btn.addEventListener('click', () => endSession(btn.dataset.id)));
-    updateAllTimers();
   }
 
   async function refillSession(sessionId) {
     const session = activeSessions.find(s => s.id === sessionId);
     if (!session) return;
-    if (session.paused) { showToast("Session paused. Resume before refill.", true); return; }
-    if (!confirm(`Refill ${session.device_code} for R${REFILL_PRICE}?`)) return;
-
-    const newTotal = session.total_amount + REFILL_PRICE;
-    const newRefillCount = (session.refill_count || 0) + 1;
-    const { error } = await supabase
-      .from('shisha_sessions')
-      .update({
-        total_amount: newTotal,
-        refill_count: newRefillCount,
-        last_refill_time: new Date().toISOString(),
-        remaining_time_seconds: COAL_DURATION * 60,
-        status: 'active'
-      })
-      .eq('id', sessionId);
-    if (error) { showToast(error.message, true); return; }
-    showToast(`✅ Refilled! New total: R${newTotal}`);
-    await loadActiveSessions();
-    await loadAvailableHookahs();
+    if (session.paused) { 
+      showToast("Session paused. Resume before refill.", true); 
+      return; 
+    }
+    
+    showModal('confirm', 'Confirm Refill', 
+      `Refill ${session.device_code} for R${REFILL_PRICE}? Total will be R${session.total_amount + REFILL_PRICE}`,
+      async () => {
+        const newTotal = session.total_amount + REFILL_PRICE;
+        const newRefillCount = (session.refill_count || 0) + 1;
+        const { error } = await supabase
+          .from('shisha_sessions')
+          .update({
+            total_amount: newTotal,
+            refill_count: newRefillCount,
+            last_refill_time: new Date().toISOString(),
+            status: 'active'
+          })
+          .eq('id', sessionId);
+        if (error) { 
+          showToast(error.message, true); 
+          return; 
+        }
+        showToast(`✅ Refilled! New total: R${newTotal}`);
+        await loadActiveSessions();
+        await loadAvailableHookahs(true);
+      }
+    );
   }
 
   async function endSession(sessionId) {
     const session = activeSessions.find(s => s.id === sessionId);
     if (!session) return;
-    if (!confirm(`End session for ${session.device_code}? Total: R${session.total_amount}`)) return;
-    const { error } = await supabase
-      .from('shisha_sessions')
-      .update({ status: 'expired', ended_at: new Date().toISOString() })
-      .eq('id', sessionId);
-    if (error) { showToast(error.message, true); return; }
-    showToast("Session ended");
-    await loadActiveSessions();
-    await loadAvailableHookahs();
+    
+    showModal('confirm', 'End Session', 
+      `End session for ${session.device_code}? Total amount due: R${session.total_amount}`,
+      async () => {
+        const { error } = await supabase
+          .from('shisha_sessions')
+          .update({ status: 'expired', ended_at: new Date().toISOString() })
+          .eq('id', sessionId);
+        if (error) { 
+          showToast(error.message, true); 
+          return; 
+        }
+        showToast("Session ended");
+        await loadActiveSessions();
+        await loadAvailableHookahs(true);
+      }
+    );
   }
 
   // ============ BOX OFFICE PAYMENT INTEGRATION (COPIED & ADAPTED) ==========
@@ -745,6 +930,13 @@
     if (!locationId || !productId || !deviceId) {
       throw new Error("Please fill all session fields");
     }
+    
+    // Validate hookah availability before creating session
+    const isAvailable = await validateHookahAvailability(deviceId);
+    if (!isAvailable) {
+      const hookah = availableHookahs.find(h => h.id == deviceId);
+      throw new Error(`${hookah?.device_code || 'This hookah'} is already assigned to another customer. Please select a different station.`);
+    }
 
     const { error } = await supabase.from('shisha_sessions').insert({
       device_id: deviceId,
@@ -752,7 +944,6 @@
       location_id: locationId,
       start_time: new Date().toISOString(),
       last_refill_time: new Date().toISOString(),
-      remaining_time_seconds: COAL_DURATION * 60,
       total_amount: SESSION_PRICE,
       refill_count: 0,
       status: 'active',
@@ -769,6 +960,8 @@
   async function processCashPayment() {
     const requestPaymentBtn = document.getElementById('requestPaymentBtn');
     const requestStatusDiv = document.getElementById('requestStatus');
+    const deviceId = document.getElementById('shishaSelect').value;
+    const hookah = availableHookahs.find(h => h.id == deviceId);
     
     requestPaymentBtn.disabled = true;
     requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
@@ -777,6 +970,12 @@
     requestStatusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing cash payment...';
     
     try {
+      // Double-check availability
+      const isAvailable = await validateHookahAvailability(deviceId);
+      if (!isAvailable) {
+        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied. Please select a different station.`);
+      }
+      
       await createShishaSession('cash', null);
       await supabase.from('payment_requests').insert({
         customer_phone: 'walkin_customer',
@@ -790,7 +989,7 @@
       requestStatusDiv.className = 'status-panel success';
       showToast(`✅ Session started successfully!`, false);
       await loadActiveSessions();
-      await loadAvailableHookahs();
+      await loadAvailableHookahs(true);
       resetPaymentForm();
       return true;
     } catch (err) {
@@ -800,7 +999,7 @@
       return false;
     } finally {
       requestPaymentBtn.disabled = false;
-      requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
+      requestPaymentBtn.innerHTML = 'Process Cash Payment';
       setTimeout(() => { if (requestStatusDiv.className !== 'status-panel success') requestStatusDiv.style.display = 'none'; }, 5000);
     }
   }
@@ -808,11 +1007,19 @@
   async function processCardPayment() {
     const requestPaymentBtn = document.getElementById('requestPaymentBtn');
     const requestStatusDiv = document.getElementById('requestStatus');
+    const deviceId = document.getElementById('shishaSelect').value;
+    const hookah = availableHookahs.find(h => h.id == deviceId);
     
     requestPaymentBtn.disabled = true;
     requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Initializing payment...';
     
     try {
+      // Check availability before initializing payment
+      const isAvailable = await validateHookahAvailability(deviceId);
+      if (!isAvailable) {
+        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied. Please select a different station.`);
+      }
+      
       const totalAmount = SESSION_PRICE;
       const amountCents = Math.round(totalAmount * 100);
       
@@ -849,20 +1056,25 @@
       
       sessionStorage.setItem('pendingShishaPayment', JSON.stringify({ 
         total_amount: totalAmount, 
-        transaction_id: pendingTx.id
+        transaction_id: pendingTx.id,
+        device_id: deviceId,
+        location_id: document.getElementById('locationSelect').value,
+        product_id: document.getElementById('flavourSelect').value
       }));
       
       window.location.href = edgeResponse.checkout_url;
     } catch (err) {
       showToast(err.message, true);
       requestPaymentBtn.disabled = false;
-      requestPaymentBtn.innerHTML = '💳 Pay with Card';
+      requestPaymentBtn.innerHTML = 'Pay with Card';
       return false;
     }
   }
 
   async function processWalletPayment() {
     const phone = document.getElementById('customerPhoneWallet').value.trim();
+    const deviceId = document.getElementById('shishaSelect').value;
+    const hookah = availableHookahs.find(h => h.id == deviceId);
     
     if (!phone || !/^[0-9]{10}$/.test(phone)) {
       showToast('Enter valid 10-digit WhatsApp number for wallet', true);
@@ -876,6 +1088,12 @@
     requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Sending request...';
     
     try {
+      // Check availability before sending request
+      const isAvailable = await validateHookahAvailability(deviceId);
+      if (!isAvailable) {
+        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied. Please select a different station.`);
+      }
+      
       const customer = await getOrCreateCustomerProfile(phone);
       const totalAmount = SESSION_PRICE;
       
@@ -887,7 +1105,7 @@
         status: 'pending',
         requested_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 2 * 60000).toISOString(),
-        metadata: { payment_method: 'wallet', shisha_session: true }
+        metadata: { payment_method: 'wallet', shisha_session: true, device_id: deviceId }
       }).select().single();
       
       if (error) throw error;
@@ -934,7 +1152,7 @@
     } catch (err) {
       showToast(err.message, true);
       requestPaymentBtn.disabled = false;
-      requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
+      requestPaymentBtn.innerHTML = 'Request Wallet Payment';
     }
   }
 
@@ -948,7 +1166,7 @@
       requestStatusDiv.className = 'status-panel success';
       showToast(`✅ Session started successfully!`, false);
       await loadActiveSessions();
-      await loadAvailableHookahs();
+      await loadAvailableHookahs(true);
       resetWalletRequestFlow();
       resetPaymentForm();
     } catch (err) {
@@ -986,30 +1204,28 @@
     const requestPaymentBtn = document.getElementById('requestPaymentBtn');
     const isPaymentSelected = selectedPaymentMethod !== null;
     
-    // For wallet payments, also check if phone number is entered
     if (selectedPaymentMethod === 'wallet') {
       const walletPhone = document.getElementById('customerPhoneWallet').value.trim();
       const isPhoneValid = walletPhone.length >= 10;
       requestPaymentBtn.disabled = !isPhoneValid;
       
       if (!isPhoneValid) {
-        requestPaymentBtn.innerHTML = '📱 Enter WhatsApp number for wallet';
+        requestPaymentBtn.innerHTML = 'Enter WhatsApp number for wallet';
       } else {
-        requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
+        requestPaymentBtn.innerHTML = 'Request Wallet Payment';
       }
     } else {
       requestPaymentBtn.disabled = !isPaymentSelected;
       if (!isPaymentSelected) {
         requestPaymentBtn.innerHTML = '⚠️ Select payment method first';
       } else if (selectedPaymentMethod === 'cash') {
-        requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
+        requestPaymentBtn.innerHTML = 'Process Cash Payment';
       } else if (selectedPaymentMethod === 'card') {
-        requestPaymentBtn.innerHTML = '💳 Pay with Card';
+        requestPaymentBtn.innerHTML = 'Pay with Card';
       }
     }
   }
 
-  // Payment method selection (copied from box-office)
   function initPaymentHandlers() {
     document.getElementById('cashOption').addEventListener('click', () => {
       selectedPaymentMethod = 'cash';
@@ -1051,10 +1267,15 @@
   // ============ INITIALIZATION ==========
   async function init() {
     await loadDropdowns();
-    await loadAvailableHookahs();
+    await loadAvailableHookahs(false); // Don't preserve selection on first load
     await loadActiveSessions();
-    startCountdownUpdater();
     initPaymentHandlers();
+    
+    // Preserve station selection when dropdown changes manually
+    const stationSelect = document.getElementById('shishaSelect');
+    stationSelect.addEventListener('change', (e) => {
+      currentSelectedStationId = e.target.value;
+    });
     
     const requestPaymentBtn = document.getElementById('requestPaymentBtn');
     requestPaymentBtn.addEventListener('click', async () => {
@@ -1072,11 +1293,6 @@
       updateCheckoutButtonState();
     });
     
-    document.getElementById('openAdminPanelBtn').addEventListener('click', (e) => {
-      e.preventDefault();
-      window.open('shisha-management.html', '_blank');
-    });
-    
     // Check for returning from card payment
     const pendingPayment = sessionStorage.getItem('pendingShishaPayment');
     if (pendingPayment) {
@@ -1085,6 +1301,20 @@
       showToast('Payment successful! Starting session...', false);
       setTimeout(async () => {
         try {
+          // Restore selected values
+          if (payment.device_id) {
+            const deviceSelect = document.getElementById('shishaSelect');
+            if (deviceSelect.querySelector(`option[value="${payment.device_id}"]`)) {
+              deviceSelect.value = payment.device_id;
+            }
+          }
+          if (payment.location_id) {
+            document.getElementById('locationSelect').value = payment.location_id;
+          }
+          if (payment.product_id) {
+            document.getElementById('flavourSelect').value = payment.product_id;
+          }
+          
           await createShishaSession('card', null);
           await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id);
           await supabase.from('payment_requests').insert({
@@ -1097,7 +1327,7 @@
           });
           showToast(`✅ Session started successfully!`, false);
           await loadActiveSessions();
-          await loadAvailableHookahs();
+          await loadAvailableHookahs(true);
           resetPaymentForm();
         } catch (err) { 
           showToast('Failed to start session: ' + err.message, true);
@@ -1107,8 +1337,8 @@
     
     setInterval(async () => {
       await loadActiveSessions();
-      await loadAvailableHookahs();
-    }, 4000);
+      await loadAvailableHookahs(true);
+    }, 5000);
   }
   
   init();
