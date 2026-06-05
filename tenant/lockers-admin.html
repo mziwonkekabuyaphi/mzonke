@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>Vault Admin (Embedded)</title>
+  <title>Vault Admin (Supabase Connected)</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
@@ -87,6 +87,7 @@
     }
     .status-available { background: #d1fae5; color: #065f46; }
     .status-occupied { background: #fed7aa; color: #9a3412; }
+    .status-maintenance { background: #fee2e2; color: #991b1b; }
     .btn-primary {
       background: #E30613;
       border: none;
@@ -95,6 +96,7 @@
       font-weight: 600;
       color: white;
       cursor: pointer;
+      transition: all 0.2s;
     }
     .btn-primary:hover { background: #b8050f; transform: translateY(-2px); }
     .btn-secondary {
@@ -163,6 +165,7 @@
       margin: 10px 0 16px;
       border: 1px solid #cbd5e1;
       border-radius: 60px;
+      font-family: 'Inter', sans-serif;
     }
     .toast-notify {
       position: fixed;
@@ -179,6 +182,16 @@
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(20px);}
       to { opacity: 1; transform: translateY(0);}
+    }
+    .locker-number {
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: #1e293b;
+    }
+    .loading-spinner {
+      text-align: center;
+      padding: 2rem;
+      color: #94a3b8;
     }
   </style>
 </head>
@@ -208,73 +221,493 @@
         <h2><i class="fas fa-cube" style="color:#E30613;"></i> Item Inventory</h2>
         <button class="btn-primary" onclick="openCreateItemModal()"><i class="fas fa-plus"></i> New Item</button>
       </div>
-      <div class="items-list-scroll" id="itemsListContainer"><div class="empty-state">No items yet.</div></div>
+      <div class="items-list-scroll" id="itemsListContainer"><div class="empty-state">Loading items...</div></div>
     </div>
   </div>
 </div>
 
-<!-- modals (unchanged functionality) -->
-<div id="createLockerModalWin" class="modal-glass"><div class="modal-card"><h3>New Locker</h3><label>Locker Number</label><input type="number" id="lockerNumberInput"><label>QR Tag</label><input type="text" id="lockerQrInput"><div class="flex-btns" style="display:flex; gap:12px; margin-top:20px;"><button class="btn-secondary" onclick="closeLockerModal()">Cancel</button><button class="btn-primary" onclick="createLockerAdmin()">Create</button></div></div></div>
-<div id="createItemModalWin" class="modal-glass"><div class="modal-card"><h3>Add Product</h3><label>Item Name</label><input type="text" id="itemNameInput"><label>Price (R)</label><input type="number" step="0.01" id="itemPriceInput"><label>Barcode</label><input type="text" id="itemBarcodeInput"><div class="flex-btns" style="display:flex; gap:12px; margin-top:20px;"><button class="btn-secondary" onclick="closeItemModal()">Cancel</button><button class="btn-primary" onclick="addItemToInventory()">Add</button></div></div></div>
-<div id="confirmDeleteModal" class="modal-glass"><div class="modal-card"><h3>Confirm Delete</h3><p id="deleteConfirmMsg"></p><div class="flex-btns" style="display:flex; gap:12px; margin-top:20px;"><button class="btn-secondary" onclick="closeConfirmModal()">Cancel</button><button class="btn-danger" id="confirmDeleteBtn">Delete</button></div></div></div>
+<!-- Modals -->
+<div id="createLockerModalWin" class="modal-glass">
+  <div class="modal-card">
+    <h3>Create New Locker</h3>
+    <label>Locker Number (e.g., L-001, A-101, VIP-01)</label>
+    <input type="text" id="lockerNumberInput" placeholder="L-001" pattern="[A-Za-z0-9\-]+">
+    <label>Location (optional)</label>
+    <input type="text" id="lockerLocationInput" placeholder="Main Hall, VIP Section, etc.">
+    <label>Size (optional)</label>
+    <select id="lockerSizeInput">
+      <option value="Small">Small</option>
+      <option value="Medium">Medium</option>
+      <option value="Large">Large</option>
+      <option value="Extra Large">Extra Large</option>
+    </select>
+    <div style="display:flex; gap:12px; margin-top:20px;">
+      <button class="btn-secondary" onclick="closeLockerModal()">Cancel</button>
+      <button class="btn-primary" onclick="createLockerAdmin()">Create Locker</button>
+    </div>
+  </div>
+</div>
 
-<script>
-// Exact same JavaScript from original (lockers + items logic), no changes to functionality
-const STORAGE_LOCKERS = 'rands_lockers';
-const STORAGE_ITEMS = 'rands_inventory_items';
-let lockers = [];
-let inventoryItems = [];
-let pendingDeleteCallback = null;
+<div id="createItemModalWin" class="modal-glass">
+  <div class="modal-card">
+    <h3>Add Product to Inventory</h3>
+    <label>Product Name</label>
+    <input type="text" id="itemNameInput" placeholder="e.g., Jameson Whiskey">
+    <label>Price (R)</label>
+    <input type="number" step="0.01" id="itemPriceInput" placeholder="0.00">
+    <label>Category</label>
+    <select id="itemCategoryInput">
+      <option value="beer">Beer</option>
+      <option value="wine">Wine</option>
+      <option value="spirits">Spirits</option>
+      <option value="non_alcoholic">Non-Alcoholic</option>
+      <option value="other">Other</option>
+    </select>
+    <label>Alcohol?</label>
+    <select id="itemAlcoholInput">
+      <option value="true">Yes (Alcoholic)</option>
+      <option value="false">No (Non-Alcoholic)</option>
+    </select>
+    <div style="display:flex; gap:12px; margin-top:20px;">
+      <button class="btn-secondary" onclick="closeItemModal()">Cancel</button>
+      <button class="btn-primary" onclick="addItemToInventory()">Add Product</button>
+    </div>
+  </div>
+</div>
 
-function loadLockersFromStorage() { /* same as original */ }
-function createInitialLockers() { /* same */ }
-function loadInventoryFromStorage() { /* same */ }
-function saveLockers() { localStorage.setItem(STORAGE_LOCKERS, JSON.stringify(lockers)); }
-function saveInventory() { localStorage.setItem(STORAGE_ITEMS, JSON.stringify(inventoryItems)); }
-function renderLockersAdmin() { /* same but adapt IDs */ }
-function renderItemsAdmin() { /* same */ }
-function updateStatsUI() { /* same */ }
-function openCreateLockerModal() { document.getElementById('createLockerModalWin').classList.add('active'); }
-function closeLockerModal() { document.getElementById('createLockerModalWin').classList.remove('active'); }
-function createLockerAdmin() { /* same logic */ }
-function deleteLockerPrompt(lockerId) { /* same */ }
-function closeConfirmModal() { document.getElementById('confirmDeleteModal').classList.remove('active'); }
-function viewLockerItems(lockerId) { /* same */ }
-function openCreateItemModal() { document.getElementById('createItemModalWin').classList.add('active'); }
-function closeItemModal() { document.getElementById('createItemModalWin').classList.remove('active'); }
-function addItemToInventory() { /* same */ }
-function deleteItem(itemId) { /* same */ }
-function refreshLockersAdmin() { loadLockersFromStorage(); renderLockersAdmin(); showToast("Lockers refreshed"); }
-function showToast(msg) { /* same toast */ }
+<div id="confirmDeleteModal" class="modal-glass">
+  <div class="modal-card">
+    <h3>Confirm Delete</h3>
+    <p id="deleteConfirmMsg"></p>
+    <div style="display:flex; gap:12px; margin-top:20px;">
+      <button class="btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn-danger" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
 
-// Initialise
-function init() {
-  loadLockersFromStorage();
-  loadInventoryFromStorage();
-  renderLockersAdmin();
-  renderItemsAdmin();
-}
-init();
-setInterval(() => {
-  const fresh = localStorage.getItem(STORAGE_LOCKERS);
-  if (fresh) { lockers = JSON.parse(fresh); renderLockersAdmin(); }
-  const freshItems = localStorage.getItem(STORAGE_ITEMS);
-  if (freshItems) { inventoryItems = JSON.parse(freshItems); renderItemsAdmin(); }
-  updateStatsUI();
-}, 2800);
+<script type="module">
+  import { supabase } from '../config/supabase.js';
 
-// Expose globals
-window.openCreateLockerModal = openCreateLockerModal;
-window.closeLockerModal = closeLockerModal;
-window.createLockerAdmin = createLockerAdmin;
-window.deleteLockerPrompt = deleteLockerPrompt;
-window.closeConfirmModal = closeConfirmModal;
-window.viewLockerItems = viewLockerItems;
-window.openCreateItemModal = openCreateItemModal;
-window.closeItemModal = closeItemModal;
-window.addItemToInventory = addItemToInventory;
-window.deleteItem = deleteItem;
-window.refreshLockersAdmin = refreshLockersAdmin;
+  // Global state
+  let lockers = [];
+  let inventoryItems = [];
+  let pendingDeleteCallback = null;
+  let pendingDeleteId = null;
+  let deleteType = null;
+
+  // Helper functions
+  function showToast(message, isError = false) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-notify';
+    toast.textContent = message;
+    toast.style.background = isError ? '#dc2626' : '#1e293b';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
+  // LOCKER FUNCTIONS (Supabase)
+  async function loadLockersFromSupabase() {
+    try {
+      const { data, error } = await supabase
+        .from('lockers')
+        .select('*')
+        .order('locker_number', { ascending: true });
+      
+      if (error) throw error;
+      
+      lockers = data || [];
+      renderLockersAdmin();
+      updateStatsUI();
+      return lockers;
+    } catch (err) {
+      console.error('Error loading lockers:', err);
+      showToast('Failed to load lockers from database', true);
+      lockers = [];
+      renderLockersAdmin();
+      return [];
+    }
+  }
+
+  async function createLockerInSupabase(lockerData) {
+    try {
+      const { data, error } = await supabase
+        .from('lockers')
+        .insert([{
+          locker_number: lockerData.locker_number,
+          location: lockerData.location || null,
+          size: lockerData.size || 'Medium',
+          status: 'available',
+          price_per_hour: 0
+        }])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      showToast(`✅ Locker ${lockerData.locker_number} created successfully!`);
+      await loadLockersFromSupabase();
+      return data;
+    } catch (err) {
+      console.error('Error creating locker:', err);
+      showToast(err.message || 'Failed to create locker', true);
+      return null;
+    }
+  }
+
+  async function deleteLockerFromSupabase(lockerId, lockerNumber) {
+    try {
+      const { error } = await supabase
+        .from('lockers')
+        .delete()
+        .eq('id', lockerId);
+      
+      if (error) throw error;
+      
+      showToast(`✅ Locker ${lockerNumber} deleted successfully!`);
+      await loadLockersFromSupabase();
+      return true;
+    } catch (err) {
+      console.error('Error deleting locker:', err);
+      showToast(err.message || 'Failed to delete locker', true);
+      return false;
+    }
+  }
+
+  async function updateLockerStatus(lockerId, status) {
+    try {
+      const { error } = await supabase
+        .from('lockers')
+        .update({ status: status })
+        .eq('id', lockerId);
+      
+      if (error) throw error;
+      
+      await loadLockersFromSupabase();
+      return true;
+    } catch (err) {
+      console.error('Error updating locker status:', err);
+      showToast('Failed to update locker status', true);
+      return false;
+    }
+  }
+
+  // INVENTORY FUNCTIONS (Supabase - using products table)
+  async function loadInventoryFromSupabase() {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('name', { ascending: true });
+      
+      if (error) throw error;
+      
+      inventoryItems = data || [];
+      renderItemsAdmin();
+      updateStatsUI();
+      return inventoryItems;
+    } catch (err) {
+      console.error('Error loading inventory:', err);
+      showToast('Failed to load inventory from database', true);
+      inventoryItems = [];
+      renderItemsAdmin();
+      return [];
+    }
+  }
+
+  async function createProductInSupabase(productData) {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert([{
+          name: productData.name,
+          price: parseFloat(productData.price),
+          category: productData.category,
+          alcohol: productData.alcohol === 'true',
+          is_available: true,
+          stock_quantity: 0,
+          product_type: 'other'
+        }])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      showToast(`✅ Product "${productData.name}" created successfully!`);
+      await loadInventoryFromSupabase();
+      return data;
+    } catch (err) {
+      console.error('Error creating product:', err);
+      showToast(err.message || 'Failed to create product', true);
+      return null;
+    }
+  }
+
+  async function deleteProductFromSupabase(productId, productName) {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+      
+      if (error) throw error;
+      
+      showToast(`✅ Product "${productName}" deleted successfully!`);
+      await loadInventoryFromSupabase();
+      return true;
+    } catch (err) {
+      console.error('Error deleting product:', err);
+      showToast(err.message || 'Failed to delete product', true);
+      return false;
+    }
+  }
+
+  // UI RENDERING
+  function renderLockersAdmin() {
+    const grid = document.getElementById('lockerAdminGrid');
+    if (!grid) return;
+    
+    if (!lockers || lockers.length === 0) {
+      grid.innerHTML = '<div class="empty-state">No lockers yet. Click "Create Locker" to get started.</div>';
+      return;
+    }
+    
+    grid.innerHTML = lockers.map(locker => `
+      <div class="locker-admin-card">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+          <div class="locker-number">🔒 ${escapeHtml(locker.locker_number)}</div>
+          <div>
+            <span class="locker-status status-${locker.status === 'available' ? 'available' : (locker.status === 'rented' ? 'occupied' : 'maintenance')}">
+              ${locker.status === 'available' ? 'AVAILABLE' : (locker.status === 'rented' ? 'OCCUPIED' : 'MAINTENANCE')}
+            </span>
+          </div>
+        </div>
+        <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 8px;">
+          ${locker.location ? `<div><i class="fas fa-location-dot"></i> ${escapeHtml(locker.location)}</div>` : ''}
+          ${locker.size ? `<div><i class="fas fa-expand"></i> ${escapeHtml(locker.size)}</div>` : ''}
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          ${locker.status === 'available' ? 
+            `<button class="btn-secondary" style="flex:1;" onclick="markLockerOccupied('${locker.id}')">
+               <i class="fas fa-user-check"></i> Mark Occupied
+             </button>` : 
+            `<button class="btn-secondary" style="flex:1;" onclick="markLockerAvailable('${locker.id}')">
+               <i class="fas fa-check-circle"></i> Mark Available
+             </button>`
+          }
+          <button class="btn-danger" style="flex:0.5;" onclick="deleteLockerPrompt('${locker.id}', '${escapeHtml(locker.locker_number)}')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderItemsAdmin() {
+    const container = document.getElementById('itemsListContainer');
+    if (!container) return;
+    
+    if (!inventoryItems || inventoryItems.length === 0) {
+      container.innerHTML = '<div class="empty-state">No items yet. Click "New Item" to add products.</div>';
+      return;
+    }
+    
+    container.innerHTML = inventoryItems.map(item => `
+      <div class="item-row">
+        <div style="flex:2;">
+          <strong>${escapeHtml(item.name)}</strong><br>
+          <small style="color:#64748b;">${item.category || 'Uncategorized'} ${item.alcohol ? '🍺' : '🥤'}</small>
+        </div>
+        <div class="item-price" style="flex:1; text-align:right;">
+          R${(item.price || 0).toFixed(2)}
+        </div>
+        <button class="btn-danger" style="margin-left: 12px;" onclick="deleteItemPrompt('${item.id}', '${escapeHtml(item.name)}')">
+          <i class="fas fa-trash-alt"></i>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  function updateStatsUI() {
+    const totalLockers = lockers.length;
+    const availableLockers = lockers.filter(l => l.status === 'available').length;
+    const occupiedLockers = lockers.filter(l => l.status === 'rented').length;
+    const itemsCount = inventoryItems.length;
+    
+    document.getElementById('kpiTotalLockers').textContent = totalLockers;
+    document.getElementById('kpiAvailable').textContent = availableLockers;
+    document.getElementById('kpiOccupied').textContent = occupiedLockers;
+    document.getElementById('kpiItemsCount').textContent = itemsCount;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
+  }
+
+  // Modal handlers
+  function openCreateLockerModal() {
+    document.getElementById('lockerNumberInput').value = '';
+    document.getElementById('lockerLocationInput').value = '';
+    document.getElementById('lockerSizeInput').value = 'Medium';
+    document.getElementById('createLockerModalWin').classList.add('active');
+  }
+  
+  function closeLockerModal() {
+    document.getElementById('createLockerModalWin').classList.remove('active');
+  }
+  
+  async function createLockerAdmin() {
+    const lockerNumber = document.getElementById('lockerNumberInput').value.trim();
+    const location = document.getElementById('lockerLocationInput').value.trim();
+    const size = document.getElementById('lockerSizeInput').value;
+    
+    if (!lockerNumber) {
+      showToast('Please enter a locker number (e.g., L-001, A-101)', true);
+      return;
+    }
+    
+    // Check for duplicate locker number
+    const exists = lockers.some(l => l.locker_number === lockerNumber);
+    if (exists) {
+      showToast(`Locker ${lockerNumber} already exists!`, true);
+      return;
+    }
+    
+    closeLockerModal();
+    
+    await createLockerInSupabase({
+      locker_number: lockerNumber,
+      location: location,
+      size: size
+    });
+  }
+  
+  function deleteLockerPrompt(lockerId, lockerNumber) {
+    pendingDeleteId = lockerId;
+    deleteType = 'locker';
+    document.getElementById('deleteConfirmMsg').textContent = `Delete locker "${lockerNumber}"? This action cannot be undone.`;
+    document.getElementById('confirmDeleteModal').classList.add('active');
+  }
+  
+  async function deleteItemPrompt(itemId, itemName) {
+    pendingDeleteId = itemId;
+    deleteType = 'item';
+    document.getElementById('deleteConfirmMsg').textContent = `Delete "${itemName}" from inventory? This action cannot be undone.`;
+    document.getElementById('confirmDeleteModal').classList.add('active');
+  }
+  
+  async function confirmDelete() {
+    if (deleteType === 'locker' && pendingDeleteId) {
+      const locker = lockers.find(l => l.id === pendingDeleteId);
+      await deleteLockerFromSupabase(pendingDeleteId, locker?.locker_number || 'Unknown');
+    } else if (deleteType === 'item' && pendingDeleteId) {
+      const item = inventoryItems.find(i => i.id === pendingDeleteId);
+      await deleteProductFromSupabase(pendingDeleteId, item?.name || 'Unknown');
+    }
+    closeConfirmModal();
+    pendingDeleteId = null;
+    deleteType = null;
+  }
+  
+  function closeConfirmModal() {
+    document.getElementById('confirmDeleteModal').classList.remove('active');
+  }
+  
+  async function markLockerOccupied(lockerId) {
+    await updateLockerStatus(lockerId, 'rented');
+    showToast('Locker marked as occupied');
+  }
+  
+  async function markLockerAvailable(lockerId) {
+    await updateLockerStatus(lockerId, 'available');
+    showToast('Locker marked as available');
+  }
+  
+  function openCreateItemModal() {
+    document.getElementById('itemNameInput').value = '';
+    document.getElementById('itemPriceInput').value = '';
+    document.getElementById('itemCategoryInput').value = 'spirits';
+    document.getElementById('itemAlcoholInput').value = 'true';
+    document.getElementById('createItemModalWin').classList.add('active');
+  }
+  
+  function closeItemModal() {
+    document.getElementById('createItemModalWin').classList.remove('active');
+  }
+  
+  async function addItemToInventory() {
+    const name = document.getElementById('itemNameInput').value.trim();
+    const price = document.getElementById('itemPriceInput').value;
+    const category = document.getElementById('itemCategoryInput').value;
+    const alcohol = document.getElementById('itemAlcoholInput').value;
+    
+    if (!name) {
+      showToast('Please enter a product name', true);
+      return;
+    }
+    
+    if (!price || parseFloat(price) <= 0) {
+      showToast('Please enter a valid price', true);
+      return;
+    }
+    
+    closeItemModal();
+    
+    await createProductInSupabase({
+      name: name,
+      price: price,
+      category: category,
+      alcohol: alcohol
+    });
+  }
+  
+  function refreshLockersAdmin() {
+    loadLockersFromSupabase();
+    showToast('Refreshing lockers...');
+  }
+  
+  // Auto-refresh every 5 seconds
+  let autoRefreshInterval;
+  
+  function startAutoRefresh() {
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+    autoRefreshInterval = setInterval(() => {
+      loadLockersFromSupabase();
+      loadInventoryFromSupabase();
+    }, 5000);
+  }
+  
+  // Initialize
+  async function init() {
+    await Promise.all([
+      loadLockersFromSupabase(),
+      loadInventoryFromSupabase()
+    ]);
+    startAutoRefresh();
+  }
+  
+  init();
+  
+  // Expose global functions
+  window.openCreateLockerModal = openCreateLockerModal;
+  window.closeLockerModal = closeLockerModal;
+  window.createLockerAdmin = createLockerAdmin;
+  window.deleteLockerPrompt = deleteLockerPrompt;
+  window.deleteItemPrompt = deleteItemPrompt;
+  window.confirmDelete = confirmDelete;
+  window.closeConfirmModal = closeConfirmModal;
+  window.markLockerOccupied = markLockerOccupied;
+  window.markLockerAvailable = markLockerAvailable;
+  window.openCreateItemModal = openCreateItemModal;
+  window.closeItemModal = closeItemModal;
+  window.addItemToInventory = addItemToInventory;
+  window.refreshLockersAdmin = refreshLockersAdmin;
 </script>
 </body>
 </html>
