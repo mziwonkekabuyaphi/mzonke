@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* ========== EMBEDDED MODULE BASE (identical to Pre-Order POS) ========== */
+    /* ========== EMBEDDED MODULE BASE ========== */
     :root {
       --red: #E30613;
       --red-dark: #a0010e;
@@ -345,7 +345,7 @@
   </div>
 </div>
 
-<!-- Modals (identical to original but restyled) -->
+<!-- Modals -->
 <div id="genericModal" class="modal-overlay" style="display:none;">
   <div class="modal-card">
     <h3 id="modalTitle">Notice</h3>
@@ -359,14 +359,6 @@
     <h3>📝 Assign new session (R250)</h3>
     <select id="assignLocation"></select>
     <select id="assignFlavour"></select>
-    <select id="assignPayment">
-      <option value="cash">Cash</option>
-      <option value="card">Card</option>
-      <option value="wallet">Rands Wallet</option>
-    </select>
-    <div id="assignAccountField" style="display:none;">
-      <input type="text" id="assignAccountId" placeholder="WhatsApp number">
-    </div>
     <button id="confirmAssignBtn" class="btn-confirm">Confirm & start</button>
     <button id="cancelAssignBtn" class="btn-confirm btn-cancel">Cancel</button>
   </div>
@@ -395,25 +387,27 @@
 <script type="module">
   import { supabase } from '../../config/supabase.js';
 
-  // ============ CONSTANTS & HELPERS ==========
+  // ============ CONSTANTS ==========
   const SESSION_PRICE = 250;
   const REFILL_PRICE = 250;
   const COAL_DURATION = 60; // minutes
-  const REFILL_THRESHOLD = 15;
-  const DURATION_SECONDS = COAL_DURATION * 60; // 3600
+  const REFILL_THRESHOLD = 15; // minutes
+  const DURATION_SECONDS = COAL_DURATION * 60;
 
   let activeSessions = [];
   let allDevices = [];
   let selectedPipeForAction = null;
   let selectedDeviceForAssign = null;
   let countdownInterval = null;
+  let realtimeSubscription = null;
 
+  // ============ HELPER FUNCTIONS ==========
   function showToast(message, isError = false) {
     const toast = document.getElementById('toastMsg');
     toast.innerText = message;
     toast.style.background = isError ? 'var(--red)' : 'var(--ink)';
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2000);
+    setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
   function showAlertModal(message, title = "Notification") {
@@ -430,46 +424,81 @@
     selectedDeviceForAssign = null;
   }
 
-  // ============ WALLET LOGIC (unchanged) ==========
-  async function getWalletByPhone(phone) {
-    const normalized = phone.replace(/\D/g, '');
-    const { data: profile, error: profileErr } = await supabase
-      .from('profiles')
-      .select('id, name, phone')
-      .eq('phone', normalized)
+  // Check if hookah already has an active session
+  async function isHookahAvailable(deviceId) {
+    const { data, error } = await supabase
+      .from('shisha_sessions')
+      .select('id')
+      .eq('device_id', deviceId)
+      .in('status', ['active', 'refill', 'paused'])
       .maybeSingle();
-    if (profileErr || !profile) return { success: false, error: "Profile not found" };
-    const { data: wallet, error: walletErr } = await supabase
-      .from('wallets')
-      .select('id, balance')
-      .eq('user_id', profile.id)
-      .maybeSingle();
-    if (walletErr || !wallet) return { success: false, error: "Wallet not found" };
-    return { success: true, profile, wallet };
+    
+    if (error) {
+      console.error('Error checking hookah availability:', error);
+      return false;
+    }
+    return !data;
   }
 
-  async function deductFromWallet(phone, amount, reason) {
-    const walletData = await getWalletByPhone(phone);
-    if (!walletData.success) return { success: false, error: walletData.error };
-    const { profile, wallet } = walletData;
-    if (wallet.balance < amount) return { success: false, error: `Insufficient balance. Available: R${wallet.balance.toFixed(2)}` };
-    const newBalance = wallet.balance - amount;
-    const { error: updateErr } = await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id);
-    if (updateErr) return { success: false, error: updateErr.message };
-    await supabase.from('wallet_transactions').insert({
-      wallet_id: wallet.id,
-      type: 'debit',
-      amount: -amount,
-      description: reason,
-      reference: `shisha_${Date.now()}`
-    });
-    return { success: true, newBalance, name: profile.name };
+  // Calculate remaining seconds for a session
+  function calculateRemainingSeconds(session) {
+    if (!session) return 0;
+    
+    // For paused or expired, use stored remaining time
+    if (session.paused || session.status === 'expired') {
+      return session.remaining_time_seconds || 0;
+    }
+    
+    // For active sessions, calculate based on last refill time
+    const referenceTime = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
+    const now = new Date();
+    const elapsedSeconds = Math.floor((now - referenceTime) / 1000);
+    let remaining = DURATION_SECONDS - elapsedSeconds;
+    
+    // Update database if remaining time has changed significantly (every minute)
+    if (Math.abs(remaining - (session.remaining_time_seconds || 0)) >= 60) {
+      supabase
+        .from('shisha_sessions')
+        .update({ remaining_time_seconds: Math.max(0, remaining) })
+        .eq('id', session.id)
+        .then(({ error }) => {
+          if (error) console.error('Error updating remaining time:', error);
+        });
+    }
+    
+    return remaining > 0 ? remaining : 0;
+  }
+
+  function formatTime(seconds) {
+    if (seconds <= 0) return "EXPIRED";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  // Determine session status based on remaining time
+  function determineSessionStatus(session) {
+    if (session.paused) return 'paused';
+    if (session.status === 'expired') return 'expired';
+    
+    const remainingSec = calculateRemainingSeconds(session);
+    if (remainingSec <= 0) return 'expired';
+    if (remainingSec <= REFILL_THRESHOLD * 60) return 'refill';
+    return 'active';
   }
 
   // ============ DATA LOADING ==========
   async function loadDevices() {
-    const { data, error } = await supabase.from('hookah_devices').select('*').order('device_code');
-    if (error) { console.error(error); return []; }
+    const { data, error } = await supabase
+      .from('hookah_devices')
+      .select('*')
+      .order('device_code');
+    
+    if (error) {
+      console.error('Error loading devices:', error);
+      return [];
+    }
+    
     allDevices = data;
     return data;
   }
@@ -478,32 +507,69 @@
     const { data, error } = await supabase
       .from('shisha_sessions')
       .select(`
-        id, device_id, product_id, location_id,
-        start_time, last_refill_time, remaining_time_seconds,
-        total_amount, refill_count, status, paused, payment_method, account_id,
+        id, 
+        device_id, 
+        product_id, 
+        location_id,
+        start_time, 
+        last_refill_time, 
+        remaining_time_seconds,
+        total_amount, 
+        refill_count, 
+        status, 
+        paused,
+        payment_method,
+        account_id,
         hookah_devices (device_code),
         shisha_products (name),
         shisha_locations (name)
       `)
       .in('status', ['active', 'refill', 'paused', 'expired']);
-    if (error) { console.error(error); return []; }
-    activeSessions = data.map(s => ({
-      id: s.id,
-      shishaId: s.hookah_devices?.device_code,
-      deviceId: s.device_id,
-      location: s.shisha_locations?.name,
-      flavour: s.shisha_products?.name,
-      startTime: new Date(s.start_time),
-      lastRefillTime: s.last_refill_time ? new Date(s.last_refill_time) : null,
-      remainingTime: s.remaining_time_seconds, // used for paused/expired only
-      amount: s.total_amount,
-      refillCount: s.refill_count,
-      status: s.status,
-      paused: s.paused,
-      paymentMethod: s.payment_method,
-      accountId: s.account_id
-    }));
-    renderPipes();   // full rerender (keeps buttons/modal state)
+    
+    if (error) {
+      console.error('Error loading sessions:', error);
+      return;
+    }
+    
+    // Process sessions with proper status determination
+    activeSessions = data.map(s => {
+      const sessionData = {
+        id: s.id,
+        deviceId: s.device_id,
+        shishaId: s.hookah_devices?.device_code,
+        location: s.shisha_locations?.name,
+        flavour: s.shisha_products?.name,
+        startTime: new Date(s.start_time),
+        lastRefillTime: s.last_refill_time ? new Date(s.last_refill_time) : null,
+        remaining_time_seconds: s.remaining_time_seconds,
+        amount: s.total_amount,
+        refillCount: s.refill_count,
+        status: s.status,
+        paused: s.paused,
+        paymentMethod: s.payment_method,
+        accountId: s.account_id
+      };
+      
+      // Update status based on timer if not paused
+      if (!sessionData.paused && sessionData.status !== 'expired') {
+        const newStatus = determineSessionStatus(sessionData);
+        if (newStatus !== sessionData.status) {
+          sessionData.status = newStatus;
+          // Update in database asynchronously
+          supabase
+            .from('shisha_sessions')
+            .update({ status: newStatus })
+            .eq('id', sessionData.id)
+            .then(({ error }) => {
+              if (error) console.error('Error updating session status:', error);
+            });
+        }
+      }
+      
+      return sessionData;
+    });
+    
+    renderPipes();
     updateStats();
   }
 
@@ -513,14 +579,21 @@
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
-    if (error) { console.error(error); return; }
+    
+    if (error) {
+      console.error('Error loading requests:', error);
+      return;
+    }
+    
     const pending = data || [];
     document.getElementById('requestBadge').innerText = pending.length;
     const container = document.getElementById('requestsList');
+    
     if (pending.length === 0) {
       container.innerHTML = '<div style="text-align:center; padding:24px; color:var(--mist);">✅ No pending requests</div>';
       return;
     }
+    
     container.innerHTML = pending.map(r => `
       <div class="request-item" data-id="${r.id}">
         <div class="request-info">
@@ -534,107 +607,163 @@
         </div>
       </div>
     `).join('');
-    document.querySelectorAll('.btn-approve').forEach(btn => btn.addEventListener('click', () => approveRequest(btn.dataset.id)));
-    document.querySelectorAll('.btn-reject').forEach(btn => btn.addEventListener('click', () => rejectRequest(btn.dataset.id)));
+    
+    document.querySelectorAll('.btn-approve').forEach(btn => 
+      btn.addEventListener('click', () => approveRequest(btn.dataset.id))
+    );
+    document.querySelectorAll('.btn-reject').forEach(btn => 
+      btn.addEventListener('click', () => rejectRequest(btn.dataset.id))
+    );
   }
 
-  // ============ REQUEST HANDLING (preserved) ==========
+  // ============ REQUEST HANDLING ==========
   async function approveRequest(requestId) {
-    const { data: req, error: fetchErr } = await supabase.from('shisha_requests').select('*').eq('id', requestId).single();
-    if (fetchErr || !req) { showAlertModal("Request not found"); return; }
-    let session = activeSessions.find(s => s.id === req.session_id);
-    let deviceId = null;
+    const { data: req, error: fetchErr } = await supabase
+      .from('shisha_requests')
+      .select('*')
+      .eq('id', requestId)
+      .single();
+    
+    if (fetchErr || !req) {
+      showAlertModal("Request not found");
+      return;
+    }
+    
     try {
       switch (req.request_type) {
         case 'coal_refill':
-          if (!session) throw new Error("Session not found");
-          if (session.paused) throw new Error("Session paused");
-          if (session.paymentMethod?.toLowerCase().includes('wallet') && session.accountId) {
-            const res = await deductFromWallet(session.accountId, REFILL_PRICE, `Coal refill ${session.shishaId}`);
-            if (!res.success) throw new Error(res.error);
-          }
-          await supabase.from('shisha_sessions').update({
-            last_refill_time: new Date().toISOString(),
-            remaining_time_seconds: DURATION_SECONDS,
-            status: 'active',
-            total_amount: (session.amount || SESSION_PRICE) + REFILL_PRICE,
-            refill_count: (session.refillCount || 0) + 1
-          }).eq('id', session.id);
-          showToast(`✅ Refill approved for ${session.shishaId}`);
+          await handleRefillRequest(req);
           break;
         case 'new_order':
-          const { data: freeDevice } = await supabase.from('hookah_devices').select('id, device_code').eq('status', 'available').limit(1);
-          if (!freeDevice || freeDevice.length === 0) throw new Error("No available stations");
-          deviceId = freeDevice[0].id;
-          const { data: product } = await supabase.from('shisha_products').select('id').eq('name', req.flavour_name).limit(1);
-          const { data: location } = await supabase.from('shisha_locations').select('id').eq('name', req.location_name).limit(1);
-          if (!product?.length || !location?.length) throw new Error("Flavour/location missing");
-          const paymentMethod = req.request_data?.paymentMethod || 'cash';
-          if (paymentMethod === 'wallet' && req.customer_phone) {
-            const res = await deductFromWallet(req.customer_phone, SESSION_PRICE, `New session ${freeDevice[0].device_code}`);
-            if (!res.success) throw new Error(res.error);
-          }
-          await supabase.from('shisha_sessions').insert({
-            device_id: deviceId,
-            product_id: product[0].id,
-            location_id: location[0].id,
-            start_time: new Date().toISOString(),
-            last_refill_time: new Date().toISOString(),
-            remaining_time_seconds: DURATION_SECONDS,
-            total_amount: SESSION_PRICE,
-            status: 'active',
-            customer_phone: req.customer_phone,
-            payment_method: paymentMethod,
-            account_id: req.customer_phone
-          });
-          showToast(`✅ New session on ${freeDevice[0].device_code}`);
+          await handleNewOrderRequest(req);
           break;
         default:
-          showAlertModal(`Handled: ${req.request_type}`);
+          showAlertModal(`Unknown request type: ${req.request_type}`);
+          return;
       }
-      await supabase.from('shisha_requests').update({ status: 'approved', responded_at: new Date().toISOString() }).eq('id', requestId);
-      await loadSessions(); await loadRequests(); await loadDevices();
-    } catch (err) { showAlertModal(err.message, "Error"); }
+      
+      await supabase
+        .from('shisha_requests')
+        .update({ status: 'approved', responded_at: new Date().toISOString() })
+        .eq('id', requestId);
+      
+      showToast(`✅ Request approved successfully`);
+      await Promise.all([loadSessions(), loadRequests(), loadDevices()]);
+      
+    } catch (err) {
+      showAlertModal(err.message, "Error");
+    }
+  }
+
+  async function handleRefillRequest(req) {
+    const session = activeSessions.find(s => s.id === req.session_id);
+    if (!session) throw new Error("Session not found");
+    if (session.paused) throw new Error("Session is paused, cannot refill");
+    
+    // Check if hookah is still available (not ended by another staff)
+    const isAvailable = await isHookahAvailable(session.deviceId);
+    if (isAvailable) throw new Error("Session appears to have ended");
+    
+    const newTotal = (session.amount || SESSION_PRICE) + REFILL_PRICE;
+    const newRefillCount = (session.refillCount || 0) + 1;
+    
+    const { error } = await supabase
+      .from('shisha_sessions')
+      .update({
+        last_refill_time: new Date().toISOString(),
+        remaining_time_seconds: DURATION_SECONDS,
+        status: 'active',
+        total_amount: newTotal,
+        refill_count: newRefillCount
+      })
+      .eq('id', session.id);
+    
+    if (error) throw new Error(`Failed to process refill: ${error.message}`);
+    showToast(`✅ Refill approved for ${session.shishaId}`);
+  }
+
+  async function handleNewOrderRequest(req) {
+    // Find available hookah
+    const { data: freeDevice, error: deviceError } = await supabase
+      .from('hookah_devices')
+      .select('id, device_code')
+      .eq('status', 'available')
+      .limit(1);
+    
+    if (deviceError || !freeDevice || freeDevice.length === 0) {
+      throw new Error("No available hookah stations");
+    }
+    
+    // Double-check no active session exists
+    const isAvailable = await isHookahAvailable(freeDevice[0].id);
+    if (!isAvailable) throw new Error("Hookah was just taken by another session");
+    
+    const deviceId = freeDevice[0].id;
+    const { data: product } = await supabase
+      .from('shisha_products')
+      .select('id')
+      .eq('name', req.flavour_name)
+      .limit(1);
+    
+    const { data: location } = await supabase
+      .from('shisha_locations')
+      .select('id')
+      .eq('name', req.location_name)
+      .limit(1);
+    
+    if (!product?.length || !location?.length) {
+      throw new Error("Flavour or location not found");
+    }
+    
+    const paymentMethod = req.request_data?.paymentMethod || 'cash';
+    
+    const { error: insertError } = await supabase
+      .from('shisha_sessions')
+      .insert({
+        device_id: deviceId,
+        product_id: product[0].id,
+        location_id: location[0].id,
+        start_time: new Date().toISOString(),
+        last_refill_time: new Date().toISOString(),
+        remaining_time_seconds: DURATION_SECONDS,
+        total_amount: SESSION_PRICE,
+        status: 'active',
+        customer_phone: req.customer_phone || 'walkin_customer',
+        payment_method: paymentMethod,
+        account_id: paymentMethod === 'wallet' ? req.customer_phone : null
+      });
+    
+    if (insertError) throw new Error(`Failed to create session: ${insertError.message}`);
+    showToast(`✅ New session started on ${freeDevice[0].device_code}`);
   }
 
   async function rejectRequest(requestId) {
-    await supabase.from('shisha_requests').update({ status: 'rejected', responded_at: new Date().toISOString() }).eq('id', requestId);
+    await supabase
+      .from('shisha_requests')
+      .update({ status: 'rejected', responded_at: new Date().toISOString() })
+      .eq('id', requestId);
+    
     showToast("Request rejected");
     await loadRequests();
   }
 
-  // ============ LIVE COUNTDOWN LOGIC (shared with POS/Monitor) ==========
-  function calculateRemainingSeconds(session) {
-    if (session.paused || session.status === 'expired') {
-      // For paused/expired, show stored remaining (static)
-      return session.remainingTime;
-    }
-    const referenceTime = session.lastRefillTime ? new Date(session.lastRefillTime) : new Date(session.startTime);
-    const now = new Date();
-    const elapsedSeconds = Math.floor((now - referenceTime) / 1000);
-    let remaining = DURATION_SECONDS - elapsedSeconds;
-    return remaining > 0 ? remaining : 0;
-  }
-
-  function formatTime(seconds) {
-    if (seconds <= 0) return "EXPIRED";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  // Update all timer spans on the page (no rerender)
+  // ============ UI RENDERING ==========
   function updateAllTimers() {
     document.querySelectorAll('.timer-value').forEach(elem => {
       const sessionId = elem.getAttribute('data-session-id');
       if (!sessionId) return;
+      
       const session = activeSessions.find(s => s.id === sessionId);
       if (!session) return;
-      let remainingSec = calculateRemainingSeconds(session);
-      if (remainingSec <= 0 && !session.paused && session.status !== 'expired') {
+      
+      const remainingSec = calculateRemainingSeconds(session);
+      const status = determineSessionStatus(session);
+      
+      if (remainingSec <= 0 || status === 'expired') {
         elem.innerText = "EXPIRED";
         elem.style.color = "var(--red)";
-        // Also update parent card styling visually if needed (not required but nice)
+        
+        // Update card styling
         const parentCard = elem.closest('.pipe-card');
         if (parentCard && !parentCard.classList.contains('expired')) {
           parentCard.classList.remove('inuse', 'refill', 'paused');
@@ -660,27 +789,38 @@
     }, 1000);
   }
 
-  // ============ UI RENDERING (with timer spans) ==========
   function renderPipes() {
     if (!allDevices.length) return;
+    
     const container = document.getElementById('pipesGrid');
     container.innerHTML = allDevices.map(device => {
       const session = activeSessions.find(s => s.deviceId === device.id);
       let statusClass = "available", statusText = "Free";
-      let timerDisplay = "01:00";
       let flavour = "-", location = "-";
-      let timerValue = "00:00";
+      let timerValue = "--:--";
+      
       if (session) {
-        flavour = session.flavour;
-        location = session.location;
+        flavour = session.flavour || "-";
+        location = session.location || "-";
         const remainingSec = calculateRemainingSeconds(session);
-        timerDisplay = formatTime(remainingSec);
-        timerValue = remainingSec <= 0 ? "EXPIRED" : timerDisplay;
-        if (session.paused) { statusClass = "paused"; statusText = "Paused"; }
-        else if (session.status === 'expired') { statusClass = "expired"; statusText = "Expired"; }
-        else if (session.status === 'refill') { statusClass = "refill"; statusText = "Refill soon"; }
-        else { statusClass = "inuse"; statusText = "In use"; }
+        const status = determineSessionStatus(session);
+        timerValue = remainingSec <= 0 ? "EXPIRED" : formatTime(remainingSec);
+        
+        if (session.paused) {
+          statusClass = "paused";
+          statusText = "Paused";
+        } else if (status === 'expired') {
+          statusClass = "expired";
+          statusText = "Expired";
+        } else if (status === 'refill') {
+          statusClass = "refill";
+          statusText = "Refill soon";
+        } else {
+          statusClass = "inuse";
+          statusText = "In use";
+        }
       }
+      
       return `<div class="pipe-card ${statusClass}" data-device-id="${device.id}">
         <div class="pipe-header">
           <span class="pipe-code">${device.device_code}</span>
@@ -689,32 +829,53 @@
         <div><small>📍 ${location} | 🍃 ${flavour}</small></div>
         <div class="timer">⏱️ <span class="timer-value" data-session-id="${session ? session.id : ''}">${timerValue}</span></div>
         <div class="pipe-actions">
-          ${!session ? `<button class="btn-assign" data-device-id="${device.id}" data-device-code="${device.device_code}">Assign (R250)</button>` :
+          ${!session ? 
+            `<button class="btn-assign" data-device-id="${device.id}" data-device-code="${device.device_code}">Assign (R250)</button>` :
             `<button class="btn-refill" data-session-id="${session.id}">Refill (R250)</button>
              <button class="btn-pause" data-session-id="${session.id}">Pause</button>
              ${session.paused ? `<button class="btn-resume" data-session-id="${session.id}">Resume</button>` : ''}
-             <button class="btn-end" data-session-id="${session.id}">End</button>`}
+             <button class="btn-end" data-session-id="${session.id}">End</button>`
+          }
         </div>
       </div>`;
     }).join('');
+    
     // Re-attach event listeners
-    document.querySelectorAll('.btn-assign').forEach(btn => btn.addEventListener('click', () => openAssignModal(btn.dataset.deviceId, btn.dataset.deviceCode)));
-    document.querySelectorAll('.btn-refill').forEach(btn => btn.addEventListener('click', () => openRefillModal(btn.dataset.sessionId)));
-    document.querySelectorAll('.btn-pause').forEach(btn => btn.addEventListener('click', () => openPauseModal(btn.dataset.sessionId)));
-    document.querySelectorAll('.btn-resume').forEach(btn => btn.addEventListener('click', () => resumeSession(btn.dataset.sessionId)));
-    document.querySelectorAll('.btn-end').forEach(btn => btn.addEventListener('click', () => endSession(btn.dataset.sessionId)));
+    document.querySelectorAll('.btn-assign').forEach(btn => 
+      btn.addEventListener('click', () => openAssignModal(btn.dataset.deviceId, btn.dataset.deviceCode))
+    );
+    document.querySelectorAll('.btn-refill').forEach(btn => 
+      btn.addEventListener('click', () => openRefillModal(btn.dataset.sessionId))
+    );
+    document.querySelectorAll('.btn-pause').forEach(btn => 
+      btn.addEventListener('click', () => openPauseModal(btn.dataset.sessionId))
+    );
+    document.querySelectorAll('.btn-resume').forEach(btn => 
+      btn.addEventListener('click', () => resumeSession(btn.dataset.sessionId))
+    );
+    document.querySelectorAll('.btn-end').forEach(btn => 
+      btn.addEventListener('click', () => endSession(btn.dataset.sessionId))
+    );
   }
 
   function updateStats() {
     let available = 0, inuse = 0, refill = 0, expired = 0, paused = 0;
-    for (let d of allDevices) {
-      const s = activeSessions.find(s => s.deviceId === d.id);
-      if (!s) available++;
-      else if (s.paused) paused++;
-      else if (s.status === 'expired') expired++;
-      else if (s.status === 'refill') refill++;
-      else inuse++;
+    
+    for (let device of allDevices) {
+      const session = activeSessions.find(s => s.deviceId === device.id);
+      
+      if (!session) {
+        available++;
+      } else if (session.paused) {
+        paused++;
+      } else {
+        const status = determineSessionStatus(session);
+        if (status === 'expired') expired++;
+        else if (status === 'refill') refill++;
+        else inuse++;
+      }
     }
+    
     document.getElementById('statsContainer').innerHTML = `
       <div class="stat-item"><div class="stat-number">${available}</div><div class="stat-label">Free</div></div>
       <div class="stat-item"><div class="stat-number">${inuse}</div><div class="stat-label">In use</div></div>
@@ -724,107 +885,262 @@
     `;
   }
 
-  // ============ SESSION ACTIONS (unchanged) ==========
+  // ============ SESSION ACTIONS ==========
   async function openAssignModal(deviceId, deviceCode) {
+    // Verify hookah is still available before opening modal
+    const isAvailable = await isHookahAvailable(deviceId);
+    if (!isAvailable) {
+      showAlertModal("This hookah is no longer available. Please refresh and try again.");
+      await loadSessions();
+      return;
+    }
+    
     selectedDeviceForAssign = { id: deviceId, code: deviceCode };
-    const { data: locations } = await supabase.from('shisha_locations').select('name').eq('is_active', true);
-    const { data: flavours } = await supabase.from('shisha_products').select('name').eq('is_available', true);
+    
+    const { data: locations } = await supabase
+      .from('shisha_locations')
+      .select('name')
+      .eq('is_active', true);
+    
+    const { data: flavours } = await supabase
+      .from('shisha_products')
+      .select('name')
+      .eq('is_available', true);
+    
     document.getElementById('assignLocation').innerHTML = (locations || []).map(l => `<option>${l.name}</option>`).join('');
     document.getElementById('assignFlavour').innerHTML = (flavours || []).map(f => `<option>${f.name}</option>`).join('');
     document.getElementById('assignModal').style.display = 'flex';
   }
-  document.getElementById('assignPayment').addEventListener('change', () => {
-    document.getElementById('assignAccountField').style.display = document.getElementById('assignPayment').value === 'wallet' ? 'block' : 'none';
-  });
+
   document.getElementById('confirmAssignBtn').onclick = async () => {
     const locationName = document.getElementById('assignLocation').value;
     const flavourName = document.getElementById('assignFlavour').value;
-    const payment = document.getElementById('assignPayment').value;
-    const accountId = document.getElementById('assignAccountId').value.trim();
-    if (payment === 'wallet' && !accountId) { showAlertModal("Account ID needed"); return; }
-    if (payment === 'wallet') {
-      const res = await deductFromWallet(accountId, SESSION_PRICE, `New session ${selectedDeviceForAssign.code}`);
-      if (!res.success) { showAlertModal(res.error); return; }
+    
+    if (!selectedDeviceForAssign) {
+      showAlertModal("No device selected");
+      return;
     }
-    const { data: product } = await supabase.from('shisha_products').select('id').eq('name', flavourName).limit(1);
-    const { data: location } = await supabase.from('shisha_locations').select('id').eq('name', locationName).limit(1);
-    if (!product?.length || !location?.length) { showAlertModal("Invalid flavour/location"); return; }
-    await supabase.from('shisha_sessions').insert({
-      device_id: selectedDeviceForAssign.id,
-      product_id: product[0].id,
-      location_id: location[0].id,
-      start_time: new Date().toISOString(),
-      last_refill_time: new Date().toISOString(),
-      remaining_time_seconds: DURATION_SECONDS,
-      total_amount: SESSION_PRICE,
-      status: 'active',
-      payment_method: payment,
-      account_id: payment === 'wallet' ? accountId : null
-    });
-    closeModals();
-    showToast(`✅ Session started on ${selectedDeviceForAssign.code}`);
-    await loadSessions(); await loadDevices();
+    
+    // Final availability check before creation
+    const isAvailable = await isHookahAvailable(selectedDeviceForAssign.id);
+    if (!isAvailable) {
+      showAlertModal(`${selectedDeviceForAssign.code} is no longer available. It may have been taken by another staff member.`);
+      closeModals();
+      await loadSessions();
+      return;
+    }
+    
+    const { data: product } = await supabase
+      .from('shisha_products')
+      .select('id')
+      .eq('name', flavourName)
+      .limit(1);
+    
+    const { data: location } = await supabase
+      .from('shisha_locations')
+      .select('id')
+      .eq('name', locationName)
+      .limit(1);
+    
+    if (!product?.length || !location?.length) {
+      showAlertModal("Invalid flavour or location");
+      return;
+    }
+    
+    const { error } = await supabase
+      .from('shisha_sessions')
+      .insert({
+        device_id: selectedDeviceForAssign.id,
+        product_id: product[0].id,
+        location_id: location[0].id,
+        start_time: new Date().toISOString(),
+        last_refill_time: new Date().toISOString(),
+        remaining_time_seconds: DURATION_SECONDS,
+        total_amount: SESSION_PRICE,
+        status: 'active',
+        payment_method: 'cash',
+        customer_phone: 'walkin_customer'
+      });
+    
+    if (error) {
+      showAlertModal(`Failed to start session: ${error.message}`);
+    } else {
+      closeModals();
+      showToast(`✅ Session started on ${selectedDeviceForAssign.code}`);
+      await loadSessions();
+      await loadDevices();
+    }
   };
+  
   document.getElementById('cancelAssignBtn').onclick = () => closeModals();
 
   async function openRefillModal(sessionId) {
     const sess = activeSessions.find(s => s.id === sessionId);
     if (!sess) return;
+    
+    // Verify session is still active
+    if (sess.paused) {
+      showAlertModal("Cannot refill a paused session");
+      return;
+    }
+    
     selectedPipeForAction = sess;
     document.getElementById('refillInfo').innerHTML = `${sess.shishaId} | ${sess.flavour} | Total: R${sess.amount}`;
     document.getElementById('refillModal').style.display = 'flex';
   }
+  
   document.getElementById('confirmRefillBtn').onclick = async () => {
     const sess = selectedPipeForAction;
-    if (sess.paymentMethod?.toLowerCase().includes('wallet') && sess.accountId) {
-      const res = await deductFromWallet(sess.accountId, REFILL_PRICE, `Refill ${sess.shishaId}`);
-      if (!res.success) { showAlertModal(res.error); return; }
+    if (!sess) return;
+    
+    // Verify session still exists and is active
+    const { data: currentSession } = await supabase
+      .from('shisha_sessions')
+      .select('status, paused')
+      .eq('id', sess.id)
+      .single();
+    
+    if (!currentSession || currentSession.paused || currentSession.status === 'expired') {
+      showAlertModal("Session is no longer active");
+      closeModals();
+      await loadSessions();
+      return;
     }
-    await supabase.from('shisha_sessions').update({
-      last_refill_time: new Date().toISOString(),
-      remaining_time_seconds: DURATION_SECONDS,
-      status: 'active',
-      total_amount: sess.amount + REFILL_PRICE,
-      refill_count: (sess.refillCount || 0) + 1
-    }).eq('id', sess.id);
-    closeModals();
-    showToast(`✅ Refilled ${sess.shishaId}`);
-    await loadSessions();
+    
+    const newTotal = sess.amount + REFILL_PRICE;
+    const newRefillCount = (sess.refillCount || 0) + 1;
+    
+    const { error } = await supabase
+      .from('shisha_sessions')
+      .update({
+        last_refill_time: new Date().toISOString(),
+        remaining_time_seconds: DURATION_SECONDS,
+        status: 'active',
+        total_amount: newTotal,
+        refill_count: newRefillCount
+      })
+      .eq('id', sess.id);
+    
+    if (error) {
+      showAlertModal(`Failed to refill: ${error.message}`);
+    } else {
+      closeModals();
+      showToast(`✅ Refilled ${sess.shishaId}`);
+      await loadSessions();
+    }
   };
+  
   document.getElementById('cancelRefillBtn').onclick = () => closeModals();
 
   async function openPauseModal(sessionId) {
     const sess = activeSessions.find(s => s.id === sessionId);
-    if (!sess || sess.paused) { showAlertModal("Cannot pause"); return; }
+    if (!sess || sess.paused) {
+      showAlertModal("Cannot pause this session");
+      return;
+    }
+    
     selectedPipeForAction = sess;
     document.getElementById('pauseModal').style.display = 'flex';
   }
+  
   document.getElementById('confirmPauseBtn').onclick = async () => {
     if (selectedPipeForAction) {
-      await supabase.from('shisha_sessions').update({ paused: true, status: 'paused' }).eq('id', selectedPipeForAction.id);
-      closeModals();
-      showToast(`⏸️ ${selectedPipeForAction.shishaId} paused`);
-      await loadSessions();
+      // Store remaining time before pausing
+      const remainingSec = calculateRemainingSeconds(selectedPipeForAction);
+      
+      const { error } = await supabase
+        .from('shisha_sessions')
+        .update({ 
+          paused: true, 
+          status: 'paused',
+          remaining_time_seconds: Math.max(0, remainingSec)
+        })
+        .eq('id', selectedPipeForAction.id);
+      
+      if (error) {
+        showAlertModal(`Failed to pause: ${error.message}`);
+      } else {
+        closeModals();
+        showToast(`⏸️ ${selectedPipeForAction.shishaId} paused`);
+        await loadSessions();
+      }
     }
   };
+  
   document.getElementById('cancelPauseBtn').onclick = () => closeModals();
 
   async function resumeSession(sessionId) {
     const sess = activeSessions.find(s => s.id === sessionId);
     if (sess?.paused) {
-      let newStatus = sess.remainingTime <= 0 ? 'expired' : (sess.remainingTime <= REFILL_THRESHOLD*60 ? 'refill' : 'active');
-      await supabase.from('shisha_sessions').update({ paused: false, status: newStatus }).eq('id', sess.id);
-      showToast(`▶️ ${sess.shishaId} resumed`);
-      await loadSessions();
+      const remainingTime = sess.remaining_time_seconds || 0;
+      let newStatus = remainingTime <= 0 ? 'expired' : (remainingTime <= REFILL_THRESHOLD * 60 ? 'refill' : 'active');
+      
+      const { error } = await supabase
+        .from('shisha_sessions')
+        .update({ paused: false, status: newStatus })
+        .eq('id', sess.id);
+      
+      if (error) {
+        showAlertModal(`Failed to resume: ${error.message}`);
+      } else {
+        showToast(`▶️ ${sess.shishaId} resumed`);
+        await loadSessions();
+      }
     }
   }
+  
   async function endSession(sessionId) {
     const sess = activeSessions.find(s => s.id === sessionId);
-    if (sess && confirm(`End session for ${sess.shishaId}? Total: R${sess.amount}`)) {
-      await supabase.from('shisha_sessions').update({ status: 'expired', ended_at: new Date().toISOString() }).eq('id', sess.id);
-      showToast(`❌ ${sess.shishaId} ended`);
-      await loadSessions();
+    if (!sess) return;
+    
+    if (confirm(`End session for ${sess.shishaId}? Total due: R${sess.amount}`)) {
+      const { error } = await supabase
+        .from('shisha_sessions')
+        .update({ 
+          status: 'expired', 
+          ended_at: new Date().toISOString(),
+          remaining_time_seconds: 0
+        })
+        .eq('id', sess.id);
+      
+      if (error) {
+        showAlertModal(`Failed to end session: ${error.message}`);
+      } else {
+        showToast(`❌ ${sess.shishaId} ended`);
+        await loadSessions();
+        await loadDevices();
+      }
     }
+  }
+
+  // ============ REALTIME SUBSCRIPTIONS ==========
+  function setupRealtimeSubscriptions() {
+    if (realtimeSubscription) {
+      realtimeSubscription.unsubscribe();
+    }
+    
+    realtimeSubscription = supabase
+      .channel('shisha-console-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'shisha_sessions' }, 
+        () => {
+          console.log('Session change detected, reloading...');
+          loadSessions();
+          loadDevices();
+        }
+      )
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'shisha_requests' }, 
+        () => {
+          console.log('Request change detected, reloading...');
+          loadRequests();
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Realtime subscription active');
+        }
+      });
   }
 
   // ============ INITIALIZATION ==========
@@ -832,13 +1148,17 @@
     await loadDevices();
     await loadSessions();
     await loadRequests();
-    startCountdownUpdater();   // start live 1-second updates
-    // Keep existing 3-second refresh for sessions/requests (realtime)
+    startCountdownUpdater();
+    setupRealtimeSubscriptions();
+    
+    // Periodic refresh as backup (every 5 seconds)
     setInterval(async () => { 
       await loadSessions(); 
-      await loadRequests(); 
-    }, 3000);
+      await loadRequests();
+      await loadDevices();
+    }, 5000);
   }
+  
   init();
 </script>
 </body>
