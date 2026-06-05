@@ -73,7 +73,7 @@
 
     .card-body { padding: 24px; }
 
-    /* Event info removed dropdown, shows first active event automatically */
+    /* Event info block */
     .event-info-block {
       margin-bottom: 24px;
       padding: 16px;
@@ -615,6 +615,17 @@
   const syncBtn = document.getElementById('syncBtn');
   const phoneInputGroup = document.getElementById('phoneInputGroup');
 
+  // Helper function to check if event is upcoming (not past)
+  function isUpcomingEvent(eventDate) {
+    if (!eventDate) return true; // If no date, show it
+    const now = new Date();
+    const eventDateTime = new Date(eventDate);
+    // Set to beginning of today for comparison (midnight)
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Event is upcoming if it's today or in the future
+    return eventDateTime >= today;
+  }
+
   function updateCheckoutButtonState() {
     const isEventValid = selectedEvent && selectedTicketType && ticketQuantity > 0;
     const isPaymentSelected = selectedPaymentMethod !== null;
@@ -750,25 +761,109 @@
     try {
       const { data: eventsData, error } = await supabase.from('events').select('*').eq('is_active', true).eq('status', 'active').order('start_time', { ascending: true });
       if (error) throw error;
-      events = eventsData || [];
-      for (let ev of events) { const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id); ev.ticketTypes = types || []; }
-      const activeEv = events.find(ev => ev.ticketTypes.length > 0);
-      selectedEvent = activeEv || null;
-      if (selectedEvent) { renderEvent(); renderTickets(); } else { eventInfoDiv.innerHTML = '<div class="event-name">No active events</div>'; ticketContainer.innerHTML = '<div class="ticket-card disabled">No tickets</div>'; }
+      
+      // Filter to only show upcoming events (today and future)
+      const upcomingEvents = (eventsData || []).filter(event => {
+        return isUpcomingEvent(event.start_time);
+      });
+      
+      // Load ticket types for upcoming events
+      for (let ev of upcomingEvents) {
+        const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id);
+        ev.ticketTypes = types || [];
+      }
+      
+      // Filter to events that have at least one ticket type
+      const eventsWithTickets = upcomingEvents.filter(ev => ev.ticketTypes.length > 0);
+      
+      if (eventsWithTickets.length === 0) {
+        eventInfoDiv.innerHTML = '<div class="event-name" style="color: var(--orange);">📅 No upcoming events available</div><div class="event-meta">Check back later for future events</div>';
+        ticketContainer.innerHTML = '<div class="ticket-card disabled">No tickets available for upcoming events</div>';
+        selectedEvent = null;
+        selectedTicketType = null;
+        updateCheckoutButtonState();
+        return;
+      }
+      
+      events = eventsWithTickets;
+      selectedEvent = eventsWithTickets[0];
+      
+      if (selectedEvent) {
+        renderEvent();
+        renderTickets();
+      }
       updateCheckoutButtonState();
-    } catch (err) { console.error(err); showToast('Failed to load events', 'error'); }
+    } catch (err) {
+      console.error('Load events error:', err);
+      showToast('Failed to load events: ' + err.message, 'error');
+    }
   }
-  function renderEvent() { if (!selectedEvent) return; const start = selectedEvent.start_time ? new Date(selectedEvent.start_time) : null; const dateStr = start ? start.toLocaleDateString('en-ZA', { weekday: 'short', month: 'short', day: 'numeric' }) : 'TBD'; eventInfoDiv.innerHTML = `<div class="event-name">${escapeHtml(selectedEvent.name)}</div><div class="event-meta"><i class="fas fa-calendar-alt"></i> ${dateStr}<br><i class="fas fa-map-marker-alt"></i> ${escapeHtml(selectedEvent.location || 'Venue TBA')}</div>`; }
-  function renderTickets() { if (!selectedEvent?.ticketTypes?.length) { ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types</div>'; return; } ticketContainer.innerHTML = selectedEvent.ticketTypes.map(tt => { const available = (tt.capacity || 0) - (tt.sold || 0); return `<div class="ticket-card ${available <= 0 ? 'disabled' : ''}" data-id="${tt.id}" data-name="${escapeHtml(tt.name)}" data-price="${tt.price}" data-available="${available}"><div style="font-size: 32px;">🎟️</div><div style="font-weight: 700;">${escapeHtml(tt.name)}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div style="font-size: 0.7rem;">${available} left</div></div>`; }).join(''); document.querySelectorAll('.ticket-card:not(.disabled)').forEach(card => { card.addEventListener('click', () => { document.querySelectorAll('.ticket-card').forEach(c => c.classList.remove('selected')); card.classList.add('selected'); selectedTicketType = { id: card.dataset.id, name: card.dataset.name, price: parseInt(card.dataset.price), available: parseInt(card.dataset.available) }; updateSummary(); updateQuantityLimit(); updateCheckoutButtonState(); }); }); const firstAvail = document.querySelector('.ticket-card:not(.disabled)'); if (firstAvail) firstAvail.click(); }
-  function updateQuantityLimit() { if (!selectedTicketType) { incQty.disabled = true; decQty.disabled = true; return; } incQty.disabled = ticketQuantity >= Math.min(selectedTicketType.available, 10); decQty.disabled = ticketQuantity <= 1; updateCheckoutButtonState(); }
-  function updateSummary() { if (!selectedTicketType) { summaryType.textContent = '—'; summaryPrice.textContent = 'R0'; summaryTotal.textContent = 'R0'; return; } const total = selectedTicketType.price * ticketQuantity; summaryType.textContent = selectedTicketType.name; summaryPrice.textContent = `R${selectedTicketType.price.toLocaleString()}`; summaryQty.textContent = ticketQuantity; summaryTotal.textContent = `R${total.toLocaleString()}`; updateCheckoutButtonState(); }
+  
+  function renderEvent() { 
+    if (!selectedEvent) return; 
+    const start = selectedEvent.start_time ? new Date(selectedEvent.start_time) : null; 
+    const dateStr = start ? start.toLocaleDateString('en-ZA', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'; 
+    eventInfoDiv.innerHTML = `<div class="event-name">${escapeHtml(selectedEvent.name)}</div><div class="event-meta"><i class="fas fa-calendar-alt"></i> ${dateStr}<br><i class="fas fa-map-marker-alt"></i> ${escapeHtml(selectedEvent.location || 'Venue TBA')}</div>`; 
+  }
+  
+  function renderTickets() { 
+    if (!selectedEvent?.ticketTypes?.length) { 
+      ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types</div>'; 
+      return; 
+    } 
+    ticketContainer.innerHTML = selectedEvent.ticketTypes.map(tt => { 
+      const available = (tt.capacity || 0) - (tt.sold || 0); 
+      return `<div class="ticket-card ${available <= 0 ? 'disabled' : ''}" data-id="${tt.id}" data-name="${escapeHtml(tt.name)}" data-price="${tt.price}" data-available="${available}"><div style="font-size: 32px;">🎟️</div><div style="font-weight: 700;">${escapeHtml(tt.name)}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div style="font-size: 0.7rem;">${available} left</div></div>`; 
+    }).join(''); 
+    document.querySelectorAll('.ticket-card:not(.disabled)').forEach(card => { 
+      card.addEventListener('click', () => { 
+        document.querySelectorAll('.ticket-card').forEach(c => c.classList.remove('selected')); 
+        card.classList.add('selected'); 
+        selectedTicketType = { id: card.dataset.id, name: card.dataset.name, price: parseInt(card.dataset.price), available: parseInt(card.dataset.available) }; 
+        updateSummary(); 
+        updateQuantityLimit(); 
+        updateCheckoutButtonState(); 
+      }); 
+    }); 
+    const firstAvail = document.querySelector('.ticket-card:not(.disabled)'); 
+    if (firstAvail) firstAvail.click(); 
+  }
+  
+  function updateQuantityLimit() { 
+    if (!selectedTicketType) { 
+      incQty.disabled = true; 
+      decQty.disabled = true; 
+      return; 
+    } 
+    incQty.disabled = ticketQuantity >= Math.min(selectedTicketType.available, 10); 
+    decQty.disabled = ticketQuantity <= 1; 
+    updateCheckoutButtonState(); 
+  }
+  
+  function updateSummary() { 
+    if (!selectedTicketType) { 
+      summaryType.textContent = '—'; 
+      summaryPrice.textContent = 'R0'; 
+      summaryTotal.textContent = 'R0'; 
+      return; 
+    } 
+    const total = selectedTicketType.price * ticketQuantity; 
+    summaryType.textContent = selectedTicketType.name; 
+    summaryPrice.textContent = `R${selectedTicketType.price.toLocaleString()}`; 
+    summaryQty.textContent = ticketQuantity; 
+    summaryTotal.textContent = `R${total.toLocaleString()}`; 
+    updateCheckoutButtonState(); 
+  }
+  
   decQty.addEventListener('click', () => { if (ticketQuantity > 1) { ticketQuantity--; qtyDisplay.textContent = ticketQuantity; updateSummary(); updateQuantityLimit(); } });
   incQty.addEventListener('click', () => { if (selectedTicketType && ticketQuantity < selectedTicketType.available && ticketQuantity < 10) { ticketQuantity++; qtyDisplay.textContent = ticketQuantity; updateSummary(); updateQuantityLimit(); } });
+  
   function initPaymentHandlers() {
     document.getElementById('cashOption').addEventListener('click', () => { selectedPaymentMethod = 'cash'; document.getElementById('cashSelectedIndicator').style.display = 'block'; document.getElementById('cardSelectedIndicator').style.display = 'none'; document.getElementById('walletSelectedIndicator').style.display = 'none'; document.getElementById('cashOption').classList.add('selected'); document.getElementById('cardOption').classList.remove('selected'); document.getElementById('walletOption').classList.remove('selected'); phoneInputGroup.classList.remove('visible'); updateCheckoutButtonState(); });
     document.getElementById('cardOption').addEventListener('click', () => { selectedPaymentMethod = 'card'; document.getElementById('cardSelectedIndicator').style.display = 'block'; document.getElementById('cashSelectedIndicator').style.display = 'none'; document.getElementById('walletSelectedIndicator').style.display = 'none'; document.getElementById('cardOption').classList.add('selected'); document.getElementById('cashOption').classList.remove('selected'); document.getElementById('walletOption').classList.remove('selected'); phoneInputGroup.classList.remove('visible'); updateCheckoutButtonState(); });
     document.getElementById('walletOption').addEventListener('click', () => { selectedPaymentMethod = 'wallet'; document.getElementById('walletSelectedIndicator').style.display = 'block'; document.getElementById('cashSelectedIndicator').style.display = 'none'; document.getElementById('cardSelectedIndicator').style.display = 'none'; document.getElementById('walletOption').classList.add('selected'); document.getElementById('cashOption').classList.remove('selected'); document.getElementById('cardOption').classList.remove('selected'); phoneInputGroup.classList.add('visible'); updateCheckoutButtonState(); });
   }
+  
   requestPaymentBtn.addEventListener('click', async () => { if (!selectedPaymentMethod) { showToast('Please select a payment method first', 'error'); return; } if (selectedPaymentMethod === 'cash') await processCashPayment(); else if (selectedPaymentMethod === 'card') await processCardPayment(); else if (selectedPaymentMethod === 'wallet') await processWalletPayment(); });
   document.getElementById('closePreviewBtn').addEventListener('click', () => { document.getElementById('wristbandPreviewModal').classList.remove('show'); document.body.style.overflow = ''; });
   document.getElementById('printWristbandBtn').addEventListener('click', printWristbandHandler);
@@ -776,10 +871,29 @@
   document.getElementById('backEventsBtn').addEventListener('click', backToEventsList);
   syncBtn.addEventListener('click', () => { loadEvents(); showToast('Refreshed', 'info'); });
   customerPhoneInput.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); });
+  
   initPaymentHandlers();
   loadEvents();
+  
   const pendingPayment = sessionStorage.getItem('pendingBoxOfficePayment');
-  if (pendingPayment) { sessionStorage.removeItem('pendingBoxOfficePayment'); const payment = JSON.parse(pendingPayment); showToast('Payment successful!', 'success'); setTimeout(async () => { try { selectedEvent = events.find(e => e.id === payment.event_id); if (selectedEvent) { selectedTicketType = { id: payment.ticket_type_id, price: payment.total_amount / payment.quantity, name: payment.ticket_name || 'Ticket' }; ticketQuantity = payment.quantity; const tickets = await issueTickets('card_customer', null, 'Card Customer'); await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id); await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Card Customer'); await loadEvents(); } } catch (err) { showToast('Error: ' + err.message, 'error'); } }, 500); }
+  if (pendingPayment) { 
+    sessionStorage.removeItem('pendingBoxOfficePayment'); 
+    const payment = JSON.parse(pendingPayment); 
+    showToast('Payment successful!', 'success'); 
+    setTimeout(async () => { 
+      try { 
+        selectedEvent = events.find(e => e.id === payment.event_id); 
+        if (selectedEvent) { 
+          selectedTicketType = { id: payment.ticket_type_id, price: payment.total_amount / payment.quantity, name: payment.ticket_name || 'Ticket' }; 
+          ticketQuantity = payment.quantity; 
+          const tickets = await issueTickets('card_customer', null, 'Card Customer'); 
+          await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id); 
+          await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Card Customer'); 
+          await loadEvents(); 
+        } 
+      } catch (err) { showToast('Error: ' + err.message, 'error'); } 
+    }, 500); 
+  }
 </script>
 </body>
 </html>
