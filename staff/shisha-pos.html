@@ -607,20 +607,22 @@
 <script type="module">
   import { supabase } from '../../config/supabase.js';
 
-  // ============ SHISHA POS BUSINESS LOGIC (PRESERVED) ==========
+  // ============ SHISHA POS BUSINESS LOGIC ==========
   const SESSION_PRICE = 250;
   const REFILL_PRICE = 250;
+  const COAL_DURATION = 60; // minutes
 
   let activeSessions = [];
   let availableHookahs = [];
   let occupiedHookahIds = new Set();
+  let realtimeSubscription = null;
   
   // Payment state variables
   let selectedPaymentMethod = null;
   let currentRequestId = null;
   let requestSubscription = null;
   let walletCountdownInterval = null;
-  let currentSelectedStationId = null; // Track user's selected station
+  let currentSelectedStationId = null;
 
   // Modal system
   function showModal(type, title, message, onConfirm = null, onCancel = null) {
@@ -684,6 +686,20 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
+  // Calculate remaining seconds for timer display
+  function calculateRemainingSeconds(session) {
+    if (!session) return 0;
+    if (session.paused || session.status === 'expired') {
+      return 0;
+    }
+    const referenceTime = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
+    const now = new Date();
+    const elapsedSeconds = (now - referenceTime) / 1000;
+    const totalDuration = COAL_DURATION * 60;
+    let remaining = totalDuration - elapsedSeconds;
+    return remaining > 0 ? remaining : 0;
+  }
+
   // Load locations, flavours, hookah devices
   async function loadDropdowns() {
     const { data: locations } = await supabase.from('shisha_locations').select('id, name').eq('is_active', true);
@@ -698,7 +714,6 @@
   }
 
   async function loadAvailableHookahs(preserveSelection = true) {
-    // Get all hookah devices
     const { data: allHookahs, error } = await supabase
       .from('hookah_devices')
       .select('id, device_code, status')
@@ -709,7 +724,7 @@
       return;
     }
     
-    // Get occupied hookah IDs from active sessions
+    // Get occupied hookah IDs from active sessions (not expired)
     const { data: activeSessionsData } = await supabase
       .from('shisha_sessions')
       .select('device_id')
@@ -720,7 +735,6 @@
       activeSessionsData.forEach(session => occupiedHookahIds.add(session.device_id));
     }
     
-    // Mark occupied hookahs and filter available ones
     availableHookahs = allHookahs.map(hookah => ({
       ...hookah,
       isOccupied: occupiedHookahIds.has(hookah.id)
@@ -739,24 +753,18 @@
       ).join('');
     }
     
-    // Restore selection if valid and not occupied
     if (previousValue && !occupiedHookahIds.has(parseInt(previousValue))) {
       if (select.querySelector(`option[value="${previousValue}"]`)) {
         select.value = previousValue;
         currentSelectedStationId = previousValue;
       } else {
-        // Try to select first available
         const firstAvailable = availableHookahs.find(h => !h.isOccupied);
         if (firstAvailable) {
           select.value = firstAvailable.id;
           currentSelectedStationId = firstAvailable.id;
-        } else {
-          select.value = '';
-          currentSelectedStationId = null;
         }
       }
     } else if (!previousValue) {
-      // First load - select first available
       const firstAvailable = availableHookahs.find(h => !h.isOccupied);
       if (firstAvailable) {
         select.value = firstAvailable.id;
@@ -765,7 +773,6 @@
     }
   }
 
-  // Validate hookah availability before creating session
   async function validateHookahAvailability(deviceId) {
     const { data, error } = await supabase
       .from('shisha_sessions')
@@ -775,7 +782,7 @@
       .maybeSingle();
     
     if (error) throw error;
-    return !data; // Returns true if available (no active session)
+    return !data;
   }
 
   async function loadActiveSessions() {
@@ -787,20 +794,21 @@
         total_amount, refill_count, status, paused
       `)
       .in('status', ['active', 'refill', 'paused']);
+    
     if (error) { 
       console.error(error); 
       return; 
     }
+    
     activeSessions = data.map(s => ({
       ...s,
       device_code: s.hookah_devices?.device_code,
       flavour_name: s.shisha_products?.name,
       location_name: s.shisha_locations?.name
     }));
+    
     updateStats();
     renderSessions();
-    
-    // Refresh hookah availability after sessions change
     await loadAvailableHookahs(true);
   }
 
@@ -822,6 +830,7 @@
       container.innerHTML = '<div style="text-align:center; padding:24px; color:var(--mist);">✨ No active sessions</div>';
       return;
     }
+    
     container.innerHTML = activeSessions.map(s => {
       let statusClass = 'active', statusText = 'ACTIVE';
       if (s.paused) { statusClass = 'paused'; statusText = 'PAUSED'; }
@@ -843,6 +852,7 @@
         </div>
       `;
     }).join('');
+    
     document.querySelectorAll('.btn-refill').forEach(btn => btn.addEventListener('click', () => refillSession(btn.dataset.id)));
     document.querySelectorAll('.btn-end').forEach(btn => btn.addEventListener('click', () => endSession(btn.dataset.id)));
   }
@@ -875,7 +885,6 @@
         }
         showToast(`✅ Refilled! New total: R${newTotal}`);
         await loadActiveSessions();
-        await loadAvailableHookahs(true);
       }
     );
   }
@@ -889,7 +898,11 @@
       async () => {
         const { error } = await supabase
           .from('shisha_sessions')
-          .update({ status: 'expired', ended_at: new Date().toISOString() })
+          .update({ 
+            status: 'expired', 
+            ended_at: new Date().toISOString(),
+            remaining_time_seconds: 0
+          })
           .eq('id', sessionId);
         if (error) { 
           showToast(error.message, true); 
@@ -897,13 +910,36 @@
         }
         showToast("Session ended");
         await loadActiveSessions();
-        await loadAvailableHookahs(true);
       }
     );
   }
 
-  // ============ BOX OFFICE PAYMENT INTEGRATION (COPIED & ADAPTED) ==========
-  
+  // ============ REAL-TIME SUBSCRIPTION (FIXED) ==========
+  function setupRealtimeSubscription() {
+    if (realtimeSubscription) {
+      realtimeSubscription.unsubscribe();
+    }
+    
+    realtimeSubscription = supabase
+      .channel('shisha-pos-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'shisha_sessions' }, 
+        (payload) => {
+          console.log('Session change detected:', payload.eventType);
+          // Reload all data to stay in sync
+          loadActiveSessions();
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime subscription active for POS');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime subscription error');
+        }
+      });
+  }
+
+  // ============ PAYMENT INTEGRATION ==========
   async function getOrCreateCustomerProfile(phone) {
     try {
       let { data: profile, error } = await supabase.from('profiles').select('id, name').eq('phone', phone).maybeSingle();
@@ -931,11 +967,10 @@
       throw new Error("Please fill all session fields");
     }
     
-    // Validate hookah availability before creating session
     const isAvailable = await validateHookahAvailability(deviceId);
     if (!isAvailable) {
       const hookah = availableHookahs.find(h => h.id == deviceId);
-      throw new Error(`${hookah?.device_code || 'This hookah'} is already assigned to another customer. Please select a different station.`);
+      throw new Error(`${hookah?.device_code || 'This hookah'} is already assigned to another customer.`);
     }
 
     const { error } = await supabase.from('shisha_sessions').insert({
@@ -944,6 +979,7 @@
       location_id: locationId,
       start_time: new Date().toISOString(),
       last_refill_time: new Date().toISOString(),
+      remaining_time_seconds: COAL_DURATION * 60,
       total_amount: SESSION_PRICE,
       refill_count: 0,
       status: 'active',
@@ -970,10 +1006,9 @@
     requestStatusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing cash payment...';
     
     try {
-      // Double-check availability
       const isAvailable = await validateHookahAvailability(deviceId);
       if (!isAvailable) {
-        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied. Please select a different station.`);
+        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied.`);
       }
       
       await createShishaSession('cash', null);
@@ -989,7 +1024,6 @@
       requestStatusDiv.className = 'status-panel success';
       showToast(`✅ Session started successfully!`, false);
       await loadActiveSessions();
-      await loadAvailableHookahs(true);
       resetPaymentForm();
       return true;
     } catch (err) {
@@ -1014,10 +1048,9 @@
     requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Initializing payment...';
     
     try {
-      // Check availability before initializing payment
       const isAvailable = await validateHookahAvailability(deviceId);
       if (!isAvailable) {
-        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied. Please select a different station.`);
+        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied.`);
       }
       
       const totalAmount = SESSION_PRICE;
@@ -1031,10 +1064,7 @@
         direction: 'credit',
         description: `Shisha session payment - R${SESSION_PRICE}`,
         created_at: new Date().toISOString(),
-        metadata: { 
-          payment_method: 'yoco_card', 
-          shisha_session: true
-        }
+        metadata: { payment_method: 'yoco_card', shisha_session: true }
       }).select('id').single();
       
       if (insertError) throw new Error('Could not initialize payment');
@@ -1044,10 +1074,7 @@
           wallet_transaction_id: pendingTx.id, 
           amount_cents: amountCents, 
           currency: 'ZAR', 
-          metadata: { 
-            shisha_pos: true,
-            session_amount: SESSION_PRICE
-          } 
+          metadata: { shisha_pos: true, session_amount: SESSION_PRICE } 
         }
       });
       
@@ -1088,10 +1115,9 @@
     requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Sending request...';
     
     try {
-      // Check availability before sending request
       const isAvailable = await validateHookahAvailability(deviceId);
       if (!isAvailable) {
-        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied. Please select a different station.`);
+        throw new Error(`${hookah?.device_code || 'This hookah'} is already occupied.`);
       }
       
       const customer = await getOrCreateCustomerProfile(phone);
@@ -1166,7 +1192,6 @@
       requestStatusDiv.className = 'status-panel success';
       showToast(`✅ Session started successfully!`, false);
       await loadActiveSessions();
-      await loadAvailableHookahs(true);
       resetWalletRequestFlow();
       resetPaymentForm();
     } catch (err) {
@@ -1267,11 +1292,11 @@
   // ============ INITIALIZATION ==========
   async function init() {
     await loadDropdowns();
-    await loadAvailableHookahs(false); // Don't preserve selection on first load
+    await loadAvailableHookahs(false);
     await loadActiveSessions();
     initPaymentHandlers();
+    setupRealtimeSubscription(); // ADDED: Real-time subscription to keep sessions persistent
     
-    // Preserve station selection when dropdown changes manually
     const stationSelect = document.getElementById('shishaSelect');
     stationSelect.addEventListener('change', (e) => {
       currentSelectedStationId = e.target.value;
@@ -1293,7 +1318,6 @@
       updateCheckoutButtonState();
     });
     
-    // Check for returning from card payment
     const pendingPayment = sessionStorage.getItem('pendingShishaPayment');
     if (pendingPayment) {
       sessionStorage.removeItem('pendingShishaPayment');
@@ -1301,7 +1325,6 @@
       showToast('Payment successful! Starting session...', false);
       setTimeout(async () => {
         try {
-          // Restore selected values
           if (payment.device_id) {
             const deviceSelect = document.getElementById('shishaSelect');
             if (deviceSelect.querySelector(`option[value="${payment.device_id}"]`)) {
@@ -1327,7 +1350,6 @@
           });
           showToast(`✅ Session started successfully!`, false);
           await loadActiveSessions();
-          await loadAvailableHookahs(true);
           resetPaymentForm();
         } catch (err) { 
           showToast('Failed to start session: ' + err.message, true);
@@ -1335,10 +1357,10 @@
       }, 500);
     }
     
+    // Polling fallback (every 10 seconds instead of 5 to reduce DB calls)
     setInterval(async () => {
       await loadActiveSessions();
-      await loadAvailableHookahs(true);
-    }, 5000);
+    }, 10000);
   }
   
   init();
