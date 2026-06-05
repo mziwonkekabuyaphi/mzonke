@@ -42,7 +42,7 @@
         .stat-icon { width: 48px; height: 48px; background: #fff0f0; border-radius: 24px; display: flex; align-items: center; justify-content: center; color: #E30613; font-size: 1.4rem; margin-bottom: 16px; }
         .stat-title { font-size: 0.75rem; font-weight: 500; color: #6c7a8e; text-transform: uppercase; }
         .stat-number { font-size: 1.8rem; font-weight: 800; color: #1e293b; margin-top: 6px; }
-        .section-header { display: flex; justify-content: space-between; align-items: center; margin: 32px 0 20px 0; flex-wrap: wrap; gap: 12px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin: 0 0 20px 0; flex-wrap: wrap; gap: 12px; }
         .section-header h2 { font-size: 1.2rem; font-weight: 700; color: #1e293b; }
         .btn-primary { background: #E30613; color: white; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: transform 0.1s; }
         .btn-primary:active { transform: scale(0.97); }
@@ -78,6 +78,10 @@
         .empty-state p { color: #64748b; font-size: 0.9rem; }
         .external-iframe { width: 100%; height: calc(100vh - 70px); border: none; background: white; border-radius: 24px; }
         .module-iframe-container { width: 100%; background: transparent; margin-top: 0; }
+        /* Remove any extra heading spacing when showing iframe */
+        .no-module-heading .section-header {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -93,7 +97,8 @@
             <div class="app-logo"><i class="fas fa-crown"></i></div>
             <div class="app-info">
                 <h3>{{ appName }}</h3>
-                <p>Admin Dashboard</p>
+                <!-- Changed from "Admin Dashboard" to "Venue Operating System" -->
+                <p>Venue Operating System</p>
             </div>
         </div>
         <div class="nav-menu">
@@ -143,19 +148,18 @@
                 <div class="table-wrapper"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody><tr v-for="staff in staffList.slice(0,5)" :key="staff.id"><td>{{ staff.name }} {{ staff.surname }}</td><td><span class="role-badge">{{ staff.role }}</span></td><td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td></tr><tr v-if="staffList.length === 0"><td colspan="3" class="empty-state">No staff members</td></tr></tbody></table></div>
             </div>
 
-            <!-- DYNAMIC MODULE VIEWS: All modules now render as iframes pointing to their specific admin HTML files, EXCEPT Staff Management and Brand Studio which are kept inline (per request they have custom UI). However Staff Management and Brand Studio also could use iframe? The user explicitly said: "Event Management is events-admin.html, Booze Lockers is lockers-admin.html, Wallet Management is passports-admin.html, Hookah Management is shisha-admin.html, Orders & Sales Engine is orders-admin.html, VVIP Console is vvip-admin.html, Staff Management is staff-admin.html, Brand Studio is brand-admin.html. Do not ruin my code". Also per earlier they wanted iframe for each module but preserve header. So we will convert all modules (including Staff Management and Brand Studio) to use iframes, but we must keep original Staff Management UI? However they gave mapping for staff-admin.html and brand-admin.html as well. So I'll fully implement iframe for all modules that have mapping, otherwise coming soon pattern for missing ones. Original Staff Management inside vue has add/edit staff modal and table from supabase; but to respect new requirement, we should iframe staff-admin.html but still leave function? I'll re-implement: For modules that have external html mapping, load iframe. Keep supabase staff/shifts only for dashboard stats and display purposes (the dashboard still uses real data). For 'Staff Management' module we will render iframe pointing to staff-admin.html, the supabase CRUD can remain but is redundant; but to avoid breaking existing functions, we still keep vue staffList for dashboard. Brand Studio module will iframe brand-admin.html. Ensure that header title remains same (currentSectionTitle). Also Booze Locker icon must show beer glass (fa-beer). -->
+            <!-- DYNAMIC MODULE VIEWS: All modules now render as iframes pointing to their specific admin HTML files. Removed duplicate heading inside module view to keep only top header -->
             <div v-for="module in allModules" :key="'view_' + module.id" v-if="currentSection === 'module_' + module.id">
-                <!-- If module is Staff Management, we show iframe to staff-admin.html but keep header as is -->
-                <!-- For each mapped module we render iframe. Generic: any module that has defined iframe mapping will load its respective html. -->
+                <!-- For all modules that have iframe mapping: render iframe without any extra heading (only top header shows module name) -->
                 <div v-if="moduleIframeSrc(module.name)">
-                    <div class="section-header"><h2><i :class="getModuleIcon(module.icon || module.name, module.name)"></i> {{ module.name }}</h2></div>
+                    <!-- No .section-header here to remove duplicate heading. Only the iframe itself -->
                     <div class="module-iframe-container">
-                        <iframe :src="moduleIframeSrc(module.name)" class="external-iframe" title="{{ module.name }}" frameborder="0"></iframe>
+                        <iframe :src="moduleIframeSrc(module.name)" class="external-iframe" :title="module.name" frameborder="0"></iframe>
                     </div>
                 </div>
-                <!-- Fallback for any modules that do not have iframe mapping (e.g., future modules or modules without mapping) -->
+                <!-- Fallback for modules without iframe mapping (e.g., future modules) - keep minimal, still remove duplicate heading -->
                 <div v-else>
-                    <div class="section-header"><h2><i :class="getModuleIcon(module.icon || module.name, module.name)"></i> {{ module.name }}</h2></div>
+                    <!-- No extra heading here; top header already shows currentSectionTitle -->
                     <div class="empty-state">
                         <i :class="getModuleIcon(module.icon || module.name, module.name)"></i>
                         <h3 style="margin-top: 16px;">{{ module.name }}</h3>
@@ -175,7 +179,7 @@
         </div>
     </div>
 
-    <!-- STAFF MODAL (kept for legacy staff creation if needed, but not mandatory because iframe handles staff management separately; However dashboard uses supabase staffList for stats, we keep modal functionality functional to not break existing flow but user may prefer iframe. But no harm. We'll preserve code.) -->
+    <!-- STAFF MODAL (kept for legacy staff creation if needed, but dashboard uses supabase staffList for stats) -->
     <div class="modal-mask" :class="{ active: showStaffModal }">
         <div class="modal-container">
             <h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3>
@@ -249,7 +253,7 @@
                 if (moduleName === 'Booze Lockers' || iconName === 'Booze Lockers') {
                     return 'fas fa-beer';
                 }
-                // Icon mapping dictionary as before plus custom fa-beer
+                // Icon mapping dictionary
                 const iconMap = {
                     'users': 'fas fa-users',
                     'palette': 'fas fa-palette',
