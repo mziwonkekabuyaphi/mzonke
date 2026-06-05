@@ -15,12 +15,10 @@
     
     <!-- Supabase Client (local config from ../config/supabase.js) -->
     <script type="module">
-        // Dynamically import supabase client from project config
         import supabaseClient from '../config/supabase.js';
         window.__SUPABASE_CLIENT = supabaseClient;
     </script>
     
-    <!-- Fallback supabase creation if import fails (legacy safe) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -58,7 +56,6 @@
             border-radius: 24px;
         }
         
-        /* Carousel styling */
         .carousel-container {
             scroll-snap-type: x mandatory;
             overflow-x: auto;
@@ -159,7 +156,6 @@
             box-shadow: 0 0 0 2px rgba(225,6,0,0.2);
         }
         
-        /* Global stats cards (3 cards) */
         .stat-card {
             background: white;
             border-radius: 28px;
@@ -298,7 +294,6 @@
         <!-- Top Status Bar with Logo & Welcome Message -->
         <div class="glass-status fixed top-0 left-0 right-0 z-30 px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <!-- Custom Logo -->
                 <div class="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center border border-red-100 overflow-hidden p-1">
                     <img :src="logoPath" alt="Rands Logo" class="w-full h-full object-contain" @error="fallbackLogo">
                 </div>
@@ -321,7 +316,7 @@
         
         <!-- Main Content Area -->
         <div class="relative h-screen w-full overflow-hidden pt-20 pb-24">
-            <!-- Welcome Banner (Siyakwamkela, name) -->
+            <!-- Welcome Banner -->
             <div class="px-5 mb-3">
                 <div class="bg-gradient-to-r from-red-50 to-white rounded-2xl p-3 border border-red-100 shadow-sm">
                     <p class="text-sm font-medium text-gray-700">
@@ -331,7 +326,7 @@
                 </div>
             </div>
             
-            <!-- GLOBAL STATS: 3 Cards (global metrics, no module-specific) -->
+            <!-- GLOBAL STATS: 3 Cards -->
             <div class="flex gap-3 px-5 mb-5">
                 <div class="stat-card">
                     <div class="flex items-center gap-2 text-gray-500 text-xs mb-1">
@@ -359,7 +354,7 @@
                 </div>
             </div>
             
-            <!-- Swipe Carousel (modules based on role) -->
+            <!-- Swipe Carousel -->
             <div class="carousel-container w-full overflow-x-auto snap-x snap-mandatory hide-scrollbar" ref="carousel" @scroll="updateActiveSlide">
                 <div class="flex gap-4 px-4" style="min-width: max-content;">
                     <div v-for="(mod, idx) in activeModules" :key="mod.key" 
@@ -403,7 +398,7 @@
                 </div>
             </div>
             
-            <!-- Live Activity Feed (compact) -->
+            <!-- Live Activity Feed -->
             <div class="mx-4 mt-2 glass-card p-3">
                 <div class="flex items-center gap-2 text-xs font-medium text-gray-500 mb-2">
                     <i class="fas fa-rss text-red-500 text-[10px]"></i>
@@ -430,7 +425,7 @@
             </div>
         </div>
         
-        <!-- PIN Modal -->
+        <!-- PIN Modal - ONLY appears when manually triggered -->
         <div v-if="showPinModal" class="pin-modal-overlay">
             <div class="pin-modal-card">
                 <h3><i class="fas fa-lock"></i> {{ pinActionText }}</h3>
@@ -457,31 +452,24 @@
     <script>
         const { createApp, ref, nextTick, onMounted, onUnmounted } = Vue;
         
-        // ---------- NEW MODULE DEFINITIONS (matching requested roles) ----------
-        // All iframe files exist in same folder
+        // Module paths
         const UI_PATHS = {
-            // Cashier
             box_office: 'box-office.html',
             gate_scanner: 'gate-scanner.html',
-            // Shisha Attendant
             shisha_pos: 'shisha-pos.html',
             shisha_console: 'shisha-console.html',
-            // Smart Host (Booze Vault Operations)
             booze_vault: 'booze-vault.html',
             register_locker: 'register-locker.html',
             unlock_vault: 'unlock-vault.html',
             booze_collection: 'booze-collection.html',
             booze_counter: 'booze-counter.html',
-            // Butcher Crew
             pre_order_pos: 'pre-order-pos.html',
             butcher_orders: 'butcher-orders.html',
             butcher_collection: 'butcher-collection.html',
-            // VVIP Concierge
             vvip_tab: 'vvip-tab.html',
             vvip_staff: 'vvip-staff.html'
         };
         
-        // Role → module key mapping (strict new mapping)
         const roleModules = {
             cashier: ['box_office', 'gate_scanner'],
             shisha_attendant: ['shisha_pos', 'shisha_console'],
@@ -490,7 +478,6 @@
             vvip_concierge: ['vvip_tab', 'vvip_staff']
         };
         
-        // Module metadata (display title & icon)
         const moduleMeta = {
             box_office: { title: '🎟️ BOX OFFICE', icon: 'fas fa-ticket-alt', src: UI_PATHS.box_office },
             gate_scanner: { title: '🚪 EVENT CHECK‑IN', icon: 'fas fa-qrcode', src: UI_PATHS.gate_scanner },
@@ -516,15 +503,11 @@
             vvip_concierge: 'VVIP Concierge'
         };
         
-        // Global stats: we fetch real data or fallback to demo numbers (showing live supabase)
-        // Supabase client (imported via module fallback)
         let supabase = null;
         
-        // Helper to get staff name and role from localStorage/session
         const getLoggedInStaffName = () => localStorage.getItem('staffName') || sessionStorage.getItem('staffName') || 'Mziwonke';
         const getCurrentUserRole = () => {
             let role = localStorage.getItem('staffRole') || sessionStorage.getItem('staffRole') || 'smart_host';
-            // validate role exists in mapping, otherwise fallback to smart_host
             if (!roleModules[role]) role = 'smart_host';
             return role;
         };
@@ -545,14 +528,12 @@
                 const logoPath = ref('../assets/images/rands-logo1.png');
                 const liveFeed = ref([{ id: 1, message: 'System online – swipe modules', time_ago: 'Just now' }]);
                 
-                // Global stats (3 cards)
                 const globalStats = ref({
                     activeGuests: '—',
                     revenue: '—',
                     activeOrders: '—'
                 });
                 
-                // fullscreen + pin
                 const isFullscreenActive = ref(false);
                 const fullscreenModule = ref(null);
                 const showPinModal = ref(false);
@@ -572,7 +553,6 @@
                     toastTimeout = setTimeout(() => toastMessage.value = '', 2500);
                 };
                 
-                // Build modules from role
                 const buildModules = () => {
                     const keys = roleModules[currentRole.value] || [];
                     activeModules.value = keys.map(key => ({
@@ -582,27 +562,21 @@
                         src: moduleMeta[key]?.src || ''
                     }));
                     if (activeModules.value.length) activeIndex.value = 0;
-                    else showToast('No modules assigned for your role');
                 };
                 
-                // GLOBAL STATS: Fetch from Supabase across all contexts (unified)
                 const fetchGlobalStats = async () => {
                     if (!supabase) {
-                        // fallback dummy data
                         globalStats.value = { activeGuests: 128, revenue: '24,590', activeOrders: 43 };
                         return;
                     }
                     try {
-                        // Fetch today's revenue from tickets or orders (flexible)
                         const today = new Date().toISOString().split('T')[0];
                         const { data: ticketsSold } = await supabase.from('tickets').select('price').eq('status', 'used').gte('updated_at', today);
                         const ticketRevenue = (ticketsSold || []).reduce((sum, t) => sum + (t.price || 0), 0);
-                        // Fetch shisha sessions revenue
                         const { data: shishaSessions } = await supabase.from('shisha_sessions').select('total_amount');
                         const shishaRevenue = (shishaSessions || []).reduce((sum, s) => sum + (s.total_amount || 0), 0);
                         const totalRevenue = (ticketRevenue + shishaRevenue).toFixed(0);
                         
-                        // Active guests from VVIP tables + lockers occupancy + active shisha
                         let activeGuestCount = 0;
                         const { data: tables } = await supabase.from('tables').select('entries_used');
                         if (tables) activeGuestCount += tables.reduce((acc, t) => acc + (t.entries_used || 0), 0);
@@ -611,7 +585,6 @@
                         const { data: activeShishas } = await supabase.from('shisha_sessions').select('id').eq('status', 'active');
                         if (activeShishas) activeGuestCount += activeShishas.length;
                         
-                        // Active orders count
                         let orderCount = 0;
                         const { data: preOrders } = await supabase.from('butcher_orders').select('id').in('kitchen_status', ['new', 'preparing', 'ready']);
                         if (preOrders) orderCount += preOrders.length;
@@ -629,7 +602,6 @@
                     }
                 };
                 
-                // Carousel logic
                 const updateActiveSlide = () => {
                     const container = document.querySelector('.carousel-container');
                     if (!container || !activeModules.value.length) return;
@@ -647,7 +619,6 @@
                     });
                     if (activeIndex.value !== closest) {
                         activeIndex.value = closest;
-                        // no module-specific stats anymore, just update UI
                     }
                 };
                 
@@ -665,12 +636,13 @@
                     if (loadingModuleKey.value === moduleKey) loadingModuleKey.value = null;
                     showToast(`${moduleMeta[moduleKey]?.title || 'Module'} ready`);
                 };
+                
                 const onIframeError = (moduleKey) => {
                     if (loadingModuleKey.value === moduleKey) loadingModuleKey.value = null;
                     showToast(`⚠️ Failed to load ${moduleMeta[moduleKey]?.title || 'module'}`);
                 };
                 
-                // Fullscreen PIN logic
+                // PIN functions - only triggered by manual clicks
                 const requestPin = (msg) => new Promise((resolve) => {
                     pinActionText.value = msg;
                     pinInput.value = '';
@@ -678,18 +650,47 @@
                     showPinModal.value = true;
                     pendingPinResolver = resolve;
                 });
+                
                 const verifyPin = () => {
                     if (pinInput.value === FULLSCREEN_PIN) {
                         showPinModal.value = false;
                         if (pendingPinResolver) pendingPinResolver(true);
                         pinError.value = false;
-                    } else { pinError.value = true; pinInput.value = ''; }
+                    } else { 
+                        pinError.value = true; 
+                        pinInput.value = ''; 
+                    }
                 };
-                const cancelPin = () => { showPinModal.value = false; if(pendingPinResolver) pendingPinResolver(false); showToast('Cancelled'); };
-                const requestFullscreenWithPin = async (mod) => { if(await requestPin('Enter PIN to enter fullscreen')) { fullscreenModule.value = mod; isFullscreenActive.value = true; await nextTick(); document.querySelector('.fullscreen-overlay')?.requestFullscreen?.(); } };
-                const requestExitFullscreenWithPin = async () => { if(await requestPin('PIN to exit fullscreen')) { document.exitFullscreen?.(); isFullscreenActive.value = false; fullscreenModule.value = null; } };
                 
-                const updateTime = () => { currentTime.value = new Date().toLocaleTimeString('en-US', { hour12: false }); };
+                const cancelPin = () => { 
+                    showPinModal.value = false; 
+                    if (pendingPinResolver) pendingPinResolver(false); 
+                    showToast('Cancelled'); 
+                };
+                
+                const requestFullscreenWithPin = async (mod) => { 
+                    // Only trigger on explicit button click
+                    if (await requestPin('Enter PIN to enter fullscreen')) { 
+                        fullscreenModule.value = mod; 
+                        isFullscreenActive.value = true; 
+                        await nextTick(); 
+                        const overlay = document.querySelector('.fullscreen-overlay');
+                        if (overlay && overlay.requestFullscreen) overlay.requestFullscreen(); 
+                    } 
+                };
+                
+                const requestExitFullscreenWithPin = async () => { 
+                    if (await requestPin('PIN to exit fullscreen')) { 
+                        if (document.exitFullscreen) document.exitFullscreen(); 
+                        isFullscreenActive.value = false; 
+                        fullscreenModule.value = null; 
+                    } 
+                };
+                
+                const updateTime = () => { 
+                    currentTime.value = new Date().toLocaleTimeString('en-US', { hour12: false }); 
+                };
+                
                 const loadVenue = async () => {
                     if (supabase) {
                         try {
@@ -699,19 +700,17 @@
                     }
                 };
                 
-                const fallbackLogo = (e) => { e.target.src = 'https://placehold.co/40x40?text=RANDS'; };
+                const fallbackLogo = (e) => { 
+                    e.target.src = 'https://placehold.co/40x40?text=RANDS'; 
+                };
                 
-                // Initialize supabase from global or fallback to default URL (preserve credentials from original but ensure ../config/supabase.js is used)
                 const initSupabase = async () => {
                     if (window.__SUPABASE_CLIENT) {
                         supabase = window.__SUPABASE_CLIENT;
                     } else if (window.supabase) {
-                        // Fallback to original supabase config (preserved)
                         const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
                         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
                         supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    } else {
-                        console.warn('No supabase client, using mock stats');
                     }
                     await fetchGlobalStats();
                     await loadVenue();
@@ -725,12 +724,20 @@
                     statsInterval = setInterval(fetchGlobalStats, 8000);
                     setTimeout(() => updateActiveSlide(), 200);
                     window.addEventListener('resize', updateActiveSlide);
-                    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { isFullscreenActive.value = false; fullscreenModule.value = null; } });
+                    document.addEventListener('fullscreenchange', () => { 
+                        if (!document.fullscreenElement) { 
+                            isFullscreenActive.value = false; 
+                            fullscreenModule.value = null; 
+                        } 
+                    });
                     feedInterval = setInterval(() => {
-                        liveFeed.value.unshift({ id: Date.now(), message: `📱 ${moduleMeta[activeModules.value[activeIndex.value]?.key]?.title || 'Console'} · active`, time_ago: 'now' });
+                        const currentMod = activeModules.value[activeIndex.value];
+                        const modTitle = currentMod?.title || 'Console';
+                        liveFeed.value.unshift({ id: Date.now(), message: `📱 ${modTitle} · active`, time_ago: 'now' });
                         if (liveFeed.value.length > 8) liveFeed.value.pop();
                     }, 35000);
                 });
+                
                 onUnmounted(() => {
                     if (timeInterval) clearInterval(timeInterval);
                     if (statsInterval) clearInterval(statsInterval);
