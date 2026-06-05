@@ -565,19 +565,25 @@
     });
   }
 
-  // Load products from Supabase (same as original)
+  // Load products from Supabase (UPDATED: using 'products' table instead of 'menu_items')
   async function loadProductsFromSupabase() {
     try {
       const { data, error } = await supabase
-        .from('menu_items')
+        .from('products')  // ✅ CORRECTED: using products table from schema
         .select('name, price')
         .eq('is_available', true);
+        
       if (error) throw error;
+      
       if (data && data.length) {
         productsMap = {};
-        data.forEach(item => { productsMap[item.name] = item.price; });
+        data.forEach(item => { 
+          productsMap[item.name] = item.price; 
+        });
+        console.log(`✅ Loaded ${data.length} products from database`);
       } else {
-        // fallback
+        // Fallback products (only if database returns empty)
+        console.warn('No products found in database, using fallback');
         productsMap = {
           "Heineken Beer 6-pack": 89.99,
           "Jameson Whiskey 750ml": 329.99,
@@ -588,8 +594,17 @@
       }
       renderProductModal();
     } catch (err) {
-      console.error(err);
-      showToast("Could not load products", true);
+      console.error('Error loading products:', err);
+      showToast("Could not load products from database", true);
+      // Use fallback products on error
+      productsMap = {
+        "Heineken Beer 6-pack": 89.99,
+        "Jameson Whiskey 750ml": 329.99,
+        "Smirnoff Vodka 1L": 189.99,
+        "Johnnie Walker Black": 499.99,
+        "Amarula Cream": 159.99
+      };
+      renderProductModal();
     }
   }
 
@@ -650,11 +665,13 @@
       .select('id')
       .eq('customer_phone', phone)
       .in('status', ['pending', 'assigned']);
+      
     if (checkErr) {
       console.error(checkErr);
       showInfoModal('Error', 'Could not verify existing registrations.');
       return;
     }
+    
     if (existing && existing.length > 0) {
       showInfoModal('Vault exists', 'This phone number already has a pending or assigned vault. Please contact staff.');
       return;
@@ -672,7 +689,7 @@
       .insert({
         customer_name: name,
         customer_phone: phone,
-        pin_hash: pin,   // in production should be hashed; keep as original logic
+        pin_hash: pin,   // Note: In production, this should be properly hashed
         items: itemsArray,
         total_value: totalValue,
         status: 'pending'
