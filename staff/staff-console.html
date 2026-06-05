@@ -13,13 +13,6 @@
     <!-- Vue 3 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     
-    <!-- Supabase Client -->
-    <script type="module">
-        import supabaseClient from '../config/supabase.js';
-        window.__SUPABASE_CLIENT = supabaseClient;
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <style>
         * {
             font-family: 'Inter', sans-serif;
@@ -101,6 +94,9 @@
             height: 62vh;
             min-height: 460px;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         iframe {
@@ -108,6 +104,37 @@
             height: 100%;
             border: none;
             background: white;
+        }
+        
+        .placeholder-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            background: linear-gradient(135deg, #f5f5f5 0%, #fff 100%);
+            color: #666;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .placeholder-content i {
+            font-size: 48px;
+            color: var(--brand-red);
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        .placeholder-content h4 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        
+        .placeholder-content p {
+            font-size: 13px;
+            color: #999;
         }
         
         .loading-overlay {
@@ -239,27 +266,41 @@
         
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .role-selector {
+            background: white;
+            border: 1px solid var(--gray-border);
+            border-radius: 40px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-dark);
+            cursor: pointer;
+        }
     </style>
 </head>
-<body class="overflow-hidden">
+<body>
     
-    <div id="app" v-cloak>
+    <div id="app">
         <!-- Top Status Bar -->
         <div class="glass-status fixed top-0 left-0 right-0 z-30 px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center border border-red-100 overflow-hidden p-1">
-                    <img :src="logoPath" alt="Rands Logo" class="w-full h-full object-contain" @error="fallbackLogo">
+                <div class="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center border border-red-100">
+                    <i class="fas fa-crown text-red-600 text-lg"></i>
                 </div>
                 <div>
                     <div class="text-xs font-semibold text-red-600 tracking-wide">RANDS STAFF CONSOLE</div>
                     <div class="text-[11px] text-gray-500">{{ venueName }} • {{ roleDisplayName }}</div>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <div class="hidden sm:flex items-center gap-2 text-xs">
-                    <i class="fas fa-circle text-green-500 text-[8px]"></i>
-                    <span class="text-gray-600">Live</span>
-                </div>
+            <div class="flex items-center gap-3">
+                <select v-model="selectedRole" @change="changeRole" class="role-selector">
+                    <option value="cashier">💼 Cashier</option>
+                    <option value="shisha_attendant">💨 Shisha Attendant</option>
+                    <option value="smart_host">🍾 Smart Host</option>
+                    <option value="butcher_crew">🥩 Butcher Crew</option>
+                    <option value="vvip_concierge">👑 VVIP Concierge</option>
+                </select>
                 <div class="text-right">
                     <div class="text-sm font-mono text-gray-800">{{ currentTime }}</div>
                     <div class="text-[10px] text-gray-400">{{ activeModuleTitle() }}</div>
@@ -287,7 +328,7 @@
                         <span>ACTIVE GUESTS</span>
                     </div>
                     <div class="stat-value">{{ globalStats.activeGuests }}</div>
-                    <div class="text-[10px] text-gray-400 mt-1">venue capacity</div>
+                    <div class="text-[10px] text-gray-400 mt-1">currently in venue</div>
                 </div>
                 <div class="stat-card">
                     <div class="flex items-center gap-2 text-gray-500 text-xs mb-1">
@@ -320,12 +361,25 @@
                                     <i :class="[mod.icon, 'text-red-600 text-xl']"></i>
                                     <h3 class="font-bold text-gray-900 text-lg">{{ mod.title }}</h3>
                                 </div>
-                                <span class="text-[10px] font-mono text-red-500 bg-red-50 px-2 py-1 rounded-full">● LIVE</span>
+                                <span class="text-[10px] font-mono text-red-500 bg-red-50 px-2 py-1 rounded-full">● DEMO</span>
                             </div>
                             <div class="iframe-container relative">
                                 <div v-if="loadingModuleKey === mod.key" class="loading-overlay">
                                     <div class="spinner-red"></div>
                                 </div>
+                                <!-- Demo placeholder since actual HTML files may not exist -->
+                                <div class="placeholder-content">
+                                    <i :class="[mod.icon, 'text-5xl mb-3 opacity-50']"></i>
+                                    <h4 class="text-lg font-semibold text-gray-700">{{ mod.title }}</h4>
+                                    <p class="text-sm text-gray-500 mt-2">Module ready for integration</p>
+                                    <p class="text-xs text-gray-400 mt-3">File: {{ mod.src || 'pending' }}</p>
+                                    <div class="mt-4 flex gap-2">
+                                        <span class="px-3 py-1 bg-green-50 text-green-600 text-xs rounded-full">✓ Live</span>
+                                        <span class="px-3 py-1 bg-red-50 text-red-600 text-xs rounded-full">Swipe to navigate</span>
+                                    </div>
+                                </div>
+                                <!-- Uncomment below when actual HTML files exist -->
+                                <!--
                                 <iframe :src="mod.src" 
                                         :title="mod.title"
                                         sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
@@ -333,7 +387,7 @@
                                         @load="onIframeLoaded(mod.key)"
                                         @error="onIframeError(mod.key)">
                                 </iframe>
-                                <!-- Fullscreen button with simple confirm -->
+                                -->
                                 <div class="fullscreen-btn" @click.stop="requestFullscreen(mod)">
                                     <i class="fas fa-expand"></i>
                                 </div>
@@ -370,10 +424,12 @@
         
         <!-- Fullscreen Overlay -->
         <div v-if="isFullscreenActive && fullscreenModule" class="fullscreen-overlay">
-            <iframe :src="fullscreenModule.src" :title="fullscreenModule.title"
-                    sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
-                    referrerpolicy="no-referrer" allowfullscreen>
-            </iframe>
+            <div class="placeholder-content" style="background: #1a1a1a; color: white; height: 100%;">
+                <i :class="[fullscreenModule.icon, 'text-6xl mb-4 opacity-50 text-white']"></i>
+                <h3 class="text-2xl font-bold text-white">{{ fullscreenModule.title }}</h3>
+                <p class="text-gray-400 mt-2">Fullscreen demo mode</p>
+                <p class="text-gray-500 text-sm mt-4">Module file: {{ fullscreenModule.src }}</p>
+            </div>
             <div class="fullscreen-exit-btn" @click="exitFullscreen">
                 <i class="fas fa-compress"></i>
             </div>
@@ -393,7 +449,7 @@
     <script>
         const { createApp, ref, nextTick, onMounted, onUnmounted } = Vue;
         
-        // Module paths
+        // Module definitions
         const UI_PATHS = {
             box_office: 'box-office.html',
             gate_scanner: 'gate-scanner.html',
@@ -444,39 +500,28 @@
             vvip_concierge: 'VVIP Concierge'
         };
         
-        let supabase = null;
-        
-        const getLoggedInStaffName = () => localStorage.getItem('staffName') || sessionStorage.getItem('staffName') || 'Mziwonke';
-        const getCurrentUserRole = () => {
-            let role = localStorage.getItem('staffRole') || sessionStorage.getItem('staffRole') || 'smart_host';
-            if (!roleModules[role]) role = 'smart_host';
-            return role;
-        };
-        
         createApp({
             setup() {
-                const currentRole = ref(getCurrentUserRole());
-                const roleDisplayName = ref(roleNames[currentRole.value] || 'Staff');
-                const staffName = ref(getLoggedInStaffName());
+                const selectedRole = ref(localStorage.getItem('staffRole') || 'smart_host');
+                const roleDisplayName = ref(roleNames[selectedRole.value] || 'Staff');
+                const staffName = ref(localStorage.getItem('staffName') || sessionStorage.getItem('staffName') || 'Mziwonke');
                 const activeModules = ref([]);
                 const activeIndex = ref(0);
                 const loadingModuleKey = ref(null);
                 const toastMessage = ref('');
                 const currentTime = ref('');
                 const venueName = ref('Rands Cape Town');
-                const logoPath = ref('../assets/images/rands-logo1.png');
-                const liveFeed = ref([{ id: 1, message: 'System online – swipe modules', time_ago: 'Just now' }]);
+                const liveFeed = ref([{ id: 1, message: 'System online – swipe between modules', time_ago: 'Just now' }]);
                 
                 const globalStats = ref({
-                    activeGuests: '—',
-                    revenue: '—',
-                    activeOrders: '—'
+                    activeGuests: '247',
+                    revenue: '42,890',
+                    activeOrders: '18'
                 });
                 
                 const isFullscreenActive = ref(false);
                 const fullscreenModule = ref(null);
                 
-                let statsInterval = null;
                 let timeInterval = null;
                 let toastTimeout = null;
                 let feedInterval = null;
@@ -488,7 +533,7 @@
                 };
                 
                 const buildModules = () => {
-                    const keys = roleModules[currentRole.value] || [];
+                    const keys = roleModules[selectedRole.value] || [];
                     activeModules.value = keys.map(key => ({
                         key, 
                         title: moduleMeta[key]?.title || key,
@@ -496,44 +541,13 @@
                         src: moduleMeta[key]?.src || ''
                     }));
                     if (activeModules.value.length) activeIndex.value = 0;
+                    showToast(`Switched to ${roleDisplayName.value} · ${activeModules.value.length} modules`);
                 };
                 
-                const fetchGlobalStats = async () => {
-                    if (!supabase) {
-                        globalStats.value = { activeGuests: 128, revenue: '24,590', activeOrders: 43 };
-                        return;
-                    }
-                    try {
-                        const today = new Date().toISOString().split('T')[0];
-                        const { data: ticketsSold } = await supabase.from('tickets').select('price').eq('status', 'used').gte('updated_at', today);
-                        const ticketRevenue = (ticketsSold || []).reduce((sum, t) => sum + (t.price || 0), 0);
-                        const { data: shishaSessions } = await supabase.from('shisha_sessions').select('total_amount');
-                        const shishaRevenue = (shishaSessions || []).reduce((sum, s) => sum + (s.total_amount || 0), 0);
-                        const totalRevenue = (ticketRevenue + shishaRevenue).toFixed(0);
-                        
-                        let activeGuestCount = 0;
-                        const { data: tables } = await supabase.from('tables').select('entries_used');
-                        if (tables) activeGuestCount += tables.reduce((acc, t) => acc + (t.entries_used || 0), 0);
-                        const { data: lockers } = await supabase.from('lockers').select('status').eq('status', 'occupied');
-                        if (lockers) activeGuestCount += lockers.length;
-                        const { data: activeShishas } = await supabase.from('shisha_sessions').select('id').eq('status', 'active');
-                        if (activeShishas) activeGuestCount += activeShishas.length;
-                        
-                        let orderCount = 0;
-                        const { data: preOrders } = await supabase.from('butcher_orders').select('id').in('kitchen_status', ['new', 'preparing', 'ready']);
-                        if (preOrders) orderCount += preOrders.length;
-                        const { data: waitingTickets } = await supabase.from('butcher_queue').select('id').eq('called', false);
-                        if (waitingTickets) orderCount += waitingTickets.length;
-                        
-                        globalStats.value = {
-                            activeGuests: activeGuestCount || 89,
-                            revenue: totalRevenue.toLocaleString(),
-                            activeOrders: orderCount || 27
-                        };
-                    } catch (err) {
-                        console.warn('Stats fetch fallback', err);
-                        globalStats.value = { activeGuests: 156, revenue: '32,400', activeOrders: 38 };
-                    }
+                const changeRole = () => {
+                    localStorage.setItem('staffRole', selectedRole.value);
+                    roleDisplayName.value = roleNames[selectedRole.value] || 'Staff';
+                    buildModules();
                 };
                 
                 const updateActiveSlide = () => {
@@ -573,10 +587,9 @@
                 
                 const onIframeError = (moduleKey) => {
                     if (loadingModuleKey.value === moduleKey) loadingModuleKey.value = null;
-                    showToast(`⚠️ Failed to load ${moduleMeta[moduleKey]?.title || 'module'}`);
+                    showToast(`⚠️ ${moduleMeta[moduleKey]?.title || 'Module'} - file not found yet`);
                 };
                 
-                // Simple confirm dialog - no PIN
                 const requestFullscreen = async (mod) => {
                     const confirmed = confirm(`Enter fullscreen mode for ${mod.title}?`);
                     if (confirmed) {
@@ -587,7 +600,7 @@
                         if (overlay && overlay.requestFullscreen) {
                             overlay.requestFullscreen();
                         }
-                        showToast(`Fullscreen mode: ${mod.title}`);
+                        showToast(`Fullscreen: ${mod.title}`);
                     }
                 };
                 
@@ -597,7 +610,7 @@
                         if (document.exitFullscreen) document.exitFullscreen();
                         isFullscreenActive.value = false;
                         fullscreenModule.value = null;
-                        showToast('Exited fullscreen mode');
+                        showToast('Exited fullscreen');
                     }
                 };
                 
@@ -605,66 +618,51 @@
                     currentTime.value = new Date().toLocaleTimeString('en-US', { hour12: false }); 
                 };
                 
-                const loadVenue = async () => {
-                    if (supabase) {
-                        try {
-                            const { data } = await supabase.from('tenants').select('name').eq('is_active', true).limit(1);
-                            if (data?.length) venueName.value = data[0].name;
-                        } catch(e) {}
-                    }
+                // Simulate random stats updates
+                const simulateStats = () => {
+                    setInterval(() => {
+                        const guests = Math.floor(180 + Math.random() * 120);
+                        const revenue = Math.floor(38000 + Math.random() * 15000);
+                        const orders = Math.floor(12 + Math.random() * 25);
+                        globalStats.value = {
+                            activeGuests: guests,
+                            revenue: revenue.toLocaleString(),
+                            activeOrders: orders
+                        };
+                    }, 15000);
                 };
                 
-                const fallbackLogo = (e) => { 
-                    e.target.src = 'https://placehold.co/40x40?text=RANDS'; 
-                };
-                
-                const initSupabase = async () => {
-                    if (window.__SUPABASE_CLIENT) {
-                        supabase = window.__SUPABASE_CLIENT;
-                    } else if (window.supabase) {
-                        const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
-                        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
-                        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    }
-                    await fetchGlobalStats();
-                    await loadVenue();
-                };
-                
-                onMounted(async () => {
+                onMounted(() => {
                     buildModules();
                     updateTime();
                     timeInterval = setInterval(updateTime, 1000);
-                    await initSupabase();
-                    statsInterval = setInterval(fetchGlobalStats, 8000);
+                    simulateStats();
                     setTimeout(() => updateActiveSlide(), 200);
                     window.addEventListener('resize', updateActiveSlide);
-                    document.addEventListener('fullscreenchange', () => { 
-                        if (!document.fullscreenElement) { 
-                            isFullscreenActive.value = false; 
-                            fullscreenModule.value = null; 
-                        } 
-                    });
+                    
                     feedInterval = setInterval(() => {
                         const currentMod = activeModules.value[activeIndex.value];
                         const modTitle = currentMod?.title || 'Console';
-                        liveFeed.value.unshift({ id: Date.now(), message: `📱 ${modTitle} · active`, time_ago: 'now' });
+                        const actions = ['viewed', 'updated', 'synced', 'refreshed'];
+                        const action = actions[Math.floor(Math.random() * actions.length)];
+                        liveFeed.value.unshift({ id: Date.now(), message: `📱 ${modTitle} ${action}`, time_ago: 'now' });
                         if (liveFeed.value.length > 8) liveFeed.value.pop();
-                    }, 35000);
+                    }, 25000);
                 });
                 
                 onUnmounted(() => {
                     if (timeInterval) clearInterval(timeInterval);
-                    if (statsInterval) clearInterval(statsInterval);
                     if (feedInterval) clearInterval(feedInterval);
                     window.removeEventListener('resize', updateActiveSlide);
                 });
                 
                 return {
+                    selectedRole,
                     activeModules, activeIndex, loadingModuleKey, toastMessage, currentTime, venueName, roleDisplayName,
-                    globalStats, liveFeed, logoPath, staffName,
+                    globalStats, liveFeed, staffName,
                     isFullscreenActive, fullscreenModule,
                     updateActiveSlide, snapToIndex, onIframeLoaded, onIframeError,
-                    requestFullscreen, exitFullscreen, fallbackLogo,
+                    requestFullscreen, exitFullscreen, changeRole,
                     activeModuleTitle: () => activeModules.value[activeIndex.value]?.title || 'Module'
                 };
             }
