@@ -140,8 +140,53 @@
         }
         .status-available { background: #dcfce7; color: #166534; }
         .status-active { background: #fee2e2; color: #991b1b; }
+        .status-refill { background: #fff3e0; color: #ef6c00; }
+        .status-paused { background: #fff8e1; color: #ff8f00; }
+        .status-expired { background: #e5e7eb; color: #4b5563; }
         .status-maintenance { background: #fef9c3; color: #854d0e; }
         .status-deleted { background: #e2e8f0; color: #475569; text-decoration: line-through; }
+        
+        .sessions-table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow-x: auto;
+            display: block;
+        }
+        .sessions-table th,
+        .sessions-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .sessions-table th {
+            background: #f1f5f9;
+            font-weight: 600;
+            color: #475569;
+        }
+        .session-status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 60px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .session-status-active { background: #fee2e2; color: #991b1b; }
+        .session-status-refill { background: #fff3e0; color: #ef6c00; }
+        .session-status-paused { background: #fff8e1; color: #ff8f00; }
+        .session-status-expired { background: #e5e7eb; color: #4b5563; }
+        
+        .loading-state {
+            text-align: center;
+            padding: 40px;
+            color: #94a3b8;
+        }
+        .error-state {
+            text-align: center;
+            padding: 40px;
+            color: #e30613;
+            background: #fee2e2;
+            border-radius: 20px;
+        }
         .toast {
             position: fixed;
             bottom: 30px;
@@ -153,6 +198,16 @@
             font-weight: 500;
             z-index: 1000;
             display: none;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #94a3b8;
         }
     </style>
 </head>
@@ -206,10 +261,10 @@
         <div id="locationsList" class="items-grid">Loading...</div>
     </div>
 
-    <!-- SESSIONS PANEL (read-only) -->
+    <!-- SESSIONS PANEL -->
     <div id="sessionsPanel" class="panel">
         <div class="section-title"><i class="fas fa-hourglass-half"></i> Active Shisha Sessions</div>
-        <div id="sessionsList" style="overflow-x: auto;">Loading...</div>
+        <div id="sessionsList" class="loading-state">Loading active sessions...</div>
     </div>
 </div>
 
@@ -218,7 +273,15 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    // Helper toast
+    // ============ CONSTANTS ==========
+    const COAL_DURATION = 60; // minutes
+    const REFILL_THRESHOLD = 15; // minutes
+    const DURATION_SECONDS = COAL_DURATION * 60;
+    
+    let realtimeSubscription = null;
+    let activeSessions = [];
+
+    // ============ HELPER FUNCTIONS ==========
     function showToast(msg, isError = false) {
         const toast = document.getElementById('toast');
         toast.textContent = msg;
@@ -227,236 +290,617 @@
         setTimeout(() => { toast.style.display = 'none'; }, 3000);
     }
 
+    function escapeHtml(str) { 
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, function(m){
+            if(m==='&') return '&amp;'; 
+            if(m==='<') return '&lt;'; 
+            if(m==='>') return '&gt;'; 
+            return m;
+        }); 
+    }
+
+    // Calculate remaining seconds (same logic as POS and Console)
+    function calculateRemainingSeconds(session) {
+        if (!session) return 0;
+        
+        if (session.paused || session.status === 'expired') {
+            return session.remaining_time_seconds || 0;
+        }
+        
+        const referenceTime = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
+        const now = new Date();
+        const elapsedSeconds = Math.floor((now - referenceTime) / 1000);
+        let remaining = DURATION_SECONDS - elapsedSeconds;
+        
+        return remaining > 0 ? remaining : 0;
+    }
+
+    function formatTime(seconds) {
+        if (seconds <= 0) return "EXPIRED";
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function determineSessionStatus(session) {
+        if (session.paused) return 'paused';
+        if (session.status === 'expired') return 'expired';
+        
+        const remainingSec = calculateRemainingSeconds(session);
+        if (remainingSec <= 0) return 'expired';
+        if (remainingSec <= REFILL_THRESHOLD * 60) return 'refill';
+        return 'active';
+    }
+
     // ========== FLAVOURS ==========
     async function loadFlavours() {
-        const { data, error } = await supabase.from('shisha_products').select('*').order('name');
-        if (error) { console.error(error); return; }
-        const container = document.getElementById('flavoursList');
-        if (!data.length) { container.innerHTML = '<div class="empty">No flavours. Add one above.</div>'; return; }
-        container.innerHTML = data.map(p => `
-            <div class="item-card" data-id="${p.id}">
-                <div class="item-info">
-                    <div class="name">${escapeHtml(p.name)}</div>
-                    <div class="meta">R${p.price} • ${p.is_available ? 'Available' : 'Hidden'}</div>
+        try {
+            const { data, error } = await supabase
+                .from('shisha_products')
+                .select('*')
+                .order('name');
+            
+            if (error) throw error;
+            
+            const container = document.getElementById('flavoursList');
+            if (!data.length) { 
+                container.innerHTML = '<div class="empty-state">No flavours. Add one above.</div>'; 
+                return; 
+            }
+            
+            container.innerHTML = data.map(p => `
+                <div class="item-card" data-id="${p.id}">
+                    <div class="item-info">
+                        <div class="name">${escapeHtml(p.name)}</div>
+                        <div class="meta">R${p.price} • ${p.is_available ? 'Available' : 'Hidden'}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="toggle-availability" data-id="${p.id}" data-avail="${p.is_available}">
+                            <i class="fas ${p.is_available ? 'fa-eye-slash' : 'fa-eye'}"></i>
+                        </button>
+                        <button class="delete-flavour danger" data-id="${p.id}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="item-actions">
-                    <button class="toggle-availability" data-id="${p.id}" data-avail="${p.is_available}"><i class="fas ${p.is_available ? 'fa-eye-slash' : 'fa-eye'}"></i></button>
-                    <button class="delete-flavour danger" data-id="${p.id}"><i class="fas fa-trash-alt"></i></button>
-                </div>
-            </div>
-        `).join('');
-        // attach events
-        document.querySelectorAll('.toggle-availability').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = btn.dataset.id;
-                const current = btn.dataset.avail === 'true';
-                const { error } = await supabase.from('shisha_products').update({ is_available: !current }).eq('id', id);
-                if (error) showToast(error.message, true);
-                else { loadFlavours(); showToast('Updated'); }
+            `).join('');
+            
+            // Attach events
+            document.querySelectorAll('.toggle-availability').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const current = btn.dataset.avail === 'true';
+                    const { error } = await supabase
+                        .from('shisha_products')
+                        .update({ is_available: !current })
+                        .eq('id', id);
+                    
+                    if (error) showToast(error.message, true);
+                    else { 
+                        await loadFlavours(); 
+                        showToast('Updated'); 
+                    }
+                });
             });
-        });
-        document.querySelectorAll('.delete-flavour').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                if (!confirm('Delete this flavour? This will not delete sessions, but may break old records.')) return;
-                const id = btn.dataset.id;
-                const { error } = await supabase.from('shisha_products').delete().eq('id', id);
-                if (error) showToast(error.message, true);
-                else { loadFlavours(); showToast('Deleted'); }
+            
+            document.querySelectorAll('.delete-flavour').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Delete this flavour? This will not delete sessions, but may break old records.')) return;
+                    const id = btn.dataset.id;
+                    const { error } = await supabase
+                        .from('shisha_products')
+                        .delete()
+                        .eq('id', id);
+                    
+                    if (error) showToast(error.message, true);
+                    else { 
+                        await loadFlavours(); 
+                        showToast('Deleted'); 
+                    }
+                });
             });
-        });
-        document.getElementById('flavourCount').innerText = data.length;
+            
+            document.getElementById('flavourCount').innerText = data.length;
+        } catch (error) {
+            console.error('Error loading flavours:', error);
+            showToast('Failed to load flavours', true);
+        }
     }
 
     document.getElementById('addFlavourBtn').onclick = async () => {
         const name = document.getElementById('newFlavourName').value.trim();
         const price = parseFloat(document.getElementById('newFlavourPrice').value);
-        if (!name || isNaN(price)) { showToast('Enter name and price', true); return; }
-        const { error } = await supabase.from('shisha_products').insert({ name, price, is_available: true });
+        
+        if (!name || isNaN(price)) { 
+            showToast('Enter name and price', true); 
+            return; 
+        }
+        
+        const { error } = await supabase
+            .from('shisha_products')
+            .insert({ name, price, is_available: true });
+        
         if (error) showToast(error.message, true);
         else {
             document.getElementById('newFlavourName').value = '';
             document.getElementById('newFlavourPrice').value = '250';
-            loadFlavours();
+            await loadFlavours();
             showToast('Flavour added');
         }
     };
 
     // ========== DEVICES ==========
     async function loadDevices() {
-        const { data, error } = await supabase.from('hookah_devices').select('*').order('device_code');
-        if (error) { console.error(error); return; }
-        const container = document.getElementById('devicesList');
-        if (!data.length) { container.innerHTML = '<div class="empty">No devices.</div>'; return; }
-        container.innerHTML = data.map(d => `
-            <div class="item-card" data-id="${d.id}">
-                <div class="item-info">
-                    <div class="name">${escapeHtml(d.device_code)} ${d.device_name ? `(${escapeHtml(d.device_name)})` : ''}</div>
-                    <div class="meta">
-                        <span class="device-status status-${d.status === 'available' ? 'available' : (d.status === 'active' ? 'active' : (d.status === 'maintenance' ? 'maintenance' : 'deleted'))}">${d.status}</span>
+        try {
+            const { data, error } = await supabase
+                .from('hookah_devices')
+                .select('*')
+                .order('device_code');
+            
+            if (error) throw error;
+            
+            const container = document.getElementById('devicesList');
+            if (!data.length) { 
+                container.innerHTML = '<div class="empty-state">No devices.</div>'; 
+                return; 
+            }
+            
+            container.innerHTML = data.map(d => `
+                <div class="item-card" data-id="${d.id}">
+                    <div class="item-info">
+                        <div class="name">${escapeHtml(d.device_code)} ${d.device_name ? `(${escapeHtml(d.device_name)})` : ''}</div>
+                        <div class="meta">
+                            <span class="device-status status-${d.status}">${d.status}</span>
+                        </div>
+                    </div>
+                    <div class="item-actions">
+                        <select class="status-select" data-id="${d.id}" style="padding:4px 8px; border-radius:30px;">
+                            <option value="available" ${d.status === 'available' ? 'selected' : ''}>Available</option>
+                            <option value="maintenance" ${d.status === 'maintenance' ? 'selected' : ''}>Maintenance</option>
+                            <option value="deleted" ${d.status === 'deleted' ? 'selected' : ''}>Deleted</option>
+                        </select>
+                        <button class="delete-device danger" data-id="${d.id}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
                     </div>
                 </div>
-                <div class="item-actions">
-                    <select class="status-select" data-id="${d.id}" style="padding:4px 8px; border-radius:30px;">
-                        <option value="available" ${d.status === 'available' ? 'selected' : ''}>Available</option>
-                        <option value="maintenance" ${d.status === 'maintenance' ? 'selected' : ''}>Maintenance</option>
-                        <option value="deleted" ${d.status === 'deleted' ? 'selected' : ''}>Deleted</option>
-                    </select>
-                    <button class="delete-device danger" data-id="${d.id}"><i class="fas fa-trash-alt"></i></button>
-                </div>
-            </div>
-        `).join('');
-        // attach status change
-        document.querySelectorAll('.status-select').forEach(select => {
-            select.addEventListener('change', async (e) => {
-                const id = select.dataset.id;
-                const newStatus = select.value;
-                const { error } = await supabase.from('hookah_devices').update({ status: newStatus }).eq('id', id);
-                if (error) showToast(error.message, true);
-                else { loadDevices(); showToast('Device updated'); }
+            `).join('');
+            
+            // Attach status change
+            document.querySelectorAll('.status-select').forEach(select => {
+                select.addEventListener('change', async () => {
+                    const id = select.dataset.id;
+                    const newStatus = select.value;
+                    const { error } = await supabase
+                        .from('hookah_devices')
+                        .update({ status: newStatus })
+                        .eq('id', id);
+                    
+                    if (error) showToast(error.message, true);
+                    else { 
+                        await loadDevices(); 
+                        showToast('Device updated'); 
+                    }
+                });
             });
-        });
-        document.querySelectorAll('.delete-device').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                if (!confirm('Delete this device? (Soft delete – sets status to deleted)')) return;
-                const id = btn.dataset.id;
-                const { error } = await supabase.from('hookah_devices').update({ status: 'deleted' }).eq('id', id);
-                if (error) showToast(error.message, true);
-                else { loadDevices(); showToast('Device marked as deleted'); }
+            
+            document.querySelectorAll('.delete-device').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Delete this device? (Soft delete – sets status to deleted)')) return;
+                    const id = btn.dataset.id;
+                    const { error } = await supabase
+                        .from('hookah_devices')
+                        .update({ status: 'deleted' })
+                        .eq('id', id);
+                    
+                    if (error) showToast(error.message, true);
+                    else { 
+                        await loadDevices(); 
+                        showToast('Device marked as deleted'); 
+                    }
+                });
             });
-        });
-        document.getElementById('deviceCount').innerText = data.length;
+            
+            document.getElementById('deviceCount').innerText = data.length;
+        } catch (error) {
+            console.error('Error loading devices:', error);
+            showToast('Failed to load devices', true);
+        }
     }
 
     document.getElementById('addDeviceBtn').onclick = async () => {
         let code = document.getElementById('newDeviceCode').value.trim().toUpperCase();
-        if (!code) { showToast('Enter device code (e.g., SH-031)', true); return; }
+        if (!code) { 
+            showToast('Enter device code (e.g., SH-031)', true); 
+            return; 
+        }
+        
         const status = document.getElementById('newDeviceStatus').value;
-        const { error } = await supabase.from('hookah_devices').insert({ device_code: code, status });
+        const { error } = await supabase
+            .from('hookah_devices')
+            .insert({ device_code: code, status });
+        
         if (error) showToast(error.message, true);
         else {
             document.getElementById('newDeviceCode').value = '';
-            loadDevices();
+            await loadDevices();
             showToast('Device added');
         }
     };
 
     // ========== LOCATIONS ==========
     async function loadLocations() {
-        const { data, error } = await supabase.from('shisha_locations').select('*').order('name');
-        if (error) { console.error(error); return; }
-        const container = document.getElementById('locationsList');
-        if (!data.length) { container.innerHTML = '<div class="empty">No locations. Add one above.</div>'; return; }
-        container.innerHTML = data.map(l => `
-            <div class="item-card" data-id="${l.id}">
-                <div class="item-info">
-                    <div class="name">${escapeHtml(l.name)}</div>
-                    <div class="meta">${l.is_active ? 'Active' : 'Inactive'}</div>
+        try {
+            const { data, error } = await supabase
+                .from('shisha_locations')
+                .select('*')
+                .order('name');
+            
+            if (error) throw error;
+            
+            const container = document.getElementById('locationsList');
+            if (!data.length) { 
+                container.innerHTML = '<div class="empty-state">No locations. Add one above.</div>'; 
+                return; 
+            }
+            
+            container.innerHTML = data.map(l => `
+                <div class="item-card" data-id="${l.id}">
+                    <div class="item-info">
+                        <div class="name">${escapeHtml(l.name)}</div>
+                        <div class="meta">${l.is_active ? 'Active' : 'Inactive'}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="toggle-location" data-id="${l.id}" data-active="${l.is_active}">
+                            <i class="fas ${l.is_active ? 'fa-eye-slash' : 'fa-eye'}"></i>
+                        </button>
+                        <button class="delete-location danger" data-id="${l.id}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="item-actions">
-                    <button class="toggle-location" data-id="${l.id}" data-active="${l.is_active}"><i class="fas ${l.is_active ? 'fa-eye-slash' : 'fa-eye'}"></i></button>
-                    <button class="delete-location danger" data-id="${l.id}"><i class="fas fa-trash-alt"></i></button>
-                </div>
-            </div>
-        `).join('');
-        document.querySelectorAll('.toggle-location').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = btn.dataset.id;
-                const current = btn.dataset.active === 'true';
-                const { error } = await supabase.from('shisha_locations').update({ is_active: !current }).eq('id', id);
-                if (error) showToast(error.message, true);
-                else { loadLocations(); showToast('Updated'); }
+            `).join('');
+            
+            document.querySelectorAll('.toggle-location').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const current = btn.dataset.active === 'true';
+                    const { error } = await supabase
+                        .from('shisha_locations')
+                        .update({ is_active: !current })
+                        .eq('id', id);
+                    
+                    if (error) showToast(error.message, true);
+                    else { 
+                        await loadLocations(); 
+                        showToast('Updated'); 
+                    }
+                });
             });
-        });
-        document.querySelectorAll('.delete-location').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                if (!confirm('Delete this location? Sessions will keep location reference but name may disappear.')) return;
-                const id = btn.dataset.id;
-                const { error } = await supabase.from('shisha_locations').delete().eq('id', id);
-                if (error) showToast(error.message, true);
-                else { loadLocations(); showToast('Deleted'); }
+            
+            document.querySelectorAll('.delete-location').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Delete this location? Sessions will keep location reference but name may disappear.')) return;
+                    const id = btn.dataset.id;
+                    const { error } = await supabase
+                        .from('shisha_locations')
+                        .delete()
+                        .eq('id', id);
+                    
+                    if (error) showToast(error.message, true);
+                    else { 
+                        await loadLocations(); 
+                        showToast('Deleted'); 
+                    }
+                });
             });
-        });
-        document.getElementById('locationCount').innerText = data.length;
+            
+            document.getElementById('locationCount').innerText = data.length;
+        } catch (error) {
+            console.error('Error loading locations:', error);
+            showToast('Failed to load locations', true);
+        }
     }
 
     document.getElementById('addLocationBtn').onclick = async () => {
         const name = document.getElementById('newLocationName').value.trim();
-        if (!name) { showToast('Enter location name', true); return; }
-        const { error } = await supabase.from('shisha_locations').insert({ name });
+        if (!name) { 
+            showToast('Enter location name', true); 
+            return; 
+        }
+        
+        const { error } = await supabase
+            .from('shisha_locations')
+            .insert({ name });
+        
         if (error) showToast(error.message, true);
         else {
             document.getElementById('newLocationName').value = '';
-            loadLocations();
+            await loadLocations();
             showToast('Location added');
         }
     };
 
-    // ========== ACTIVE SESSIONS (read-only) ==========
+    // ========== ACTIVE SESSIONS (FIXED) ==========
     async function loadActiveSessions() {
-        const { data, error } = await supabase
-            .from('shisha_sessions')
-            .select(`
-                id, shishaId:hookah_devices(device_code), flavour:shisha_products(name),
-                location:shisha_locations(name), start_time, remaining_time_seconds, status, paused,
-                total_amount, customer_profile_id, customer_phone
-            `)
-            .in('status', ['active', 'refill', 'paused'])
-            .order('start_time', { ascending: false });
-        if (error) { console.error(error); return; }
         const container = document.getElementById('sessionsList');
-        if (!data.length) { container.innerHTML = '<div class="empty">No active sessions.</div>'; return; }
-        // simple table
-        let html = '<table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f1f5f9;"><th>Device</th><th>Flavour</th><th>Location</th><th>Time Left</th><th>Status</th><th>Customer</th><th>Total</th></tr></thead><tbody>';
-        data.forEach(s => {
-            const mins = Math.floor(s.remaining_time_seconds / 60);
-            const secs = s.remaining_time_seconds % 60;
-            const timeStr = `${mins}:${secs.toString().padStart(2,'0')}`;
-            html += `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:12px;">${s.shishaId?.device_code || '?'}</td>
-                <td>${s.flavour?.name || '?'}</td>
-                <td>${s.location?.name || '?'}</td>
-                <td>${timeStr}</td>
-                <td>${s.paused ? 'Paused' : s.status}</td>
-                <td>${s.customer_phone || s.customer_profile_id?.slice(0,8) || '—'}</td>
-                <td>R${s.total_amount}</td>
-            </tr>`;
-        });
-        html += '</tbody></table>';
-        container.innerHTML = html;
+        container.innerHTML = '<div class="loading-state">Loading active sessions...</div>';
+        
+        try {
+            // Use the same query structure as POS and Console
+            const { data, error } = await supabase
+                .from('shisha_sessions')
+                .select(`
+                    id,
+                    device_id,
+                    product_id,
+                    location_id,
+                    start_time,
+                    last_refill_time,
+                    remaining_time_seconds,
+                    total_amount,
+                    refill_count,
+                    status,
+                    paused,
+                    payment_method,
+                    customer_phone,
+                    hookah_devices!inner (device_code),
+                    shisha_products!inner (name, price),
+                    shisha_locations!inner (name)
+                `)
+                .in('status', ['active', 'refill', 'paused'])
+                .order('start_time', { ascending: false });
+            
+            if (error) throw error;
+            
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="empty-state">No active sessions at the moment.</div>';
+                activeSessions = [];
+                return;
+            }
+            
+            // Process sessions with status determination (same as Console)
+            activeSessions = data.map(session => {
+                const sessionData = {
+                    id: session.id,
+                    deviceId: session.device_id,
+                    deviceCode: session.hookah_devices?.device_code || 'Unknown',
+                    flavour: session.shisha_products?.name || 'Unknown',
+                    flavourPrice: session.shisha_products?.price || 250,
+                    location: session.shisha_locations?.name || 'Unknown',
+                    startTime: new Date(session.start_time),
+                    lastRefillTime: session.last_refill_time ? new Date(session.last_refill_time) : null,
+                    remaining_time_seconds: session.remaining_time_seconds,
+                    total_amount: session.total_amount,
+                    refillCount: session.refill_count || 0,
+                    status: session.status,
+                    paused: session.paused,
+                    paymentMethod: session.payment_method,
+                    customer_phone: session.customer_phone || 'Walk-in'
+                };
+                
+                // Update status based on timer if not paused
+                if (!sessionData.paused && sessionData.status !== 'expired') {
+                    const determinedStatus = determineSessionStatus(sessionData);
+                    if (determinedStatus !== sessionData.status) {
+                        sessionData.status = determinedStatus;
+                        // Update in database asynchronously
+                        supabase
+                            .from('shisha_sessions')
+                            .update({ status: determinedStatus })
+                            .eq('id', sessionData.id)
+                            .then(({ error }) => {
+                                if (error) console.error('Error updating session status:', error);
+                            });
+                    }
+                }
+                
+                return sessionData;
+            });
+            
+            // Render sessions table
+            const html = `
+                <table class="sessions-table">
+                    <thead>
+                        <tr>
+                            <th>Device</th>
+                            <th>Flavour</th>
+                            <th>Location</th>
+                            <th>Time Left</th>
+                            <th>Status</th>
+                            <th>Customer</th>
+                            <th>Total</th>
+                            <th>Refills</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${activeSessions.map(s => {
+                            const remainingSec = calculateRemainingSeconds(s);
+                            const timeLeft = remainingSec <= 0 ? 'EXPIRED' : formatTime(remainingSec);
+                            const statusClass = s.paused ? 'paused' : (s.status === 'refill' ? 'refill' : (s.status === 'expired' ? 'expired' : 'active'));
+                            const statusText = s.paused ? 'Paused' : (s.status === 'refill' ? 'Refill Soon' : (s.status === 'expired' ? 'Expired' : 'Active'));
+                            
+                            return `
+                                <tr>
+                                    <td style="padding:12px;"><strong>${escapeHtml(s.deviceCode)}</strong></td>
+                                    <td>${escapeHtml(s.flavour)}</td>
+                                    <td>${escapeHtml(s.location)}</td>
+                                    <td><span style="font-family: monospace; font-weight: 600;">${timeLeft}</span></td>
+                                    <td><span class="session-status-badge session-status-${statusClass}">${statusText}</span></td>
+                                    <td>${escapeHtml(s.customer_phone)}</td>
+                                    <td>R${s.total_amount}</td>
+                                    <td>${s.refillCount}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            container.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error loading active sessions:', error);
+            container.innerHTML = `<div class="error-state">
+                <i class="fas fa-exclamation-triangle"></i><br>
+                Failed to load sessions: ${error.message}<br>
+                <small>Check console for details</small>
+            </div>`;
+            showToast('Failed to load active sessions', true);
+        }
+    }
+
+    // Auto-refresh timer display
+    function startTimerUpdater() {
+        setInterval(() => {
+            const sessionsPanel = document.getElementById('sessionsPanel');
+            if (sessionsPanel.classList.contains('active') && activeSessions.length > 0) {
+                // Update only the time cells without full reload
+                const rows = document.querySelectorAll('#sessionsList tbody tr');
+                rows.forEach((row, index) => {
+                    if (index < activeSessions.length) {
+                        const session = activeSessions[index];
+                        const remainingSec = calculateRemainingSeconds(session);
+                        const timeLeft = remainingSec <= 0 ? 'EXPIRED' : formatTime(remainingSec);
+                        const timeCell = row.cells[3];
+                        if (timeCell) {
+                            timeCell.innerHTML = `<span style="font-family: monospace; font-weight: 600;">${timeLeft}</span>`;
+                            
+                            // Update status if needed
+                            if (remainingSec <= 0 && session.status !== 'expired') {
+                                const statusCell = row.cells[4];
+                                statusCell.innerHTML = '<span class="session-status-badge session-status-expired">Expired</span>';
+                            } else if (remainingSec <= REFILL_THRESHOLD * 60 && session.status !== 'refill' && remainingSec > 0) {
+                                const statusCell = row.cells[4];
+                                statusCell.innerHTML = '<span class="session-status-badge session-status-refill">Refill Soon</span>';
+                            }
+                        }
+                    }
+                });
+            }
+        }, 1000);
+    }
+
+    // ============ REALTIME SUBSCRIPTIONS ==========
+    function setupRealtimeSubscriptions() {
+        if (realtimeSubscription) {
+            realtimeSubscription.unsubscribe();
+        }
+        
+        realtimeSubscription = supabase
+            .channel('shisha-admin-changes')
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'shisha_sessions' }, 
+                (payload) => {
+                    console.log('Session change detected, reloading...', payload);
+                    const sessionsPanel = document.getElementById('sessionsPanel');
+                    if (sessionsPanel.classList.contains('active')) {
+                        loadActiveSessions();
+                    }
+                }
+            )
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'shisha_products' }, 
+                () => {
+                    const flavoursPanel = document.getElementById('flavoursPanel');
+                    if (flavoursPanel.classList.contains('active')) {
+                        loadFlavours();
+                    }
+                }
+            )
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'hookah_devices' }, 
+                () => {
+                    const devicesPanel = document.getElementById('devicesPanel');
+                    if (devicesPanel.classList.contains('active')) {
+                        loadDevices();
+                    }
+                }
+            )
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'shisha_locations' }, 
+                () => {
+                    const locationsPanel = document.getElementById('locationsPanel');
+                    if (locationsPanel.classList.contains('active')) {
+                        loadLocations();
+                    }
+                }
+            )
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('Realtime subscription active for Admin panel');
+                } else if (status === 'CHANNEL_ERROR') {
+                    console.error('Realtime subscription error');
+                }
+            });
     }
 
     // ========== TAB SWITCHING ==========
-    function switchTab(tabId) {
+    async function switchTab(tabId) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.getElementById(`${tabId}Panel`).classList.add('active');
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
-        if (tabId === 'sessions') loadActiveSessions();
-        else if (tabId === 'flavours') loadFlavours();
-        else if (tabId === 'devices') loadDevices();
-        else if (tabId === 'locations') loadLocations();
+        
+        // Load data based on tab
+        if (tabId === 'sessions') {
+            await loadActiveSessions();
+        } else if (tabId === 'flavours') {
+            await loadFlavours();
+        } else if (tabId === 'devices') {
+            await loadDevices();
+        } else if (tabId === 'locations') {
+            await loadLocations();
+        }
     }
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
-    // ========== INIT ==========
+    // ========== INITIALIZATION ==========
     async function init() {
-        // Check if tables exist – show error if not
         try {
-            await loadFlavours();
-            await loadDevices();
-            await loadLocations();
-            await loadActiveSessions();
+            // Test connection
+            const { error: testError } = await supabase.from('shisha_products').select('count', { count: 'exact', head: true });
+            if (testError) throw testError;
+            
+            // Load initial data
+            await Promise.all([
+                loadFlavours(),
+                loadDevices(),
+                loadLocations(),
+                loadActiveSessions()
+            ]);
+            
+            // Setup realtime subscriptions
+            setupRealtimeSubscriptions();
+            
+            // Start timer updater for live countdown
+            startTimerUpdater();
+            
+            console.log('Shisha Admin initialized successfully');
         } catch(e) {
-            console.error(e);
-            showToast('Supabase tables not ready. Run the shisha migration SQL first.', true);
+            console.error('Initialization error:', e);
+            showToast('Supabase connection error. Please check your configuration.', true);
+            const sessionsContainer = document.getElementById('sessionsList');
+            sessionsContainer.innerHTML = `<div class="error-state">
+                <i class="fas fa-database"></i><br>
+                Database connection error<br>
+                <small>${e.message}</small>
+            </div>`;
         }
     }
+    
     init();
-
-    function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (realtimeSubscription) {
+            realtimeSubscription.unsubscribe();
+        }
+    });
 </script>
 </body>
 </html>
