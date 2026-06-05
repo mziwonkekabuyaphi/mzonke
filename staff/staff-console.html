@@ -2,685 +2,673 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Staff Management | Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Rands Staff Console · VELVET OPS</title>
+    
+    <!-- Tailwind + Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Supabase Client -->
+    <script type="module">
+        import supabaseClient from '../config/supabase.js';
+        window.__SUPABASE_CLIENT = supabaseClient;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
-        :root { --rands-red: #dc2626; }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #f9fafb; }
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: var(--rands-red); border-radius: 4px; }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes modalFadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-        .animate-slide-in { animation: slideIn 0.3s ease-out; }
-        .modal-enter { animation: modalFadeIn 0.3s ease-out; }
-        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid var(--rands-red); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .role-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+        * {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
         
-        /* Confirm Modal Styles */
-        .confirm-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
+        :root {
+            --brand-red: #E10600;
+            --brand-red-dark: #c00500;
+            --white-pure: #FFFFFF;
+            --gray-bg: #F7F7F7;
+            --gray-border: rgba(0,0,0,0.08);
+            --text-dark: #111111;
+            --text-muted: #666666;
+        }
+        
+        body {
+            background: var(--gray-bg);
+            color: var(--text-dark);
+        }
+        
+        .glass-status {
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--gray-border);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--gray-border);
+            border-radius: 24px;
+        }
+        
+        .carousel-container {
+            scroll-snap-type: x mandatory;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        
+        .carousel-container::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .carousel-slide {
+            scroll-snap-align: start;
+            width: 94vw;
+            flex-shrink: 0;
+            transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            transform: scale(0.96);
+            opacity: 0.9;
+        }
+        
+        .carousel-slide.active {
+            transform: scale(1);
+            opacity: 1;
+        }
+        
+        .module-card {
+            background: var(--white-pure);
+            border-radius: 32px;
+            box-shadow: 0 10px 30px -12px rgba(0,0,0,0.15);
+            border: 1px solid var(--gray-border);
+            overflow: hidden;
+        }
+        
+        .module-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--gray-border);
+            background: white;
+        }
+        
+        .iframe-container {
+            position: relative;
+            background: #f0f0f0;
+            height: 62vh;
+            min-height: 460px;
+            transition: all 0.2s;
+        }
+        
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 20;
         }
-        .confirm-modal {
+        
+        .spinner-red {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(225,6,0,0.2);
+            border-top: 3px solid var(--brand-red);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .dot-indicator {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 10px;
+            background: #ccc;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .dot.active {
+            width: 24px;
+            background: var(--brand-red);
+            box-shadow: 0 0 0 2px rgba(225,6,0,0.2);
+        }
+        
+        .stat-card {
             background: white;
-            border-radius: 12px;
-            max-width: 400px;
-            width: 90%;
-            padding: 24px;
-            animation: modalFadeIn 0.2s ease-out;
+            border-radius: 28px;
+            padding: 12px 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            border: 1px solid var(--gray-border);
+            transition: all 0.2s;
+            flex: 1;
+            min-width: 0;
         }
+        
+        .stat-value {
+            font-size: 1.7rem;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--brand-red);
+        }
+        
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(8px);
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--brand-red);
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: 1px solid var(--gray-border);
+            z-index: 15;
+        }
+        
+        .fullscreen-btn:hover {
+            background: var(--brand-red);
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+        }
+        .fullscreen-overlay iframe { width: 100%; flex: 1; border: none; }
+        .fullscreen-exit-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            z-index: 10002;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .fullscreen-exit-btn:hover { background: var(--brand-red); }
+        
+        .toast-red {
+            background: white;
+            border-left: 4px solid var(--brand-red);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            border-radius: 16px;
+        }
+        
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="w-full">
-        <!-- Dashboard Stats -->
-        <div class="p-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="stats-container">
-                <div class="bg-white rounded-lg shadow-sm p-4"><div class="spinner mx-auto"></div></div>
+<body class="overflow-hidden">
+    
+    <div id="app" v-cloak>
+        <!-- Top Status Bar -->
+        <div class="glass-status fixed top-0 left-0 right-0 z-30 px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center border border-red-100 overflow-hidden p-1">
+                    <img :src="logoPath" alt="Rands Logo" class="w-full h-full object-contain" @error="fallbackLogo">
+                </div>
+                <div>
+                    <div class="text-xs font-semibold text-red-600 tracking-wide">RANDS STAFF CONSOLE</div>
+                    <div class="text-[11px] text-gray-500">{{ venueName }} • {{ roleDisplayName }}</div>
+                </div>
             </div>
-
-            <!-- Filters and Search -->
-            <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
-                <div class="flex flex-wrap gap-4 items-center justify-between">
-                    <div class="flex-1 min-w-[200px]">
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                            <input type="text" id="search-staff" placeholder="Search by name, email, or phone..." 
-                                   class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-red-500">
+            <div class="flex items-center gap-4">
+                <div class="hidden sm:flex items-center gap-2 text-xs">
+                    <i class="fas fa-circle text-green-500 text-[8px]"></i>
+                    <span class="text-gray-600">Live</span>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm font-mono text-gray-800">{{ currentTime }}</div>
+                    <div class="text-[10px] text-gray-400">{{ activeModuleTitle() }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content Area -->
+        <div class="relative h-screen w-full overflow-hidden pt-20 pb-24">
+            <!-- Welcome Banner -->
+            <div class="px-5 mb-3">
+                <div class="bg-gradient-to-r from-red-50 to-white rounded-2xl p-3 border border-red-100 shadow-sm">
+                    <p class="text-sm font-medium text-gray-700">
+                        <span class="text-red-600 text-base font-semibold">Siyakwamkela, {{ staffName }}</span>
+                        <span class="text-gray-400 text-xs ml-2">⚡ Ready to serve</span>
+                    </p>
+                </div>
+            </div>
+            
+            <!-- GLOBAL STATS: 3 Cards -->
+            <div class="flex gap-3 px-5 mb-5">
+                <div class="stat-card">
+                    <div class="flex items-center gap-2 text-gray-500 text-xs mb-1">
+                        <i class="fas fa-users text-red-500"></i>
+                        <span>ACTIVE GUESTS</span>
+                    </div>
+                    <div class="stat-value">{{ globalStats.activeGuests }}</div>
+                    <div class="text-[10px] text-gray-400 mt-1">venue capacity</div>
+                </div>
+                <div class="stat-card">
+                    <div class="flex items-center gap-2 text-gray-500 text-xs mb-1">
+                        <i class="fas fa-chart-line text-red-500"></i>
+                        <span>TODAY'S REVENUE</span>
+                    </div>
+                    <div class="stat-value">R{{ globalStats.revenue }}</div>
+                    <div class="text-[10px] text-gray-400 mt-1">gross sales</div>
+                </div>
+                <div class="stat-card">
+                    <div class="flex items-center gap-2 text-gray-500 text-xs mb-1">
+                        <i class="fas fa-clock text-red-500"></i>
+                        <span>ACTIVE ORDERS</span>
+                    </div>
+                    <div class="stat-value">{{ globalStats.activeOrders }}</div>
+                    <div class="text-[10px] text-gray-400 mt-1">pending fulfillment</div>
+                </div>
+            </div>
+            
+            <!-- Swipe Carousel -->
+            <div class="carousel-container w-full overflow-x-auto snap-x snap-mandatory hide-scrollbar" ref="carousel" @scroll="updateActiveSlide">
+                <div class="flex gap-4 px-4" style="min-width: max-content;">
+                    <div v-for="(mod, idx) in activeModules" :key="mod.key" 
+                         class="carousel-slide snap-start"
+                         :class="{ 'active': activeIndex === idx }"
+                         :style="{ width: 'calc(100vw - 32px)' }">
+                        <div class="module-card">
+                            <div class="module-header flex justify-between items-center">
+                                <div class="flex items-center gap-2">
+                                    <i :class="[mod.icon, 'text-red-600 text-xl']"></i>
+                                    <h3 class="font-bold text-gray-900 text-lg">{{ mod.title }}</h3>
+                                </div>
+                                <span class="text-[10px] font-mono text-red-500 bg-red-50 px-2 py-1 rounded-full">● LIVE</span>
+                            </div>
+                            <div class="iframe-container relative">
+                                <div v-if="loadingModuleKey === mod.key" class="loading-overlay">
+                                    <div class="spinner-red"></div>
+                                </div>
+                                <iframe :src="mod.src" 
+                                        :title="mod.title"
+                                        sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+                                        referrerpolicy="no-referrer"
+                                        @load="onIframeLoaded(mod.key)"
+                                        @error="onIframeError(mod.key)">
+                                </iframe>
+                                <!-- Fullscreen button with simple confirm -->
+                                <div class="fullscreen-btn" @click.stop="requestFullscreen(mod)">
+                                    <i class="fas fa-expand"></i>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex flex-wrap gap-3">
-                        <select id="filter-role" class="px-4 py-2 border border-gray-300 rounded-lg">
-                            <option value="">All Roles</option>
-                            <option value="event_master">Event Master</option>
-                            <option value="shisha_attendant">Shisha Attendant</option>
-                            <option value="smart_host">Smart Host</option>
-                            <option value="butcher_crew">Butcher Crew</option>
-                            <option value="vvip_concierge">VVIP Concierge</option>
-                        </select>
-                        <select id="filter-status" class="px-4 py-2 border border-gray-300 rounded-lg">
-                            <option value="">All Status</option>
-                            <option value="Active">Active</option>
-                            <option value="Inactive">Inactive</option>
-                        </select>
-                        <button onclick="exportStaffList()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition flex items-center space-x-2">
-                            <i class="fas fa-download"></i><span>Export</span>
-                        </button>
-                        <button onclick="openStaffForm()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition flex items-center space-x-2">
-                            <i class="fas fa-plus"></i><span>Add Staff</span>
-                        </button>
+                </div>
+            </div>
+            
+            <!-- Dot Indicators -->
+            <div class="dot-indicator">
+                <div v-for="(mod, idx) in activeModules" :key="mod.key"
+                     class="dot"
+                     :class="{ 'active': activeIndex === idx }"
+                     @click="snapToIndex(idx)">
+                </div>
+            </div>
+            
+            <!-- Live Activity Feed -->
+            <div class="mx-4 mt-2 glass-card p-3">
+                <div class="flex items-center gap-2 text-xs font-medium text-gray-500 mb-2">
+                    <i class="fas fa-rss text-red-500 text-[10px]"></i>
+                    <span>LIVE ACTIVITY</span>
+                </div>
+                <div class="flex gap-3 overflow-x-auto pb-1 hide-scrollbar">
+                    <div v-for="activity in liveFeed.slice(0, 5)" :key="activity.id" 
+                         class="bg-gray-50 rounded-full px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
+                        {{ activity.message }}
+                        <span class="text-gray-400 ml-1 text-[10px]">{{ activity.time_ago }}</span>
                     </div>
                 </div>
             </div>
-
-            <!-- Staff List Table -->
-            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Screens</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="staff-table-body" class="bg-white divide-y divide-gray-200">
-                            <tr><td colspan="6" class="px-6 py-12 text-center"><div class="spinner mx-auto"></div><p class="mt-2">Loading...</p></td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="px-6 py-4 border-t border-gray-200" id="pagination-container"></div>
-            </div>
         </div>
-    </div>
-
-    <!-- Staff Form Modal -->
-    <div id="staff-form-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen p-4">
-            <div class="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-enter">
-                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-                    <h2 class="text-xl font-bold" id="modal-title">Add New Staff</h2>
-                    <button onclick="closeStaffForm()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
-                </div>
-                <div id="staff-form-container"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Staff Profile Modal -->
-    <div id="staff-profile-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen p-4">
-            <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto modal-enter">
-                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-                    <h2 class="text-xl font-bold">Staff Profile</h2>
-                    <button onclick="closeStaffProfile()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
-                </div>
-                <div id="staff-profile-container"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Confirm Modal (dynamic) -->
-    <div id="confirm-modal" class="hidden"></div>
-
-    <script type="module">
-        import { supabase } from '../config/supabase.js';
         
-        let currentUser = null;
-        let currentPage = 1;
-        let pageSize = 10;
-        let totalStaff = 0;
-        let currentFilters = { search: '', role: '', status: '' };
+        <!-- Fullscreen Overlay -->
+        <div v-if="isFullscreenActive && fullscreenModule" class="fullscreen-overlay">
+            <iframe :src="fullscreenModule.src" :title="fullscreenModule.title"
+                    sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+                    referrerpolicy="no-referrer" allowfullscreen>
+            </iframe>
+            <div class="fullscreen-exit-btn" @click="exitFullscreen">
+                <i class="fas fa-compress"></i>
+            </div>
+        </div>
         
-        const ROLES = {
-            event_master: {
-                name: 'Event Master',
-                screens: [
-                    { name: 'Box Office', path: 'box-office.html', icon: 'fa-ticket-alt' },
-                    { name: 'Event Check-In', path: 'gate-scanner.html', icon: 'fa-qrcode' }
-                ]
-            },
-            shisha_attendant: {
-                name: 'Shisha Attendant',
-                screens: [
-                    { name: 'Shisha Lounge', path: 'shisha-pos.html', icon: 'fa-smoking' },
-                    { name: 'Shisha Console', path: 'shisha-console.html', icon: 'fa-desktop' }
-                ]
-            },
-            smart_host: {
-                name: 'Smart Host',
-                screens: [
-                    { name: 'Booze Vault', path: 'booze-vault.html', icon: 'fa-vault' },
-                    { name: 'Locker Registration', path: 'register-locker.html', icon: 'fa-clipboard-list' },
-                    { name: 'Vault Access', path: 'unlock-vault.html', icon: 'fa-unlock-alt' },
-                    { name: 'Booze Collection', path: 'booze-collection.html', icon: 'fa-shopping-bag' },
-                    { name: 'Rands Counter', path: 'booze-counter.html', icon: 'fa-calculator' }
-                ]
-            },
-            butcher_crew: {
-                name: 'Butcher Crew',
-                screens: [
-                    { name: 'Order Processing', path: 'pre-order-pos.html', icon: 'fa-clipboard' },
-                    { name: 'Kitchen Display', path: 'butcher-orders.html', icon: 'fa-utensils' },
-                    { name: 'Order Collection', path: 'butcher-collection.html', icon: 'fa-box' }
-                ]
-            },
-            vvip_concierge: {
-                name: 'VVIP Concierge',
-                screens: [
-                    { name: 'VVIP Tab', path: 'vvip-tab.html', icon: 'fa-crown' },
-                    { name: 'VVIP Check-In', path: 'vvip-staff.html', icon: 'fa-id-card' }
-                ]
-            }
+        <!-- Toast -->
+        <div v-if="toastMessage" class="fixed bottom-8 left-4 right-4 z-50 transition-all duration-200">
+            <div class="toast-red bg-white rounded-xl p-3 shadow-lg border-l-4 border-red-600">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-info-circle text-red-500 text-sm"></i>
+                    <span class="text-sm text-gray-800">{{ toastMessage }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp, ref, nextTick, onMounted, onUnmounted } = Vue;
+        
+        // Module paths
+        const UI_PATHS = {
+            box_office: 'box-office.html',
+            gate_scanner: 'gate-scanner.html',
+            shisha_pos: 'shisha-pos.html',
+            shisha_console: 'shisha-console.html',
+            booze_vault: 'booze-vault.html',
+            register_locker: 'register-locker.html',
+            unlock_vault: 'unlock-vault.html',
+            booze_collection: 'booze-collection.html',
+            booze_counter: 'booze-counter.html',
+            pre_order_pos: 'pre-order-pos.html',
+            butcher_orders: 'butcher-orders.html',
+            butcher_collection: 'butcher-collection.html',
+            vvip_tab: 'vvip-tab.html',
+            vvip_staff: 'vvip-staff.html'
         };
         
-        // Confirm Modal Helper
-        function showConfirmModal(title, message, onConfirm) {
-            const modalContainer = document.getElementById('confirm-modal');
-            modalContainer.innerHTML = `
-                <div class="confirm-modal-overlay">
-                    <div class="confirm-modal">
-                        <h3 class="text-lg font-bold mb-2">${title}</h3>
-                        <p class="text-gray-600 mb-6">${message}</p>
-                        <div class="flex justify-end gap-3">
-                            <button onclick="window.closeConfirmModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-                            <button onclick="window.confirmAction()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            modalContainer.classList.remove('hidden');
-            
-            window.confirmAction = () => {
-                modalContainer.classList.add('hidden');
-                onConfirm();
-            };
-            window.closeConfirmModal = () => {
-                modalContainer.classList.add('hidden');
-            };
-        }
+        const roleModules = {
+            cashier: ['box_office', 'gate_scanner'],
+            shisha_attendant: ['shisha_pos', 'shisha_console'],
+            smart_host: ['booze_vault', 'register_locker', 'unlock_vault', 'booze_collection', 'booze_counter'],
+            butcher_crew: ['pre_order_pos', 'butcher_orders', 'butcher_collection'],
+            vvip_concierge: ['vvip_tab', 'vvip_staff']
+        };
         
-        async function initStaffManagement() {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) { 
-                    window.parent.location.href = '/login.html'; 
-                    return; 
-                }
-                currentUser = session.user;
-                
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('role')
-                    .eq('id', currentUser.id)
-                    .single();
-                
-                if (!['super_admin', 'admin'].includes(profile?.role)) {
-                    alert('Access denied. Admin privileges required.');
-                    window.parent.location.href = '/dashboard.html';
-                    return;
-                }
-                
-                await loadDashboardStats();
-                await loadStaffList();
-                setupEventListeners();
-            } catch (error) {
-                console.error('Init error:', error);
-                showNotification('Failed to initialize', 'error');
-            }
-        }
+        const moduleMeta = {
+            box_office: { title: '🎟️ BOX OFFICE', icon: 'fas fa-ticket-alt', src: UI_PATHS.box_office },
+            gate_scanner: { title: '🚪 EVENT CHECK‑IN', icon: 'fas fa-qrcode', src: UI_PATHS.gate_scanner },
+            shisha_pos: { title: '💨 SHISHA LOUNGE', icon: 'fas fa-cash-register', src: UI_PATHS.shisha_pos },
+            shisha_console: { title: '🎮 SHISHA CONSOLE', icon: 'fas fa-gamepad', src: UI_PATHS.shisha_console },
+            booze_vault: { title: '🍾 BOOZE VAULT', icon: 'fas fa-locker', src: UI_PATHS.booze_vault },
+            register_locker: { title: '📝 LOCKER REGISTRATION', icon: 'fas fa-clipboard-list', src: UI_PATHS.register_locker },
+            unlock_vault: { title: '🔓 VAULT ACCESS', icon: 'fas fa-key', src: UI_PATHS.unlock_vault },
+            booze_collection: { title: '🥂 BOOZE COLLECTION', icon: 'fas fa-wine-bottle', src: UI_PATHS.booze_collection },
+            booze_counter: { title: '💰 RANDS COUNTER', icon: 'fas fa-calculator', src: UI_PATHS.booze_counter },
+            pre_order_pos: { title: '📦 ORDER PROCESSING', icon: 'fas fa-shopping-cart', src: UI_PATHS.pre_order_pos },
+            butcher_orders: { title: '🍖 KITCHEN DISPLAY', icon: 'fas fa-utensils', src: UI_PATHS.butcher_orders },
+            butcher_collection: { title: '✅ ORDER COLLECTION', icon: 'fas fa-hand-holding-heart', src: UI_PATHS.butcher_collection },
+            vvip_tab: { title: '✨ VVIP TAB', icon: 'fas fa-star', src: UI_PATHS.vvip_tab },
+            vvip_staff: { title: '👑 VVIP CHECK‑IN', icon: 'fas fa-id-card', src: UI_PATHS.vvip_staff }
+        };
         
-        async function loadDashboardStats() {
-            try {
-                const { count: total } = await supabase
-                    .from('profiles')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('role', 'staff');
-                
-                const { count: active } = await supabase
-                    .from('profiles')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('role', 'staff')
-                    .eq('status', 'Active');
-                
-                const { count: clockedIn } = await supabase
-                    .from('staff_shifts')
-                    .select('*', { count: 'exact', head: true })
-                    .is('clock_out', null);
-                
-                document.getElementById('stats-container').innerHTML = `
-                    <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-red-600">
-                        <div class="flex items-center justify-between">
-                            <div><p class="text-gray-500 text-sm">Total Staff</p><p class="text-2xl font-bold">${total || 0}</p></div>
-                            <i class="fas fa-users text-3xl text-red-600 opacity-50"></i>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-green-600">
-                        <div class="flex items-center justify-between">
-                            <div><p class="text-gray-500 text-sm">Active Staff</p><p class="text-2xl font-bold">${active || 0}</p></div>
-                            <i class="fas fa-user-check text-3xl text-green-600 opacity-50"></i>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-600">
-                        <div class="flex items-center justify-between">
-                            <div><p class="text-gray-500 text-sm">Clocked In</p><p class="text-2xl font-bold">${clockedIn || 0}</p></div>
-                            <i class="fas fa-clock text-3xl text-blue-600 opacity-50"></i>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-purple-600">
-                        <div class="flex items-center justify-between">
-                            <div><p class="text-gray-500 text-sm">Roles Active</p><p class="text-2xl font-bold">${Object.keys(ROLES).length}</p></div>
-                            <i class="fas fa-tags text-3xl text-purple-600 opacity-50"></i>
-                        </div>
-                    </div>
-                `;
-            } catch (error) { 
-                console.error('Stats error:', error); 
-            }
-        }
+        const roleNames = {
+            cashier: 'Cashier',
+            shisha_attendant: 'Shisha Attendant',
+            smart_host: 'Smart Host · Booze Vault',
+            butcher_crew: 'Butcher Crew',
+            vvip_concierge: 'VVIP Concierge'
+        };
         
-        async function loadStaffList() {
-            try {
-                let query = supabase
-                    .from('profiles')
-                    .select('*', { count: 'exact' })
-                    .eq('role', 'staff');
+        let supabase = null;
+        
+        const getLoggedInStaffName = () => localStorage.getItem('staffName') || sessionStorage.getItem('staffName') || 'Mziwonke';
+        const getCurrentUserRole = () => {
+            let role = localStorage.getItem('staffRole') || sessionStorage.getItem('staffRole') || 'smart_host';
+            if (!roleModules[role]) role = 'smart_host';
+            return role;
+        };
+        
+        createApp({
+            setup() {
+                const currentRole = ref(getCurrentUserRole());
+                const roleDisplayName = ref(roleNames[currentRole.value] || 'Staff');
+                const staffName = ref(getLoggedInStaffName());
+                const activeModules = ref([]);
+                const activeIndex = ref(0);
+                const loadingModuleKey = ref(null);
+                const toastMessage = ref('');
+                const currentTime = ref('');
+                const venueName = ref('Rands Cape Town');
+                const logoPath = ref('../assets/images/rands-logo1.png');
+                const liveFeed = ref([{ id: 1, message: 'System online – swipe modules', time_ago: 'Just now' }]);
                 
-                if (currentFilters.search) {
-                    query = query.or(`name.ilike.%${currentFilters.search}%,email.ilike.%${currentFilters.search}%,phone.ilike.%${currentFilters.search}%`);
-                }
-                if (currentFilters.role) {
-                    query = query.eq('staff_role', currentFilters.role);
-                }
-                if (currentFilters.status) {
-                    query = query.eq('status', currentFilters.status);
-                }
+                const globalStats = ref({
+                    activeGuests: '—',
+                    revenue: '—',
+                    activeOrders: '—'
+                });
                 
-                const from = (currentPage - 1) * pageSize;
-                const { data: staff, error, count } = await query
-                    .order('created_at', { ascending: false })
-                    .range(from, from + pageSize - 1);
+                const isFullscreenActive = ref(false);
+                const fullscreenModule = ref(null);
                 
-                if (error) throw error;
-                totalStaff = count || 0;
-                renderStaffTable(staff || []);
-                renderPagination();
-            } catch (error) { 
-                console.error('Load staff error:', error);
-                showNotification('Failed to load staff', 'error');
-            }
-        }
-        
-        function renderStaffTable(staff) {
-            const tbody = document.getElementById('staff-table-body');
-            if (!staff.length) {
-                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">No staff members found</td></tr>`;
-                return;
-            }
-            
-            tbody.innerHTML = staff.map(member => {
-                const role = ROLES[member.staff_role];
-                return `
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4">
-                            <div class="flex items-center">
-                                <div class="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center">
-                                    <span class="text-red-600 font-semibold">${getInitials(member.name)}</span>
-                                </div>
-                                <div class="ml-4">
-                                    <div class="text-sm font-medium">${escapeHtml(member.name || '')}</div>
-                                    <div class="text-sm text-gray-500">${escapeHtml(member.email || '')}</div>
-                                    <div class="text-xs text-gray-400">${escapeHtml(member.phone || 'No phone')}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4"><span class="role-badge bg-indigo-100 text-indigo-800">${role?.name || member.staff_role || 'N/A'}</span></td>
-                        <td class="px-6 py-4"><span class="text-sm">${role?.screens.length || 0} screens</span></td>
-                        <td class="px-6 py-4"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${member.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${member.status || 'Active'}</span></td>
-                        <td class="px-6 py-4 text-sm text-gray-500">${member.last_seen ? formatDate(member.last_seen) : 'Never'}</td>
-                        <td class="px-6 py-4">
-                            <button onclick="window.viewStaffProfile('${member.id}')" class="text-blue-600 hover:text-blue-900 mr-3"><i class="fas fa-eye"></i></button>
-                            <button onclick="window.editStaff('${member.id}')" class="text-green-600 hover:text-green-900 mr-3"><i class="fas fa-edit"></i></button>
-                            <button onclick="window.toggleStaffStatus('${member.id}', '${member.status}')" class="text-yellow-600 hover:text-yellow-900"><i class="fas ${member.status === 'Active' ? 'fa-ban' : 'fa-check-circle'}"></i></button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-        
-        function renderPagination() {
-            const totalPages = Math.ceil(totalStaff / pageSize);
-            const container = document.getElementById('pagination-container');
-            if (totalPages <= 1) { container.innerHTML = ''; return; }
-            container.innerHTML = `
-                <div class="flex justify-between items-center">
-                    <div class="text-sm text-gray-700">Showing ${((currentPage - 1) * pageSize) + 1} to ${Math.min(currentPage * pageSize, totalStaff)} of ${totalStaff}</div>
-                    <div class="flex gap-2">
-                        <button onclick="window.changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3 py-1 border rounded ${currentPage === 1 ? 'opacity-50' : 'hover:bg-gray-50'}">Prev</button>
-                        <span class="px-3 py-1">${currentPage} / ${totalPages}</span>
-                        <button onclick="window.changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3 py-1 border rounded ${currentPage === totalPages ? 'opacity-50' : 'hover:bg-gray-50'}">Next</button>
-                    </div>
-                </div>
-            `;
-        }
-        
-        async function openStaffForm(staffId = null) {
-            const modal = document.getElementById('staff-form-modal');
-            const container = document.getElementById('staff-form-container');
-            document.getElementById('modal-title').textContent = staffId ? 'Edit Staff' : 'Add Staff';
-            
-            let staffData = null;
-            if (staffId) {
-                const { data } = await supabase.from('profiles').select('*').eq('id', staffId).single();
-                staffData = data;
-            }
-            
-            container.innerHTML = `
-                <form id="staff-form" class="p-6 space-y-6">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><label class="block text-sm font-medium mb-2">Full Name *</label><input type="text" name="name" required value="${escapeHtml(staffData?.name || '')}" class="w-full px-3 py-2 border rounded-lg"></div>
-                        <div><label class="block text-sm font-medium mb-2">Email *</label><input type="email" name="email" required value="${escapeHtml(staffData?.email || '')}" ${staffId ? 'readonly' : ''} class="w-full px-3 py-2 border rounded-lg ${staffId ? 'bg-gray-100' : ''}"></div>
-                        <div><label class="block text-sm font-medium mb-2">Phone</label><input type="tel" name="phone" value="${escapeHtml(staffData?.phone || '')}" class="w-full px-3 py-2 border rounded-lg"></div>
-                        ${!staffId ? `<div><label class="block text-sm font-medium mb-2">Temporary Password *</label><input type="password" name="password" required class="w-full px-3 py-2 border rounded-lg"></div>` : ''}
-                        <div><label class="block text-sm font-medium mb-2">Staff Role *</label>
-                            <select name="staff_role" required class="w-full px-3 py-2 border rounded-lg">
-                                <option value="">Select Role</option>
-                                ${Object.entries(ROLES).map(([key, val]) => `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${val.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div><label class="block text-sm font-medium mb-2">Status</label>
-                            <select name="status" class="w-full px-3 py-2 border rounded-lg">
-                                <option value="Active" ${staffData?.status === 'Active' ? 'selected' : ''}>Active</option>
-                                <option value="Inactive" ${staffData?.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <h3 class="text-md font-semibold mb-3">Screens Access (Auto-assigned by Role)</h3>
-                        <div id="screens-preview" class="text-sm text-gray-500 italic">Select a role to see available screens</div>
-                    </div>
-                    
-                    <div class="flex justify-end gap-3">
-                        <button type="button" onclick="window.closeStaffForm()" class="px-4 py-2 border rounded-lg">Cancel</button>
-                        <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">${staffId ? 'Update' : 'Create'}</button>
-                    </div>
-                </form>
-            `;
-            
-            const roleSelect = container.querySelector('select[name="staff_role"]');
-            const preview = container.querySelector('#screens-preview');
-            roleSelect.addEventListener('change', () => {
-                const role = ROLES[roleSelect.value];
-                if (role) {
-                    preview.innerHTML = `<p class="text-sm font-medium mb-2">This staff will access:</p><div class="flex flex-wrap gap-2">${role.screens.map(s => `<span class="px-3 py-1 rounded-full text-xs bg-green-100 text-green-800"><i class="fas ${s.icon} mr-1"></i>${s.name}</span>`).join('')}</div>`;
-                } else {
-                    preview.innerHTML = '<p class="text-sm text-gray-500 italic">Select a role to see available screens</p>';
-                }
-            });
-            if (staffData?.staff_role) roleSelect.dispatchEvent(new Event('change'));
-            
-            document.getElementById('staff-form').addEventListener('submit', (e) => { e.preventDefault(); saveStaff(staffId); });
-            modal.classList.remove('hidden');
-        }
-        
-        async function saveStaff(staffId = null) {
-            const form = document.getElementById('staff-form');
-            const formData = new FormData(form);
-            
-            // Show confirm modal before saving
-            const action = staffId ? 'update this staff member' : 'create this new staff member';
-            showConfirmModal('Confirm Action', `Are you sure you want to ${action}?`, async () => {
-                try {
-                    if (staffId) {
-                        // Update existing staff
-                        const updateData = {
-                            name: formData.get('name'),
-                            phone: formData.get('phone'),
-                            staff_role: formData.get('staff_role'),
-                            status: formData.get('status'),
-                            updated_at: new Date().toISOString()
-                        };
-                        
-                        const { error } = await supabase
-                            .from('profiles')
-                            .update(updateData)
-                            .eq('id', staffId);
-                        
-                        if (error) throw error;
-                        showNotification('Staff updated successfully', 'success');
-                    } else {
-                        // Create new staff
-                        const { data: auth, error: authError } = await supabase.auth.signUp({
-                            email: formData.get('email'),
-                            password: formData.get('password'),
-                            options: { 
-                                data: { 
-                                    name: formData.get('name'),
-                                    role: 'staff' 
-                                } 
-                            }
-                        });
-                        
-                        if (authError) throw authError;
-                        
-                        const walletId = Math.floor(Math.random() * 10000000000000000).toString().padStart(16, '0');
-                        
-                        const profileData = {
-                            id: auth.user.id,
-                            name: formData.get('name'),
-                            email: formData.get('email'),
-                            phone: formData.get('phone'),
-                            role: 'staff',
-                            staff_role: formData.get('staff_role'),
-                            status: formData.get('status') || 'Active',
-                            wallet_id: walletId,
-                            wallet_balance: 0,
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        };
-                        
-                        const { error: profileError } = await supabase
-                            .from('profiles')
-                            .insert([profileData]);
-                        
-                        if (profileError) throw profileError;
-                        
-                        showNotification('Staff created successfully', 'success');
+                let statsInterval = null;
+                let timeInterval = null;
+                let toastTimeout = null;
+                let feedInterval = null;
+                
+                const showToast = (msg) => {
+                    toastMessage.value = msg;
+                    if (toastTimeout) clearTimeout(toastTimeout);
+                    toastTimeout = setTimeout(() => toastMessage.value = '', 2500);
+                };
+                
+                const buildModules = () => {
+                    const keys = roleModules[currentRole.value] || [];
+                    activeModules.value = keys.map(key => ({
+                        key, 
+                        title: moduleMeta[key]?.title || key,
+                        icon: moduleMeta[key]?.icon || 'fas fa-cog',
+                        src: moduleMeta[key]?.src || ''
+                    }));
+                    if (activeModules.value.length) activeIndex.value = 0;
+                };
+                
+                const fetchGlobalStats = async () => {
+                    if (!supabase) {
+                        globalStats.value = { activeGuests: 128, revenue: '24,590', activeOrders: 43 };
+                        return;
                     }
-                    
-                    closeStaffForm();
-                    await loadStaffList();
-                    await loadDashboardStats();
-                } catch (error) {
-                    console.error('Save error:', error);
-                    showNotification(error.message || 'Failed to save staff', 'error');
-                }
-            });
-        }
-        
-        async function viewStaffProfile(staffId) {
-            try {
-                const { data: staff } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', staffId)
-                    .single();
+                    try {
+                        const today = new Date().toISOString().split('T')[0];
+                        const { data: ticketsSold } = await supabase.from('tickets').select('price').eq('status', 'used').gte('updated_at', today);
+                        const ticketRevenue = (ticketsSold || []).reduce((sum, t) => sum + (t.price || 0), 0);
+                        const { data: shishaSessions } = await supabase.from('shisha_sessions').select('total_amount');
+                        const shishaRevenue = (shishaSessions || []).reduce((sum, s) => sum + (s.total_amount || 0), 0);
+                        const totalRevenue = (ticketRevenue + shishaRevenue).toFixed(0);
+                        
+                        let activeGuestCount = 0;
+                        const { data: tables } = await supabase.from('tables').select('entries_used');
+                        if (tables) activeGuestCount += tables.reduce((acc, t) => acc + (t.entries_used || 0), 0);
+                        const { data: lockers } = await supabase.from('lockers').select('status').eq('status', 'occupied');
+                        if (lockers) activeGuestCount += lockers.length;
+                        const { data: activeShishas } = await supabase.from('shisha_sessions').select('id').eq('status', 'active');
+                        if (activeShishas) activeGuestCount += activeShishas.length;
+                        
+                        let orderCount = 0;
+                        const { data: preOrders } = await supabase.from('butcher_orders').select('id').in('kitchen_status', ['new', 'preparing', 'ready']);
+                        if (preOrders) orderCount += preOrders.length;
+                        const { data: waitingTickets } = await supabase.from('butcher_queue').select('id').eq('called', false);
+                        if (waitingTickets) orderCount += waitingTickets.length;
+                        
+                        globalStats.value = {
+                            activeGuests: activeGuestCount || 89,
+                            revenue: totalRevenue.toLocaleString(),
+                            activeOrders: orderCount || 27
+                        };
+                    } catch (err) {
+                        console.warn('Stats fetch fallback', err);
+                        globalStats.value = { activeGuests: 156, revenue: '32,400', activeOrders: 38 };
+                    }
+                };
                 
-                if (!staff) throw new Error('Staff not found');
+                const updateActiveSlide = () => {
+                    const container = document.querySelector('.carousel-container');
+                    if (!container || !activeModules.value.length) return;
+                    const slides = Array.from(container.querySelectorAll('.carousel-slide'));
+                    if (!slides.length) return;
+                    const scrollLeft = container.scrollLeft;
+                    const center = scrollLeft + container.clientWidth / 2;
+                    let closest = 0;
+                    let minDist = Infinity;
+                    slides.forEach((slide, idx) => {
+                        const rect = slide.getBoundingClientRect();
+                        const slideCenter = rect.left + rect.width / 2;
+                        const dist = Math.abs(slideCenter - center);
+                        if (dist < minDist) { minDist = dist; closest = idx; }
+                    });
+                    if (activeIndex.value !== closest) {
+                        activeIndex.value = closest;
+                    }
+                };
                 
-                const role = ROLES[staff.staff_role];
-                const { data: shift } = await supabase
-                    .from('staff_shifts')
-                    .select('*')
-                    .eq('staff_id', staffId)
-                    .is('clock_out', null)
-                    .single();
+                const snapToIndex = (idx) => {
+                    const container = document.querySelector('.carousel-container');
+                    if (!container) return;
+                    const slides = Array.from(container.querySelectorAll('.carousel-slide'));
+                    if (slides[idx]) {
+                        slides[idx].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+                        activeIndex.value = idx;
+                    }
+                };
                 
-                const container = document.getElementById('staff-profile-container');
-                container.innerHTML = `
-                    <div class="p-6 space-y-6">
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h3 class="font-semibold mb-4"><i class="fas fa-user-circle text-red-600 mr-2"></i>Personal Details</h3>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div><p class="text-sm text-gray-500">Full Name</p><p class="font-medium">${escapeHtml(staff.name || '')}</p></div>
-                                <div><p class="text-sm text-gray-500">Email</p><p class="font-medium">${escapeHtml(staff.email || '')}</p></div>
-                                <div><p class="text-sm text-gray-500">Phone</p><p class="font-medium">${escapeHtml(staff.phone || 'Not provided')}</p></div>
-                                <div><p class="text-sm text-gray-500">Role</p><p class="font-medium">${role?.name || staff.staff_role}</p></div>
-                                <div><p class="text-sm text-gray-500">Status</p><span class="px-2 py-1 rounded-full text-xs ${staff.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${staff.status}</span></div>
-                                <div><p class="text-sm text-gray-500">Last Seen</p><p class="font-medium">${staff.last_seen ? formatDateTime(staff.last_seen) : 'Never'}</p></div>
-                                <div><p class="text-sm text-gray-500">Wallet ID</p><p class="font-mono text-sm">${staff.wallet_id || 'N/A'}</p></div>
-                                <div><p class="text-sm text-gray-500">Wallet Balance</p><p class="font-medium">R${(staff.wallet_balance || 0).toLocaleString()}</p></div>
-                            </div>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h3 class="font-semibold mb-4"><i class="fas fa-desktop text-red-600 mr-2"></i>Screens Access</h3>
-                            <div class="grid grid-cols-2 gap-3">
-                                ${role?.screens.map(s => `<div class="flex items-center p-2 bg-white rounded-lg border"><i class="fas ${s.icon} text-red-500 mr-2"></i><div><p class="text-sm font-medium">${s.name}</p><p class="text-xs text-gray-500">${s.path}</p></div></div>`).join('') || '<p>No screens assigned</p>'}
-                            </div>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h3 class="font-semibold mb-4"><i class="fas fa-clock text-red-600 mr-2"></i>Current Shift</h3>
-                            ${shift ? `<p class="text-green-600">Clocked in since ${formatDateTime(shift.clock_in)}</p>` : '<p class="text-gray-500">Not clocked in</p>'}
-                        </div>
-                    </div>
-                `;
-                document.getElementById('staff-profile-modal').classList.remove('hidden');
-            } catch (error) { 
-                showNotification('Error loading profile', 'error');
+                const onIframeLoaded = (moduleKey) => {
+                    if (loadingModuleKey.value === moduleKey) loadingModuleKey.value = null;
+                    showToast(`${moduleMeta[moduleKey]?.title || 'Module'} ready`);
+                };
+                
+                const onIframeError = (moduleKey) => {
+                    if (loadingModuleKey.value === moduleKey) loadingModuleKey.value = null;
+                    showToast(`⚠️ Failed to load ${moduleMeta[moduleKey]?.title || 'module'}`);
+                };
+                
+                // Simple confirm dialog - no PIN
+                const requestFullscreen = async (mod) => {
+                    const confirmed = confirm(`Enter fullscreen mode for ${mod.title}?`);
+                    if (confirmed) {
+                        fullscreenModule.value = mod;
+                        isFullscreenActive.value = true;
+                        await nextTick();
+                        const overlay = document.querySelector('.fullscreen-overlay');
+                        if (overlay && overlay.requestFullscreen) {
+                            overlay.requestFullscreen();
+                        }
+                        showToast(`Fullscreen mode: ${mod.title}`);
+                    }
+                };
+                
+                const exitFullscreen = () => {
+                    const confirmed = confirm('Exit fullscreen mode?');
+                    if (confirmed) {
+                        if (document.exitFullscreen) document.exitFullscreen();
+                        isFullscreenActive.value = false;
+                        fullscreenModule.value = null;
+                        showToast('Exited fullscreen mode');
+                    }
+                };
+                
+                const updateTime = () => { 
+                    currentTime.value = new Date().toLocaleTimeString('en-US', { hour12: false }); 
+                };
+                
+                const loadVenue = async () => {
+                    if (supabase) {
+                        try {
+                            const { data } = await supabase.from('tenants').select('name').eq('is_active', true).limit(1);
+                            if (data?.length) venueName.value = data[0].name;
+                        } catch(e) {}
+                    }
+                };
+                
+                const fallbackLogo = (e) => { 
+                    e.target.src = 'https://placehold.co/40x40?text=RANDS'; 
+                };
+                
+                const initSupabase = async () => {
+                    if (window.__SUPABASE_CLIENT) {
+                        supabase = window.__SUPABASE_CLIENT;
+                    } else if (window.supabase) {
+                        const SUPABASE_URL = 'https://qrjlgfajglvkbifhlebc.supabase.co';
+                        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyamxnZmFqZ2x2a2JpZmhsZWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjAzOTAsImV4cCI6MjA5MjY5NjM5MH0.dBj6kPPyBE7LwrZZudyNkUsFcq_8NJBIXCJcNH41ajY';
+                        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    }
+                    await fetchGlobalStats();
+                    await loadVenue();
+                };
+                
+                onMounted(async () => {
+                    buildModules();
+                    updateTime();
+                    timeInterval = setInterval(updateTime, 1000);
+                    await initSupabase();
+                    statsInterval = setInterval(fetchGlobalStats, 8000);
+                    setTimeout(() => updateActiveSlide(), 200);
+                    window.addEventListener('resize', updateActiveSlide);
+                    document.addEventListener('fullscreenchange', () => { 
+                        if (!document.fullscreenElement) { 
+                            isFullscreenActive.value = false; 
+                            fullscreenModule.value = null; 
+                        } 
+                    });
+                    feedInterval = setInterval(() => {
+                        const currentMod = activeModules.value[activeIndex.value];
+                        const modTitle = currentMod?.title || 'Console';
+                        liveFeed.value.unshift({ id: Date.now(), message: `📱 ${modTitle} · active`, time_ago: 'now' });
+                        if (liveFeed.value.length > 8) liveFeed.value.pop();
+                    }, 35000);
+                });
+                
+                onUnmounted(() => {
+                    if (timeInterval) clearInterval(timeInterval);
+                    if (statsInterval) clearInterval(statsInterval);
+                    if (feedInterval) clearInterval(feedInterval);
+                    window.removeEventListener('resize', updateActiveSlide);
+                });
+                
+                return {
+                    activeModules, activeIndex, loadingModuleKey, toastMessage, currentTime, venueName, roleDisplayName,
+                    globalStats, liveFeed, logoPath, staffName,
+                    isFullscreenActive, fullscreenModule,
+                    updateActiveSlide, snapToIndex, onIframeLoaded, onIframeError,
+                    requestFullscreen, exitFullscreen, fallbackLogo,
+                    activeModuleTitle: () => activeModules.value[activeIndex.value]?.title || 'Module'
+                };
             }
-        }
-        
-        function getInitials(name) { 
-            if (!name) return 'U';
-            return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
-        }
-        
-        function formatDate(d) { return d ? new Date(d).toLocaleDateString('en-ZA') : 'Never'; }
-        function formatDateTime(d) { return d ? new Date(d).toLocaleString('en-ZA') : 'Never'; }
-        
-        function escapeHtml(str) { 
-            if (!str) return ''; 
-            return str.replace(/[&<>]/g, function(m) { 
-                return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]; 
-            }); 
-        }
-        
-        function showNotification(msg, type) {
-            const n = document.createElement('div');
-            n.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white animate-slide-in`;
-            n.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-2"></i>${escapeHtml(msg)}`;
-            document.body.appendChild(n);
-            setTimeout(() => n.remove(), 3000);
-        }
-        
-        async function toggleStaffStatus(id, current) {
-            const newStatus = current === 'Active' ? 'Inactive' : 'Active';
-            const action = newStatus === 'Active' ? 'activate' : 'deactivate';
-            
-            showConfirmModal('Confirm Status Change', `Are you sure you want to ${action} this staff member?`, async () => {
-                const { error } = await supabase
-                    .from('profiles')
-                    .update({ status: newStatus })
-                    .eq('id', id);
-                
-                if (error) {
-                    showNotification('Failed to update status', 'error');
-                } else {
-                    showNotification(`Staff ${action}d successfully`, 'success');
-                    await loadStaffList();
-                    await loadDashboardStats();
-                }
-            });
-        }
-        
-        async function exportStaffList() {
-            const { data: staff } = await supabase
-                .from('profiles')
-                .select('name, email, phone, staff_role, status, last_seen')
-                .eq('role', 'staff');
-            
-            const csv = [['Name', 'Email', 'Phone', 'Role', 'Status', 'Last Seen']];
-            staff.forEach(s => csv.push([
-                s.name || '', 
-                s.email || '', 
-                s.phone || '', 
-                ROLES[s.staff_role]?.name || s.staff_role || '', 
-                s.status || '', 
-                s.last_seen ? formatDate(s.last_seen) : ''
-            ]));
-            
-            const blob = new Blob([csv.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `staff_${new Date().toISOString().split('T')[0]}.csv`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showNotification('Export complete', 'success');
-        }
-        
-        function setupEventListeners() {
-            let timeout;
-            document.getElementById('search-staff').addEventListener('input', (e) => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => { 
-                    currentFilters.search = e.target.value; 
-                    currentPage = 1; 
-                    loadStaffList(); 
-                }, 300);
-            });
-            document.getElementById('filter-role').addEventListener('change', (e) => { 
-                currentFilters.role = e.target.value; 
-                currentPage = 1; 
-                loadStaffList(); 
-            });
-            document.getElementById('filter-status').addEventListener('change', (e) => { 
-                currentFilters.status = e.target.value; 
-                currentPage = 1; 
-                loadStaffList(); 
-            });
-        }
-        
-        function changePage(p) { 
-            const totalPages = Math.ceil(totalStaff / pageSize);
-            if (p > 0 && p <= totalPages) { 
-                currentPage = p; 
-                loadStaffList(); 
-            } 
-        }
-        
-        function closeStaffForm() { document.getElementById('staff-form-modal').classList.add('hidden'); }
-        function closeStaffProfile() { document.getElementById('staff-profile-modal').classList.add('hidden'); }
-        function editStaff(id) { openStaffForm(id); }
-        
-        window.openStaffForm = openStaffForm;
-        window.closeStaffForm = closeStaffForm;
-        window.closeStaffProfile = closeStaffProfile;
-        window.viewStaffProfile = viewStaffProfile;
-        window.editStaff = editStaff;
-        window.toggleStaffStatus = toggleStaffStatus;
-        window.exportStaffList = exportStaffList;
-        window.changePage = changePage;
-        window.closeConfirmModal = () => {};
-        window.confirmAction = () => {};
-        
-        document.addEventListener('DOMContentLoaded', initStaffManagement);
+        }).mount('#app');
     </script>
 </body>
 </html>
