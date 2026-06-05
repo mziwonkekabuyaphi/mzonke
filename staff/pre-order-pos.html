@@ -6,8 +6,15 @@
 <title>ButcherShop · Staff Command | Rands POS</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+  {
+    "imports": {
+      "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+    }
+  }
+</script>
 <style>
-  /* ========== YOUR EXACT ORIGINAL CSS – unchanged ========== */
+  /* ========== ORIGINAL PRE-ORDER CSS (PRESERVED) ========== */
   :root {
     --red: #E30613;
     --red-dark: #a0010e;
@@ -32,6 +39,11 @@
     --radius-xl: 32px;
     --radius-full: 9999px;
     --transition: all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --purple: #8b5cf6;
+    --gold: #fbbf24;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -43,20 +55,11 @@
     min-height: 100vh;
   }
   
-  body::before { 
-    content: ''; 
-    position: fixed; 
-    inset: 0; 
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); 
-    pointer-events: none; 
-    z-index: 0; 
-  }
-
   .dashboard { 
     display: grid; 
-    grid-template-columns: 320px 1fr 380px; 
+    grid-template-columns: 380px 1fr; 
     gap: 24px; 
-    max-width: 1600px; 
+    max-width: 1400px; 
     margin: 0 auto; 
     position: relative;
     z-index: 1;
@@ -90,9 +93,6 @@
     overflow-y: auto; 
     padding: 16px; 
   }
-  .queue-list::-webkit-scrollbar { width: 4px; }
-  .queue-list::-webkit-scrollbar-track { background: var(--border-strong); border-radius: 10px; }
-  .queue-list::-webkit-scrollbar-thumb { background: var(--red); border-radius: 10px; }
   
   .queue-item { 
     background: var(--white); 
@@ -107,7 +107,6 @@
   .queue-item.active { 
     background: var(--red-subtle); 
     border-left: 4px solid var(--red); 
-    border-left-color: var(--red);
   }
   
   .queue-ticket { 
@@ -120,7 +119,6 @@
     font-weight: 800; 
     font-size: 1.1rem; 
     color: var(--ink);
-    font-family: 'Inter', monospace;
   }
   
   .badge { 
@@ -131,7 +129,6 @@
   }
   .badge-waiting { background: var(--bone); color: var(--slate); border: 1px solid var(--border-strong); }
   .badge-called { background: var(--red); color: white; }
-  .badge-order { background: #10b981; color: white; }
   
   .btn-sm { 
     background: var(--bone); 
@@ -142,202 +139,126 @@
     font-weight: 600; 
     cursor: pointer; 
     transition: var(--transition);
-    color: var(--slate);
   }
   .btn-sm:hover { background: var(--red-subtle); border-color: var(--red); }
-  .btn-sm-call { background: var(--red); color: white; border: none; }
-  .btn-sm-call:hover { background: var(--red-dark); }
-  .btn-sm-skip { background: #f59e0b; color: white; border: none; }
-  .btn-sm-skip:hover { background: #d97706; }
   
-  .btn-icon-group { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-  
-  #activeCustomerInfo { 
-    padding: 16px 20px; 
-    background: linear-gradient(135deg, #fff8f0, #fff5eb); 
-    border-bottom: 1px solid var(--border-strong);
+  .order-summary {
+    background: var(--bone);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 24px;
   }
-  #activeTicketNumber { 
-    font-size: 1.2rem; 
-    font-weight: 800; 
+  .summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px dashed var(--border-strong);
+  }
+  .summary-total {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 0 8px;
+    border-top: 2px solid var(--red);
+    font-weight: 800;
     color: var(--red);
-    font-family: 'Inter', monospace;
   }
-  
-  .pos-categories { 
-    display: flex; 
-    gap: 10px; 
-    padding: 16px 20px; 
-    border-bottom: 1px solid var(--border-strong); 
-    flex-wrap: wrap; 
-  }
-  .cat-btn { 
-    background: var(--bone); 
-    border: 1px solid var(--border-strong); 
-    padding: 8px 20px; 
-    border-radius: var(--radius-full); 
-    font-weight: 600; 
-    font-size: 0.8rem;
-    cursor: pointer; 
-    transition: var(--transition);
-    color: var(--slate);
-  }
-  .cat-btn.active { 
-    background: var(--red); 
-    color: white; 
-    border-color: var(--red);
-    box-shadow: 0 4px 12px var(--red-glow);
-  }
-  .cat-btn:active { transform: scale(0.96); }
-  
-  .items-grid-pos { 
-    display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
-    gap: 12px; 
-    padding: 20px; 
-    max-height: 340px; 
-    overflow-y: auto; 
-  }
-  .item-card { 
-    background: var(--white); 
-    border: 1px solid var(--border-strong); 
-    border-radius: var(--radius-lg); 
-    padding: 14px 10px; 
-    text-align: center; 
-    cursor: pointer; 
-    transition: var(--transition);
-  }
-  .item-card:hover { 
-    border-color: var(--red); 
-    transform: translateY(-2px); 
-    box-shadow: var(--shadow-card);
-  }
-  .item-card:active { transform: scale(0.98); }
-  .item-name { font-weight: 700; font-size: 0.85rem; margin-bottom: 6px; color: var(--ink); }
-  .item-price { color: var(--red); font-weight: 700; font-size: 0.8rem; }
-  
-  .cart-section { 
-    background: var(--bone); 
-    border-top: 2px solid var(--border-strong); 
-    padding: 16px; 
-    max-height: 320px; 
-    overflow-y: auto; 
-  }
-  .cart-item { 
-    display: flex; 
-    justify-content: space-between; 
-    margin-bottom: 10px; 
-    align-items: center; 
-    background: var(--white); 
-    padding: 10px 14px; 
-    border-radius: var(--radius-md); 
-    border: 1px solid var(--border-strong);
-  }
-  .cart-item button { 
-    background: none; 
-    border: none; 
-    color: var(--red); 
-    font-size: 1rem; 
+
+  /* ========== BOX OFFICE PAYMENT STYLES (COPIED) ========== */
+  .payment-methods-section { margin-bottom: 24px; }
+  .payment-option {
+    border: 1.5px solid var(--border-strong);
+    border-radius: 20px;
+    padding: 16px;
     cursor: pointer;
-    padding: 4px 8px;
-  }
-  
-  .action-buttons-pos { 
-    display: flex; 
-    gap: 12px; 
-    margin: 16px; 
-  }
-  .btn-pos { 
-    flex: 1; 
-    padding: 14px; 
-    border-radius: var(--radius-full); 
-    font-weight: 700; 
-    border: none; 
-    cursor: pointer; 
-    transition: var(--transition);
-    font-size: 0.85rem;
-  }
-  .btn-pos:active { transform: scale(0.96); }
-  .btn-card { background: var(--ink); color: white; }
-  .btn-card:hover { background: var(--ink-muted); }
-  .btn-wallet { background: #10b981; color: white; }
-  .btn-wallet:hover { background: #059669; }
-  .btn-kitchen { background: var(--red); color: white; }
-  .btn-kitchen:hover { background: var(--red-dark); }
-  
-  #paymentWarning { 
-    background: #fee2e2; 
-    color: var(--red); 
-    padding: 12px; 
-    margin: 0 16px 16px 16px; 
-    border-radius: var(--radius-full); 
-    text-align: center; 
-    font-weight: 600;
-    font-size: 0.8rem;
-  }
-  
-  .order-tabs { 
-    display: flex; 
-    border-bottom: 1px solid var(--border-strong); 
+    transition: all 0.2s;
+    margin-bottom: 12px;
     background: var(--white);
   }
-  .order-tab { 
-    flex: 1; 
-    text-align: center; 
-    padding: 14px; 
-    font-weight: 600; 
-    background: var(--white); 
-    border: none; 
-    cursor: pointer; 
-    transition: var(--transition);
-    color: var(--slate);
-    font-size: 0.85rem;
+  .payment-option:hover { border-color: var(--red); background: rgba(227,6,19,0.03); }
+  .payment-option.selected { border-color: var(--red); background: rgba(227,6,19,0.05); }
+  .payment-option-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
   }
-  .order-tab.active { 
-    color: var(--red); 
-    border-bottom: 3px solid var(--red); 
+  .payment-icon {
+    width: 48px;
+    height: 48px;
+    background: rgba(227,6,19,0.08);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
+  .payment-icon i { font-size: 1.3rem; color: var(--red); }
+  .payment-title { font-weight: 800; font-size: 0.95rem; color: var(--ink); }
+  .payment-desc { font-size: 0.7rem; color: var(--mist); }
   
-  .order-list { 
-    padding: 16px; 
-    max-height: calc(100vh - 180px); 
-    overflow-y: auto; 
-  }
-  .order-card { 
-    background: var(--white); 
-    border-radius: var(--radius-lg); 
-    padding: 16px; 
-    margin-bottom: 12px; 
-    border-left: 4px solid;
+  .phone-input-group { margin-bottom: 20px; display: none; }
+  .phone-input-group.visible { display: block; }
+  .phone-input-group input {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 60px;
     border: 1px solid var(--border-strong);
-    transition: var(--transition);
+    font-size: 1rem;
   }
-  .order-card:hover { box-shadow: var(--shadow-card); }
-  .order-header { margin-bottom: 12px; }
-  .order-header strong { color: var(--ink); font-size: 1rem; }
-  .order-actions button { 
-    padding: 8px 16px; 
-    border-radius: var(--radius-full); 
-    font-weight: 600; 
-    font-size: 0.75rem;
-    border: none; 
-    cursor: pointer; 
-    transition: var(--transition);
-  }
-  .order-actions button:active { transform: scale(0.96); }
   
-  .admin-status { 
-    background: #f59e0b; 
-    color: white; 
-    padding: 6px 14px; 
-    border-radius: var(--radius-full); 
-    font-size: 0.7rem; 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    font-weight: 600;
+  .btn-primary {
+    background: var(--red);
+    color: white;
+    border: none;
+    padding: 14px 24px;
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.2s;
   }
-  .admin-status i { color: white; margin: 0; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; background: var(--mist); }
+  
+  .status-panel {
+    margin-top: 20px;
+    padding: 16px;
+    border-radius: 20px;
+    background: var(--bone);
+    text-align: center;
+    display: none;
+  }
+  .status-panel.success { display: block; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--green); color: var(--green); }
+  .status-panel.error { display: block; background: rgba(227, 6, 19, 0.1); border: 1px solid var(--red); color: var(--red); }
+  .status-panel.pending { display: block; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--yellow); color: var(--orange); }
+  
+  .timer-display { font-family: monospace; font-size: 2rem; font-weight: 800; margin: 12px 0; color: var(--orange); }
+  .loading-spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(227,6,19,0.3); border-top-color: var(--red); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  .receipt-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .receipt-content {
+    background: white;
+    border-radius: 28px;
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+  }
+  .receipt-actions { display: flex; gap: 12px; margin-top: 20px; }
+  .btn-print { background: var(--red); color: white; border: none; padding: 12px; border-radius: 60px; flex: 1; cursor: pointer; font-weight: 700; }
+  .btn-close-receipt { background: var(--bone); color: var(--slate); border: none; padding: 12px; border-radius: 60px; flex: 1; cursor: pointer; font-weight: 700; }
   
   .stunning-popup-overlay {
     position: fixed;
@@ -352,10 +273,6 @@
     align-items: center;
     justify-content: center;
     animation: fadeIn 0.3s ease;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
   .stunning-popup {
     background: linear-gradient(145deg, #ffffff 0%, #fff8f8 100%);
@@ -377,7 +294,6 @@
     align-items: center;
     justify-content: center;
     margin: 0 auto 20px;
-    animation: pulseGlow 1.5s infinite;
   }
   .stunning-popup-icon i { font-size: 48px; color: white; }
   .stunning-popup h3 { font-size: 28px; font-weight: 800; margin-bottom: 12px; color: var(--ink); }
@@ -391,280 +307,114 @@
     font-size: 16px;
     color: white;
     cursor: pointer;
-    transition: var(--transition);
   }
-  @keyframes slideUp {
-    from { transform: translateY(40px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  @keyframes pulseGlow {
-    0% { box-shadow: 0 0 0 0 rgba(227,6,19,0.4); }
-    70% { box-shadow: 0 0 0 15px rgba(227,6,19,0); }
-    100% { box-shadow: 0 0 0 0 rgba(227,6,19,0); }
-  }
-  .preorder-modal { 
-    position: fixed; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
-    height: 100%; 
-    background: rgba(0,0,0,0.85); 
-    backdrop-filter: blur(8px);
-    z-index: 3000; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-  }
-  .preorder-container { 
-    background: var(--white); 
-    border-radius: var(--radius-xl); 
-    width: 90%; 
-    max-width: 600px; 
-    max-height: 85vh; 
-    overflow-y: auto; 
-    padding: 28px; 
-    position: relative; 
-    border: 2px solid var(--red);
-  }
-  .close-modal { position: absolute; top: 16px; right: 20px; font-size: 28px; cursor: pointer; color: var(--mist); }
-  .close-modal:hover { color: var(--red); }
-  .category-row { display: flex; gap: 10px; margin: 20px 0; overflow-x: auto; }
-  .cat-pill { 
-    background: var(--bone); 
-    padding: 8px 20px; 
-    border-radius: var(--radius-full); 
-    font-weight: 600; 
-    cursor: pointer; 
-    border: 1px solid var(--border-strong);
-    font-size: 0.8rem;
-    white-space: nowrap;
-  }
-  .cat-pill.active { background: var(--red); color: white; border-color: var(--red); }
-  .items-grid { 
-    display: grid; 
-    grid-template-columns: repeat(2, 1fr); 
-    gap: 12px; 
-    margin-bottom: 20px; 
-    max-height: 300px; 
-    overflow-y: auto; 
-  }
-  .menu-item { 
-    background: var(--bone); 
-    border-radius: var(--radius-lg); 
-    padding: 12px; 
-    text-align: center; 
-    cursor: pointer; 
-    border: 1px solid var(--border-strong);
-    transition: var(--transition);
-  }
-  .menu-item:hover { border-color: var(--red); transform: translateY(-2px); }
-  .cart-item-row { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    padding: 10px 0; 
-    border-bottom: 1px solid var(--border-strong); 
-  }
-  .btn-primary-modal { 
-    background: var(--red); 
-    color: white; 
-    border: none; 
-    padding: 14px; 
-    border-radius: var(--radius-full); 
-    font-weight: 700; 
-    width: 100%; 
-    margin-top: 16px; 
-    cursor: pointer; 
-    transition: var(--transition);
-  }
-  .btn-primary-modal:active { transform: scale(0.98); }
-  .btn-primary-modal:disabled { opacity: 0.5; cursor: not-allowed; }
   
-  @media (max-width: 1000px) { 
-    .dashboard { grid-template-columns: 280px 1fr 320px; gap: 16px; } 
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  
+  @media (max-width: 900px) { 
+    .dashboard { grid-template-columns: 1fr; gap: 16px; } 
     body { padding: 16px; }
-  }
-  @media (max-width: 780px) { 
-    .dashboard { display: flex; flex-direction: column; } 
-    .card { margin-bottom: 16px; }
-    .items-grid-pos { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
-  }
-  @media (max-width: 480px) {
-    .items-grid-pos { grid-template-columns: repeat(2, 1fr); }
-    .action-buttons-pos { flex-direction: column; }
-    .card-header { padding: 14px 18px; font-size: 1rem; }
   }
 </style>
 </head>
 <body>
 <div class="dashboard">
-  <!-- LEFT COLUMN: WAITING LINE -->
+  <!-- LEFT COLUMN: WAITING PRE-ORDERS -->
   <div class="card">
     <div class="card-header">
-      <span><i class="fas fa-users"></i> Waiting Line</span>
-      <button class="btn-sm" id="globalCallNextBtn" style="background:var(--red); color:white; border:none;">Call Next</button>
+      <span><i class="fas fa-shopping-cart"></i> Pending Pre-Orders</span>
+      <button class="btn-sm" id="refreshQueueBtn" style="background:var(--red); color:white; border:none;"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
     <div class="queue-list" id="queueListContainer"></div>
   </div>
   
-  <!-- MIDDLE COLUMN: POS / ACTIVE ORDER -->
+  <!-- RIGHT COLUMN: POS / PAYMENT -->
   <div class="card">
     <div class="card-header">
-      <span><i class="fas fa-cash-register"></i> Active Order</span>
-      <div class="admin-status" id="adminConnectionStatus">
-        <i class="fas fa-plug"></i> <span id="adminStatusText">Connected to DB</span>
+      <span><i class="fas fa-cash-register"></i> Collection & Payment</span>
+      <div class="admin-status" style="background:var(--green); color:white; padding:6px 14px; border-radius:60px; font-size:0.7rem;">
+        <i class="fas fa-check-circle"></i> Ready
       </div>
     </div>
-    <div id="activeCustomerInfo"><strong id="activeTicketNumber">—</strong> <span id="activeOrderStatusMsg">Select a customer</span></div>
-    <div class="pos-categories" id="categoriesContainer"></div>
-    <div class="items-grid-pos" id="itemsGrid"></div>
-    <div class="cart-section">
-      <div style="font-weight:700; margin-bottom:12px; color:var(--ink);"><i class="fas fa-shopping-cart" style="color:var(--red);"></i> Current Order</div>
-      <div id="cartItemsList">No items</div>
-      <div id="cartTotal" style="text-align:right; font-weight:800; margin-top:12px; color:var(--red);">R0.00</div>
+    <div class="card-body" id="posCardBody">
+      <div id="selectedOrderInfo" style="padding:16px; background:var(--bone); border-radius:20px; margin-bottom:20px;">
+        <div style="font-weight:800; color:var(--ink);">No order selected</div>
+        <div style="font-size:0.8rem; color:var(--slate);">Select a pending pre-order to begin</div>
+      </div>
+      
+      <div class="order-summary" id="orderSummarySection" style="display:none;">
+        <div class="summary-item"><span>Order #:</span><span id="summaryOrderId">—</span></div>
+        <div class="summary-item"><span>Customer:</span><span id="summaryCustomer">—</span></div>
+        <div class="summary-item"><span>Items:</span><span id="summaryItems">—</span></div>
+        <div class="summary-total"><span>Total Amount:</span><span id="summaryTotal">R0</span></div>
+      </div>
+
+      <!-- BOX OFFICE PAYMENT SECTION (COPIED) -->
+      <div class="payment-methods-section" id="paymentSection" style="display:none;">
+        <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--mist); margin-bottom: 12px;">
+          <i class="fas fa-credit-card"></i> Payment Method
+        </div>
+        
+        <div class="payment-option" id="cashOption">
+          <div class="payment-option-header">
+            <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+            <div><div class="payment-title">Cash Payment</div><div class="payment-desc">Pay with cash at the counter</div></div>
+            <div style="margin-left: auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div id="cashSelectedIndicator" style="width:12px;height:12px;background:var(--red);border-radius:50%;display:none;"></div></div></div>
+          </div>
+        </div>
+
+        <div class="payment-option" id="cardOption">
+          <div class="payment-option-header">
+            <div class="payment-icon"><i class="fas fa-credit-card"></i></div>
+            <div><div class="payment-title">Card Payment</div><div class="payment-desc">Visa, Mastercard, Apple Pay via Yoco</div></div>
+            <div style="margin-left: auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div id="cardSelectedIndicator" style="width:12px;height:12px;background:var(--red);border-radius:50%;display:none;"></div></div></div>
+          </div>
+        </div>
+
+        <div class="payment-option" id="walletOption">
+          <div class="payment-option-header">
+            <div class="payment-icon"><i class="fas fa-wallet"></i></div>
+            <div><div class="payment-title">Rands Wallet</div><div class="payment-desc">Request payment approval from customer's wallet</div></div>
+            <div style="margin-left: auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div id="walletSelectedIndicator" style="width:12px;height:12px;background:var(--red);border-radius:50%;display:none;"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone-input-group" id="phoneInputGroup">
+        <label><i class="fab fa-whatsapp"></i> Customer WhatsApp Number for Wallet</label>
+        <input type="tel" id="customerPhoneWallet" placeholder="e.g. 0712345678">
+      </div>
+
+      <button class="btn-primary" id="requestPaymentBtn" disabled>💰 Select payment method first</button>
+      <div id="requestStatus" class="status-panel"></div>
     </div>
-    <div class="action-buttons-pos">
-      <button class="btn-pos btn-card" id="payCardBtn">💳 Pay Card</button>
-      <button class="btn-pos btn-wallet" id="payWalletBtn">💰 Wallet</button>
-      <button class="btn-pos btn-kitchen" id="sendToKitchenBtn">🔥 Send to Kitchen</button>
-    </div>
-    <div id="paymentWarning" style="display:none;">⚠️ Payment required</div>
-  </div>
-  
-  <!-- RIGHT COLUMN: KITCHEN ORDERS -->
-  <div class="card">
-    <div class="order-tabs" id="orderTabs">
-      <button class="order-tab active" data-status="preparing">🔥 In Progress</button>
-      <button class="order-tab" data-status="ready">✅ Ready</button>
-      <button class="order-tab" data-status="completed">📦 Completed</button>
-    </div>
-    <div class="order-list" id="kitchenOrdersList"></div>
   </div>
 </div>
 
 <script type="module">
-  import { supabase } from '../config/supabase.js'; // adjust path if needed
+  import { supabase } from '../config/supabase.js';
 
-  // ========== PRODUCTS FROM SUPABASE (butcher category) – using 'products' table ==========
-  let butcherProducts = [];
-  let categories = ['meat', 'meals', 'sides', 'drinks'];
-  let activeCategory = "meat";
+  // ============ PRE-ORDER BUSINESS LOGIC (PRESERVED) ==========
+  let pendingOrders = [];
+  let selectedOrder = null;
+  
+  // Payment state variables (copied from box-office)
+  let selectedPaymentMethod = null;
+  let currentRequestId = null;
+  let requestSubscription = null;
+  let walletCountdownInterval = null;
 
-  // Menu object (populated from Supabase)
-  let menu = {
-    meat: [],
-    meals: [],
-    sides: [],
-    drinks: []
-  };
-
-  async function loadButcherProducts() {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, price, description, image, category, alcohol, is_available')
-        .eq('category', 'butcher')
-        .eq('is_available', true);
-      
-      if (error) throw error;
-      
-      if (data && data.length) {
-        butcherProducts = data.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          description: item.description || 'House special',
-          image: item.image
-        }));
-        console.log(`Loaded ${butcherProducts.length} butcher products from products table.`);
-        
-        // Heuristic: assign to categories based on name (simple mapping, same as original logic)
-        menu = { meat: [], meals: [], sides: [], drinks: [] };
-        butcherProducts.forEach(p => {
-          const lower = p.name.toLowerCase();
-          if (lower.includes('steak') || lower.includes('ribeye') || lower.includes('t-bone') || lower.includes('lamb') || lower.includes('beef') || lower.includes('sausage')) {
-            menu.meat.push(p);
-          } else if (lower.includes('combo') || lower.includes('platter') || lower.includes('roll') || lower.includes('burger')) {
-            menu.meals.push(p);
-          } else if (lower.includes('chips') || lower.includes('salad') || lower.includes('pap') || lower.includes('fries') || lower.includes('side')) {
-            menu.sides.push(p);
-          } else if (lower.includes('coke') || lower.includes('water') || lower.includes('beer') || lower.includes('soda') || lower.includes('drink')) {
-            menu.drinks.push(p);
-          } else {
-            // fallback to meat
-            menu.meat.push(p);
-          }
-        });
-        refreshMenuUI();
-      } else {
-        console.warn("No butcher products found, using fallback default menu.");
-        loadDefaultMenu();
-      }
-    } catch (err) {
-      console.error("Failed to load butcher products:", err);
-      loadDefaultMenu();
+  function showToast(message, isError = false) {
+    const toast = document.getElementById('toastMsg');
+    if (!toast) {
+      const newToast = document.createElement('div');
+      newToast.id = 'toastMsg';
+      newToast.className = 'stunning-popup-overlay';
+      document.body.appendChild(newToast);
     }
+    showStunningPopup('Notice', message, isError ? 'error' : 'success', 3000);
   }
-
-  function loadDefaultMenu() {
-    // Emergency fallback (only if Supabase fails or is empty)
-    menu = {
-      meat: [{ id: "ribeye", name: "Ribeye Steak", price: 159 }, { id: "beef_sausage", name: "Beef Sausage", price: 89 }, { id: "lamb_chop", name: "Lamb Chop", price: 199 }, { id: "bacon_pack", name: "Bacon 500g", price: 79 }],
-      meals: [{ id: "steak_combo", name: "Steak + Chips", price: 189 }, { id: "boerewors_roll", name: "Boerewors Roll", price: 65 }, { id: "barbecue_platter", name: "BBQ Platter", price: 299 }],
-      sides: [{ id: "chips", name: "Chips", price: 25 }, { id: "salad", name: "Fresh Salad", price: 32 }, { id: "pap_sheba", name: "Pap & Sheba", price: 28 }],
-      drinks: [{ id: "coke", name: "Coca-Cola", price: 18 }, { id: "water", name: "Still Water", price: 12 }, { id: "beer", name: "Castle Lager", price: 28 }]
-    };
-    refreshMenuUI();
-  }
-
-  function refreshMenuUI() {
-    renderMenuAndCart();
-  }
-
-  // ========== REAL WALLET DEDUCTION (unchanged) ==========
-  async function getWalletByPhone(phone) {
-    const normalized = phone.replace(/\D/g, '');
-    const { data: profile, error: profileErr } = await supabase
-      .from('profiles')
-      .select('id, name, phone')
-      .eq('phone', normalized)
-      .maybeSingle();
-    if (profileErr || !profile) return { success: false, error: "Profile not found" };
-    const { data: wallet, error: walletErr } = await supabase
-      .from('wallets')
-      .select('id, balance')
-      .eq('user_id', profile.id)
-      .maybeSingle();
-    if (walletErr || !wallet) return { success: false, error: "Wallet not found" };
-    return { success: true, profile, wallet };
-  }
-
-  async function deductFromWallet(phone, amount, reason) {
-    const walletData = await getWalletByPhone(phone);
-    if (!walletData.success) return { success: false, error: walletData.error };
-    const { profile, wallet } = walletData;
-    if (wallet.balance < amount) return { success: false, error: `Insufficient balance. Available: R${wallet.balance.toFixed(2)}` };
-    const newBalance = wallet.balance - amount;
-    const { error: updateErr } = await supabase
-      .from('wallets')
-      .update({ balance: newBalance })
-      .eq('id', wallet.id);
-    if (updateErr) return { success: false, error: updateErr.message };
-    await supabase.from('wallet_transactions').insert({
-      wallet_id: wallet.id,
-      type: 'debit',
-      amount: -amount,
-      description: reason,
-      reference: `butcher_${Date.now()}`
-    });
-    return { success: true, newBalance, name: profile.name };
-  }
-
-  // ========== SUPABASE QUEUE & ORDERS (unchanged) ==========
-  let currentActiveTicket = null;
-  let currentCart = [];
-  let currentOrderPaid = false;
-  let currentOrderLocked = false;
 
   async function showStunningPopup(title, message, type = 'success', autoClose = 2000) {
     return new Promise((resolve) => {
@@ -684,388 +434,474 @@
       if (autoClose && type !== 'error') setTimeout(closePopup, autoClose);
     });
   }
+  
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
-  async function getQueue() {
-    const { data, error } = await supabase.from('butcher_queue').select('*').order('created_at', { ascending: true });
+  async function loadPendingOrders() {
+    const { data, error } = await supabase
+      .from('butcher_preorders')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
     if (error) { console.error(error); return []; }
-    return data;
-  }
-  async function addToQueue(ticket) {
-    const { error } = await supabase.from('butcher_queue').insert([ticket]);
-    if (error) console.error(error);
-  }
-  async function markCalled(ticketNumber) {
-    const { error } = await supabase.from('butcher_queue').update({ called: true }).eq('ticket_number', ticketNumber);
-    if (error) console.error(error);
-  }
-  async function removeFromQueue(ticketNumber) {
-    const { error } = await supabase.from('butcher_queue').delete().eq('ticket_number', ticketNumber);
-    if (error) console.error(error);
-  }
-
-  async function getOrders() {
-    const { data, error } = await supabase.from('butcher_orders').select('*').order('created_at', { ascending: false });
-    if (error) { console.error(error); return []; }
-    return data;
-  }
-  async function saveOrder(order) {
-    const { error } = await supabase.from('butcher_orders').upsert(order, { onConflict: 'id' });
-    if (error) console.error(error);
-  }
-  async function updateOrderStatus(ticketNumber, kitchenStatus) {
-    const { error } = await supabase.from('butcher_orders').update({ kitchen_status: kitchenStatus, updated_at: new Date().toISOString() }).eq('ticket_number', ticketNumber);
-    if (error) console.error(error);
+    pendingOrders = data || [];
+    renderQueueList();
+    return pendingOrders;
   }
 
   async function renderQueueList() {
-    console.log('🔄 renderQueueList called');
-    const queue = await getQueue();
-    console.log('Queue length:', queue.length, queue);
     const container = document.getElementById('queueListContainer');
-    if (!queue.length) {
-      container.innerHTML = '<div style="padding:40px;text-align:center; color:var(--mist);"><i class="fas fa-user-plus"></i><p style="margin-top:8px;">No customers waiting</p></div>';
+    if (!pendingOrders.length) {
+      container.innerHTML = '<div style="padding:40px;text-align:center; color:var(--mist);"><i class="fas fa-inbox"></i><p style="margin-top:8px;">No pending pre-orders</p></div>';
       return;
     }
-    const orders = await getOrders();
-    container.innerHTML = queue.map(ticket => {
-      const hasOrder = orders.some(o => o.ticket_number === ticket.ticket_number);
-      const statusClass = ticket.called ? "badge-called" : "badge-waiting";
-      const statusText = ticket.called ? "Called" : "Waiting";
-      const isActive = currentActiveTicket?.ticket_number === ticket.ticket_number;
-      return `<div class="queue-item ${isActive ? 'active' : ''}" data-ticket-number="${ticket.ticket_number}">
+    container.innerHTML = pendingOrders.map(order => `
+      <div class="queue-item ${selectedOrder?.id === order.id ? 'active' : ''}" data-order-id="${order.id}">
         <div class="queue-ticket">
-          <span class="ticket-num">🎫 ${escapeHtml(ticket.ticket_number)}</span>
-          <span class="badge ${statusClass}">${statusText}</span>
+          <span class="ticket-num">🎫 #${escapeHtml(order.order_number || order.id.slice(0,8))}</span>
+          <span class="badge badge-waiting">Pending Collection</span>
         </div>
-        ${hasOrder ? '<div><span class="badge badge-order">📋 Order Placed</span></div>' : ''}
-        <div class="btn-icon-group">
-          <button class="btn-sm btn-sm-call call-ticket" data-ticket="${ticket.ticket_number}"><i class="fas fa-phone"></i> Call</button>
-          <button class="btn-sm btn-sm-skip skip-ticket" data-ticket="${ticket.ticket_number}"><i class="fas fa-forward"></i> Skip</button>
-        </div>
-      </div>`;
-    }).join('');
-    attachQueueEvents();
-  }
-
-  function attachQueueEvents() {
-    document.querySelectorAll('.call-ticket').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); callTicket(btn.dataset.ticket); }));
-    document.querySelectorAll('.skip-ticket').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); skipTicket(btn.dataset.ticket); }));
+        <div><small>👤 ${escapeHtml(order.customer_name || 'Guest')}</small></div>
+        <div><small>💰 R${order.total_amount?.toFixed(2) || '0.00'}</small></div>
+        <div><small>📦 ${order.items?.length || 0} items</small></div>
+      </div>
+    `).join('');
     document.querySelectorAll('.queue-item').forEach(el => {
-      el.addEventListener('click', () => { const tn = el.dataset.ticketNumber; selectTicketByNumber(tn); });
+      el.addEventListener('click', () => selectOrder(el.dataset.orderId));
     });
   }
 
-  async function callTicket(ticketNum) {
-    await markCalled(ticketNum);
-    await renderQueueList();
-    const queue = await getQueue();
-    const ticket = queue.find(t => t.ticket_number === ticketNum);
-    if (ticket) {
-      await selectTicket(ticket);
-      openPreorderConfirmation(ticket);
-    }
-  }
-
-  async function skipTicket(ticketNum) {
-    await removeFromQueue(ticketNum);
-    if (currentActiveTicket?.ticket_number === ticketNum) {
-      currentActiveTicket = null;
-      currentCart = [];
-      await renderActiveOrderUI();
-    }
-    await renderQueueList();
-  }
-
-  async function selectTicket(ticket) {
-    currentActiveTicket = ticket;
-    const orders = await getOrders();
-    const existingOrder = orders.find(o => o.ticket_number === ticket.ticket_number);
-    if (existingOrder && existingOrder.items) {
-      currentCart = existingOrder.items;
-      currentOrderPaid = existingOrder.paid;
-      currentOrderLocked = (existingOrder.kitchen_status === 'preparing' || existingOrder.kitchen_status === 'ready');
-    } else {
-      currentCart = [];
-      currentOrderPaid = false;
-      currentOrderLocked = false;
-    }
-    await renderActiveOrderUI();
-    renderMenuAndCart();
-  }
-
-  async function selectTicketByNumber(ticketNumber) {
-    const queue = await getQueue();
-    const ticket = queue.find(t => t.ticket_number === ticketNumber);
-    if (ticket) await selectTicket(ticket);
-  }
-
-  async function renderActiveOrderUI() {
-    const activeInfo = document.getElementById('activeCustomerInfo');
-    if (activeInfo) {
-      activeInfo.innerHTML = `<strong id="activeTicketNumber" style="color:var(--red);">${currentActiveTicket?.ticket_number || '—'}</strong> <span id="activeOrderStatusMsg" style="color:var(--slate);">${currentOrderLocked ? "In Kitchen" : (currentCart.length ? `${currentCart.length} items` : "No order")}</span>`;
-    }
-  }
-
-  async function callNext() {
-    const queue = await getQueue();
-    if (!queue.length) {
-      await showStunningPopup('No Customers', 'There are no customers waiting in line', 'info', 2000);
-      return;
-    }
-    const first = queue[0];
-    await markCalled(first.ticket_number);
-    await renderQueueList();
-    await selectTicket(first);
-    openPreorderConfirmation(first);
-  }
-
-  function openPreorderConfirmation(ticket) {
-    let preorderCart = [...currentCart];
-    let preorderCategory = activeCategory;
-    const modal = document.createElement('div');
-    modal.className = 'preorder-modal';
+  async function selectOrder(orderId) {
+    const order = pendingOrders.find(o => o.id === orderId);
+    if (!order) return;
+    selectedOrder = order;
     
-    function renderModal() {
-      const categoriesHtml = Object.keys(menu).map(cat => `<span class="cat-pill ${preorderCategory === cat ? 'active' : ''}" data-cat="${cat}">${cat.toUpperCase()}</span>`).join('');
-      const items = menu[preorderCategory] || [];
-      const itemsHtml = items.map(item => `<div class="menu-item" data-item='${JSON.stringify(item)}'><div class="item-name">${escapeHtml(item.name)}</div><div style="color:var(--red); font-weight:700;">R${item.price}</div></div>`).join('');
-      const cartTotal = preorderCart.reduce((s,i) => s + i.price * i.quantity, 0);
-      const cartHtml = preorderCart.map((it, idx) => `<div class="cart-item-row"><span><strong>${escapeHtml(it.name)}</strong> x${it.quantity}</span><span>R${it.price * it.quantity}</span><button class="remove-item" data-idx="${idx}" style="background:none; border:none; color:var(--red); cursor:pointer;">🗑️</button></div>`).join('');
-      modal.innerHTML = `
-        <div class="preorder-container">
-          <div class="close-modal">&times;</div>
-          <h3 style="color:var(--red); margin-bottom:8px;">📝 Confirm Order</h3>
-          <p style="color:var(--slate); margin-bottom:16px;">Customer: <strong>${escapeHtml(ticket.ticket_number)}</strong> | ${escapeHtml(ticket.customer_name || 'Guest')}</p>
-          <div class="category-row" id="preorderCategories">${categoriesHtml}</div>
-          <div class="items-grid" id="preorderItems">${itemsHtml}</div>
-          <div style="border-top:2px solid var(--border-strong); margin-top:16px; padding-top:16px;">
-            <strong style="color:var(--ink);"><i class="fas fa-shopping-cart"></i> Order Summary</strong>
-            <div id="preorderCart" style="margin-top:8px;">${cartHtml || '<div style="color:var(--mist);">Empty</div>'}</div>
-            <div style="text-align:right; font-weight:800; margin-top:12px; color:var(--red);">Total: R${cartTotal}</div>
-            <input type="text" id="preorderNote" placeholder="Special instructions..." style="width:100%; padding:12px; border-radius:40px; border:1px solid var(--border-strong); margin:12px 0; font-family:inherit;">
-            <button id="confirmOrderBtn" class="btn-primary-modal" ${preorderCart.length === 0 ? 'disabled' : ''}>Confirm Order → Send to POS</button>
-          </div>
-        </div>`;
-      modal.querySelectorAll('.cat-pill').forEach(btn => btn.addEventListener('click', () => { preorderCategory = btn.dataset.cat; renderModal(); }));
-      modal.querySelectorAll('.menu-item').forEach(el => el.addEventListener('click', () => {
-        const item = JSON.parse(el.dataset.item);
-        const existing = preorderCart.find(i => i.id === item.id);
-        if (existing) existing.quantity += 1;
-        else preorderCart.push({ ...item, quantity: 1, notes: "" });
-        renderModal();
-      }));
-      modal.querySelectorAll('.remove-item').forEach(btn => btn.addEventListener('click', () => { preorderCart.splice(parseInt(btn.dataset.idx), 1); renderModal(); }));
-      modal.querySelector('.close-modal').onclick = () => modal.remove();
-      modal.querySelector('#confirmOrderBtn')?.addEventListener('click', async () => {
-        if (preorderCart.length === 0) { await showStunningPopup('Empty Order', 'Please add items', 'warning', 2000); return; }
-        const note = document.getElementById('preorderNote')?.value || '';
-        const cartWithNotes = preorderCart.map(i => ({ ...i, notes: note }));
-        const total = cartWithNotes.reduce((s,i) => s + i.price * i.quantity, 0);
-        await saveOrder({
-          ticket_number: ticket.ticket_number,
-          customer_name: ticket.customer_name,
-          whatsapp: ticket.whatsapp,
-          items: cartWithNotes,
-          total: total,
-          paid: false,
-          kitchen_status: 'new',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-        modal.remove();
-        await showStunningPopup('Order Confirmed', `✅ Order confirmed for ${ticket.ticket_number}!`, 'success', 2000);
-        await selectTicket(ticket);
-        await renderAll();
-      });
-    }
-    renderModal();
-    document.body.appendChild(modal);
+    // Display order summary
+    document.getElementById('selectedOrderInfo').innerHTML = `
+      <div style="font-weight:800; color:var(--ink);">📋 Order #${escapeHtml(order.order_number || order.id.slice(0,8))}</div>
+      <div style="font-size:0.8rem; color:var(--slate);">Customer: ${escapeHtml(order.customer_name || 'Guest')} | ${escapeHtml(order.customer_phone || 'No phone')}</div>
+    `;
+    
+    document.getElementById('orderSummarySection').style.display = 'block';
+    document.getElementById('paymentSection').style.display = 'block';
+    
+    document.getElementById('summaryOrderId').innerHTML = order.order_number || order.id.slice(0,8);
+    document.getElementById('summaryCustomer').innerHTML = escapeHtml(order.customer_name || 'Guest');
+    const itemsList = order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ') || 'No items';
+    document.getElementById('summaryItems').innerHTML = itemsList;
+    document.getElementById('summaryTotal').innerHTML = `R${(order.total_amount || 0).toFixed(2)}`;
+    
+    // Reset payment selection
+    selectedPaymentMethod = null;
+    document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
+    document.getElementById('cashSelectedIndicator').style.display = 'none';
+    document.getElementById('cardSelectedIndicator').style.display = 'none';
+    document.getElementById('walletSelectedIndicator').style.display = 'none';
+    document.getElementById('phoneInputGroup').classList.remove('visible');
+    updateCheckoutButtonState();
+    
+    await renderQueueList();
   }
 
-  function renderMenuAndCart() {
-    const catsHtml = Object.keys(menu).map(cat => `<button class="cat-btn ${activeCategory === cat ? 'active' : ''}" data-cat="${cat}">${cat.toUpperCase()}</button>`).join('');
-    document.getElementById('categoriesContainer').innerHTML = catsHtml;
-    document.querySelectorAll('.cat-btn').forEach(btn => btn.addEventListener('click', () => { activeCategory = btn.dataset.cat; renderMenuAndCart(); }));
-    const items = menu[activeCategory] || [];
-    const itemsHtml = items.map(item => `<div class="item-card" data-item='${JSON.stringify({ id: item.id, name: item.name, price: item.price })}'><div class="item-name">${escapeHtml(item.name)}</div><div class="item-price">R${item.price}</div></div>`).join('');
-    document.getElementById('itemsGrid').innerHTML = itemsHtml;
-    document.querySelectorAll('.item-card').forEach(card => card.addEventListener('click', () => {
-      if (!currentOrderLocked) {
-        const item = JSON.parse(card.dataset.item);
-        const existing = currentCart.find(i => i.id === item.id);
-        if (existing) existing.quantity++;
-        else currentCart.push({ ...item, quantity: 1, notes: "" });
-        renderMenuAndCart();
+  // ============ BOX OFFICE PAYMENT INTEGRATION (COPIED) ==========
+  
+  async function getOrCreateCustomerProfile(phone) {
+    try {
+      let { data: profile, error } = await supabase.from('profiles').select('id, name').eq('phone', phone).maybeSingle();
+      if (error && error.code !== 'PGRST116') throw error;
+      if (!profile) {
+        const { data: newProfile, error: createError } = await supabase.from('profiles').insert({
+          phone: phone, role: 'customer', account_type: 'general', status: 'Active', created_at: new Date().toISOString()
+        }).select().single();
+        if (createError) throw createError;
+        profile = newProfile;
+        await supabase.from('wallets').insert({ user_id: profile.id, balance: 0, currency: 'ZAR', status: 'active' });
       }
-    }));
-    if (!currentCart.length) {
-      document.getElementById('cartItemsList').innerHTML = '<div style="color:var(--mist); padding:12px; text-align:center;">Empty cart</div>';
-      document.getElementById('cartTotal').innerHTML = 'R0.00';
-      return;
+      return profile;
+    } catch (err) {
+      throw new Error(`Failed to get/create customer: ${err.message}`);
     }
-    let total = 0;
-    const cartHtml = currentCart.map((it, idx) => {
-      total += it.price * it.quantity;
-      return `<div class="cart-item"><div><strong>${escapeHtml(it.name)}</strong> x${it.quantity}</div><div style="color:var(--red); font-weight:600;">R${it.price * it.quantity}</div><button class="remove-item" data-idx="${idx}" style="background:none; color:var(--red);">🗑️</button></div>`;
-    }).join('');
-    document.getElementById('cartItemsList').innerHTML = cartHtml;
-    document.getElementById('cartTotal').innerHTML = `R${total.toFixed(2)}`;
-    document.querySelectorAll('.remove-item').forEach(btn => btn.addEventListener('click', () => { currentCart.splice(parseInt(btn.dataset.idx), 1); renderMenuAndCart(); }));
+  }
+
+  async function markOrderAsPaidAndCollected(paymentMethod, transactionRef = null) {
+    if (!selectedOrder) throw new Error('No order selected');
+    
+    const { error } = await supabase
+      .from('butcher_preorders')
+      .update({ 
+        status: 'collected', 
+        paid: true, 
+        payment_method: paymentMethod,
+        payment_transaction_id: transactionRef,
+        collected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedOrder.id);
+    
+    if (error) throw error;
+    
+    // Record payment transaction
+    await supabase.from('payment_requests').insert({
+      customer_phone: selectedOrder.customer_phone || 'walkin',
+      total_amount: selectedOrder.total_amount,
+      channel: 'butcher_pos',
+      status: 'completed',
+      payment_method: paymentMethod,
+      metadata: { order_id: selectedOrder.id, order_number: selectedOrder.order_number, type: 'preorder_collection' }
+    });
+    
+    // Show receipt
+    await showReceipt(selectedOrder, paymentMethod);
+  }
+
+  async function showReceipt(order, paymentMethod) {
+    const receiptHtml = `
+      <div style="text-align:center;">
+        <i class="fas fa-receipt" style="font-size: 48px; color: var(--red); margin-bottom: 16px;"></i>
+        <h3>Payment Receipt</h3>
+        <div style="margin: 16px 0; padding: 12px; background: var(--bone); border-radius: 16px;">
+          <div><strong>Order #:</strong> ${escapeHtml(order.order_number || order.id.slice(0,8))}</div>
+          <div><strong>Customer:</strong> ${escapeHtml(order.customer_name || 'Guest')}</div>
+          <div><strong>Amount:</strong> <span style="color:var(--red); font-weight:800;">R${(order.total_amount || 0).toFixed(2)}</span></div>
+          <div><strong>Payment Method:</strong> ${paymentMethod.toUpperCase()}</div>
+          <div><strong>Date:</strong> ${new Date().toLocaleString()}</div>
+        </div>
+        <div class="receipt-actions">
+          <button class="btn-print" onclick="window.print()">🖨️ Print Receipt</button>
+          <button class="btn-close-receipt" id="closeReceiptBtn">Close</button>
+        </div>
+      </div>
+    `;
+    
+    const modal = document.createElement('div');
+    modal.className = 'receipt-modal';
+    modal.innerHTML = `<div class="receipt-content">${receiptHtml}</div>`;
+    document.body.appendChild(modal);
+    document.getElementById('closeReceiptBtn').addEventListener('click', () => {
+      modal.remove();
+      resetAfterPayment();
+    });
+  }
+
+  async function resetAfterPayment() {
+    selectedOrder = null;
+    selectedPaymentMethod = null;
+    document.getElementById('selectedOrderInfo').innerHTML = '<div style="font-weight:800; color:var(--ink);">No order selected</div><div style="font-size:0.8rem; color:var(--slate);">Select a pending pre-order to begin</div>';
+    document.getElementById('orderSummarySection').style.display = 'none';
+    document.getElementById('paymentSection').style.display = 'none';
+    document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
+    document.getElementById('cashSelectedIndicator').style.display = 'none';
+    document.getElementById('cardSelectedIndicator').style.display = 'none';
+    document.getElementById('walletSelectedIndicator').style.display = 'none';
+    document.getElementById('phoneInputGroup').classList.remove('visible');
+    document.getElementById('customerPhoneWallet').value = '';
+    await loadPendingOrders();
+    updateCheckoutButtonState();
+    await showStunningPopup('Success!', 'Order marked as collected. Ready for next customer.', 'success', 3000);
+  }
+
+  async function processCashPayment() {
+    if (!selectedOrder) { showToast('No order selected', true); return false; }
+    
+    const requestPaymentBtn = document.getElementById('requestPaymentBtn');
+    const requestStatusDiv = document.getElementById('requestStatus');
+    
+    requestPaymentBtn.disabled = true;
+    requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
+    requestStatusDiv.style.display = 'block';
+    requestStatusDiv.className = 'status-panel pending';
+    requestStatusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing cash payment...';
+    
+    try {
+      await markOrderAsPaidAndCollected('cash', null);
+      requestStatusDiv.innerHTML = `<i class="fas fa-check-circle"></i> Success! Order collected.`;
+      requestStatusDiv.className = 'status-panel success';
+      showToast(`✅ Payment confirmed!`, false);
+      return true;
+    } catch (err) {
+      requestStatusDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed: ${err.message}`;
+      requestStatusDiv.className = 'status-panel error';
+      showToast(err.message, true);
+      return false;
+    } finally {
+      requestPaymentBtn.disabled = false;
+      requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
+      setTimeout(() => { if (requestStatusDiv.className !== 'status-panel success') requestStatusDiv.style.display = 'none'; }, 5000);
+    }
+  }
+
+  async function processCardPayment() {
+    if (!selectedOrder) { showToast('No order selected', true); return false; }
+    
+    const requestPaymentBtn = document.getElementById('requestPaymentBtn');
+    const requestStatusDiv = document.getElementById('requestStatus');
+    
+    requestPaymentBtn.disabled = true;
+    requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Initializing payment...';
+    
+    try {
+      const totalAmount = selectedOrder.total_amount;
+      const amountCents = Math.round(totalAmount * 100);
+      
+      const { data: pendingTx, error: insertError } = await supabase.from('wallet_transactions').insert({
+        amount: totalAmount,
+        type: 'topup',
+        status: 'pending',
+        provider: 'yoco',
+        direction: 'credit',
+        description: `Butcher order #${selectedOrder.order_number || selectedOrder.id.slice(0,8)}`,
+        created_at: new Date().toISOString(),
+        metadata: { 
+          payment_method: 'yoco_card', 
+          order_id: selectedOrder.id,
+          type: 'preorder_collection'
+        }
+      }).select('id').single();
+      
+      if (insertError) throw new Error('Could not initialize payment');
+      
+      const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', {
+        body: { 
+          wallet_transaction_id: pendingTx.id, 
+          amount_cents: amountCents, 
+          currency: 'ZAR', 
+          metadata: { 
+            butcher_pos: true, 
+            order_id: selectedOrder.id,
+            order_number: selectedOrder.order_number
+          } 
+        }
+      });
+      
+      if (edgeError) throw new Error(edgeError.message || 'Payment gateway error');
+      if (!edgeResponse?.checkout_url) throw new Error('Invalid response from payment gateway');
+      
+      sessionStorage.setItem('pendingButcherPayment', JSON.stringify({ 
+        order_id: selectedOrder.id,
+        total_amount: totalAmount, 
+        transaction_id: pendingTx.id
+      }));
+      
+      window.location.href = edgeResponse.checkout_url;
+    } catch (err) {
+      showToast(err.message, true);
+      requestPaymentBtn.disabled = false;
+      requestPaymentBtn.innerHTML = '💳 Pay with Card';
+      return false;
+    }
   }
 
   async function processWalletPayment() {
-    if (!currentActiveTicket || !currentCart.length) {
-      await showStunningPopup('No Order', 'Please select a customer and add items', 'warning', 2000);
-      return;
+    const phone = document.getElementById('customerPhoneWallet').value.trim();
+    
+    if (!selectedOrder) { showToast('No order selected', true); return false; }
+    if (!phone || !/^[0-9]{10}$/.test(phone)) {
+      showToast('Enter valid 10-digit WhatsApp number for wallet', true);
+      return false;
     }
-    const total = currentCart.reduce((s,i) => s + i.price * i.quantity, 0);
-    const customerPhone = currentActiveTicket.whatsapp;
-    if (!customerPhone) {
-      await showStunningPopup('Missing Info', 'Customer phone number not found in ticket', 'error', 2000);
-      return;
-    }
-    const result = await deductFromWallet(customerPhone, total, `Butcher order ${currentActiveTicket.ticket_number}`);
-    if (!result.success) {
-      await showStunningPopup('Payment Failed', result.error, 'error', 3000);
-      return;
-    }
-    currentOrderPaid = true;
-    await showStunningPopup('Payment Confirmed', `✅ Wallet payment of R${total.toFixed(2)} approved!\nNew balance: R${result.newBalance.toFixed(2)}`, 'success', 2500);
-    renderMenuAndCart();
-  }
-
-  async function markAsPaid(method) {
-    if (!currentActiveTicket || !currentCart.length) return;
-    if (method === 'wallet') {
-      await processWalletPayment();
-    } else {
-      currentOrderPaid = true;
-      await showStunningPopup('Payment Confirmed', `✅ Card payment processed!`, 'success', 1800);
-      renderMenuAndCart();
-    }
-  }
-
-  async function sendToKitchen() {
-    if (!currentActiveTicket) return;
-    if (!currentCart.length) { await showStunningPopup('No Items', 'Add items first', 'warning', 2000); return; }
-    if (!currentOrderPaid) {
-      document.getElementById('paymentWarning').style.display = 'block';
-      setTimeout(() => document.getElementById('paymentWarning').style.display = 'none', 2500);
-      await showStunningPopup('Payment Required', 'Please complete payment first', 'warning', 2000);
-      return;
-    }
-    const existingOrders = await getOrders();
-    const idx = existingOrders.findIndex(o => o.ticket_number === currentActiveTicket.ticket_number);
-    if (idx !== -1) {
-      await saveOrder({
-        ...existingOrders[idx],
-        items: currentCart,
-        total: currentCart.reduce((s,i) => s + i.price*i.quantity, 0),
-        paid: true,
-        kitchen_status: 'preparing',
-        updated_at: new Date().toISOString()
-      });
-    } else {
-      await saveOrder({
-        ticket_number: currentActiveTicket.ticket_number,
-        customer_name: currentActiveTicket.customer_name,
-        whatsapp: currentActiveTicket.whatsapp,
-        items: currentCart,
-        total: currentCart.reduce((s,i) => s + i.price*i.quantity, 0),
-        paid: true,
-        kitchen_status: 'preparing',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-    }
-    currentOrderLocked = true;
-    await showStunningPopup('Order Sent to Kitchen!', `🔥 Order for ${currentActiveTicket.ticket_number} sent.`, 'success', 2000);
-    await renderKitchenOrders();
-    await renderQueueList();
-    await removeFromQueue(currentActiveTicket.ticket_number);
-    const updatedQueue = await getQueue();
-    if (updatedQueue.length > 0) {
-      const nextTicket = updatedQueue[0];
-      await markCalled(nextTicket.ticket_number);
-      await selectTicket(nextTicket);
-      openPreorderConfirmation(nextTicket);
-      await showStunningPopup('Next Customer Called', `📞 Automatically called ${nextTicket.ticket_number}`, 'info', 2500);
-    } else {
-      currentActiveTicket = null;
-      currentCart = [];
-      currentOrderPaid = false;
-      currentOrderLocked = false;
-      await renderActiveOrderUI();
-      renderMenuAndCart();
-    }
-    await renderAll();
-  }
-
-  async function renderKitchenOrders() {
-    const orders = await getOrders();
-    const activeTab = document.querySelector('.order-tab.active')?.dataset.status || 'preparing';
-    let filtered = orders.filter(o => o.kitchen_status === activeTab);
-    const container = document.getElementById('kitchenOrdersList');
-    if (!filtered.length) {
-      container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--mist);"><i class="fas fa-utensils"></i><p>No orders</p></div>';
-      return;
-    }
-    container.innerHTML = filtered.map(order => `<div class="order-card" style="border-left-color: ${order.kitchen_status === 'preparing' ? 'var(--red)' : '#10b981'};"><div class="order-header"><strong>🎫 ${escapeHtml(order.ticket_number)}</strong> · ${order.items.length} items</div><div class="order-actions">${order.kitchen_status === 'preparing' ? `<button class="mark-ready" data-ticket="${order.ticket_number}" style="background:#10b981; color:white;"><i class="fas fa-check"></i> Mark Ready</button>` : ''}${order.kitchen_status === 'ready' ? `<button class="mark-collected" data-ticket="${order.ticket_number}" style="background:var(--red); color:white;"><i class="fas fa-box"></i> Collected</button>` : ''}</div></div>`).join('');
-    document.querySelectorAll('.mark-ready').forEach(btn => btn.addEventListener('click', () => updateOrderStatusUI(btn.dataset.ticket, 'ready')));
-    document.querySelectorAll('.mark-collected').forEach(btn => btn.addEventListener('click', () => updateOrderStatusUI(btn.dataset.ticket, 'completed')));
-  }
-
-  async function updateOrderStatusUI(ticketNum, status) {
-    await updateOrderStatus(ticketNum, status);
-    if (status === 'completed') {
-      await removeFromQueue(ticketNum);
-      await showStunningPopup('Order Completed', `✅ Order ${ticketNum} collected!`, 'success', 2000);
-    } else if (status === 'ready') {
-      await showStunningPopup('Order Ready!', `🍽️ Order ${ticketNum} ready for collection!`, 'success', 2000);
-    }
-    await renderAll();
-  }
-
-  async function renderAll() {
-    await renderQueueList();
-    await renderKitchenOrders();
-    if (currentActiveTicket) await renderActiveOrderUI();
-    renderMenuAndCart();
-  }
-
-  // ========== REAL-TIME POPUP FOR NEW PRE-ORDERS ==========
-  function setupNewOrderListener() {
-    supabase
-      .channel('butcher-queue-inserts')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'butcher_queue' }, (payload) => {
-        const newTicket = payload.new;
-        if (newTicket && !newTicket.called) {
-          showStunningPopup('🚨 New Pre‑Order!', `New customer ${newTicket.ticket_number} joined the queue.`, 'info', 4000);
-          renderAll(); // refresh queue list immediately
+    
+    const requestPaymentBtn = document.getElementById('requestPaymentBtn');
+    const requestStatusDiv = document.getElementById('requestStatus');
+    
+    requestPaymentBtn.disabled = true;
+    requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Sending request...';
+    
+    try {
+      const customer = await getOrCreateCustomerProfile(phone);
+      const totalAmount = selectedOrder.total_amount;
+      
+      const { data, error } = await supabase.from('payment_requests').insert({
+        customer_phone: phone,
+        customer_profile_id: customer.id,
+        total_amount: totalAmount,
+        channel: 'butcher_pos',
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 2 * 60000).toISOString(),
+        metadata: { payment_method: 'wallet', order_id: selectedOrder.id, type: 'preorder_collection' }
+      }).select().single();
+      
+      if (error) throw error;
+      
+      currentRequestId = data.id;
+      requestStatusDiv.style.display = 'block';
+      requestStatusDiv.className = 'status-panel pending';
+      requestStatusDiv.innerHTML = `<i class="fas fa-hourglass-half"></i> Waiting for customer approval...<br><small>Request ID: ${currentRequestId.slice(0, 8)}</small><div class="timer-display" id="requestTimer">02:00</div>`;
+      
+      let seconds = 120;
+      if (walletCountdownInterval) clearInterval(walletCountdownInterval);
+      walletCountdownInterval = setInterval(() => {
+        seconds--;
+        const timerEl = document.getElementById('requestTimer');
+        if (timerEl) timerEl.innerText = `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
+        if (seconds <= 0) {
+          clearInterval(walletCountdownInterval);
+          if (currentRequestId) {
+            showToast('Request expired - customer did not approve in time', true);
+            resetWalletRequestFlow();
+          }
         }
-      })
-      .subscribe();
+      }, 1000);
+      
+      if (requestSubscription) requestSubscription.unsubscribe();
+      requestSubscription = supabase.channel(`payment-${currentRequestId}`).on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `id=eq.${currentRequestId}`
+      }, async (payload) => {
+        if (payload.new.status === 'approved') {
+          clearInterval(walletCountdownInterval);
+          await finalizeWalletPayment(payload.new, selectedOrder);
+        } else if (payload.new.status === 'rejected') {
+          clearInterval(walletCountdownInterval);
+          showToast('Customer rejected payment', true);
+          resetWalletRequestFlow();
+        } else if (payload.new.status === 'expired') {
+          clearInterval(walletCountdownInterval);
+          showToast('Request expired', true);
+          resetWalletRequestFlow();
+        }
+      }).subscribe();
+      
+      showToast('Request sent! Customer has 2 minutes to approve in app', false);
+    } catch (err) {
+      showToast(err.message, true);
+      requestPaymentBtn.disabled = false;
+      requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
+    }
   }
 
-  // ========== EVENT LISTENERS ==========
-  document.getElementById('globalCallNextBtn').addEventListener('click', callNext);
-  document.getElementById('payCardBtn').addEventListener('click', () => markAsPaid('Card'));
-  document.getElementById('payWalletBtn').addEventListener('click', () => markAsPaid('wallet'));
-  document.getElementById('sendToKitchenBtn').addEventListener('click', sendToKitchen);
-  document.querySelectorAll('.order-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.order-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      renderKitchenOrders();
-    });
-  });
+  async function finalizeWalletPayment(request, order) {
+    const requestStatusDiv = document.getElementById('requestStatus');
+    requestStatusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing collection...';
+    try {
+      await markOrderAsPaidAndCollected('wallet', request.id);
+      await supabase.from('payment_requests').update({ status: 'completed', approved_at: new Date().toISOString() }).eq('id', request.id);
+      requestStatusDiv.innerHTML = `<i class="fas fa-check-circle"></i> Success! Order collected.`;
+      requestStatusDiv.className = 'status-panel success';
+      showToast(`✅ Payment confirmed!`, false);
+      resetWalletRequestFlow();
+    } catch (err) {
+      requestStatusDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed: ${err.message}`;
+      requestStatusDiv.className = 'status-panel error';
+      showToast(err.message, true);
+      resetWalletRequestFlow();
+    }
+  }
 
-  // ========== INITIALIZATION ==========
-  await loadButcherProducts();
-  renderAll();
-  setupNewOrderListener();   // 👈 real‑time popup for new queue entries
-  setInterval(() => { renderAll(); }, 2000);
+  function resetWalletRequestFlow() {
+    if (walletCountdownInterval) clearInterval(walletCountdownInterval);
+    if (requestSubscription) { requestSubscription.unsubscribe(); requestSubscription = null; }
+    currentRequestId = null;
+    const requestPaymentBtn = document.getElementById('requestPaymentBtn');
+    requestPaymentBtn.disabled = false;
+    updateCheckoutButtonState();
+  }
+
+  function updateCheckoutButtonState() {
+    const requestPaymentBtn = document.getElementById('requestPaymentBtn');
+    const isPaymentSelected = selectedPaymentMethod !== null;
+    const hasOrder = selectedOrder !== null;
+    
+    if (selectedPaymentMethod === 'wallet') {
+      const walletPhone = document.getElementById('customerPhoneWallet').value.trim();
+      const isPhoneValid = walletPhone.length >= 10;
+      requestPaymentBtn.disabled = !isPhoneValid || !hasOrder;
+      if (!isPhoneValid) requestPaymentBtn.innerHTML = '📱 Enter WhatsApp number for wallet';
+      else requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
+    } else {
+      requestPaymentBtn.disabled = !isPaymentSelected || !hasOrder;
+      if (!isPaymentSelected && hasOrder) requestPaymentBtn.innerHTML = '⚠️ Select payment method first';
+      else if (!hasOrder) requestPaymentBtn.innerHTML = '📋 Select an order first';
+      else if (selectedPaymentMethod === 'cash') requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
+      else if (selectedPaymentMethod === 'card') requestPaymentBtn.innerHTML = '💳 Pay with Card';
+    }
+  }
+
+  function initPaymentHandlers() {
+    document.getElementById('cashOption').addEventListener('click', () => {
+      selectedPaymentMethod = 'cash';
+      document.getElementById('cashSelectedIndicator').style.display = 'block';
+      document.getElementById('cardSelectedIndicator').style.display = 'none';
+      document.getElementById('walletSelectedIndicator').style.display = 'none';
+      document.getElementById('cashOption').classList.add('selected');
+      document.getElementById('cardOption').classList.remove('selected');
+      document.getElementById('walletOption').classList.remove('selected');
+      document.getElementById('phoneInputGroup').classList.remove('visible');
+      updateCheckoutButtonState();
+    });
+    
+    document.getElementById('cardOption').addEventListener('click', () => {
+      selectedPaymentMethod = 'card';
+      document.getElementById('cardSelectedIndicator').style.display = 'block';
+      document.getElementById('cashSelectedIndicator').style.display = 'none';
+      document.getElementById('walletSelectedIndicator').style.display = 'none';
+      document.getElementById('cardOption').classList.add('selected');
+      document.getElementById('cashOption').classList.remove('selected');
+      document.getElementById('walletOption').classList.remove('selected');
+      document.getElementById('phoneInputGroup').classList.remove('visible');
+      updateCheckoutButtonState();
+    });
+    
+    document.getElementById('walletOption').addEventListener('click', () => {
+      selectedPaymentMethod = 'wallet';
+      document.getElementById('walletSelectedIndicator').style.display = 'block';
+      document.getElementById('cashSelectedIndicator').style.display = 'none';
+      document.getElementById('cardSelectedIndicator').style.display = 'none';
+      document.getElementById('walletOption').classList.add('selected');
+      document.getElementById('cashOption').classList.remove('selected');
+      document.getElementById('cardOption').classList.remove('selected');
+      document.getElementById('phoneInputGroup').classList.add('visible');
+      updateCheckoutButtonState();
+    });
+  }
+
+  // ============ INITIALIZATION ==========
+  async function init() {
+    await loadPendingOrders();
+    initPaymentHandlers();
+    
+    document.getElementById('requestPaymentBtn').addEventListener('click', async () => {
+      if (!selectedOrder) { showToast('Please select an order first', true); return; }
+      if (!selectedPaymentMethod) { showToast('Please select a payment method first', true); return; }
+      if (selectedPaymentMethod === 'cash') await processCashPayment();
+      else if (selectedPaymentMethod === 'card') await processCardPayment();
+      else if (selectedPaymentMethod === 'wallet') await processWalletPayment();
+    });
+    
+    document.getElementById('customerPhoneWallet').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
+      updateCheckoutButtonState();
+    });
+    
+    document.getElementById('refreshQueueBtn').addEventListener('click', async () => {
+      await loadPendingOrders();
+      showToast('Orders refreshed', false);
+    });
+    
+    // Check for returning from card payment
+    const pendingPayment = sessionStorage.getItem('pendingButcherPayment');
+    if (pendingPayment) {
+      sessionStorage.removeItem('pendingButcherPayment');
+      const payment = JSON.parse(pendingPayment);
+      showToast('Payment successful! Processing order...', false);
+      setTimeout(async () => {
+        try {
+          const { data: order } = await supabase.from('butcher_preorders').select('*').eq('id', payment.order_id).single();
+          if (order) {
+            selectedOrder = order;
+            await markOrderAsPaidAndCollected('card', payment.transaction_id);
+            await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id);
+            showToast(`✅ Order collected successfully!`, false);
+            await resetAfterPayment();
+          }
+        } catch (err) { showToast('Failed to process: ' + err.message, true); }
+      }, 500);
+    }
+    
+    setInterval(async () => { await loadPendingOrders(); }, 5000);
+  }
+  
+  init();
 </script>
+<div id="toastMsg"></div>
 </body>
 </html>
