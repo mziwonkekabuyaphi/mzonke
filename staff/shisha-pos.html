@@ -607,10 +607,11 @@
 <script type="module">
   import { supabase } from '../../config/supabase.js';
 
-  // ============ SHISHA POS BUSINESS LOGIC ==========
+  // ============ CONSTANTS ==========
   const SESSION_PRICE = 250;
   const REFILL_PRICE = 250;
   const COAL_DURATION = 60; // minutes
+  const TOTAL_DURATION_SECONDS = COAL_DURATION * 60; // 3600 seconds
 
   let activeSessions = [];
   let availableHookahs = [];
@@ -686,18 +687,48 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
-  // Calculate remaining seconds for timer display
+  // ============ CRITICAL FIX: Proper remaining time calculation ============
   function calculateRemainingSeconds(session) {
     if (!session) return 0;
-    if (session.paused || session.status === 'expired') {
+    
+    // For paused sessions, use stored remaining time
+    if (session.paused) {
+      return session.remaining_time_seconds || 0;
+    }
+    
+    // For expired sessions, return 0
+    if (session.status === 'expired') {
       return 0;
     }
-    const referenceTime = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
+    
+    // Calculate based on last_refill_time (or start_time if no refill)
+    const referenceTime = session.last_refill_time 
+      ? new Date(session.last_refill_time) 
+      : new Date(session.start_time);
+    
     const now = new Date();
     const elapsedSeconds = (now - referenceTime) / 1000;
-    const totalDuration = COAL_DURATION * 60;
-    let remaining = totalDuration - elapsedSeconds;
+    
+    // Get base remaining time (default to full duration if not set)
+    let baseRemaining = session.remaining_time_seconds || TOTAL_DURATION_SECONDS;
+    
+    let remaining = baseRemaining - elapsedSeconds;
+    
+    // Don't go below 0 for active sessions
     return remaining > 0 ? remaining : 0;
+  }
+
+  // Format time for display
+  function formatTime(seconds) {
+    if (seconds <= 0) return "EXPIRED";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  // Determine if session needs refill soon
+  function needsRefillSoon(remainingSeconds) {
+    return remainingSeconds > 0 && remainingSeconds <= 15 * 60; // 15 minutes
   }
 
   // Load locations, flavours, hookah devices
@@ -724,7 +755,7 @@
       return;
     }
     
-    // Get occupied hookah IDs from active sessions (not expired)
+    // Get occupied hookah IDs from active sessions
     const { data: activeSessionsData } = await supabase
       .from('shisha_sessions')
       .select('device_id')
@@ -786,26 +817,39 @@
   }
 
   async function loadActiveSessions() {
+    console.log('Loading active sessions...');
+    
     const { data, error } = await supabase
       .from('shisha_sessions')
       .select(`
         id, device_id, hookah_devices!inner(device_code), product_id, shisha_products!inner(name),
         location_id, shisha_locations!inner(name), start_time, last_refill_time,
-        total_amount, refill_count, status, paused
+        total_amount, refill_count, status, paused, remaining_time_seconds
       `)
       .in('status', ['active', 'refill', 'paused']);
     
     if (error) { 
-      console.error(error); 
+      console.error('Error loading sessions:', error); 
       return; 
     }
     
-    activeSessions = data.map(s => ({
-      ...s,
-      device_code: s.hookah_devices?.device_code,
-      flavour_name: s.shisha_products?.name,
-      location_name: s.shisha_locations?.name
-    }));
+    console.log(`Found ${data.length} active sessions`);
+    
+    // Process sessions with calculated remaining time
+    activeSessions = data.map(s => {
+      const remainingSec = calculateRemainingSeconds(s);
+      const needsRefill = needsRefillSoon(remainingSec);
+      
+      return {
+        ...s,
+        device_code: s.hookah_devices?.device_code,
+        flavour_name: s.shisha_products?.name,
+        location_name: s.shisha_locations?.name,
+        remaining_seconds: remainingSec,
+        needs_refill: needsRefill,
+        display_status: needsRefill ? 'refill' : s.status
+      };
+    });
     
     updateStats();
     renderSessions();
@@ -816,8 +860,8 @@
     let active = 0, refill = 0;
     activeSessions.forEach(s => {
       if (!s.paused) {
-        if (s.status === 'active') active++;
-        else if (s.status === 'refill') refill++;
+        if (s.needs_refill) refill++;
+        else if (s.status === 'active') active++;
       }
     });
     document.getElementById('statActive').innerText = active;
@@ -833,9 +877,15 @@
     
     container.innerHTML = activeSessions.map(s => {
       let statusClass = 'active', statusText = 'ACTIVE';
-      if (s.paused) { statusClass = 'paused'; statusText = 'PAUSED'; }
-      else if (s.status === 'expired') { statusClass = 'expired'; statusText = 'EXPIRED'; }
-      else if (s.status === 'refill') { statusClass = 'refill'; statusText = 'REFILL SOON'; }
+      if (s.paused) { 
+        statusClass = 'paused'; 
+        statusText = 'PAUSED'; 
+      } else if (s.needs_refill) { 
+        statusClass = 'refill'; 
+        statusText = 'REFILL SOON'; 
+      }
+      
+      const timeDisplay = s.paused ? 'PAUSED' : formatTime(s.remaining_seconds);
       
       return `
         <div class="session-item ${statusClass}" data-session-id="${s.id}">
@@ -876,6 +926,7 @@
             total_amount: newTotal,
             refill_count: newRefillCount,
             last_refill_time: new Date().toISOString(),
+            remaining_time_seconds: TOTAL_DURATION_SECONDS,
             status: 'active'
           })
           .eq('id', sessionId);
@@ -900,8 +951,7 @@
           .from('shisha_sessions')
           .update({ 
             status: 'expired', 
-            ended_at: new Date().toISOString(),
-            remaining_time_seconds: 0
+            ended_at: new Date().toISOString()
           })
           .eq('id', sessionId);
         if (error) { 
@@ -914,7 +964,7 @@
     );
   }
 
-  // ============ REAL-TIME SUBSCRIPTION (FIXED) ==========
+  // ============ REAL-TIME SUBSCRIPTION ==========
   function setupRealtimeSubscription() {
     if (realtimeSubscription) {
       realtimeSubscription.unsubscribe();
@@ -926,20 +976,17 @@
         { event: '*', schema: 'public', table: 'shisha_sessions' }, 
         (payload) => {
           console.log('Session change detected:', payload.eventType);
-          // Reload all data to stay in sync
           loadActiveSessions();
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Realtime subscription active for POS');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Realtime subscription error');
         }
       });
   }
 
-  // ============ PAYMENT INTEGRATION ==========
+  // ============ PAYMENT INTEGRATION (preserved) ==========
   async function getOrCreateCustomerProfile(phone) {
     try {
       let { data: profile, error } = await supabase.from('profiles').select('id, name').eq('phone', phone).maybeSingle();
@@ -979,7 +1026,7 @@
       location_id: locationId,
       start_time: new Date().toISOString(),
       last_refill_time: new Date().toISOString(),
-      remaining_time_seconds: COAL_DURATION * 60,
+      remaining_time_seconds: TOTAL_DURATION_SECONDS,
       total_amount: SESSION_PRICE,
       refill_count: 0,
       status: 'active',
@@ -1289,13 +1336,49 @@
     });
   }
 
+  // ============ LIVE TIMER UPDATES ==========
+  let timerInterval = null;
+  
+  function startLiveTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      // Update displayed times in the sessions list
+      document.querySelectorAll('.session-item').forEach(item => {
+        const sessionId = item.dataset.sessionId;
+        if (!sessionId) return;
+        
+        const session = activeSessions.find(s => s.id === sessionId);
+        if (session && !session.paused) {
+          const remainingSec = calculateRemainingSeconds(session);
+          const timeDisplay = formatTime(remainingSec);
+          const timeElement = item.querySelector('.status-badge');
+          
+          // Update refill status if needed
+          const needsRefill = needsRefillSoon(remainingSec);
+          if (needsRefill && session.status !== 'refill') {
+            // Update visual state
+            item.classList.remove('active');
+            item.classList.add('refill');
+            const badge = item.querySelector('.status-badge');
+            if (badge) {
+              badge.innerText = 'REFILL SOON';
+              badge.classList.remove('active');
+              badge.classList.add('refill');
+            }
+          }
+        }
+      });
+    }, 1000);
+  }
+
   // ============ INITIALIZATION ==========
   async function init() {
     await loadDropdowns();
     await loadAvailableHookahs(false);
     await loadActiveSessions();
     initPaymentHandlers();
-    setupRealtimeSubscription(); // ADDED: Real-time subscription to keep sessions persistent
+    setupRealtimeSubscription();
+    startLiveTimer();
     
     const stationSelect = document.getElementById('shishaSelect');
     stationSelect.addEventListener('change', (e) => {
@@ -1357,7 +1440,7 @@
       }, 500);
     }
     
-    // Polling fallback (every 10 seconds instead of 5 to reduce DB calls)
+    // Polling fallback (every 10 seconds)
     setInterval(async () => {
       await loadActiveSessions();
     }, 10000);
