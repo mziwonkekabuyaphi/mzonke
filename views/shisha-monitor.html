@@ -172,7 +172,6 @@
         .hookah-card.expired {
             border-left-color: #d32f2f;
             background: linear-gradient(145deg, #2a0a0a, #1a0505);
-            opacity: 0.7;
         }
 
         .hookah-card.paused {
@@ -255,6 +254,19 @@
         .timer-display.active { color: #4fc3f7; }
         .timer-display.refill { color: #ff9800; animation: blink 1s infinite; }
         .timer-display.expired { color: #d32f2f; }
+        .timer-display.negative { color: #ff6b6b; background: rgba(211, 47, 47, 0.2); }
+
+        /* Overdue badge */
+        .overdue-badge {
+            display: inline-block;
+            background: rgba(211, 47, 47, 0.3);
+            color: #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
 
         /* Footer */
         .tv-footer {
@@ -355,19 +367,15 @@
 
         <!-- Legend / Key -->
         <div class="legend">
-            <div class="legend-item"><span class="status-indicator free"></span> FREE - Available to book</div>
             <div class="legend-item"><span class="status-indicator active"></span> ACTIVE - Currently in use</div>
-            <div class="legend-item"><span class="status-indicator refill"></span> REFILL SOON - Coal running low</div>
-            <div class="legend-item"><span class="status-indicator expired"></span> EXPIRED - Session ended, needs refill</div>
+            <div class="legend-item"><span class="status-indicator refill"></span> REFILL SOON - ≤15 min left</div>
+            <div class="legend-item"><span class="status-indicator expired"></span> EXPIRED - Overdue</div>
             <div class="legend-item"><span class="status-indicator paused"></span> PAUSED - Customer break</div>
+            <div class="legend-item"><span class="status-indicator free"></span> FREE - Available to book</div>
         </div>
 
         <!-- Statistics Bar -->
         <div class="stats-bar">
-            <div class="stat-tv free">
-                <div class="stat-number" id="freeCount">0</div>
-                <div class="stat-label">FREE</div>
-            </div>
             <div class="stat-tv active">
                 <div class="stat-number" id="activeCount">0</div>
                 <div class="stat-label">ACTIVE</div>
@@ -384,6 +392,10 @@
                 <div class="stat-number" id="pausedCount">0</div>
                 <div class="stat-label">PAUSED</div>
             </div>
+            <div class="stat-tv free">
+                <div class="stat-number" id="freeCount">0</div>
+                <div class="stat-label">FREE</div>
+            </div>
         </div>
 
         <!-- Hookah Grid -->
@@ -399,81 +411,160 @@
     </div>
 
     <script type="module">
-        // ------------------------------
-        // SUPABASE INTEGRATION - NO LOCALSTORAGE
-        // Import from your config file (path: ../config/supabase.js)
-        // ------------------------------
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-        // ⚠️ IMPORTANT: Replace with your actual Supabase URL and anon key
-        // or import from your local config file. The line below assumes ../config/supabase.js
-        // exports a 'supabase' client. If not, you can uncomment and set your credentials.
-        // For this demo we use env variables approach but we import from your provided path.
+        // Supabase initialization with fallback
         let supabase;
         try {
-            // Attempt to import from your project's config file
             const configModule = await import('../config/supabase.js');
             supabase = configModule.supabase;
             if (!supabase) throw new Error('Supabase client not found in config');
         } catch (err) {
             console.warn('Could not load ../config/supabase.js, using fallback. Please configure Supabase credentials.');
-            // FALLBACK - Replace with your own SUPABASE URL + ANON KEY for production
-            const SUPABASE_URL = 'https://your-project.supabase.co';  // CHANGE ME
-            const SUPABASE_ANON_KEY = 'your-anon-key';               // CHANGE ME
+            const SUPABASE_URL = 'https://your-project.supabase.co';
+            const SUPABASE_ANON_KEY = 'your-anon-key';
             supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
 
         // Constants
         const COAL_DURATION = 60; // minutes
         const REFILL_THRESHOLD = 15; // minutes
+        const DURATION_SECONDS = COAL_DURATION * 60;
         
         // Global data
-        let devicesMap = new Map();         // key: device_code (SH-001) -> { id, device_code, location_id? }
-        let activeSessionsMap = new Map();  // key: device_code -> session object from DB with extra fields
-        let allStationCodes = [];            // array of device codes (30 stations)
-        
-        // UI update timer
+        let devicesMap = new Map();
+        let activeSessionsMap = new Map();
+        let allStationCodes = [];
         let timerInterval = null;
-        let lastUpdatedTimestamp = new Date();
+        let realtimeSubscription = null;
         
-        // Helper: format time MM:SS
+        // Helper: format time with negative support
         function formatTime(seconds) {
-            if (seconds < 0) seconds = 0;
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            const isNegative = seconds < 0;
+            const absSeconds = Math.abs(seconds);
+            const mins = Math.floor(absSeconds / 60);
+            const secs = Math.floor(absSeconds % 60);
+            const formatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            return isNegative ? `-${formatted}` : formatted;
         }
         
-        // Get dynamic remaining time based on lastRefillTime and paused flag
+        // Get current remaining seconds (can be negative for overdue)
         function getCurrentRemainingSeconds(session) {
             if (!session) return null;
-            if (session.paused) return session.remainingTimeSeconds;
-            if (session.remainingTimeSeconds <= 0) return 0;
+            
+            // For paused sessions, show stored remaining time (never negative)
+            if (session.paused) {
+                return Math.max(0, session.remainingTimeSeconds);
+            }
+            
+            // For active/expired sessions, calculate based on last refill time
+            const lastRefillTime = session.lastRefillTime ? new Date(session.lastRefillTime) : new Date(session.startTime);
             const now = new Date();
-            const lastRefill = new Date(session.lastRefillTime);
-            const elapsedSeconds = (now - lastRefill) / 1000;
-            let remaining = Math.max(0, session.remainingTimeSeconds - elapsedSeconds);
+            const elapsedSeconds = (now - lastRefillTime) / 1000;
+            let remaining = session.remainingTimeSeconds - elapsedSeconds;
+            
+            // Allow negative values for overdue display
             return remaining;
         }
         
-        // Determine status class, text, timer display based on session & realtime remaining
-        function getSessionStatus(session, currentRemaining) {
-            if (!session) {
-                return { class: 'free', text: 'FREE', indicator: 'free', timer: null, timerClass: '' };
-            }
-            if (session.paused) {
-                return { class: 'paused', text: 'PAUSED', indicator: 'paused', timer: formatTime(currentRemaining), timerClass: 'paused' };
-            }
-            if (currentRemaining <= 0) {
-                return { class: 'expired', text: 'EXPIRED', indicator: 'expired', timer: '00:00', timerClass: 'expired' };
-            }
-            if (currentRemaining <= REFILL_THRESHOLD * 60) {
-                return { class: 'refill', text: 'REFILL SOON!', indicator: 'refill', timer: formatTime(currentRemaining), timerClass: 'refill' };
-            }
-            return { class: 'active', text: 'ACTIVE', indicator: 'active', timer: formatTime(currentRemaining), timerClass: 'active' };
+        // Get minutes overdue (positive number for expired sessions)
+        function getMinutesOverdue(remainingSeconds) {
+            if (remainingSeconds >= 0) return 0;
+            return Math.abs(Math.floor(remainingSeconds / 60));
         }
         
-        // Render full grid based on devicesMap + activeSessionsMap (with live remaining times)
+        // Determine session status and priority
+        function getSessionStatus(session, currentRemaining) {
+            if (!session) {
+                return { 
+                    class: 'free', 
+                    text: 'FREE', 
+                    indicator: 'free', 
+                    timer: null, 
+                    timerClass: '',
+                    priority: 4, // Free is lowest priority
+                    sortValue: 0
+                };
+            }
+            
+            if (session.paused) {
+                return { 
+                    class: 'paused', 
+                    text: 'PAUSED', 
+                    indicator: 'paused', 
+                    timer: formatTime(currentRemaining), 
+                    timerClass: 'paused',
+                    priority: 3, // Paused after expired but before free
+                    sortValue: -currentRemaining // Negative remaining for paused (higher = more time left)
+                };
+            }
+            
+            if (currentRemaining <= 0) {
+                const overdueMinutes = getMinutesOverdue(currentRemaining);
+                return { 
+                    class: 'expired', 
+                    text: 'EXPIRED', 
+                    indicator: 'expired', 
+                    timer: formatTime(currentRemaining), 
+                    timerClass: 'expired',
+                    priority: 2, // Expired second highest priority
+                    sortValue: overdueMinutes // Higher overdue = higher priority
+                };
+            }
+            
+            if (currentRemaining <= REFILL_THRESHOLD * 60) {
+                return { 
+                    class: 'refill', 
+                    text: 'REFILL SOON!', 
+                    indicator: 'refill', 
+                    timer: formatTime(currentRemaining), 
+                    timerClass: 'refill',
+                    priority: 1, // Refill soon highest priority among active
+                    sortValue: currentRemaining // Lower remaining = higher priority
+                };
+            }
+            
+            return { 
+                class: 'active', 
+                text: 'ACTIVE', 
+                indicator: 'active', 
+                timer: formatTime(currentRemaining), 
+                timerClass: 'active',
+                priority: 1, // Active same priority as refill
+                sortValue: currentRemaining // Lower remaining = higher priority
+            };
+        }
+        
+        // Sort stations according to new priority rules
+        function sortStations(stations) {
+            return stations.sort((a, b) => {
+                // First by priority (1 highest, 4 lowest)
+                if (a.status.priority !== b.status.priority) {
+                    return a.status.priority - b.status.priority;
+                }
+                
+                // Within same priority group, apply specific sorting
+                if (a.status.priority === 1) {
+                    // Active & Refill: sort by remaining time (lowest first - most urgent)
+                    return a.status.sortValue - b.status.sortValue;
+                }
+                
+                if (a.status.priority === 2) {
+                    // Expired: sort by overdue minutes (highest first - longest overdue)
+                    return b.status.sortValue - a.status.sortValue;
+                }
+                
+                if (a.status.priority === 3) {
+                    // Paused: sort by remaining time (highest first)
+                    return b.status.sortValue - a.status.sortValue;
+                }
+                
+                // Free: sort by device code
+                return a.deviceCode.localeCompare(b.deviceCode);
+            });
+        }
+        
+        // Render full grid with new priority sorting
         function renderHookahGrid() {
             const grid = document.getElementById('hookahGrid');
             if (!allStationCodes.length) {
@@ -497,19 +588,13 @@
                 return { deviceCode, session, status, currentRemaining, flavour, location };
             });
             
-            // Sort: Free first, then Active, then Refill Soon, then Paused, then Expired (same as original)
-            stations.sort((a, b) => {
-                const getPriority = (item) => {
-                    if (!item.session) return 0;   // free highest
-                    if (item.status.class === 'paused') return 3;
-                    if (item.status.class === 'expired') return 4;
-                    if (item.status.class === 'refill') return 2;
-                    return 1; // active
-                };
-                return getPriority(a) - getPriority(b);
-            });
+            // Apply new priority sorting
+            const sortedStations = sortStations(stations);
             
-            grid.innerHTML = stations.map(({ deviceCode, session, status, flavour, location }) => {
+            grid.innerHTML = sortedStations.map(({ deviceCode, session, status, flavour, location, currentRemaining }) => {
+                const overdueMinutes = currentRemaining <= 0 ? getMinutesOverdue(currentRemaining) : 0;
+                const overdueText = overdueMinutes > 0 ? `<div class="overdue-badge">⏰ Overdue: ${overdueMinutes} min</div>` : '';
+                
                 return `
                     <div class="hookah-card ${status.class}">
                         <div class="hookah-id">${deviceCode}</div>
@@ -521,6 +606,7 @@
                             <div class="location-info">📍 ${location || 'Lounge Area'}</div>
                             <div class="flavour-info">🍃 ${flavour || 'Signature Mix'}</div>
                             ${status.timer ? `<div class="timer-display ${status.timerClass}">⏱️ ${status.timer}</div>` : ''}
+                            ${overdueText}
                         ` : `
                             <div class="location-info">✨ Available for booking</div>
                             <div class="flavour-info">🍃 Ask staff for flavours</div>
@@ -531,7 +617,7 @@
             }).join('');
         }
         
-        // Update stats (free, active, refill, expired, paused) based on current state
+        // Update statistics based on current state
         function updateStatistics() {
             let free = 0, active = 0, refill = 0, expired = 0, paused = 0;
             
@@ -541,6 +627,7 @@
                     free++;
                     continue;
                 }
+                
                 const currentRemaining = getCurrentRemainingSeconds(session);
                 if (session.paused) {
                     paused++;
@@ -560,17 +647,17 @@
             document.getElementById('pausedCount').innerText = paused;
         }
         
-        // Update last updated UI timestamp
+        // Update last updated timestamp
         function updateLastUpdatedUI() {
             const now = new Date();
             const timeString = now.toLocaleTimeString('en-ZA', { hour12: false });
             document.getElementById('lastUpdated').innerHTML = `Last updated: ${timeString}`;
         }
         
-        // Core function: fetch devices and sessions from Supabase, build activeSessionsMap
+        // Fetch data from Supabase
         async function fetchDataFromSupabase() {
             try {
-                // 1. Fetch all hookah devices (active / all) — get device_code and id
+                // Fetch all hookah devices
                 const { data: devices, error: devicesError } = await supabase
                     .from('hookah_devices')
                     .select('id, device_code, location_id, status')
@@ -580,7 +667,6 @@
                 
                 if (!devices || devices.length === 0) {
                     console.warn('No hookah_devices found, generating fallback SH-001..SH-030');
-                    // Fallback: create 30 virtual devices for UI to work
                     const fallbackDevices = [];
                     for (let i = 1; i <= 30; i++) {
                         const code = `SH-${String(i).padStart(3, '0')}`;
@@ -593,7 +679,8 @@
                     devicesMap.clear();
                     devices.forEach(dev => devicesMap.set(dev.device_code, dev));
                     allStationCodes = devices.map(dev => dev.device_code);
-                    // Ensure exactly 30 displayed - if less than 30, pad with virtual? Not needed but keeps UI consistent
+                    
+                    // Ensure at least 30 stations for display
                     if (allStationCodes.length < 30) {
                         for (let i = allStationCodes.length + 1; i <= 30; i++) {
                             const virtualCode = `SH-${String(i).padStart(3, '0')}`;
@@ -606,7 +693,7 @@
                     }
                 }
                 
-                // 2. Fetch active sessions (ended_at IS NULL) including related flavour and location
+                // Fetch active sessions (not ended)
                 const { data: sessions, error: sessionsError } = await supabase
                     .from('shisha_sessions')
                     .select(`
@@ -623,17 +710,16 @@
                 // Reset sessions map
                 activeSessionsMap.clear();
                 
-                // Process sessions: map by device_code
+                // Process sessions and map by device_code
                 for (const sess of sessions || []) {
                     const deviceCode = sess.hookah_devices?.device_code;
                     if (!deviceCode) continue;
                     
-                    // Build session object with all required fields
                     const sessionObj = {
                         id: sess.id,
                         deviceId: sess.device_id,
-                        remainingTimeSeconds: sess.remaining_time_seconds,
-                        lastRefillTime: sess.last_refill_time,
+                        remainingTimeSeconds: sess.remaining_time_seconds || DURATION_SECONDS,
+                        lastRefillTime: sess.last_refill_time || sess.start_time,
                         paused: sess.paused || false,
                         startTime: sess.start_time,
                         flavour_name: sess.shisha_products?.name || 'Original Blend',
@@ -642,69 +728,75 @@
                     activeSessionsMap.set(deviceCode, sessionObj);
                 }
                 
-                // Re-render UI after data sync
+                // Render UI with new sorting
                 renderHookahGrid();
                 updateStatistics();
                 updateLastUpdatedUI();
-                lastUpdatedTimestamp = new Date();
+                
             } catch (err) {
                 console.error('Supabase fetch error:', err);
-                document.getElementById('hookahGrid').innerHTML = '<div class="no-data">⚠️ Error connecting to database. Please check config/supabase.js</div>';
+                document.getElementById('hookahGrid').innerHTML = '<div class="no-data">⚠️ Error connecting to database. Please check configuration</div>';
             }
         }
         
-        // Real-time subscription: listen to changes on shisha_sessions and hookah_devices
-        function subscribeToRealtime() {
-            // Subscribe to shisha_sessions changes (INSERT, UPDATE, DELETE)
-            const sessionsSubscription = supabase
-                .channel('shisha-sessions-changes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'shisha_sessions' }, (payload) => {
-                    console.log('Sessions realtime update', payload.eventType);
-                    fetchDataFromSupabase(); // refresh all data
-                })
-                .subscribe();
+        // Setup realtime subscriptions
+        function setupRealtimeSubscriptions() {
+            if (realtimeSubscription) {
+                realtimeSubscription.unsubscribe();
+            }
             
-            // Also listen for hookah_devices changes (in case devices added/removed)
-            const devicesSubscription = supabase
-                .channel('hookah-devices-changes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'hookah_devices' }, () => {
-                    console.log('Devices realtime update');
-                    fetchDataFromSupabase();
-                })
-                .subscribe();
-            
-            return () => {
-                sessionsSubscription.unsubscribe();
-                devicesSubscription.unsubscribe();
-            };
+            realtimeSubscription = supabase
+                .channel('shisha-monitor-changes')
+                .on('postgres_changes', 
+                    { event: '*', schema: 'public', table: 'shisha_sessions' }, 
+                    (payload) => {
+                        console.log('Sessions realtime update:', payload.eventType);
+                        fetchDataFromSupabase();
+                    }
+                )
+                .on('postgres_changes', 
+                    { event: '*', schema: 'public', table: 'hookah_devices' }, 
+                    () => {
+                        console.log('Devices realtime update');
+                        fetchDataFromSupabase();
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('Realtime subscription active');
+                    }
+                });
         }
         
-        // Timer that updates remaining seconds every second and refreshes grid/stats
+        // Start timer for live countdown updates
         function startRealTimeTimer() {
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
-                // Only re-render if we have data loaded; don't call DB each second, just update UI based on current session map
                 if (allStationCodes.length > 0) {
                     renderHookahGrid();
                     updateStatistics();
-                    updateLastUpdatedUI();
                 }
             }, 1000);
         }
         
         // Initialization
         async function init() {
-            // Show loading
             document.getElementById('hookahGrid').innerHTML = '<div class="no-data">Syncing with Supabase...</div>';
             await fetchDataFromSupabase();
             startRealTimeTimer();
-            subscribeToRealtime();
+            setupRealtimeSubscriptions();
             
-            // Also periodically sync with DB every 15 seconds as fallback (optional but safe)
+            // Periodic refresh as backup (every 15 seconds)
             setInterval(() => {
                 fetchDataFromSupabase();
             }, 15000);
         }
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (timerInterval) clearInterval(timerInterval);
+            if (realtimeSubscription) realtimeSubscription.unsubscribe();
+        });
         
         // Run
         init();
