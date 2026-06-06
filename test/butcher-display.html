@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Command Wall | The Butcher Shop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════ */
+:root {
+  --black:        #080808;
+  --charcoal:     #111111;
+  --charcoal-mid: #1a1a1a;
+  --charcoal-lt:  #242424;
+  --charcoal-ui:  #2e2e2e;
+  --white:        #f5f0eb;
+  --white-dim:    rgba(245,240,235,0.55);
+  --white-ghost:  rgba(245,240,235,0.12);
+  --red:          #D92B2B;
+  --red-dim:      rgba(217,43,43,0.18);
+  --red-line:     rgba(217,43,43,0.45);
+  --gold:         #C9972C;
+  --gold-bright:  #E8B84B;
+  --gold-dim:     rgba(201,151,44,0.18);
+  --gold-line:    rgba(201,151,44,0.5);
+  --amber:        #E07C24;
+  --amber-dim:    rgba(224,124,36,0.18);
+  --green:        #2ECC8A;
+  --green-dim:    rgba(46,204,138,0.15);
+  --divider:      rgba(245,240,235,0.06);
+
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+  --font-mono:    'DM Mono', monospace;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:  cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+/* ═══════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--font-body);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle scanline texture */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.04) 2px,
+    rgba(0,0,0,0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ═══════════════════════════════════════════════
+   LAYOUT SHELL
+═══════════════════════════════════════════════ */
+.wall {
+  display: grid;
+  grid-template-rows: 72px 1fr 56px;
+  grid-template-columns: 1fr;
+  height: 100vh;
+  gap: 0;
+}
+
+/* ═══════════════════════════════════════════════
+   MASTHEAD
+═══════════════════════════════════════════════ */
+.masthead {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0;
+  background: var(--charcoal);
+  border-bottom: 1px solid var(--divider);
+  padding: 0 28px;
+  position: relative;
+  z-index: 10;
+}
+
+/* Left accent line */
+.masthead::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--red);
+}
+
+.masthead-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  width: 36px; height: 36px;
+  border: 1.5px solid var(--red);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  color: var(--white);
+  line-height: 1;
+}
+
+.brand-sub {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: var(--white-dim);
+  text-transform: uppercase;
+  font-weight: 500;
+  margin-top: 3px;
+}
+
+/* Centre stats row */
+.masthead-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.mstat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 28px;
+  position: relative;
+}
+
+.mstat + .mstat::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%; transform: translateY(-50%);
+  width: 1px; height: 28px;
+  background: var(--divider);
+}
+
+.mstat-val {
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  transition: color 0.4s;
+}
+
+.mstat-lbl {
+  font-size: 8.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--white-dim);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.mstat.active   .mstat-val { color: var(--white); }
+.mstat.grill    .mstat-val { color: var(--amber); }
+.mstat.ready    .mstat-val { color: var(--green); }
+.mstat.avgwait  .mstat-val { color: var(--white-dim); }
+.mstat.longwait .mstat-val { color: var(--red); }
+
+/* Right: clock + status */
+.masthead-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.live-clock {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--white-dim);
+  letter-spacing: 0.06em;
+}
+
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  transition: background 0.4s, box-shadow 0.4s;
+}
+
+.conn-dot.error {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+/* ═══════════════════════════════════════════════
+   MAIN BOARD
+═══════════════════════════════════════════════ */
+.board {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 0.9fr;
+  grid-template-rows: 1fr;
+  gap: 1px;
+  background: var(--divider);
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   ZONE BASE
+═══════════════════════════════════════════════ */
+.zone {
+  display: flex;
+  flex-direction: column;
+  background: var(--charcoal);
+  overflow: hidden;
+  position: relative;
+}
+
+.zone-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px 14px;
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.zone-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 22px; right: 22px;
+  height: 1px;
+}
+
+.zone-accent {
+  width: 3px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.zone-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.zone-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--white-dim);
+  background: var(--charcoal-lt);
+  padding: 3px 9px;
+  letter-spacing: 0.05em;
+}
+
+.zone-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px;
+  scrollbar-width: none;
+}
+
+.zone-body::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════
+   ZONE — READY FOR COLLECTION (green)
+═══════════════════════════════════════════════ */
+.zone-ready .zone-accent { background: var(--green); }
+.zone-ready .zone-title  { color: var(--green); }
+.zone-ready .zone-header::after { background: var(--green); opacity: 0.2; }
+.zone-ready { background: color-mix(in srgb, var(--black) 96%, var(--green) 4%); }
+
+/* ═══════════════════════════════════════════════
+   ZONE — ON THE GRILL (amber)
+═══════════════════════════════════════════════ */
+.zone-grill .zone-accent { background: var(--amber); }
+.zone-grill .zone-title  { color: var(--amber); }
+.zone-grill .zone-header::after { background: var(--amber); opacity: 0.2; }
+.zone-grill { background: color-mix(in srgb, var(--black) 96%, var(--amber) 4%); }
+
+/* Right panel: split vertically */
+.panel-right {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  background: var(--divider);
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   ZONE — QUEUED (red dim)
+═══════════════════════════════════════════════ */
+.zone-queued .zone-accent { background: var(--red); }
+.zone-queued .zone-title  { color: var(--red); }
+.zone-queued { background: var(--charcoal); }
+
+/* ═══════════════════════════════════════════════
+   ZONE — VVIP PRIORITY (gold)
+═══════════════════════════════════════════════ */
+.zone-vvip {
+  background: color-mix(in srgb, var(--black) 94%, var(--gold) 6%);
+  position: relative;
+  overflow: hidden;
+}
+
+.zone-vvip::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(201,151,44,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.zone-vvip .zone-accent {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+}
+
+.zone-vvip .zone-title  { color: var(--gold-bright); }
+.zone-vvip .zone-header {
+  border-bottom-color: rgba(201,151,44,0.2);
+}
+
+.zone-vvip .zone-count {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+/* ═══════════════════════════════════════════════
+   ORDER NUMBER TILES
+═══════════════════════════════════════════════ */
+.order-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  margin-bottom: 6px;
+  border: 1px solid var(--divider);
+  background: var(--charcoal-mid);
+  position: relative;
+  overflow: hidden;
+  animation: tileIn 0.35s var(--ease-out) both;
+  cursor: default;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+@keyframes tileIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.order-tile:last-child { margin-bottom: 0; }
+
+/* Left accent strip */
+.tile-strip {
+  width: 2px;
+  align-self: stretch;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+/* Order number */
+.tile-num {
+  font-family: var(--font-display);
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  flex: 1;
+}
+
+/* Time badge */
+.tile-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--white-dim);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+/* ── Ready tile ── */
+.tile-ready {
+  border-color: rgba(46,204,138,0.25);
+  background: color-mix(in srgb, var(--charcoal-mid) 90%, var(--green) 10%);
+}
+
+.tile-ready .tile-strip { background: var(--green); }
+.tile-ready .tile-num   { color: var(--green); }
+
+/* pulse glow */
+.tile-ready::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 0% 50%, rgba(46,204,138,0.08) 0%, transparent 60%);
+  pointer-events: none;
+  animation: readyBreath 3s ease-in-out infinite;
+}
+
+@keyframes readyBreath {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Ready indicator */
+.tile-ready-badge {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-dim);
+  padding: 3px 7px;
+  flex-shrink: 0;
+}
+
+/* ── Grill tile ── */
+.tile-grill {
+  border-color: rgba(224,124,36,0.25);
+  background: color-mix(in srgb, var(--charcoal-mid) 92%, var(--amber) 8%);
+}
+
+.tile-grill .tile-strip { background: var(--amber); }
+.tile-grill .tile-num   { color: var(--amber); }
+
+/* fire shimmer */
+.tile-grill::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(224,124,36,0.05) 0%, transparent 40%);
+  pointer-events: none;
+  animation: grillFlicker 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes grillFlicker {
+  from { opacity: 0.5; }
+  to   { opacity: 1; }
+}
+
+/* ── Queued tile ── */
+.tile-queued .tile-strip { background: rgba(245,240,235,0.2); }
+.tile-queued .tile-num   { color: var(--white-dim); font-size: 32px; }
+
+/* ── VVIP tile ── */
+.tile-vvip {
+  border-color: rgba(201,151,44,0.4);
+  background: color-mix(in srgb, var(--charcoal-mid) 88%, var(--gold) 12%);
+}
+
+.tile-vvip .tile-strip {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+}
+
+.tile-vvip .tile-num { color: var(--gold-bright); }
+
+.vvip-crown {
+  font-size: 14px;
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+.tile-vvip-badge {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--gold-bright);
+  background: var(--gold-dim);
+  padding: 3px 7px;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════════════ */
+.empty-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  opacity: 0.3;
+}
+
+.empty-zone-icon {
+  font-size: 28px;
+  opacity: 0.5;
+}
+
+.empty-zone-text {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--white-dim);
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════
+   ACTIVITY FEED (inside grill zone, scrolling ticker)
+═══════════════════════════════════════════════ */
+.feed-section {
+  border-top: 1px solid var(--divider);
+  flex-shrink: 0;
+  padding: 10px 14px;
+  max-height: 80px;
+  overflow: hidden;
+}
+
+.feed-label {
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--white-dim);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.feed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--white-dim);
+  animation: feedIn 0.3s var(--ease-out) both;
+}
+
+@keyframes feedIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.feed-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.feed-dot.ready  { background: var(--green); }
+.feed-dot.grill  { background: var(--amber); }
+.feed-dot.queued { background: var(--red); }
+.feed-dot.vvip   { background: var(--gold-bright); }
+
+.feed-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: rgba(245,240,235,0.3);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════
+   STATUS BAR
+═══════════════════════════════════════════════ */
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  background: var(--charcoal);
+  border-top: 1px solid var(--divider);
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.sb-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--white-dim);
+  font-weight: 500;
+}
+
+.sb-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+}
+
+.sb-dot.green  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.sb-dot.amber  { background: var(--amber); }
+.sb-dot.red    { background: var(--red); }
+.sb-dot.gold   { background: var(--gold-bright); }
+
+.sb-right {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: rgba(245,240,235,0.25);
+  letter-spacing: 0.08em;
+}
+
+/* ═══════════════════════════════════════════════
+   VVIP GLOW ANIMATION (subtle)
+═══════════════════════════════════════════════ */
+@keyframes goldBreath {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(201,151,44,0.15); }
+  50% { box-shadow: inset 0 0 0 1px rgba(201,151,44,0.4); }
+}
+
+.zone-vvip { animation: goldBreath 4s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════
+   NEW ORDER FLASH (brief, on tile entry)
+═══════════════════════════════════════════════ */
+@keyframes newFlash {
+  0%   { background: rgba(245,240,235,0.07); }
+  100% { background: transparent; }
+}
+
+.tile-new { animation: tileIn 0.35s var(--ease-out) both, newFlash 0.8s ease-out 0.35s both; }
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE (large TV safety)
+═══════════════════════════════════════════════ */
+@media (min-width: 2000px) {
+  .tile-num       { font-size: 52px; }
+  .tile-queued .tile-num { font-size: 44px; }
+  .mstat-val      { font-size: 38px; }
+  .brand-name     { font-size: 28px; }
+  .order-tile     { padding: 14px 18px; margin-bottom: 8px; }
+}
+
+@media (max-width: 1199px) {
+  .board { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .panel-right { display: contents; }
+  .zone { min-height: 240px; }
+}
+</style>
+</head>
+<body>
+
+<div class="wall">
+
+  <!-- ══ MASTHEAD ══════════════════════════════ -->
+  <header class="masthead">
+
+    <div class="masthead-brand">
+      <div class="brand-mark">🥩</div>
+      <div>
+        <div class="brand-name">THE BUTCHER SHOP</div>
+        <div class="brand-sub">Command Wall — Live Kitchen</div>
+      </div>
+    </div>
+
+    <div class="masthead-stats">
+      <div class="mstat active">
+        <div class="mstat-val" id="statActive">—</div>
+        <div class="mstat-lbl">Active Orders</div>
+      </div>
+      <div class="mstat grill">
+        <div class="mstat-val" id="statGrill">—</div>
+        <div class="mstat-lbl">On The Grill</div>
+      </div>
+      <div class="mstat ready">
+        <div class="mstat-val" id="statReady">—</div>
+        <div class="mstat-lbl">Ready</div>
+      </div>
+      <div class="mstat avgwait">
+        <div class="mstat-val" id="statAvg">—</div>
+        <div class="mstat-lbl">Avg Wait</div>
+      </div>
+      <div class="mstat longwait">
+        <div class="mstat-val" id="statLong">—</div>
+        <div class="mstat-lbl">Longest Wait</div>
+      </div>
+    </div>
+
+    <div class="masthead-right">
+      <div class="live-clock" id="liveClock">—</div>
+      <div class="conn-dot" id="connDot" title="Supabase connection"></div>
+    </div>
+
+  </header>
+
+  <!-- ══ BOARD ═════════════════════════════════ -->
+  <main class="board">
+
+    <!-- ZONE 1: Ready For Collection -->
+    <section class="zone zone-ready">
+      <div class="zone-header">
+        <div class="zone-accent"></div>
+        <div class="zone-title">Ready For Collection</div>
+        <div class="zone-count" id="countReady">0</div>
+      </div>
+      <div class="zone-body" id="zoneReady">
+        <div class="empty-zone">
+          <div class="empty-zone-icon">✓</div>
+          <div class="empty-zone-text">No orders ready</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE 2: On The Grill -->
+    <section class="zone zone-grill">
+      <div class="zone-header">
+        <div class="zone-accent"></div>
+        <div class="zone-title">On The Grill</div>
+        <div class="zone-count" id="countGrill">0</div>
+      </div>
+      <div class="zone-body" id="zoneGrill">
+        <div class="empty-zone">
+          <div class="empty-zone-icon">🔥</div>
+          <div class="empty-zone-text">Nothing on the grill</div>
+        </div>
+      </div>
+      <div class="feed-section">
+        <div class="feed-label">Activity</div>
+        <div class="feed-list" id="feedList"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: split into queued + VVIP -->
+    <div class="panel-right">
+
+      <!-- ZONE 3: Queued Orders -->
+      <section class="zone zone-queued">
+        <div class="zone-header">
+          <div class="zone-accent"></div>
+          <div class="zone-title">Queued Orders</div>
+          <div class="zone-count" id="countQueued">0</div>
+        </div>
+        <div class="zone-body" id="zoneQueued">
+          <div class="empty-zone">
+            <div class="empty-zone-icon">◦</div>
+            <div class="empty-zone-text">Queue is clear</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ZONE 4: VVIP Priority -->
+      <section class="zone zone-vvip">
+        <div class="zone-header">
+          <div class="zone-accent"></div>
+          <div class="zone-title">Priority Orders</div>
+          <div class="zone-count" id="countVVIP">0</div>
+        </div>
+        <div class="zone-body" id="zoneVVIP">
+          <div class="empty-zone">
+            <div class="empty-zone-icon">♦</div>
+            <div class="empty-zone-text">No priority orders</div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /panel-right -->
+
+  </main>
+
+  <!-- ══ STATUS BAR ════════════════════════════ -->
+  <footer class="statusbar">
+    <div class="sb-left">
+      <div class="sb-item"><div class="sb-dot green"></div> Ready for collection</div>
+      <div class="sb-item"><div class="sb-dot amber"></div> On the grill</div>
+      <div class="sb-item"><div class="sb-dot red"></div> Queued</div>
+      <div class="sb-item"><div class="sb-dot gold"></div> Priority / VVIP</div>
+    </div>
+    <div class="sb-right" id="connLabel">Connecting…</div>
+  </footer>
+
+</div><!-- /wall -->
+
+<!-- ══ SCRIPT ══════════════════════════════════════════════════════════ -->
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  /* ── constants ── */
+  const VENDOR_NAME = "The Butcher Shop";
+
+  /* ── state ── */
+  let orders          = [];
+  let lastReadyCount  = 0;
+  let realtimeSubscription = null;
+  let feedLog         = []; // { time, text, type }
+
+  /* ── clock ── */
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('liveClock').textContent =
+      now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  /* ── escape ── */
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, m =>
+      m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'
+    );
+  }
+
+  /* ── time helpers ── */
+  function minutesAgo(isoString) {
+    if (!isoString) return null;
+    const diff = Date.now() - new Date(isoString).getTime();
+    return Math.max(0, Math.floor(diff / 60000));
+  }
+
+  function formatMinutes(mins) {
+    if (mins === null || mins === undefined) return '—';
+    if (mins < 1) return '<1m';
+    if (mins < 60) return `${mins}m`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  function shortTime(isoString) {
+    if (!isoString) return '';
+    return new Date(isoString).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+
+  /* ──────────────────────────────────────────
+     SUPABASE FETCH  (unchanged logic)
+  ────────────────────────────────────────── */
+  async function fetchActiveOrders() {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('vendor', VENDOR_NAME)
+      .in('status', ['pending', 'preparing', 'ready'])
+      .order('is_vvip', { ascending: false })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Fetch error:', error);
+      setConnError();
+      return [];
+    }
+
+    return data.map(order => ({
+      ...order,
+      orderId:   order.order_number || order.order_id,
+      items:     order.items || [],
+      total:     order.total || 0,
+      bandName:  order.customer_name || 'Customer',
+      timestamp: order.created_at ? new Date(order.created_at).toLocaleTimeString() : '',
+      source:    order.source || 'wallet'
+    }));
+  }
+
+  /* ──────────────────────────────────────────
+     SOUND NOTIFICATIONS  (unchanged)
+  ────────────────────────────────────────── */
+  function playSoundForNewReady() {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc1 = audioCtx.createOscillator();
+      const g1   = audioCtx.createGain();
+      osc1.connect(g1); g1.connect(audioCtx.destination);
+      osc1.frequency.setValueAtTime(1046.5, audioCtx.currentTime);
+      g1.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      osc1.start(); osc1.stop(audioCtx.currentTime + 0.2);
+      setTimeout(() => {
+        const osc2 = audioCtx.createOscillator();
+        const g2   = audioCtx.createGain();
+        osc2.connect(g2); g2.connect(audioCtx.destination);
+        osc2.frequency.setValueAtTime(1318.52, audioCtx.currentTime);
+        g2.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        osc2.start(); osc2.stop(audioCtx.currentTime + 0.3);
+      }, 200);
+    } catch(e) {}
+  }
+
+  function playVVIPNotificationSound() {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+    } catch(e) {}
+  }
+
+  /* ──────────────────────────────────────────
+     ACTIVITY FEED
+  ────────────────────────────────────────── */
+  function pushFeed(text, type) {
+    const now = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false });
+    feedLog.unshift({ time: now, text, type });
+    if (feedLog.length > 6) feedLog = feedLog.slice(0, 6);
+    renderFeed();
+  }
+
+  function renderFeed() {
+    const list = document.getElementById('feedList');
+    if (!feedLog.length) { list.innerHTML = ''; return; }
+    list.innerHTML = feedLog.slice(0, 4).map(f => `
+      <div class="feed-item">
+        <div class="feed-dot ${f.type}"></div>
+        <span>${escapeHtml(f.text)}</span>
+        <span class="feed-time">${f.time}</span>
+      </div>
+    `).join('');
+  }
+
+  /* ──────────────────────────────────────────
+     CONNECTION STATUS
+  ────────────────────────────────────────── */
+  function setConnOk() {
+    document.getElementById('connDot').classList.remove('error');
+    document.getElementById('connLabel').textContent = 'Supabase · Live';
+  }
+
+  function setConnError() {
+    document.getElementById('connDot').classList.add('error');
+    document.getElementById('connLabel').textContent = 'Connection error';
+  }
+
+  /* ──────────────────────────────────────────
+     BUILD A TILE
+  ────────────────────────────────────────── */
+  function buildTile(order, variant, isNew) {
+    const mins = minutesAgo(order.created_at);
+    const time = shortTime(order.created_at);
+
+    if (variant === 'vvip') {
+      return `
+        <div class="order-tile tile-vvip${isNew ? ' tile-new' : ''}">
+          <div class="tile-strip"></div>
+          <div class="tile-num">#${escapeHtml(String(order.orderId))}</div>
+          <span class="vvip-crown">♦</span>
+          <span class="tile-vvip-badge">VVIP</span>
+          <span class="tile-time">${time}</span>
+        </div>`;
+    }
+
+    if (variant === 'ready') {
+      return `
+        <div class="order-tile tile-ready${isNew ? ' tile-new' : ''}">
+          <div class="tile-strip"></div>
+          <div class="tile-num">#${escapeHtml(String(order.orderId))}</div>
+          <span class="tile-ready-badge">Collect</span>
+          <span class="tile-time">${time}</span>
+        </div>`;
+    }
+
+    if (variant === 'grill') {
+      return `
+        <div class="order-tile tile-grill${isNew ? ' tile-new' : ''}">
+          <div class="tile-strip"></div>
+          <div class="tile-num">#${escapeHtml(String(order.orderId))}</div>
+          <span class="tile-time">${formatMinutes(mins)}</span>
+        </div>`;
+    }
+
+    // queued / pending
+    return `
+      <div class="order-tile tile-queued${isNew ? ' tile-new' : ''}">
+        <div class="tile-strip"></div>
+        <div class="tile-num">#${escapeHtml(String(order.orderId))}</div>
+        <span class="tile-time">${time}</span>
+      </div>`;
+  }
+
+  /* ──────────────────────────────────────────
+     RENDER ORDERS  (sorting rules unchanged)
+  ────────────────────────────────────────── */
+  async function renderOrders() {
+    orders = await fetchActiveOrders();
+
+    /* Sorting: VVIP first, then ready → preparing → pending */
+    orders.sort((a, b) => {
+      if (a.is_vvip && !b.is_vvip) return -1;
+      if (!a.is_vvip && b.is_vvip) return  1;
+      const p = { ready: 1, preparing: 2, pending: 3 };
+      return (p[a.status] || 4) - (p[b.status] || 4);
+    });
+
+    /* Segment */
+    const vvipOrders    = orders.filter(o => o.is_vvip === true);
+    const readyOrders   = orders.filter(o => o.status === 'ready'    && !o.is_vvip);
+    const grillOrders   = orders.filter(o => o.status === 'preparing' && !o.is_vvip);
+    const queuedOrders  = orders.filter(o => o.status === 'pending'   && !o.is_vvip);
+
+    /* Stats */
+    const activeCount   = orders.length;
+    const preparingCount = orders.filter(o => o.status === 'preparing').length;
+    const readyCount    = orders.filter(o => o.status === 'ready').length;
+
+    document.getElementById('statActive').textContent  = activeCount   || '0';
+    document.getElementById('statGrill').textContent   = preparingCount || '0';
+    document.getElementById('statReady').textContent   = readyCount    || '0';
+
+    /* Wait times */
+    const waitMins = orders
+      .filter(o => o.created_at)
+      .map(o => minutesAgo(o.created_at));
+
+    if (waitMins.length) {
+      const avg  = Math.round(waitMins.reduce((a, b) => a + b, 0) / waitMins.length);
+      const long = Math.max(...waitMins);
+      document.getElementById('statAvg').textContent  = formatMinutes(avg);
+      document.getElementById('statLong').textContent = formatMinutes(long);
+    } else {
+      document.getElementById('statAvg').textContent  = '—';
+      document.getElementById('statLong').textContent = '—';
+    }
+
+    /* Sound: ready count increased */
+    if (readyCount > lastReadyCount && lastReadyCount !== 0) {
+      const hasVVIPReady = orders.some(o => o.status === 'ready' && o.is_vvip === true);
+      if (hasVVIPReady) playVVIPNotificationSound();
+      else              playSoundForNewReady();
+
+      /* Log to feed */
+      const newlyReady = readyOrders.slice(0, readyCount - lastReadyCount);
+      newlyReady.forEach(o => pushFeed(`Order #${o.orderId} ready for collection`, 'ready'));
+    }
+
+    /* Feed: new VVIP */
+    if (vvipOrders.length > 0) {
+      const prevVVIP = window._lastVVIPCount || 0;
+      if (vvipOrders.length > prevVVIP) {
+        const newest = vvipOrders[0];
+        pushFeed(`VVIP order #${newest.orderId} received`, 'vvip');
+      }
+    }
+    window._lastVVIPCount = vvipOrders.length;
+
+    lastReadyCount = readyCount;
+
+    /* Counters */
+    document.getElementById('countReady').textContent  = readyOrders.length  + vvipOrders.filter(v => v.status === 'ready').length;
+    document.getElementById('countGrill').textContent  = grillOrders.length  + vvipOrders.filter(v => v.status === 'preparing').length;
+    document.getElementById('countQueued').textContent = queuedOrders.length;
+    document.getElementById('countVVIP').textContent   = vvipOrders.length;
+
+    /* Render zones */
+    renderZone('zoneReady',  readyOrders,  'ready');
+    renderZone('zoneGrill',  grillOrders,  'grill');
+    renderZone('zoneQueued', queuedOrders, 'queued');
+    renderZoneVVIP('zoneVVIP', vvipOrders);
+  }
+
+  function renderZone(id, list, variant) {
+    const el = document.getElementById(id);
+    if (!list.length) {
+      const icons = { ready: '✓', grill: '🔥', queued: '◦' };
+      const msgs  = { ready: 'No orders ready', grill: 'Nothing on the grill', queued: 'Queue is clear' };
+      el.innerHTML = `<div class="empty-zone">
+        <div class="empty-zone-icon">${icons[variant] || '◦'}</div>
+        <div class="empty-zone-text">${msgs[variant] || 'Empty'}</div>
+      </div>`;
+      return;
+    }
+    el.innerHTML = list.map(o => buildTile(o, variant, false)).join('');
+  }
+
+  function renderZoneVVIP(id, list) {
+    const el = document.getElementById(id);
+    if (!list.length) {
+      el.innerHTML = `<div class="empty-zone">
+        <div class="empty-zone-icon">♦</div>
+        <div class="empty-zone-text">No priority orders</div>
+      </div>`;
+      return;
+    }
+    el.innerHTML = list.map(o => buildTile(o, 'vvip', false)).join('');
+  }
+
+  /* ──────────────────────────────────────────
+     REALTIME  (unchanged subscription logic)
+  ────────────────────────────────────────── */
+  function setupRealtime() {
+    if (realtimeSubscription) realtimeSubscription.unsubscribe();
+    realtimeSubscription = supabase
+      .channel('butcher-display')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+        filter: `vendor=eq.${VENDOR_NAME}`
+      }, () => {
+        renderOrders();
+      })
+      .subscribe();
+  }
+
+  /* ──────────────────────────────────────────
+     INIT
+  ────────────────────────────────────────── */
+  async function init() {
+    await renderOrders();
+    setupRealtime();
+
+    const { error } = await supabase.from('orders').select('count', { count: 'exact', head: true });
+    if (error) {
+      setConnError();
+    } else {
+      setConnOk();
+      pushFeed('System connected · live updates active', 'ready');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
