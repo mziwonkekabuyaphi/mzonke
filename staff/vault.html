@@ -218,7 +218,7 @@
     .locker-card.available {
       border-left: 4px solid #10b981;
     }
-    .locker-card.occupied {
+    .locker-card.rented {
       border-left: 4px solid var(--red);
     }
     .card-title {
@@ -234,8 +234,9 @@
       font-weight: 600;
     }
     .badge-available { background: #e8f5e9; color: #2e7d32; }
-    .badge-occupied { background: #ffebee; color: var(--red); }
+    .badge-rented { background: #ffebee; color: var(--red); }
     .badge-pending { background: #fff3e0; color: #ef6c00; }
+    .badge-maintenance { background: #fee2e2; color: #991b1b; }
 
     .modal-overlay {
       position: fixed;
@@ -374,6 +375,7 @@
     <div class="input-group"><label>QR code (optional)</label><input type="text" id="newLockerQr" placeholder="auto‑generated if empty"></div>
     <div class="input-group"><label>Location (optional)</label><input type="text" id="newLockerLocation" placeholder="Main Hall, VIP Section"></div>
     <div class="input-group"><label>Size</label><select id="newLockerSize"><option>Small</option><option>Medium</option><option>Large</option></select></div>
+    <div class="input-group"><label>Price per hour (R)</label><input type="number" step="0.50" id="newLockerPrice" value="10.00"></div>
     <button id="confirmCreateLockerBtn" class="btn-primary" style="background:#10b981;">Create locker</button>
     <button onclick="closeCreateLockerModal()" class="btn-primary" style="background:#6b7280; margin-top:8px;">Cancel</button>
   </div>
@@ -449,12 +451,12 @@
   function renderStats() {
     const total = lockers.length;
     const available = lockers.filter(l => l.status === 'available').length;
-    const occupied = lockers.filter(l => l.status === 'occupied').length;
+    const rented = lockers.filter(l => l.status === 'rented').length;
     const totalValue = lockers.reduce((s, l) => s + (l.total_value || 0), 0);
     document.getElementById('statsContainer').innerHTML = `
       <div class="stat-chip"><div class="stat-value">${total}</div><div class="stat-label">Total lockers</div></div>
       <div class="stat-chip"><div class="stat-value" style="color:#10b981;">${available}</div><div class="stat-label">Available</div></div>
-      <div class="stat-chip"><div class="stat-value" style="color:var(--red);">${occupied}</div><div class="stat-label">Occupied</div></div>
+      <div class="stat-chip"><div class="stat-value" style="color:var(--red);">${rented}</div><div class="stat-label">Rented</div></div>
       <div class="stat-chip"><div class="stat-value">R${totalValue.toFixed(2)}</div><div class="stat-label">Total value</div></div>
     `;
   }
@@ -491,13 +493,14 @@
             <div><span class="badge-status badge-available">Available</span></div>
             ${l.location ? `<div><i class="fas fa-location-dot"></i> ${escapeHtml(l.location)}</div>` : ''}
             ${l.size ? `<div><i class="fas fa-expand"></i> ${escapeHtml(l.size)}</div>` : ''}
+            <div><small>R${(l.price_per_hour || 0).toFixed(2)}/hour</small></div>
           </div>
         `;
       } else {
         return `
-          <div class="locker-card occupied">
+          <div class="locker-card rented">
             <div class="card-title">🔐 Locker ${escapeHtml(String(l.locker_number))}</div>
-            <div><span class="badge-status badge-occupied">Occupied</span></div>
+            <div><span class="badge-status badge-rented">Rented</span></div>
             <div><i class="fas fa-user"></i> ${escapeHtml(l.customer_name || '—')}</div>
             <div><i class="fab fa-whatsapp"></i> ${escapeHtml(l.customer_phone || '—')}</div>
             <div><span class="badge-status">💰 R${(l.total_value || 0).toFixed(2)}</span></div>
@@ -509,12 +512,12 @@
     }).join('');
   }
 
-  // FIXED: Assign locker using vault_transactions table instead of locker_items
+  // Assign locker from pre-registration - USING CORRECT STATUS 'rented'
   window.showAssignModal = async function(preRegId) {
     const reg = preRegistrations.find(r => r.id === preRegId);
     if (!reg) return;
     const availableLockers = lockers.filter(l => l.status === 'available');
-    if (!availableLockers.length) { showAlert('No lockers', 'All lockers are occupied. Please release one first.'); return; }
+    if (!availableLockers.length) { showAlert('No lockers', 'All lockers are rented. Please release one first.'); return; }
     const modal = document.getElementById('assignModal');
     const content = document.getElementById('assignModalContent');
     let options = '';
@@ -535,9 +538,9 @@
       
       const newQr = `QL-${Date.now()}-${Math.floor(Math.random()*900+100)}`;
       
-      // Update locker with customer info
+      // FIXED: Use 'rented' instead of 'occupied' to match constraint
       const { error: updateErr } = await supabase.from('lockers').update({
-        status: 'occupied',
+        status: 'rented',
         customer_name: reg.customer_name,
         customer_phone: reg.customer_phone,
         customer_pin_hash: reg.pin_hash,
@@ -550,7 +553,7 @@
       
       if (updateErr) { showAlert('DB Error', updateErr.message); return; }
       
-      // FIXED: Insert into vault_transactions instead of locker_items
+      // Insert into vault_transactions
       if (reg.items && Array.isArray(reg.items) && reg.items.length) {
         const transactions = reg.items.map(item => ({
           locker_id: locker.id,
@@ -574,7 +577,7 @@
   
   window.closeAssignModal = () => document.getElementById('assignModal').style.display = 'none';
 
-  // Unlock with WhatsApp + PIN
+  // Unlock with WhatsApp + PIN - CHECKING FOR 'rented' status
   document.getElementById('unlockBtn').addEventListener('click', async () => {
     const phone = document.getElementById('unlockPhone').value.trim();
     const pin = document.getElementById('unlockPin').value.trim();
@@ -582,15 +585,16 @@
     if (!phone || !pin) { showAlert('Missing', 'Enter both WhatsApp and PIN'); return; }
     if (pin.length !== 4 || !/^\d+$/.test(pin)) { showAlert('Invalid PIN', 'PIN must be 4 digits'); return; }
     
-    const locker = lockers.find(l => l.status === 'occupied' && l.customer_phone === phone && l.customer_pin_hash === pin);
+    // FIXED: Look for 'rented' status instead of 'occupied'
+    const locker = lockers.find(l => l.status === 'rented' && l.customer_phone === phone && l.customer_pin_hash === pin);
     if (!locker) {
-      const phoneMatch = lockers.find(l => l.status === 'occupied' && l.customer_phone === phone);
+      const phoneMatch = lockers.find(l => l.status === 'rented' && l.customer_phone === phone);
       if (phoneMatch) resultDiv.innerHTML = `<div class="result-card result-error"><i class="fas fa-times-circle"></i> Incorrect PIN for ${phone}. Customer: ${phoneMatch.customer_name}</div>`;
       else resultDiv.innerHTML = `<div class="result-card result-error">No active locker found for ${phone} with that PIN.</div>`;
       return;
     }
     
-    // FIXED: Get transactions from vault_transactions instead of locker_items
+    // Get transactions from vault_transactions
     const { data: transactions } = await supabase
       .from('vault_transactions')
       .select('*')
@@ -627,6 +631,7 @@
   });
 
   async function unlockAndReleaseLocker(lockerId) {
+    // FIXED: Set status back to 'available'
     const { error } = await supabase.from('lockers').update({
       status: 'available',
       customer_name: null, customer_phone: null, customer_pin_hash: null,
@@ -636,7 +641,7 @@
     }).eq('id', lockerId);
     if (error) throw error;
     
-    // FIXED: Delete transactions from vault_transactions
+    // Delete transactions from vault_transactions
     await supabase.from('vault_transactions').delete().eq('locker_id', lockerId);
     showToast('Locker released');
   }
@@ -645,7 +650,6 @@
     const locker = lockers.find(l => l.id === lockerId);
     if (!locker) return;
     
-    // FIXED: Get transactions from vault_transactions
     const { data: transactions } = await supabase
       .from('vault_transactions')
       .select('*')
@@ -664,6 +668,7 @@
       <p><strong>Locker ${escapeHtml(String(locker.locker_number))}</strong></p>
       ${locker.location ? `<p><i class="fas fa-location-dot"></i> ${escapeHtml(locker.location)}</p>` : ''}
       ${locker.size ? `<p><i class="fas fa-expand"></i> ${escapeHtml(locker.size)}</p>` : ''}
+      <p><strong>Price:</strong> R${(locker.price_per_hour || 0).toFixed(2)}/hour</p>
       <p><i class="fas fa-user"></i> ${escapeHtml(locker.customer_name || '—')}</p>
       <p><i class="fab fa-whatsapp"></i> ${escapeHtml(locker.customer_phone || '—')}</p>
       <p><i class="fas fa-key"></i> PIN: ${locker.customer_pin_hash ? '****' : '—'}</p>
@@ -676,11 +681,12 @@
   
   window.closeLockerModal = () => document.getElementById('lockerDetailModal').style.display = 'none';
 
-  // Create new locker with alphanumeric support
+  // Create new locker with alphanumeric support and proper status
   document.getElementById('createLockerBtn').addEventListener('click', () => {
     document.getElementById('newLockerNumber').value = '';
     document.getElementById('newLockerQr').value = '';
     document.getElementById('newLockerLocation').value = '';
+    document.getElementById('newLockerPrice').value = '10.00';
     document.getElementById('createLockerModal').style.display = 'flex';
   });
   
@@ -691,17 +697,20 @@
     const customQr = document.getElementById('newLockerQr').value.trim();
     const location = document.getElementById('newLockerLocation').value.trim();
     const size = document.getElementById('newLockerSize').value;
+    const pricePerHour = parseFloat(document.getElementById('newLockerPrice').value) || 10;
     
     if (!lockerNumber) { showAlert('Invalid', 'Locker number is required'); return; }
     if (lockers.some(l => String(l.locker_number) === lockerNumber)) { showAlert('Duplicate', `Locker ${lockerNumber} already exists`); return; }
     
     const qr = customQr || `QL-${Date.now()}-${Math.floor(Math.random()*9000+1000)}`;
+    // FIXED: Use 'available' status (one of the allowed values)
     const { error } = await supabase.from('lockers').insert({
       locker_number: lockerNumber,
       qr_code: qr,
       status: 'available',
       location: location || null,
       size: size,
+      price_per_hour: pricePerHour,
       customer_name: null, customer_phone: null, customer_pin_hash: null,
       total_value: 0, total_items: 0, occupied_at: null,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString()
