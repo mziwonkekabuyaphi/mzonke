@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Rands | Dev Dashboard (No Login)</title>
+    <title>Rands | Admin Dashboard (Dev Mode - Iframes Enabled)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: #f5f7fb; overflow-x: hidden; }
-        /* Dev mode badge */
         .dev-badge {
             position: fixed;
             bottom: 16px;
@@ -23,7 +22,6 @@
             font-weight: 600;
             z-index: 1000;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            pointer-events: none;
             font-family: monospace;
         }
         .dev-badge i { margin-right: 6px; }
@@ -87,25 +85,57 @@
         .empty-state { text-align: center; padding: 60px 20px; background: white; border-radius: 28px; border: 1px solid #edf2f7; }
         .empty-state i { font-size: 48px; color: #cbd5e1; margin-bottom: 16px; }
         .empty-state p { color: #64748b; font-size: 0.9rem; }
-        .external-iframe { width: 100%; height: calc(100vh - 70px); border: none; background: white; border-radius: 24px; }
-        .module-iframe-container { width: 100%; background: transparent; margin-top: 0; }
-        /* Dev quick add button */
-        .dev-quick-add {
-            margin-left: 12px;
-            background: #10b981;
-            color: white;
-            border: none;
-            border-radius: 40px;
-            padding: 6px 14px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
+        .external-iframe { 
+            width: 100%; 
+            height: calc(100vh - 70px); 
+            border: none; 
+            background: white; 
+            border-radius: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .module-iframe-container { 
+            width: 100%; 
+            background: transparent; 
+            margin-top: 0;
+        }
+        .iframe-placeholder {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-radius: 24px;
+            padding: 60px 40px;
+            text-align: center;
+            border: 2px dashed #cbd5e1;
+        }
+        .iframe-placeholder i {
+            font-size: 64px;
+            color: #94a3b8;
+            margin-bottom: 20px;
+        }
+        .iframe-placeholder h4 {
+            color: #1e293b;
+            margin-bottom: 12px;
+        }
+        .iframe-placeholder p {
+            color: #64748b;
+            margin-bottom: 24px;
+        }
+        .dev-hint {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 0.8rem;
+        }
+        .dev-hint code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-family: monospace;
         }
     </style>
 </head>
 <body>
 <div id="app">
-    <!-- Loading indicator (quick but dev mode) -->
     <div class="loading-screen" v-if="isLoading">
         <div class="loading-spinner"></div>
         <div style="color: #E30613; font-weight: 600;">Dev Mode: Loading Dashboard...</div>
@@ -186,11 +216,18 @@
                 </div>
             </div>
 
-            <!-- DYNAMIC MODULE VIEWS: iframe mapping -->
+            <!-- DYNAMIC MODULE VIEWS: IFRAMES ENABLED -->
             <div v-for="module in allModules" :key="'view_' + module.id" v-if="currentSection === 'module_' + module.id">
                 <div v-if="moduleIframeSrc(module.name)">
+                    <!-- Dev hint banner for iframe modules -->
+                    <div class="dev-hint">
+                        <i class="fas fa-info-circle"></i> 
+                        <strong>Iframe Active:</strong> Loading <code>{{ moduleIframeSrc(module.name) }}</code> from same directory. 
+                        <span v-if="!iframeCheckComplete">Create this file to see your content.</span>
+                        <span v-else>✅ File exists and is loading below.</span>
+                    </div>
                     <div class="module-iframe-container">
-                        <iframe :src="moduleIframeSrc(module.name)" class="external-iframe" :title="module.name" frameborder="0"></iframe>
+                        <iframe :src="moduleIframeSrc(module.name)" class="external-iframe" :title="module.name" frameborder="0" @load="onIframeLoad(module.name)" @error="onIframeError(module.name)"></iframe>
                     </div>
                 </div>
                 <div v-else>
@@ -198,7 +235,7 @@
                         <i :class="getModuleIcon(module.icon || module.name, module.name)"></i>
                         <h3 style="margin-top: 16px;">{{ module.name }}</h3>
                         <p>{{ module.description || 'Module under development. Standalone admin page will be connected soon.' }}</p>
-                        <button class="btn-primary" style="margin-top: 20px;" @click="showAlert('Dev Preview', 'This module is in active development', 'fas fa-code')">Notify Me</button>
+                        <button class="btn-primary" style="margin-top: 20px;" @click="createPlaceholderModule(module.name)"><i class="fas fa-file-code"></i> Create Placeholder File</button>
                     </div>
                 </div>
             </div>
@@ -212,7 +249,19 @@
                         <input class="form-control" v-model="appName" placeholder="Rands Vibe">
                         <button class="btn-primary" style="margin-top:8px;" @click="saveBrandingDev">Save Branding</button>
                     </div>
-                    <p class="dev-badge" style="position:relative; display:inline-block; margin-top:16px; background:#f1f5f9; color:#334155;">⚡ Dev Mode: Changes stored in localStorage</p>
+                    <div class="form-group">
+                        <label>Module Files Directory</label>
+                        <input class="form-control" v-model="moduleBasePath" placeholder="./" style="font-family: monospace;">
+                        <small style="color: #64748b;">Current path for iframe files: <code>{{ moduleBasePath || './' }}</code></small>
+                    </div>
+                    <hr style="margin: 20px 0; border-color: #edf2f7;">
+                    <h4 style="margin-bottom: 12px;">📁 Expected Module Files</h4>
+                    <ul style="list-style: none; font-size: 0.8rem;">
+                        <li v-for="mod in allModules" :key="mod.id" style="padding: 4px 0;">
+                            <i class="fas" :class="moduleIframeSrc(mod.name) ? 'fa-check-circle' : 'fa-times-circle'" :style="{color: moduleIframeSrc(mod.name) ? '#10b981' : '#E30613'}"></i>
+                            <code style="margin-left: 8px;">{{ mod.name }} → {{ moduleIframeSrc(mod.name) || 'not mapped' }}</code>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -242,13 +291,12 @@
         </div>
     </div>
 
-    <div class="dev-badge"><i class="fas fa-flask"></i> DEV MODE • No Auth Required</div>
+    <div class="dev-badge"><i class="fas fa-flask"></i> DEV MODE • Iframes ENABLED • No Auth</div>
 </div>
 
 <script>
-    // FULL STANDALONE DEV DASHBOARD - No supabase dependency, mock data + localStorage persistence
     (function() {
-        // Mock modules database (matching original structure)
+        // Module definitions
         const DEFAULT_MODULES = [
             { id: 1, name: 'Event Management', icon: 'calendar-alt', description: 'Manage events, bookings, and venues' },
             { id: 2, name: 'Booze Lockers', icon: 'locker', description: 'Smart locker management for beverages' },
@@ -260,13 +308,28 @@
             { id: 8, name: 'Brand Studio', icon: 'paint-brush', description: 'Branding and assets' }
         ];
         
-        // Helper to load staff from localStorage or create mock data
+        // IFRAME MAPPING - ENABLED
+        function getIframeSrc(moduleName, basePath = './') {
+            const mapping = {
+                'Event Management': 'events-admin.html',
+                'Booze Lockers': 'lockers-admin.html',
+                'Wallet Management': 'passports-admin.html',
+                'Hookah Management': 'shisha-admin.html',
+                'Orders & Sales Engine': 'orders-admin.html',
+                'VVIP Console': 'vvip-admin.html',
+                'Staff Management': 'staff-admin.html',
+                'Brand Studio': 'brand-admin.html'
+            };
+            const fileName = mapping[moduleName];
+            if (!fileName) return null;
+            // Ensure path has trailing slash if not empty
+            const base = basePath && !basePath.endsWith('/') ? basePath + '/' : basePath;
+            return base + fileName;
+        }
+        
         function loadStaffFromStorage() {
             const stored = localStorage.getItem('rands_dev_staff');
-            if (stored && JSON.parse(stored).length > 0) {
-                return JSON.parse(stored);
-            }
-            // Seed with mock staff
+            if (stored && JSON.parse(stored).length > 0) return JSON.parse(stored);
             return [
                 { id: 'staff_1', name: 'Thabo', surname: 'Nkosi', email: 'thabo@rands.com', role: 'manager', hourly_rate: 85, status: 'Active', created_at: new Date().toISOString() },
                 { id: 'staff_2', name: 'Lerato', surname: 'Moloi', email: 'lerato@rands.com', role: 'cashier', hourly_rate: 45, status: 'Active', created_at: new Date().toISOString() },
@@ -274,11 +337,8 @@
                 { id: 'staff_4', name: 'Zanele', surname: 'Dlamini', email: 'zanele@rands.com', role: 'staff', hourly_rate: 48, status: 'Active', created_at: new Date().toISOString() }
             ];
         }
-
-        function saveStaffToStorage(staffList) {
-            localStorage.setItem('rands_dev_staff', JSON.stringify(staffList));
-        }
         
+        function saveStaffToStorage(staffList) { localStorage.setItem('rands_dev_staff', JSON.stringify(staffList)); }
         function loadShiftsFromStorage() {
             const stored = localStorage.getItem('rands_dev_shifts');
             if (stored) return JSON.parse(stored);
@@ -288,21 +348,16 @@
             ];
         }
         
-        function saveShiftsToStorage(shifts) {
-            localStorage.setItem('rands_dev_shifts', JSON.stringify(shifts));
-        }
-        
-        // Dev Vue app
         new Vue({
             el: '#app',
             data: {
                 isLoading: false,
-                loadingStatus: 'Ready (Dev Mode)',
+                loadingStatus: 'Ready (Iframes Enabled)',
                 sidebarOpen: false,
                 currentSection: 'dashboard',
                 appName: 'Rands Vibe',
+                moduleBasePath: './',
                 adminName: 'Dev Admin',
-                adminEmail: 'dev@rands.local',
                 allModules: [],
                 staffList: [],
                 shifts: [],
@@ -314,7 +369,8 @@
                 saving: false,
                 infoTitle: '',
                 infoMessage: '',
-                infoIcon: 'fas fa-check-circle'
+                infoIcon: 'fas fa-check-circle',
+                iframeCheckComplete: false
             },
             computed: {
                 adminInitial() { return this.adminName ? this.adminName.charAt(0).toUpperCase() : 'D'; },
@@ -336,56 +392,40 @@
                     if (moduleName === 'Booze Lockers') return 'fas fa-beer';
                     const iconMap = {
                         'users': 'fas fa-users', 'palette': 'fas fa-palette', 'paint-brush': 'fas fa-paint-brush',
-                        'calendar-alt': 'fas fa-calendar-alt', 'passport': 'fas fa-passport', 'hard-hat': 'fas fa-hard-hat',
-                        'crown': 'fas fa-crown', 'chart-line': 'fas fa-chart-line', 'shopping-cart': 'fas fa-shopping-cart',
-                        'file-invoice-dollar': 'fas fa-file-invoice-dollar', 'locker': 'fas fa-locker', 'wallet': 'fas fa-wallet',
-                        'smoking': 'fas fa-smoking', 'calendar-check': 'fas fa-calendar-check', 'Staff Management': 'fas fa-users',
-                        'Brand Studio': 'fas fa-paint-brush', 'Event Management': 'fas fa-calendar-alt', 'Hookah Management': 'fas fa-smoking',
+                        'calendar-alt': 'fas fa-calendar-alt', 'passport': 'fas fa-passport', 'crown': 'fas fa-crown',
+                        'shopping-cart': 'fas fa-shopping-cart', 'locker': 'fas fa-locker', 'wallet': 'fas fa-wallet',
+                        'smoking': 'fas fa-smoking', 'Staff Management': 'fas fa-users', 'Brand Studio': 'fas fa-paint-brush',
+                        'Event Management': 'fas fa-calendar-alt', 'Hookah Management': 'fas fa-smoking',
                         'Orders & Sales Engine': 'fas fa-shopping-cart', 'VVIP Console': 'fas fa-crown', 'Wallet Management': 'fas fa-wallet'
                     };
-                    if (iconMap[iconName]) return iconMap[iconName];
-                    if (iconMap[moduleName]) return iconMap[moduleName];
-                    return 'fas fa-cube';
+                    return iconMap[iconName] || iconMap[moduleName] || 'fas fa-cube';
                 },
                 moduleIframeSrc(moduleName) {
-                    const mapping = {
-                        'Event Management': 'events-admin.html',
-                        'Booze Lockers': 'lockers-admin.html',
-                        'Wallet Management': 'passports-admin.html',
-                        'Hookah Management': 'shisha-admin.html',
-                        'Orders & Sales Engine': 'orders-admin.html',
-                        'VVIP Console': 'vvip-admin.html',
-                        'Staff Management': 'staff-admin.html',
-                        'Brand Studio': 'brand-admin.html'
-                    };
-                    // Since these files might not exist in dev environment, we return null to show placeholder.
-                    // To avoid 404 errors in console but still keep UI clean, we return null only if we want to preview.
-                    // For development, we show placeholder instead of broken iframe.
-                    return null; // Forces placeholder for all modules since standalone html may be missing. But we want to mimic intended behavior: show empty state for safety.
-                    // return mapping[moduleName] || null;
+                    return getIframeSrc(moduleName, this.moduleBasePath);
+                },
+                onIframeLoad(moduleName) {
+                    console.log(`✅ Iframe loaded: ${moduleName}`);
+                    this.iframeCheckComplete = true;
+                },
+                onIframeError(moduleName) {
+                    console.warn(`❌ Iframe failed to load: ${moduleName} - file not found`);
+                    this.showAlert('File Not Found', `The file ${this.moduleIframeSrc(moduleName)} doesn't exist. Create it in the same folder as dashboard.html`, 'fas fa-exclamation-triangle');
+                },
+                createPlaceholderModule(moduleName) {
+                    const fileName = this.moduleIframeSrc(moduleName);
+                    if (!fileName) return;
+                    this.showAlert('Create File', `Create a file named "${fileName}" in the same directory as dashboard.html with your module content.`, 'fas fa-file-code');
                 },
                 showAlert(title, msg, icon) { this.infoTitle = title; this.infoMessage = msg; this.infoIcon = icon; this.showInfoModal = true; },
                 closeSidebar() { if (window.innerWidth <= 768) this.sidebarOpen = false; },
                 goToModule(module) { this.currentSection = 'module_' + module.id; this.closeSidebar(); },
                 loadModulesDev() {
                     const stored = localStorage.getItem('rands_dev_modules');
-                    if (stored) {
-                        this.allModules = JSON.parse(stored);
-                    } else {
-                        this.allModules = DEFAULT_MODULES;
-                        localStorage.setItem('rands_dev_modules', JSON.stringify(DEFAULT_MODULES));
-                    }
+                    this.allModules = stored ? JSON.parse(stored) : DEFAULT_MODULES;
                 },
-                loadStaffDev() {
-                    this.staffList = loadStaffFromStorage();
-                },
-                loadShiftsDev() {
-                    this.shifts = loadShiftsFromStorage();
-                },
-                saveBrandingDev() {
-                    localStorage.setItem('rands_dev_branding', JSON.stringify({ appName: this.appName }));
-                    this.showAlert('Saved', 'App name updated (dev storage)', 'fas fa-check');
-                },
+                loadStaffDev() { this.staffList = loadStaffFromStorage(); },
+                loadShiftsDev() { this.shifts = loadShiftsFromStorage(); },
+                saveBrandingDev() { localStorage.setItem('rands_dev_branding', JSON.stringify({ appName: this.appName })); this.showAlert('Saved', 'App name updated', 'fas fa-check'); },
                 openCreateStaffModal() { this.isEditing = false; this.staffForm = { name: '', surname: '', email: '', password: 'dev123', role: 'staff', hourly_rate: 45 }; this.showStaffModal = true; },
                 editStaff(staff) { this.isEditing = true; this.editingStaffId = staff.id; this.staffForm = { ...staff, password: '' }; this.showStaffModal = true; },
                 closeStaffModal() { this.showStaffModal = false; this.saving = false; },
@@ -401,16 +441,7 @@
                                 this.showAlert('Success', 'Staff updated', 'fas fa-check');
                             }
                         } else {
-                            const newStaff = {
-                                id: 'staff_' + Date.now(),
-                                name: this.staffForm.name,
-                                surname: this.staffForm.surname,
-                                email: this.staffForm.email,
-                                role: this.staffForm.role,
-                                hourly_rate: this.staffForm.hourly_rate,
-                                status: 'Active',
-                                created_at: new Date().toISOString()
-                            };
+                            const newStaff = { id: 'staff_' + Date.now(), name: this.staffForm.name, surname: this.staffForm.surname, email: this.staffForm.email, role: this.staffForm.role, hourly_rate: this.staffForm.hourly_rate, status: 'Active', created_at: new Date().toISOString() };
                             this.staffList.unshift(newStaff);
                             saveStaffToStorage(this.staffList);
                             this.showAlert('Success', 'Staff member added', 'fas fa-check');
@@ -425,12 +456,7 @@
                     saveStaffToStorage(this.staffList);
                     this.showAlert('Deleted', 'Staff removed', 'fas fa-trash');
                 },
-                logoutDev() {
-                    if (confirm('Exit dev dashboard? (no session required)')) {
-                        // just reload to reset state
-                        location.reload();
-                    }
-                },
+                logoutDev() { if(confirm('Refresh dashboard?')) location.reload(); },
                 initDev() {
                     this.isLoading = true;
                     setTimeout(() => {
@@ -438,21 +464,19 @@
                         this.loadStaffDev();
                         this.loadShiftsDev();
                         const savedBranding = localStorage.getItem('rands_dev_branding');
-                        if (savedBranding) {
-                            try {
-                                const br = JSON.parse(savedBranding);
-                                if (br.appName) this.appName = br.appName;
-                            } catch(e) {}
-                        }
+                        if (savedBranding) { try { const br = JSON.parse(savedBranding); if (br.appName) this.appName = br.appName; } catch(e) {} }
+                        const savedPath = localStorage.getItem('rands_module_path');
+                        if (savedPath) this.moduleBasePath = savedPath;
                         this.adminName = 'DevAdmin';
                         this.isLoading = false;
-                        this.loadingStatus = 'Ready (No Auth)';
+                        this.loadingStatus = 'Ready - Iframes ENABLED';
                     }, 300);
                 }
             },
-            mounted() {
-                this.initDev();
-            }
+            watch: {
+                moduleBasePath(newPath) { localStorage.setItem('rands_module_path', newPath); }
+            },
+            mounted() { this.initDev(); }
         });
     })();
 </script>
