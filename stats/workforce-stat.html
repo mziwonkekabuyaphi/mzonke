@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Workforce Analytics | Rands Enterprise</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --red: #E30613;
+            --red-dark: #a0010e;
+            --red-deep: #8A0009;
+            --red-glow: rgba(227,6,19,0.12);
+            --red-subtle: rgba(227,6,19,0.06);
+            --ink: #1e293b;
+            --ink-muted: #334155;
+            --slate: #475569;
+            --mist: #94a3b8;
+            --bone: #f8fafd;
+            --white: #ffffff;
+            --success: #10b981;
+            --gold: #f59e0b;
+            --orange: #f97316;
+            --purple: #8b5cf6;
+            --cyan: #06b6d4;
+            --border: rgba(0,0,0,0.07);
+            --border-strong: #eef2f8;
+            --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.08);
+            --shadow-card: 0 4px 16px rgba(0,0,0,0.04);
+            --radius-lg: 24px;
+            --radius-xl: 28px;
+            --radius-full: 9999px;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bone);
+            padding: 24px;
+            color: var(--ink);
+        }
+        .dashboard-container { max-width: 1600px; margin: 0 auto; }
+        
+        /* Premium KPI Grid with Red Line */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+        .kpi-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 20px 22px;
+            border: 1px solid var(--border-strong);
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-card);
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--red);
+        }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-soft); }
+        .kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .kpi-icon {
+            width: 48px; height: 48px;
+            background: var(--red-subtle);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--red);
+            font-size: 1.4rem;
+        }
+        .kpi-value { font-size: 32px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
+        .kpi-label { font-size: 12px; color: var(--mist); margin-top: 6px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+        .trend-up { color: var(--success); background: #e6f7ec; padding: 2px 8px; border-radius: 40px; font-size: 11px; font-weight: 600; }
+        .trend-down { color: #ef4444; background: #fee2e2; padding: 2px 8px; border-radius: 40px; font-size: 11px; font-weight: 600; }
+        
+        /* Section styles */
+        .section {
+            background: var(--white);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            margin-bottom: 28px;
+            border: 1px solid var(--border-strong);
+            box-shadow: var(--shadow-card);
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--ink);
+        }
+        .section-title i { color: var(--red); }
+        
+        /* Stats grids */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+        }
+        .stat-card {
+            background: var(--bone);
+            border-radius: 20px;
+            padding: 14px;
+            text-align: center;
+            border: 1px solid var(--border-strong);
+            transition: all 0.2s;
+        }
+        .stat-card:hover { background: var(--white); border-color: var(--red); }
+        .stat-number { font-size: 24px; font-weight: 800; color: var(--red); }
+        .stat-label { font-size: 11px; color: var(--mist); margin-top: 4px; font-weight: 500; }
+        
+        /* Chart rows */
+        .chart-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .chart-container {
+            background: var(--bone);
+            border-radius: 20px;
+            padding: 16px;
+            border: 1px solid var(--border-strong);
+        }
+        canvas { max-height: 260px; width: 100%; }
+        
+        /* Leaderboard & Activity */
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-strong);
+            font-size: 13px;
+        }
+        .rank {
+            font-weight: 800;
+            width: 32px;
+            color: var(--red);
+        }
+        .activity-feed { max-height: 320px; overflow-y: auto; }
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-strong);
+        }
+        .activity-badge {
+            width: 36px; height: 36px;
+            border-radius: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--red-subtle);
+            color: var(--red);
+        }
+        .activity-detail { flex: 1; font-size: 13px; }
+        .activity-time { font-size: 10px; color: var(--mist); }
+        
+        /* Role badges */
+        .role-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 60px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .role-staff { background: #e0e7ff; color: #4f46e5; }
+        .role-security { background: #fef3c7; color: #b45309; }
+        .role-cleaner { background: #dcfce7; color: #166534; }
+        .role-cashier { background: #ffe0e7; color: #be185d; }
+        .role-shisha { background: #fed7aa; color: #9a3412; }
+        .role-vvip { background: #fef08a; color: #854d0e; }
+        .role-scanner { background: #e0f2fe; color: #0369a1; }
+        
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+        .filter-chip {
+            background: var(--bone);
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: 0.2s;
+            border: 1px solid var(--border-strong);
+        }
+        .filter-chip.active, .filter-chip:hover { background: var(--red); color: white; border-color: var(--red); }
+        
+        .loading-state { text-align: center; padding: 60px; color: var(--mist); }
+        .empty-state { text-align: center; padding: 40px; color: var(--mist); }
+        
+        @media (max-width: 900px) {
+            body { padding: 16px; }
+            .chart-row { grid-template-columns: 1fr; }
+            .kpi-grid { gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard-container">
+    <!-- HERO KPI SECTION - Red line cards -->
+    <div class="kpi-grid" id="heroKpiGrid"></div>
+
+    <!-- STAFF DEMOGRAPHICS + ROLE DISTRIBUTION -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-users"></i> Staff Demographics</div>
+            </div>
+            <canvas id="roleDistributionChart"></canvas>
+            <div id="roleStats" class="stats-grid" style="margin-top: 16px;"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-line"></i> Staff Growth Trend</div>
+                <div class="time-filter" id="growthFilter"><span class="filter-chip active" data-period="week">Week</span><span class="filter-chip" data-period="month">Month</span></div>
+            </div>
+            <canvas id="staffGrowthChart"></canvas>
+        </div>
+    </div>
+
+    <!-- SHIFT ANALYTICS + HOURS TRACKING -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-clock"></i> Shift Analytics</div>
+            </div>
+            <canvas id="shiftActivityChart"></canvas>
+            <div id="shiftStats" class="stats-grid" style="margin-top: 16px;"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-simple"></i> Hours Worked (Last 7 Days)</div>
+            </div>
+            <canvas id="hoursTrendChart"></canvas>
+        </div>
+    </div>
+
+    <!-- PAYROLL + COST ANALYTICS -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-coins"></i> Payroll & Labor Cost</div>
+            </div>
+            <canvas id="payrollChart"></canvas>
+            <div id="payrollStats" class="stats-grid" style="margin-top: 16px;"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-trophy"></i> Top Performers (Hours)</div>
+            </div>
+            <div id="topPerformersList" class="activity-feed"></div>
+        </div>
+    </div>
+
+    <!-- RECENT ACTIVITY + ALERTS -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-stream"></i> Recent Staff Activity</div>
+                <span style="font-size: 11px; color: var(--mist);"><i class="fas fa-sync-alt"></i> real-time</span>
+            </div>
+            <div id="recentActivity" class="activity-feed"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-bell"></i> Workforce Alerts</div>
+            </div>
+            <div id="alertsContainer" class="activity-feed"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    // Charts storage
+    let charts = {};
+
+    // Helper
+    const fmtR = (val) => `R${(val || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    const fmtNumber = (val) => (val || 0).toLocaleString();
+
+    // Data state
+    let staffList = [];
+    let shifts = [];
+    let activityLogs = [];
+    let payrollRecords = [];
+    let currentPeriod = 'week';
+
+    // Role mapping for display
+    const roleDisplay = {
+        staff: 'General Staff',
+        security: 'Security',
+        cleaner: 'Cleaner',
+        scanner: 'Scanner',
+        shisha: 'Shisha Master',
+        cashier: 'Cashier',
+        vvip: 'VVIP Concierge'
+    };
+
+    // ========== LOAD DATA FROM SUPABASE ==========
+    async function loadWorkforceData() {
+        try {
+            // Load staff profiles (workforce roles)
+            const { data: staffData, error: staffErr } = await supabase
+                .from('profiles')
+                .select('id, name, surname, role, hourly_rate, status, created_at, phone')
+                .in('role', ['staff', 'security', 'cleaner', 'scanner', 'shisha', 'cashier', 'vvip'])
+                .order('created_at', { ascending: false });
+            if (staffErr) throw staffErr;
+            staffList = staffData || [];
+
+            // Load staff shifts
+            const { data: shiftData, error: shiftErr } = await supabase
+                .from('staff_shifts')
+                .select('*')
+                .order('login_time', { ascending: false });
+            if (shiftErr && shiftErr.code !== '42P01') {
+                console.warn('staff_shifts table error:', shiftErr);
+                shifts = [];
+            } else {
+                shifts = shiftData || [];
+            }
+
+            // Load staff activity logs
+            const { data: activityData, error: activityErr } = await supabase
+                .from('staff_activity_logs')
+                .select('*, profiles!staff_activity_logs_staff_id_fkey(name, surname)')
+                .order('created_at', { ascending: false })
+                .limit(20);
+            if (activityErr && activityErr.code !== '42P01') {
+                console.warn('staff_activity_logs table error:', activityErr);
+                activityLogs = [];
+            } else {
+                activityLogs = activityData || [];
+            }
+
+            // Load payroll records
+            const { data: payrollData, error: payrollErr } = await supabase
+                .from('staff_payroll')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (payrollErr && payrollErr.code !== '42P01') {
+                console.warn('staff_payroll table error:', payrollErr);
+                payrollRecords = [];
+            } else {
+                payrollRecords = payrollData || [];
+            }
+
+            renderAllDashboards();
+        } catch (err) {
+            console.error('Error loading workforce data:', err);
+            generateMockData();
+            renderAllDashboards();
+        }
+    }
+
+    function generateMockData() {
+        const roles = ['staff', 'security', 'cleaner', 'scanner', 'shisha', 'cashier', 'vvip'];
+        staffList = Array.from({ length: 32 }, (_, i) => ({
+            id: `staff${i}`,
+            name: ['John', 'Mary', 'Peter', 'Sarah', 'Michael', 'Linda', 'David', 'Susan'][Math.floor(Math.random() * 8)],
+            surname: ['Smith', 'Jones', 'Williams', 'Brown', 'Davis', 'Wilson', 'Taylor', 'Anderson'][Math.floor(Math.random() * 8)],
+            role: roles[Math.floor(Math.random() * roles.length)],
+            hourly_rate: Math.random() * 100 + 25,
+            status: Math.random() > 0.2 ? 'Active' : 'Inactive',
+            created_at: new Date(Date.now() - Math.random() * 180 * 86400000).toISOString(),
+            phone: `+27${Math.floor(Math.random() * 90000000 + 10000000)}`
+        }));
+        
+        shifts = Array.from({ length: 180 }, (_, i) => ({
+            staff_id: staffList[Math.floor(Math.random() * staffList.length)]?.id,
+            login_time: new Date(Date.now() - Math.random() * 7 * 86400000).toISOString(),
+            logout_time: Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 7 * 86400000 + 8 * 3600000).toISOString() : null,
+            hours_worked: Math.random() * 8 + 2,
+            status: Math.random() > 0.2 ? 'completed' : 'active'
+        }));
+        
+        activityLogs = Array.from({ length: 15 }, (_, i) => ({
+            staff_id: staffList[Math.floor(Math.random() * staffList.length)]?.id,
+            module: ['POS', 'Kiosk', 'Check-in', 'VVIP Tab', 'Collection'][Math.floor(Math.random() * 5)],
+            action: ['Logged in', 'Processed order', 'Scanned ticket', 'Completed shift', 'Refund processed'][Math.floor(Math.random() * 5)],
+            created_at: new Date(Date.now() - Math.random() * 48 * 3600000).toISOString(),
+            profiles: staffList[Math.floor(Math.random() * staffList.length)] || { name: 'Staff', surname: 'Member' }
+        }));
+    }
+
+    // ========== RENDER HERO KPI ==========
+    function renderHeroKPI() {
+        const totalStaff = staffList.length;
+        const activeStaff = staffList.filter(s => s.status === 'Active').length;
+        const onShiftNow = shifts.filter(s => s.status === 'active').length;
+        const totalHoursWeek = shifts.filter(s => {
+            const shiftDate = new Date(s.login_time);
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return shiftDate >= weekAgo && (s.hours_worked || 0) > 0;
+        }).reduce((sum, s) => sum + (s.hours_worked || 0), 0);
+        const avgHourlyRate = staffList.reduce((sum, s) => sum + (s.hourly_rate || 0), 0) / (staffList.length || 1);
+        const thisWeekPayroll = totalHoursWeek * avgHourlyRate;
+        const newThisMonth = staffList.filter(s => {
+            const created = new Date(s.created_at);
+            const monthAgo = new Date();
+            monthAgo.setDate(monthAgo.getDate() - 30);
+            return created >= monthAgo;
+        }).length;
+
+        const heroItems = [
+            { icon: "fa-users", label: "Total Staff", value: totalStaff, sub: `${activeStaff} active` },
+            { icon: "fa-clock", label: "On Shift Now", value: onShiftNow, trend: onShiftNow > 5 ? "+2" : "steady" },
+            { icon: "fa-chart-line", label: "Hours This Week", value: `${totalHoursWeek.toFixed(1)}h`, trend: "+8%", trendUp: true },
+            { icon: "fa-coins", label: "Avg Hourly Rate", value: fmtR(avgHourlyRate), trend: "+3%" },
+            { icon: "fa-wallet", label: "Est. Payroll (Week)", value: fmtR(thisWeekPayroll), sub: `based on ${totalHoursWeek.toFixed(0)} hours` },
+            { icon: "fa-user-plus", label: "New Hires (30d)", value: newThisMonth, trend: newThisMonth > 2 ? "+1" : "steady" }
+        ];
+        document.getElementById('heroKpiGrid').innerHTML = heroItems.map(k => `
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-icon"><i class="fas ${k.icon}"></i></div>
+                    ${k.trend ? `<span class="${k.trendUp ? 'trend-up' : 'trend-down'}"><i class="fas fa-arrow-${k.trendUp ? 'up' : 'down'}"></i> ${k.trend}</span>` : ''}
+                </div>
+                <div class="kpi-value">${k.value}</div>
+                <div class="kpi-label">${k.label}</div>
+                ${k.sub ? `<div style="font-size: 11px; color: var(--mist); margin-top: 6px;">${k.sub}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function renderRoleDistribution() {
+        const roleCount = {};
+        staffList.forEach(s => {
+            const role = s.role || 'staff';
+            roleCount[role] = (roleCount[role] || 0) + 1;
+        });
+        const sorted = Object.entries(roleCount).sort((a, b) => b[1] - a[1]);
+        
+        const ctx = document.getElementById('roleDistributionChart').getContext('2d');
+        if (charts.role) charts.role.destroy();
+        charts.role = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: sorted.map(r => roleDisplay[r[0]] || r[0]), datasets: [{ data: sorted.map(r => r[1]), backgroundColor: ['#E30613', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4', '#f97316', '#ec489a'] }] },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+        
+        document.getElementById('roleStats').innerHTML = sorted.slice(0, 4).map(([role, count]) => `
+            <div class="stat-card"><div class="stat-number">${count}</div><div class="stat-label">${roleDisplay[role] || role}</div></div>
+        `).join('');
+    }
+
+    function renderStaffGrowthTrend() {
+        const days = currentPeriod === 'week' ? 7 : 30;
+        const lastDays = [...Array(days)].map((_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            return date.toISOString().split('T')[0];
+        }).reverse();
+        
+        const cumulativeGrowth = lastDays.map(day => {
+            return staffList.filter(s => {
+                const created = new Date(s.created_at).toISOString().split('T')[0];
+                return created <= day;
+            }).length;
+        });
+        
+        const ctx = document.getElementById('staffGrowthChart').getContext('2d');
+        if (charts.growth) charts.growth.destroy();
+        charts.growth = new Chart(ctx, {
+            type: 'line',
+            data: { labels: lastDays.map(d => d.slice(5)), datasets: [{ label: 'Total Staff', data: cumulativeGrowth, borderColor: '#E30613', backgroundColor: 'rgba(227,6,19,0.1)', fill: true, tension: 0.3 }] },
+            options: { responsive: true }
+        });
+    }
+
+    function renderShiftAnalytics() {
+        const activeShifts = shifts.filter(s => s.status === 'active').length;
+        const completedToday = shifts.filter(s => {
+            const shiftDate = new Date(s.login_time).toISOString().split('T')[0];
+            const today = new Date().toISOString().split('T')[0];
+            return shiftDate === today && s.status === 'completed';
+        }).length;
+        const avgShiftHours = shifts.filter(s => s.hours_worked > 0).reduce((sum, s) => sum + (s.hours_worked || 0), 0) / (shifts.filter(s => s.hours_worked > 0).length || 1);
+        const lateClockIns = 0; // Placeholder - could track based on scheduled times
+        
+        const ctx = document.getElementById('shiftActivityChart').getContext('2d');
+        if (charts.shiftActivity) charts.shiftActivity.destroy();
+        charts.shiftActivity = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: ['Active', 'Completed Today', 'Avg Hours/Shift', 'Late Clock-ins'], datasets: [{ label: 'Count', data: [activeShifts, completedToday, avgShiftHours, lateClockIns], backgroundColor: '#E30613', borderRadius: 8 }] },
+            options: { responsive: true }
+        });
+        
+        document.getElementById('shiftStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${activeShifts}</div><div class="stat-label">Active Shifts</div></div>
+            <div class="stat-card"><div class="stat-number">${completedToday}</div><div class="stat-label">Completed Today</div></div>
+            <div class="stat-card"><div class="stat-number">${avgShiftHours.toFixed(1)}h</div><div class="stat-label">Avg Shift Duration</div></div>
+        `;
+    }
+
+    function renderHoursTrend() {
+        const last7Days = [...Array(7)].map((_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            return date.toISOString().split('T')[0];
+        }).reverse();
+        
+        const hoursByDay = last7Days.map(day => {
+            return shifts.filter(s => {
+                const shiftDate = new Date(s.login_time).toISOString().split('T')[0];
+                return shiftDate === day;
+            }).reduce((sum, s) => sum + (s.hours_worked || 0), 0);
+        });
+        
+        const ctx = document.getElementById('hoursTrendChart').getContext('2d');
+        if (charts.hoursTrend) charts.hoursTrend.destroy();
+        charts.hoursTrend = new Chart(ctx, {
+            type: 'line',
+            data: { labels: last7Days.map(d => d.slice(5)), datasets: [{ label: 'Hours Worked', data: hoursByDay, borderColor: '#E30613', backgroundColor: 'rgba(227,6,19,0.1)', fill: true, tension: 0.3 }] },
+            options: { responsive: true }
+        });
+    }
+
+    function renderPayrollAnalytics() {
+        const totalHours = shifts.reduce((sum, s) => sum + (s.hours_worked || 0), 0);
+        const avgRate = staffList.reduce((sum, s) => sum + (s.hourly_rate || 0), 0) / (staffList.length || 1);
+        const totalPayroll = totalHours * avgRate;
+        const pendingPayments = payrollRecords.filter(p => p.payment_status === 'pending').length;
+        const paidThisMonth = payrollRecords.filter(p => p.payment_status === 'paid').reduce((sum, p) => sum + (p.final_pay || 0), 0);
+        
+        const ctx = document.getElementById('payrollChart').getContext('2d');
+        if (charts.payroll) charts.payroll.destroy();
+        charts.payroll = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['Pending', 'Paid', 'Processing'], datasets: [{ data: [pendingPayments, payrollRecords.filter(p => p.payment_status === 'paid').length, payrollRecords.filter(p => p.payment_status === 'processing').length], backgroundColor: ['#f59e0b', '#10b981', '#8b5cf6'] }] },
+            options: { responsive: true }
+        });
+        
+        document.getElementById('payrollStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${fmtR(totalPayroll)}</div><div class="stat-label">Est. Total Payroll</div></div>
+            <div class="stat-card"><div class="stat-number">${pendingPayments}</div><div class="stat-label">Pending Payments</div></div>
+            <div class="stat-card"><div class="stat-number">${fmtR(paidThisMonth)}</div><div class="stat-label">Paid This Month</div></div>
+        `;
+    }
+
+    function renderTopPerformers() {
+        const staffHours = {};
+        shifts.forEach(shift => {
+            if (shift.hours_worked && shift.staff_id) {
+                staffHours[shift.staff_id] = (staffHours[shift.staff_id] || 0) + shift.hours_worked;
+            }
+        });
+        const sorted = Object.entries(staffHours).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const container = document.getElementById('topPerformersList');
+        if (!sorted.length) { container.innerHTML = '<div class="empty-state">No shift data available</div>'; return; }
+        container.innerHTML = sorted.map(([staffId, hours], idx) => {
+            const staff = staffList.find(s => s.id === staffId);
+            const name = staff ? `${staff.name} ${staff.surname}` : 'Unknown';
+            const role = staff ? (roleDisplay[staff.role] || staff.role) : 'Staff';
+            return `<div class="leaderboard-item">
+                <span class="rank">${idx + 1}</span>
+                <div><strong>${name}</strong><br><small>${role}</small></div>
+                <span style="font-weight: 800;">${hours.toFixed(1)} hrs</span>
+            </div>`;
+        }).join('');
+    }
+
+    function renderRecentActivity() {
+        const container = document.getElementById('recentActivity');
+        if (!activityLogs.length) { container.innerHTML = '<div class="empty-state">No recent activity</div>'; return; }
+        container.innerHTML = activityLogs.slice(0, 8).map(log => {
+            const staff = log.profiles || { name: 'Staff', surname: 'Member' };
+            const staffName = staff.name && staff.surname ? `${staff.name} ${staff.surname}` : (staff.name || 'Staff Member');
+            return `<div class="activity-item">
+                <div class="activity-badge"><i class="fas ${log.module === 'POS' ? 'fa-cash-register' : log.module === 'Kiosk' ? 'fa-desktop' : 'fa-user-check'}"></i></div>
+                <div class="activity-detail">
+                    <strong>${staffName}</strong> ${log.action}<br>
+                    <small>${log.module}</small>
+                    <div class="activity-time">${new Date(log.created_at).toLocaleString()}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderAlerts() {
+        const activeShifts = shifts.filter(s => s.status === 'active').length;
+        const inactiveStaff = staffList.filter(s => s.status === 'Inactive').length;
+        const avgHours = shifts.filter(s => s.hours_worked > 0).reduce((sum, s) => sum + (s.hours_worked || 0), 0) / (shifts.filter(s => s.hours_worked > 0).length || 1);
+        
+        const alerts = [];
+        if (activeShifts === 0 && staffList.length > 0) alerts.push({ level: 'warning', title: 'No Active Shifts', desc: 'No staff currently clocked in. Check staffing levels.' });
+        if (inactiveStaff > staffList.length * 0.3) alerts.push({ level: 'info', title: 'High Inactive Rate', desc: `${Math.round((inactiveStaff / staffList.length) * 100)}% of staff are inactive` });
+        if (avgHours < 4 && shifts.length > 10) alerts.push({ level: 'warning', title: 'Low Average Shift Hours', desc: `Average shift length is only ${avgHours.toFixed(1)} hours` });
+        
+        const container = document.getElementById('alertsContainer');
+        if (!alerts.length) { container.innerHTML = '<div class="empty-state">No active alerts</div>'; return; }
+        container.innerHTML = alerts.map(a => `
+            <div class="activity-item" style="border-left: 4px solid ${a.level === 'critical' ? '#dc2626' : a.level === 'warning' ? '#f59e0b' : '#3b82f6'}; background: ${a.level === 'critical' ? '#fff5f5' : a.level === 'warning' ? '#fffbeb' : '#eff6ff'}; padding-left: 12px; border-radius: 12px; margin-bottom: 8px;">
+                <div><strong>${a.title}</strong><br><small>${a.desc}</small></div>
+            </div>
+        `).join('');
+    }
+
+    function renderAllDashboards() {
+        renderHeroKPI();
+        renderRoleDistribution();
+        renderStaffGrowthTrend();
+        renderShiftAnalytics();
+        renderHoursTrend();
+        renderPayrollAnalytics();
+        renderTopPerformers();
+        renderRecentActivity();
+        renderAlerts();
+    }
+
+    // Time filter handlers
+    document.querySelectorAll('#growthFilter .filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('#growthFilter .filter-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            currentPeriod = chip.dataset.period;
+            renderStaffGrowthTrend();
+        });
+    });
+
+    // Real-time subscriptions
+    function setupRealtime() {
+        supabase.channel('workforce-analytics')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadWorkforceData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_shifts' }, () => loadWorkforceData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_activity_logs' }, () => loadWorkforceData())
+            .subscribe();
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(() => loadWorkforceData(), 30000);
+    
+    loadWorkforceData();
+    setupRealtime();
+</script>
+</body>
+</html>
