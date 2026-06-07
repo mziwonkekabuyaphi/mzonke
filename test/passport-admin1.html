@@ -48,6 +48,8 @@
     .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eef2f8; }
     .search-box { background: #f8fafc; border-radius: 60px; padding: 4px 12px; display: flex; align-items: center; gap: 8px; border: 1px solid #eef2f8; flex: 1; }
     .search-box input { flex: 1; background: none; border: none; padding: 8px 0; outline: none; font-size: 0.8rem; }
+    .search-box i { color: #94a3b8; }
+    .search-hint { font-size: 11px; color: #64748b; margin-left: 8px; }
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000; opacity: 0; visibility: hidden; transition: 0.2s; }
     .modal-overlay.active { opacity: 1; visibility: visible; }
     .modal-content { background: white; border-radius: 28px; max-width: 500px; width: 90%; }
@@ -82,19 +84,24 @@
     <div id="accountsPanel" class="panel active">
         <div class="section-title"><i class="fas fa-wallet"></i> Wallet Accounts</div>
         <div class="add-form" style="justify-content: space-between;">
-            <div class="search-box"><input type="text" id="searchAccount" placeholder="Search by name or email..."><i class="fas fa-search"></i></div>
+            <div style="display: flex; gap: 12px; flex: 1;">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchAccount" placeholder="Search by name, email, or phone number...">
+                </div>
+            </div>
             <button class="btn-secondary" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
         </div>
         <div id="accountList" class="items-grid"><div class="loading-state">Loading wallets...</div></div>
         
-        <!-- Selected Account Actions - MOVED INSIDE accountsPanel so it shows -->
+        <!-- Selected Account Actions -->
         <div id="selectedAccountPanel" style="margin-top: 24px; display: none;">
             <div class="section-title"><i class="fas fa-bolt"></i> Account Actions</div>
             <div class="selected-info" id="selectedAccountInfo"></div>
             <div class="action-buttons">
                 <button class="btn-primary" id="openTopUpBtn"><i class="fas fa-plus-circle"></i> Top Up</button>
-                <button class="btn-danger" id="blockAccountBtn"><i class="fas fa-ban"></i> Block</button>
-                <button class="btn-success" id="unblockAccountBtn"><i class="fas fa-check-circle"></i> Unblock</button>
+                <button class="btn-danger" id="blockAccountBtn"><i class="fas fa-ban"></i> Block Wallet</button>
+                <button class="btn-success" id="unblockAccountBtn"><i class="fas fa-check-circle"></i> Unblock Wallet</button>
             </div>
             <div class="topup-section">
                 <div class="topup-title"><i class="fas fa-hand-holding-usd"></i> Quick Top Up</div>
@@ -146,6 +153,18 @@
     </div>
 </div>
 
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header"><h3 id="confirmModalTitle">Confirm Action</h3></div>
+        <div class="modal-body"><p id="confirmModalMessage"></p></div>
+        <div class="modal-footer">
+            <button class="modal-confirm" id="modalConfirmBtn">Confirm</button>
+            <button class="modal-cancel" id="modalCancelBtn">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script type="module">
@@ -165,6 +184,25 @@
 
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
+    // ========== MODAL SYSTEM ==========
+    function showModal(title, message) {
+        return new Promise((resolve) => {
+            modalResolve = resolve;
+            document.getElementById('confirmModalTitle').innerText = title;
+            document.getElementById('confirmModalMessage').innerHTML = message;
+            document.getElementById('confirmModal').classList.add('active');
+        });
+    }
+
+    function closeModal(confirmed) {
+        document.getElementById('confirmModal').classList.remove('active');
+        if (modalResolve) { modalResolve(confirmed); modalResolve = null; }
+    }
+
+    document.getElementById('modalConfirmBtn').onclick = () => closeModal(true);
+    document.getElementById('modalCancelBtn').onclick = () => closeModal(false);
+    document.getElementById('confirmModal').onclick = (e) => { if (e.target === document.getElementById('confirmModal')) closeModal(false); };
+
     // ========== REUSABLE TOP-UP FUNCTION ==========
     async function updateWalletBalanceAndLog(walletId, amountDelta, description) {
         if (!walletId) {
@@ -179,7 +217,6 @@
         console.log('💰 Top-up started:', { walletId, amountDelta });
         
         try {
-            // Read current balance
             const { data: walletData, error: fetchError } = await supabase
                 .from('wallets')
                 .select('balance')
@@ -193,7 +230,6 @@
             
             console.log('💰 Balance:', { currentBalance, newBalance });
             
-            // Update balance
             const { error: updateError } = await supabase
                 .from('wallets')
                 .update({ balance: newBalance, updated_at: new Date().toISOString() })
@@ -201,7 +237,6 @@
             
             if (updateError) throw updateError;
             
-            // Create transaction log
             const { error: transactionError } = await supabase
                 .from('wallet_transactions')
                 .insert({
@@ -227,6 +262,102 @@
         }
     }
 
+    // ========== BLOCK WALLET (COMPLETE BLOCK) ==========
+    async function blockWallet(walletId, userId) {
+        try {
+            // 1. Block the wallet in wallets table (add status column or use a separate approach)
+            // First check if wallets table has a status column, if not we'll use profiles.status
+            const { error: walletBlockError } = await supabase
+                .from('wallets')
+                .update({ status: 'blocked', updated_at: new Date().toISOString() })
+                .eq('id', walletId);
+            
+            if (walletBlockError) {
+                // If wallets table doesn't have status column, log but continue
+                console.warn('Could not block wallet in wallets table:', walletBlockError);
+            }
+            
+            // 2. Block the user profile (this prevents login and all access)
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .update({ 
+                    status: 'Blocked',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', userId);
+            
+            if (profileError) throw profileError;
+            
+            // 3. Optionally: Add a transaction record for the block action
+            await supabase
+                .from('wallet_transactions')
+                .insert({
+                    wallet_id: walletId,
+                    amount: 0,
+                    type: 'admin_action',
+                    description: 'Wallet blocked by admin',
+                    performed_by: 'admin',
+                    status: 'completed',
+                    created_at: new Date().toISOString()
+                });
+            
+            console.log('✅ Wallet and user profile blocked successfully');
+            return true;
+            
+        } catch (err) {
+            console.error('❌ Block failed:', err);
+            showToast('Block failed: ' + err.message, true);
+            return false;
+        }
+    }
+
+    // ========== UNBLOCK WALLET ==========
+    async function unblockWallet(walletId, userId) {
+        try {
+            // 1. Unblock wallet
+            const { error: walletUnblockError } = await supabase
+                .from('wallets')
+                .update({ status: 'active', updated_at: new Date().toISOString() })
+                .eq('id', walletId);
+            
+            if (walletUnblockError) {
+                console.warn('Could not unblock wallet in wallets table:', walletUnblockError);
+            }
+            
+            // 2. Unblock user profile
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .update({ 
+                    status: 'Active',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', userId);
+            
+            if (profileError) throw profileError;
+            
+            // 3. Log the unblock action
+            await supabase
+                .from('wallet_transactions')
+                .insert({
+                    wallet_id: walletId,
+                    amount: 0,
+                    type: 'admin_action',
+                    description: 'Wallet unblocked by admin',
+                    performed_by: 'admin',
+                    status: 'completed',
+                    created_at: new Date().toISOString()
+                });
+            
+            console.log('✅ Wallet and user profile unblocked successfully');
+            return true;
+            
+        } catch (err) {
+            console.error('❌ Unblock failed:', err);
+            showToast('Unblock failed: ' + err.message, true);
+            return false;
+        }
+    }
+
     // ========== LOAD WALLETS ==========
     async function loadWallets() {
         try {
@@ -236,7 +367,7 @@
                     id,
                     balance,
                     user_id,
-                    profiles:user_id (id, name, email, status)
+                    profiles:user_id (id, name, email, phone, status)
                 `);
             
             if (error) throw error;
@@ -247,6 +378,7 @@
                 user_id: w.profiles?.id || null,
                 name: w.profiles?.name || 'Unknown',
                 email: w.profiles?.email || 'no-email',
+                phone: w.profiles?.phone || '',
                 status: w.profiles?.status === 'Blocked' ? 'Blocked' : 'Active'
             }));
             
@@ -293,7 +425,6 @@
         document.getElementById('totalBalance').innerText = 'R' + totalBalance.toFixed(2);
         document.getElementById('blockedAccounts').innerText = blockedCount;
         
-        // Get transaction count
         const { count } = await supabase.from('wallet_transactions').select('*', { count: 'exact', head: true });
         document.getElementById('totalTransactions').innerText = count || 0;
     }
@@ -303,7 +434,8 @@
         const searchTerm = document.getElementById('searchAccount')?.value.toLowerCase() || '';
         let filtered = accounts.filter(acc => 
             acc.name.toLowerCase().includes(searchTerm) || 
-            acc.email.toLowerCase().includes(searchTerm)
+            acc.email.toLowerCase().includes(searchTerm) ||
+            (acc.phone && acc.phone.includes(searchTerm))  // PHONE NUMBER SEARCH ADDED
         );
         
         const container = document.getElementById('accountList');
@@ -316,7 +448,7 @@
             <div class="item-card ${selectedWalletId === acc.id ? 'selected' : ''}" onclick="selectAccount('${acc.id}')">
                 <div class="item-info">
                     <div class="name">${escapeHtml(acc.name)}</div>
-                    <div class="meta">${escapeHtml(acc.email)}</div>
+                    <div class="meta">${escapeHtml(acc.email)} ${acc.phone ? `• ${escapeHtml(acc.phone)}` : ''}</div>
                 </div>
                 <div>
                     <div class="item-balance">R${(acc.balance || 0).toFixed(2)}</div>
@@ -333,18 +465,20 @@
         const acc = accounts.find(a => a.id === walletId);
         if (!acc) return;
         
-        // Show the account actions panel
         const panel = document.getElementById('selectedAccountPanel');
         panel.style.display = 'block';
         
-        // Update account info
+        // Show if wallet is blocked
+        const isBlocked = acc.status === 'Blocked';
+        
         document.getElementById('selectedAccountInfo').innerHTML = `
             <div><strong>${escapeHtml(acc.name)}</strong> (${escapeHtml(acc.email)})</div>
+            <div>${acc.phone ? `<div><strong>Phone:</strong> ${escapeHtml(acc.phone)}</div>` : ''}</div>
             <div style="margin-top:8px;"><strong>Balance:</strong> <span style="color:#166534; font-weight:800;">R${(acc.balance || 0).toFixed(2)}</span></div>
             <div><strong>Status:</strong> <span class="account-status ${acc.status === 'Active' ? 'status-active' : 'status-blocked'}">${acc.status}</span></div>
+            ${isBlocked ? '<div style="margin-top:8px; color:#dc2626;"><i class="fas fa-lock"></i> WALLET IS BLOCKED - User cannot use funds</div>' : ''}
         `;
         
-        // Load transactions
         const transactions = await fetchTransactions(walletId);
         const txContainer = document.getElementById('accountTransactions');
         if (!transactions.length) { 
@@ -364,38 +498,64 @@
         renderAccountList();
     };
 
-    // ========== BLOCK / UNBLOCK ==========
-    async function setUserStatus(userId, newStatus) {
-        if (!userId) { showToast('No user ID found', true); return false; }
-        try {
-            await supabase.from('profiles').update({ status: newStatus === 'Active' ? 'Active' : 'Blocked' }).eq('id', userId);
-            return true;
-        } catch (err) { showToast(err.message, true); return false; }
-    }
-    
+    // ========== BLOCK / UNBLOCK ACTIONS ==========
     async function blockAccount() {
         if (!selectedWalletId) { showToast('Select an account first', true); return; }
         const acc = accounts.find(a => a.id === selectedWalletId);
-        if (acc.status === 'Blocked') { showToast('Already blocked', true); return; }
-        if (await setUserStatus(acc.user_id, 'Blocked')) {
+        
+        if (acc.status === 'Blocked') { showToast('Wallet is already blocked', true); return; }
+        
+        const confirmed = await showModal(
+            'Block Wallet', 
+            `Are you sure you want to BLOCK <strong>${escapeHtml(acc.name)}</strong>'s wallet?<br><br>
+            This will:<br>
+            • Block the wallet completely<br>
+            • Prevent the user from making any transactions<br>
+            • Prevent the user from logging in<br>
+            • The user will NOT be able to use their funds`
+        );
+        
+        if (!confirmed) return;
+        
+        const success = await blockWallet(selectedWalletId, acc.user_id);
+        if (success) {
             await refreshData();
-            showToast(`Blocked ${acc.name}`);
+            showToast(`Wallet for ${acc.name} has been BLOCKED`);
         }
     }
     
     async function unblockAccount() {
         if (!selectedWalletId) { showToast('Select an account first', true); return; }
         const acc = accounts.find(a => a.id === selectedWalletId);
-        if (acc.status === 'Active') { showToast('Already active', true); return; }
-        if (await setUserStatus(acc.user_id, 'Active')) {
+        
+        if (acc.status === 'Active') { showToast('Wallet is already active', true); return; }
+        
+        const confirmed = await showModal(
+            'Unblock Wallet', 
+            `Are you sure you want to UNBLOCK <strong>${escapeHtml(acc.name)}</strong>'s wallet?<br><br>
+            This will restore full access to their wallet and account.`
+        );
+        
+        if (!confirmed) return;
+        
+        const success = await unblockWallet(selectedWalletId, acc.user_id);
+        if (success) {
             await refreshData();
-            showToast(`Unblocked ${acc.name}`);
+            showToast(`Wallet for ${acc.name} has been UNBLOCKED`);
         }
     }
 
     // ========== TOP UP FUNCTIONS ==========
     async function quickTopUp() {
         if (!selectedWalletId) { showToast('Select an account first', true); return; }
+        
+        // Check if wallet is blocked
+        const acc = accounts.find(a => a.id === selectedWalletId);
+        if (acc && acc.status === 'Blocked') {
+            showToast('Cannot top up a blocked wallet. Unblock first.', true);
+            return;
+        }
+        
         const amount = parseFloat(document.getElementById('quickTopupAmount').value);
         if (isNaN(amount) || amount <= 0) { showToast('Valid amount required', true); return; }
         
@@ -407,7 +567,13 @@
     
     function openTopUpModal() {
         if (!selectedWalletId) { showToast('Select an account first', true); return; }
+        
         const acc = accounts.find(a => a.id === selectedWalletId);
+        if (acc && acc.status === 'Blocked') {
+            showToast('Cannot top up a blocked wallet. Unblock first.', true);
+            return;
+        }
+        
         document.getElementById('modalAccountId').innerText = acc?.name || selectedWalletId;
         document.getElementById('modalTopupAmount').value = '';
         document.getElementById('topUpModal').classList.add('active');
@@ -417,6 +583,14 @@
     
     async function confirmTopUp() {
         if (!selectedWalletId) { showToast('Select an account', true); closeTopUpModal(); return; }
+        
+        const acc = accounts.find(a => a.id === selectedWalletId);
+        if (acc && acc.status === 'Blocked') {
+            showToast('Cannot top up a blocked wallet. Unblock first.', true);
+            closeTopUpModal();
+            return;
+        }
+        
         const amount = parseFloat(document.getElementById('modalTopupAmount').value);
         if (isNaN(amount) || amount <= 0) { showToast('Valid amount required', true); return; }
         
