@@ -15,6 +15,7 @@
     }
   </script>
   <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs2@1.0.0/qrcode.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root {
@@ -110,6 +111,90 @@
     .hero-content h2,
     .brand-logo-alt {
       font-family: 'Playfair Display', serif;
+    }
+    
+    /* Thermal Print Styles - Hidden from screen, optimized for Epson printers */
+    .thermal-print {
+      display: none;
+    }
+    
+    @media print {
+      .thermal-ticket, .thermal-receipt {
+        display: block;
+        visibility: visible;
+      }
+    }
+    
+    /* Print-specific styles for Epson thermal printers */
+    .thermal-ticket, .thermal-receipt {
+      width: 80mm;
+      font-family: 'Courier New', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.3;
+      padding: 5mm;
+      margin: 0;
+      background: white;
+      color: black;
+    }
+    
+    .ticket-header, .receipt-header {
+      text-align: center;
+      border-bottom: 2px dashed #000;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    
+    .ticket-title, .receipt-title {
+      font-size: 18px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    
+    .ticket-subtitle {
+      font-size: 10px;
+      margin-top: 4px;
+    }
+    
+    .ticket-details, .receipt-details {
+      margin: 12px 0;
+    }
+    
+    .detail-row {
+      margin: 6px 0;
+    }
+    
+    .detail-label {
+      font-weight: bold;
+      display: inline-block;
+      min-width: 60px;
+    }
+    
+    .qr-container {
+      text-align: center;
+      margin: 16px 0;
+      padding: 8px;
+    }
+    
+    .qr-code {
+      display: inline-block;
+      width: 120px;
+      height: 120px;
+    }
+    
+    .ticket-footer, .receipt-footer {
+      text-align: center;
+      border-top: 2px dashed #000;
+      padding-top: 8px;
+      margin-top: 12px;
+      font-size: 10px;
+    }
+    
+    .cut-line {
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 2px;
+      margin: 8px 0;
     }
     
     .kiosk-header { background: var(--white); border-bottom: 1px solid rgba(0,0,0,0.05); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 120; flex-wrap: wrap; gap: 16px; }
@@ -517,6 +602,22 @@
     computed: {
       cartItemCount() { return this.cart.reduce((s,i)=>s+i.quantity,0); },
       cartTotal() { return this.cart.reduce((s,i)=>s+i.price*i.quantity,0); },
+      // NEW: Detect if cart contains alcohol items
+      hasAlcohol() {
+        return this.cart.some(item => item.itemType === 'menu' && item.alcohol === true);
+      },
+      // NEW: Detect if cart contains event tickets
+      hasEventTickets() {
+        return this.cart.some(item => item.itemType === 'ticket');
+      },
+      // NEW: Get only alcohol items for receipt printing
+      alcoholItems() {
+        return this.cart.filter(item => item.itemType === 'menu' && item.alcohol === true);
+      },
+      // NEW: Get only ticket items for separate printing
+      ticketItems() {
+        return this.cart.filter(item => item.itemType === 'ticket');
+      },
       mainCategories() {
         return [
           { id: 'all', name: 'All Items', icon: 'fas fa-border-all' },
@@ -565,6 +666,360 @@
         }
       },
       
+      // ============================================================
+      // EPSON THERMAL PRINTER FUNCTIONS
+      // ============================================================
+      
+      /**
+       * Generate a unique ticket ID for event tickets
+       * Format: EVT-YYYY-XXXXXX (e.g., EVT-2026-001245)
+       */
+      generateTicketId() {
+        const year = new Date().getFullYear();
+        const random = Math.floor(Math.random() * 999999).toString().padStart(6, '0');
+        return `EVT-${year}-${random}`;
+      },
+      
+      /**
+       * Generate QR code data payload for event ticket validation
+       * Compatible with future check-in scanners (web, mobile, handheld)
+       */
+      generateQRData(ticketId, eventId, ticketTypeId, customerName) {
+        const payload = {
+          ticketId: ticketId,
+          eventId: eventId,
+          ticketTypeId: ticketTypeId,
+          customerName: customerName || 'Guest',
+          timestamp: new Date().toISOString(),
+          type: 'event_ticket',
+          version: '1.0'
+        };
+        return JSON.stringify(payload);
+      },
+      
+      /**
+       * Generate HTML for a single thermal event ticket
+       * Optimized for 80mm Epson thermal printers (ESC/POS compatible)
+       * Each ticket has unique QR code for check-in scanning
+       */
+      generateThermalTicket(ticket, event, customerName, ticketNumber, qrData) {
+        const formatDate = (dateStr) => {
+          if (!dateStr) return 'TBD';
+          const d = new Date(dateStr);
+          return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+        };
+        
+        const formatTime = (dateStr) => {
+          if (!dateStr) return 'TBD';
+          const d = new Date(dateStr);
+          return d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+        };
+        
+        // Generate QR code as data URL for embedding
+        // Using canvas approach for thermal printer compatibility
+        return `
+          <div class="thermal-ticket" style="width: 80mm; font-family: 'Courier New', monospace; font-size: 11px; padding: 4mm; margin: 0; background: white;">
+            <div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 12px;">
+              <div style="font-size: 18px; font-weight: bold; letter-spacing: 2px;">RANDS EVENTS</div>
+              <div style="font-size: 10px; margin-top: 4px;">Premium Event Experience</div>
+            </div>
+            
+            <div style="margin: 12px 0;">
+              <div style="margin: 6px 0;"><strong>EVENT:</strong> ${event.name}</div>
+              <div style="margin: 6px 0;"><strong>DATE:</strong> ${formatDate(event.start_time)}</div>
+              <div style="margin: 6px 0;"><strong>TIME:</strong> ${formatTime(event.start_time)}</div>
+              <div style="margin: 6px 0;"><strong>VENUE:</strong> ${event.location || 'Rands Lifestyle'}</div>
+              <div style="margin: 6px 0;"><strong>TICKET TYPE:</strong> ${ticket.name}</div>
+              <div style="margin: 6px 0;"><strong>PRICE:</strong> R ${this.formatPrice(ticket.price)}</div>
+              <div style="margin: 6px 0;"><strong>TICKET NO:</strong> ${ticketNumber}</div>
+              <div style="margin: 6px 0;"><strong>ATTENDEE:</strong> ${customerName || 'Guest'}</div>
+            </div>
+            
+            <div style="text-align: center; margin: 16px 0; padding: 8px;">
+              <!-- QR Code will be inserted here as canvas -->
+              <div id="qr-${ticketNumber.replace(/[^a-zA-Z0-9]/g, '')}" style="display: inline-block;"></div>
+              <div style="margin-top: 8px; font-size: 9px;">Scan for entry</div>
+            </div>
+            
+            <div style="text-align: center; border-top: 2px dashed #000; padding-top: 8px; margin-top: 12px; font-size: 9px;">
+              This ticket is valid for one-time entry<br>
+              Please keep this ticket for re-entry
+            </div>
+            <div class="cut-line" style="text-align: center; font-size: 10px; letter-spacing: 2px; margin-top: 8px;">
+              - - - - - - - - - - - - - - - - - - - - - -
+            </div>
+          </div>
+        `;
+      },
+      
+      /**
+       * Generate thermal receipt for alcohol purchases
+       * Standard receipt format for Epson printers
+       */
+      generateThermalReceipt(orderNumber, items, total, customerName) {
+        const receiptItems = items.filter(i => i.itemType === 'menu' && i.alcohol === true);
+        
+        let itemsHtml = '';
+        receiptItems.forEach(item => {
+          itemsHtml += `
+            <div style="display: flex; justify-content: space-between; margin: 4px 0;">
+              <span>${item.quantity} x ${item.name}</span>
+              <span>R ${this.formatPrice(item.price * item.quantity)}</span>
+            </div>
+          `;
+        });
+        
+        return `
+          <div class="thermal-receipt" style="width: 80mm; font-family: 'Courier New', monospace; font-size: 11px; padding: 4mm; margin: 0; background: white;">
+            <div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 12px;">
+              <div style="font-size: 16px; font-weight: bold;">RANDS KIOSK</div>
+              <div style="font-size: 9px;">${new Date().toLocaleString()}</div>
+            </div>
+            
+            <div style="margin: 12px 0;">
+              ${itemsHtml}
+              <div style="border-top: 1px dashed #000; margin: 8px 0; padding-top: 8px;">
+                <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                  <span>TOTAL</span>
+                  <span>R ${this.formatPrice(total)}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div style="margin: 12px 0;">
+              <div><strong>ORDER:</strong> ${orderNumber}</div>
+              <div><strong>CUSTOMER:</strong> ${customerName || 'Guest'}</div>
+            </div>
+            
+            <div style="text-align: center; border-top: 2px dashed #000; padding-top: 8px; margin-top: 12px; font-size: 9px;">
+              Thank you for your order!<br>
+              Please drink responsibly
+            </div>
+            <div class="cut-line" style="text-align: center; font-size: 10px; letter-spacing: 2px; margin-top: 8px;">
+              - - - - - - - - - - - - - - - - - - - - - -
+            </div>
+          </div>
+        `;
+      },
+      
+      /**
+       * Print multiple thermal documents using Epson-compatible formatting
+       * Opens print window and triggers automatic printing
+       * Supports ESC/POS compatibility via CSS media print
+       */
+      async printThermalDocuments(htmlContent, documentTitle) {
+        return new Promise((resolve) => {
+          const printWindow = window.open('', '_blank');
+          printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>${documentTitle}</title>
+              <style>
+                @page {
+                  size: 80mm 297mm;
+                  margin: 0;
+                }
+                * {
+                  margin: 0;
+                  padding: 0;
+                  box-sizing: border-box;
+                }
+                body {
+                  background: white;
+                  padding: 0;
+                  margin: 0;
+                }
+                .thermal-ticket, .thermal-receipt {
+                  width: 80mm;
+                  font-family: 'Courier New', 'Consolas', monospace;
+                  font-size: 11px;
+                  padding: 4mm;
+                  margin: 0;
+                  background: white;
+                  color: black;
+                  page-break-after: always;
+                }
+                @media print {
+                  body {
+                    margin: 0;
+                    padding: 0;
+                  }
+                }
+              </style>
+              <script src="https://cdn.jsdelivr.net/npm/qrcodejs2@1.0.0/qrcode.min.js"><\/script>
+            </head>
+            <body>
+              ${htmlContent}
+              <script>
+                // Generate QR codes after content loads
+                setTimeout(() => {
+                  // Find all QR code containers and generate QR codes
+                  const qrContainers = document.querySelectorAll('[id^="qr-"]');
+                  qrContainers.forEach(container => {
+                    const qrDataAttr = container.getAttribute('data-qr-data');
+                    if (qrDataAttr && typeof QRCode !== 'undefined') {
+                      try {
+                        new QRCode(container, {
+                          text: qrDataAttr,
+                          width: 100,
+                          height: 100,
+                          colorDark: "#000000",
+                          colorLight: "#ffffff",
+                          correctLevel: QRCode.CorrectLevel.M
+                        });
+                      } catch(e) {
+                        console.error('QR generation error:', e);
+                      }
+                    }
+                  });
+                  
+                  // Auto-print after QR codes generate
+                  setTimeout(() => {
+                    window.print();
+                    setTimeout(() => window.close(), 2000);
+                  }, 500);
+                }, 100);
+              <\/script>
+            </body>
+            </html>
+          `);
+          printWindow.document.close();
+          resolve();
+        });
+      },
+      
+      /**
+       * Main printing orchestrator - intelligently prints based on cart contents
+       * Rule 1: Event tickets only → Print thermal tickets (one per ticket)
+       * Rule 2: Alcohol only → Print thermal receipt
+       * Rule 3: Both tickets and alcohol → Print tickets first, then receipt (separate jobs)
+       */
+      async printOrderDocuments(orderData) {
+        const { orderNumber, customerName, items, total } = orderData;
+        
+        // Separate items by type
+        const ticketItems = items.filter(i => i.itemType === 'ticket');
+        const alcoholItems = items.filter(i => i.itemType === 'menu' && i.alcohol === true);
+        
+        // CASE 1: Only event tickets purchased
+        if (ticketItems.length > 0 && alcoholItems.length === 0) {
+          this.showToast('Printing event tickets...', 'success');
+          
+          // Generate one thermal ticket per ticket purchased
+          for (let i = 0; i < ticketItems.length; i++) {
+            const ticketItem = ticketItems[i];
+            const quantity = ticketItem.quantity;
+            
+            // Print multiple copies if quantity > 1
+            for (let j = 0; j < quantity; j++) {
+              const ticketId = this.generateTicketId();
+              const event = this.eventsList.find(e => e.id === ticketItem.event_id);
+              
+              if (event) {
+                // Find the original ticket type to get event details
+                const { data: ticketTypeData } = await supabase
+                  .from('ticket_types')
+                  .select('*')
+                  .eq('id', ticketItem.ticket_type_id)
+                  .single();
+                
+                const qrData = this.generateQRData(
+                  ticketId,
+                  ticketItem.event_id,
+                  ticketItem.ticket_type_id,
+                  customerName
+                );
+                
+                const ticketHtml = this.generateThermalTicket(
+                  ticketTypeData || ticketItem,
+                  event,
+                  customerName,
+                  ticketId,
+                  qrData
+                );
+                
+                // Add QR data attribute for the script to pick up
+                const ticketWithQR = ticketHtml.replace(
+                  '<div id="qr-' + ticketId.replace(/[^a-zA-Z0-9]/g, '') + '"',
+                  `<div id="qr-${ticketId.replace(/[^a-zA-Z0-9]/g, '')}" data-qr-data='${qrData}'`
+                );
+                
+                await this.printThermalDocuments(ticketWithQR, `Ticket-${ticketId}`);
+                await this.delay(500); // Small delay between print jobs
+              }
+            }
+          }
+          return;
+        }
+        
+        // CASE 2: Only alcohol purchased
+        if (alcoholItems.length > 0 && ticketItems.length === 0) {
+          this.showToast('Printing receipt...', 'success');
+          const receiptHtml = this.generateThermalReceipt(orderNumber, items, total, customerName);
+          await this.printThermalDocuments(receiptHtml, `Receipt-${orderNumber}`);
+          return;
+        }
+        
+        // CASE 3: Both tickets AND alcohol purchased
+        if (ticketItems.length > 0 && alcoholItems.length > 0) {
+          this.showToast('Printing tickets and receipt...', 'success');
+          
+          // First: Print all event tickets
+          for (let i = 0; i < ticketItems.length; i++) {
+            const ticketItem = ticketItems[i];
+            const quantity = ticketItem.quantity;
+            
+            for (let j = 0; j < quantity; j++) {
+              const ticketId = this.generateTicketId();
+              const event = this.eventsList.find(e => e.id === ticketItem.event_id);
+              
+              if (event) {
+                const { data: ticketTypeData } = await supabase
+                  .from('ticket_types')
+                  .select('*')
+                  .eq('id', ticketItem.ticket_type_id)
+                  .single();
+                
+                const qrData = this.generateQRData(
+                  ticketId,
+                  ticketItem.event_id,
+                  ticketItem.ticket_type_id,
+                  customerName
+                );
+                
+                const ticketHtml = this.generateThermalTicket(
+                  ticketTypeData || ticketItem,
+                  event,
+                  customerName,
+                  ticketId,
+                  qrData
+                );
+                
+                const ticketWithQR = ticketHtml.replace(
+                  '<div id="qr-' + ticketId.replace(/[^a-zA-Z0-9]/g, '') + '"',
+                  `<div id="qr-${ticketId.replace(/[^a-zA-Z0-9]/g, '')}" data-qr-data='${qrData}'`
+                );
+                
+                await this.printThermalDocuments(ticketWithQR, `Ticket-${ticketId}`);
+                await this.delay(500);
+              }
+            }
+          }
+          
+          // Second: Print alcohol receipt (separate print job)
+          await this.delay(1000);
+          const receiptHtml = this.generateThermalReceipt(orderNumber, items, total, customerName);
+          await this.printThermalDocuments(receiptHtml, `Receipt-${orderNumber}`);
+          return;
+        }
+      },
+      
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      },
+      
       async loadProducts() {
         this.loadingProducts=true;
         try{
@@ -607,7 +1062,9 @@
         let cartItem = {
           id: ticket.id, name: `${this.selectedEvent.name} - ${ticket.name}`,
           price: ticket.price, quantity: 1, image: this.getEventBannerImage(this.selectedEvent),
-          event_id: this.selectedEvent.id, ticket_type_id: ticket.id, itemType: 'ticket', description: ticket.description || `${ticket.name} ticket for ${this.selectedEvent.name}`
+          event_id: this.selectedEvent.id, ticket_type_id: ticket.id, itemType: 'ticket', 
+          description: ticket.description || `${ticket.name} ticket for ${this.selectedEvent.name}`,
+          alcohol: false // Tickets are not alcohol
         };
         let existing = this.cart.find(i => i.id === ticket.id && i.event_id === this.selectedEvent.id);
         if(existing) existing.quantity += 1;
@@ -624,7 +1081,7 @@
       addToCartInternal(product, qty){ 
         let existing = this.cart.find(i => i.id === product.id && i.itemType !== 'ticket'); 
         if(existing) existing.quantity += qty; 
-        else this.cart.push({...product, quantity: qty, itemType: 'menu', description: product.description || 'No description available'}); 
+        else this.cart.push({...product, quantity: qty, itemType: 'menu', description: product.description || 'No description available', alcohol: product.alcohol || false}); 
         this.showToast(`${product.name} added`); 
       },
       updateCartQty(item, newQty){ if(newQty<=0) this.cart = this.cart.filter(i=>i!==item); else item.quantity=newQty; },
@@ -646,326 +1103,6 @@
         } else { setTimeout(() => this.initYoco(), 500); }
       },
       
-      async printPremiumReceipt(orderData) {
-        const receiptHTML = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Rands Premium Receipt</title>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body {
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 40px 20px;
-              }
-              .receipt-container {
-                max-width: 500px;
-                width: 100%;
-                margin: 0 auto;
-                animation: slideUp 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-              }
-              @keyframes slideUp {
-                from { opacity: 0; transform: translateY(50px); }
-                to { opacity: 1; transform: translateY(0); }
-              }
-              .receipt-card {
-                background: white;
-                border-radius: 32px;
-                overflow: hidden;
-                box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-              }
-              .receipt-header {
-                background: linear-gradient(135deg, #E30613 0%, #B5040F 100%);
-                padding: 40px 30px;
-                text-align: center;
-                color: white;
-                position: relative;
-                overflow: hidden;
-              }
-              .receipt-header::before {
-                content: "✦";
-                position: absolute;
-                font-size: 200px;
-                opacity: 0.1;
-                right: -40px;
-                top: -40px;
-                transform: rotate(15deg);
-              }
-              .brand-icon {
-                font-size: 48px;
-                margin-bottom: 16px;
-              }
-              .receipt-header h1 {
-                font-family: 'Manrope', sans-serif;
-                font-weight: 800;
-                font-size: 2.5rem;
-                letter-spacing: -0.5px;
-                margin-bottom: 8px;
-              }
-              .receipt-header p {
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                opacity: 0.9;
-                font-size: 0.9rem;
-              }
-              .order-status {
-                display: inline-block;
-                background: rgba(255,255,255,0.2);
-                backdrop-filter: blur(10px);
-                padding: 8px 20px;
-                border-radius: 40px;
-                font-family: 'Inter', sans-serif;
-                font-weight: 600;
-                font-size: 0.8rem;
-                margin-top: 16px;
-              }
-              .receipt-body {
-                padding: 30px;
-              }
-              .info-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 16px;
-                background: #F8F7F4;
-                padding: 20px;
-                border-radius: 24px;
-                margin-bottom: 30px;
-              }
-              .info-item {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-              }
-              .info-label {
-                font-family: 'Inter', sans-serif;
-                font-weight: 600;
-                font-size: 0.7rem;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #5E5E6E;
-              }
-              .info-value {
-                font-family: 'Manrope', sans-serif;
-                font-weight: 700;
-                font-size: 1rem;
-                color: #0F0F12;
-              }
-              .items-header {
-                display: flex;
-                justify-content: space-between;
-                padding: 16px 0 12px;
-                border-bottom: 2px solid #E30613;
-                font-family: 'Inter', sans-serif;
-                font-weight: 700;
-                font-size: 0.85rem;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #5E5E6E;
-                margin-bottom: 16px;
-              }
-              .receipt-item {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 12px 0;
-                border-bottom: 1px solid #eee;
-              }
-              .item-info {
-                flex: 1;
-              }
-              .item-name {
-                font-family: 'Manrope', sans-serif;
-                font-weight: 700;
-                color: #0F0F12;
-                margin-bottom: 4px;
-              }
-              .item-meta {
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                font-size: 0.75rem;
-                color: #A1A1B0;
-              }
-              .item-quantity {
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                font-size: 0.9rem;
-                color: #5E5E6E;
-                margin-right: 20px;
-              }
-              .item-price {
-                font-family: 'Inter', sans-serif;
-                font-weight: 700;
-                color: #E30613;
-              }
-              .totals {
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 2px dashed #ddd;
-              }
-              .total-row {
-                display: flex;
-                justify-content: space-between;
-                padding: 8px 0;
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                font-size: 0.9rem;
-              }
-              .grand-total {
-                font-family: 'Inter', sans-serif;
-                font-weight: 800;
-                font-size: 1.4rem;
-                color: #E30613;
-                padding-top: 16px;
-                margin-top: 8px;
-                border-top: 2px solid #eee;
-              }
-              .receipt-footer {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 30px;
-                text-align: center;
-                color: white;
-              }
-              .receipt-footer p {
-                font-family: 'Inter', sans-serif;
-                font-weight: 400;
-                margin-bottom: 8px;
-                font-size: 0.9rem;
-              }
-              .qr-simulation {
-                width: 80px;
-                height: 80px;
-                background: white;
-                margin: 16px auto 0;
-                border-radius: 16px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: #764ba2;
-                font-size: 2rem;
-              }
-              .print-btn {
-                background: #E30613;
-                color: white;
-                border: none;
-                padding: 14px 28px;
-                border-radius: 60px;
-                font-family: 'Inter', sans-serif;
-                font-weight: 600;
-                letter-spacing: 0.3px;
-                font-size: 1rem;
-                cursor: pointer;
-                margin-top: 20px;
-                width: 100%;
-                transition: transform 0.2s;
-              }
-              .print-btn:active { transform: scale(0.98); }
-              @media print {
-                body { background: white; padding: 0; }
-                .print-btn { display: none; }
-                .receipt-container { max-width: 100%; }
-                .receipt-card { box-shadow: none; }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="receipt-container">
-              <div class="receipt-card">
-                <div class="receipt-header">
-                  <div class="brand-icon">🍷</div>
-                  <h1>RANDS</h1>
-                  <p>Premium Dining Experience</p>
-                  <div class="order-status">
-                    <i class="fas fa-check-circle"></i> ORDER CONFIRMED
-                  </div>
-                </div>
-                
-                <div class="receipt-body">
-                  <div class="info-grid">
-                    <div class="info-item">
-                      <div class="info-label">Order Number</div>
-                      <div class="info-value">#${orderData.orderNumber}</div>
-                    </div>
-                    <div class="info-item">
-                      <div class="info-label">Date & Time</div>
-                      <div class="info-value">${new Date().toLocaleString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                    </div>
-                    <div class="info-item">
-                      <div class="info-label">Customer</div>
-                      <div class="info-value">${orderData.customerName || 'Guest'}</div>
-                    </div>
-                    <div class="info-item">
-                      <div class="info-label">Payment Method</div>
-                      <div class="info-value">${orderData.paymentMethod.toUpperCase()}</div>
-                    </div>
-                  </div>
-                  
-                  <div class="items-header">
-                    <span>ITEM</span>
-                    <span style="text-align: right;">TOTAL</span>
-                  </div>
-                  
-                  ${orderData.items.map(item => `
-                    <div class="receipt-item">
-                      <div class="item-info">
-                        <div class="item-name">${item.name}</div>
-                        <div class="item-meta">Qty: ${item.quantity}</div>
-                      </div>
-                      <div class="item-price">R ${(item.price * item.quantity).toFixed(2)}</div>
-                    </div>
-                  `).join('')}
-                  
-                  <div class="totals">
-                    <div class="total-row">
-                      <span>Subtotal</span>
-                      <span>R ${orderData.subtotal.toFixed(2)}</span>
-                    </div>
-                    <div class="total-row">
-                      <span>VAT (15%)</span>
-                      <span>R ${(orderData.subtotal * 0.15).toFixed(2)}</span>
-                    </div>
-                    <div class="grand-total">
-                      <span style="font-size: 1rem;">TOTAL AMOUNT</span>
-                      <span style="font-size: 1.8rem;">R ${orderData.total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div class="receipt-footer">
-                  <p>Thank you for dining with us!</p>
-                  <p>We hope to see you again soon</p>
-                  <div class="qr-simulation">
-                    <i class="fas fa-heart"></i>
-                  </div>
-                  <p style="font-size: 0.7rem; margin-top: 16px;">This is your digital receipt</p>
-                </div>
-              </div>
-              <button class="print-btn" onclick="window.print(); setTimeout(() => window.close(), 1000);">
-                <i class="fas fa-print"></i> Print Receipt
-              </button>
-            </div>
-            <script>
-              setTimeout(() => {
-                window.print();
-                setTimeout(() => window.close(), 2000);
-              }, 500);
-            <\/script>
-          </body>
-          </html>
-        `;
-        
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(receiptHTML);
-        printWindow.document.close();
-      },
-      
       async processYocoPayment() {
         if (!this.yocoInstance) { this.showToast('Payment system initializing...', 'error'); return; }
         this.yocoProcessing = true;
@@ -981,7 +1118,16 @@
             total: this.cartTotal,
             subtotal: this.cartTotal,
             paymentMethod: 'card',
-            items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType }))
+            items: this.cart.map(i => ({ 
+              name: i.name, 
+              quantity: i.quantity, 
+              price: i.price, 
+              type: i.itemType,
+              description: i.description,
+              alcohol: i.alcohol || false,
+              event_id: i.event_id,
+              ticket_type_id: i.ticket_type_id
+            }))
           };
           
           const { error: orderError } = await supabase.from('orders').insert({
@@ -993,14 +1139,16 @@
             status: 'placed',
             source: 'kiosk',
             order_number: orderNumber,
-            items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description }))
+            items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description, alcohol: i.alcohol }))
           });
           if (orderError) throw orderError;
           
           this.orderNumber = orderNumber;
           this.checkoutStep = 3;
           this.showToast('Payment successful!', 'success');
-          await this.printPremiumReceipt(orderData);
+          
+          // NEW: Print using Epson thermal printer system
+          await this.printOrderDocuments(orderData);
         } catch(err) { this.showToast(err.message, 'error'); }
         finally { this.yocoProcessing = false; }
       },
@@ -1014,7 +1162,16 @@
           total: this.cartTotal,
           subtotal: this.cartTotal,
           paymentMethod: 'cash',
-          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description }))
+          items: this.cart.map(i => ({ 
+            name: i.name, 
+            quantity: i.quantity, 
+            price: i.price, 
+            type: i.itemType,
+            description: i.description,
+            alcohol: i.alcohol || false,
+            event_id: i.event_id,
+            ticket_type_id: i.ticket_type_id
+          }))
         };
         
         const { error } = await supabase.from('orders').insert({
@@ -1026,13 +1183,15 @@
           status: 'placed',
           source: 'kiosk',
           order_number: orderNumber,
-          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description }))
+          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description, alcohol: i.alcohol }))
         });
         if (error) { this.showToast('Error placing order', 'error'); return; }
         this.orderNumber = orderNumber;
         this.checkoutStep = 3;
         this.showToast('Cash order placed!', 'success');
-        await this.printPremiumReceipt(orderData);
+        
+        // NEW: Print using Epson thermal printer system
+        await this.printOrderDocuments(orderData);
       },
       
       async processVoucherPayment() {
@@ -1047,7 +1206,16 @@
           total: this.cartTotal,
           subtotal: this.cartTotal,
           paymentMethod: 'voucher',
-          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description }))
+          items: this.cart.map(i => ({ 
+            name: i.name, 
+            quantity: i.quantity, 
+            price: i.price, 
+            type: i.itemType,
+            description: i.description,
+            alcohol: i.alcohol || false,
+            event_id: i.event_id,
+            ticket_type_id: i.ticket_type_id
+          }))
         };
         
         const { error } = await supabase.from('orders').insert({
@@ -1059,13 +1227,15 @@
           status: 'placed',
           source: 'kiosk',
           order_number: orderNumber,
-          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description }))
+          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description, alcohol: i.alcohol }))
         });
         if (error) { this.showToast('Error processing voucher', 'error'); this.voucherProcessing=false; return; }
         this.orderNumber = orderNumber;
         this.checkoutStep = 3;
         this.showToast('Voucher redeemed!', 'success');
-        await this.printPremiumReceipt(orderData);
+        
+        // NEW: Print using Epson thermal printer system
+        await this.printOrderDocuments(orderData);
         this.voucherProcessing = false;
       },
       
