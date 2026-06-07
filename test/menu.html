@@ -53,7 +53,6 @@
       background: var(--white); 
       transition: var(--transition-fast);
       color: var(--ink);
-      placeholder-color: var(--mist);
     }
     .kiosk-search input::placeholder {
       color: var(--mist);
@@ -98,17 +97,58 @@
     .quick-add { background: var(--red); border: none; width: 100%; padding: 14px; border-radius: 60px; color: white; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: transform 0.1s; }
     .quick-add:active { transform: scale(0.97); }
     
+    /* Updated Events Grid Styles */
     .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 28px; }
     .event-card { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; cursor: pointer; transition: transform 0.25s, box-shadow 0.3s; box-shadow: var(--card-shadow); }
     .event-card:hover { transform: translateY(-4px); box-shadow: var(--card-hover); }
-    .event-image { height: 180px; background: linear-gradient(135deg, #1a1a2e, #2a2a3e); position: relative; overflow: hidden; }
-    .event-image img { width: 100%; height: 100%; object-fit: cover; }
-    .event-date-badge { position: absolute; top: 16px; left: 16px; background: var(--red); color: white; padding: 8px 16px; border-radius: 40px; font-weight: 700; font-size: 0.8rem; }
+    .event-image-container { 
+      width: 100%; 
+      height: 180px; 
+      overflow: hidden; 
+      position: relative; 
+      background: linear-gradient(135deg, #1a1a2e, #2a2a3e);
+      border-radius: 12px 12px 0 0;
+    }
+    .event-banner { 
+      width: 100%; 
+      height: 180px; 
+      object-fit: cover; 
+      display: block;
+      border-radius: 12px 12px 0 0;
+    }
+    .event-date-badge { 
+      position: absolute; 
+      top: 16px; 
+      left: 16px; 
+      background: var(--red); 
+      color: white; 
+      padding: 8px 16px; 
+      border-radius: 40px; 
+      font-weight: 700; 
+      font-size: 0.8rem;
+      z-index: 2;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
     .event-info { padding: 20px; }
-    .event-name { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
-    .event-location { color: var(--slate); font-size: 0.85rem; margin-bottom: 12px; }
+    .event-name { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; color: var(--ink); }
+    .event-location { color: var(--slate); font-size: 0.85rem; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .event-datetime { color: var(--slate); font-size: 0.85rem; margin-bottom: 16px; display: flex; align-items: center; gap: 6px; }
     .price-from { font-size: 0.8rem; color: var(--mist); }
     .price-amount { font-size: 1.3rem; font-weight: 800; color: var(--red); }
+    .buy-ticket-btn { 
+      background: var(--red); 
+      border: none; 
+      padding: 10px 20px; 
+      border-radius: 60px; 
+      color: white; 
+      font-weight: 700; 
+      font-size: 0.9rem; 
+      cursor: pointer; 
+      transition: transform 0.1s;
+      margin-top: 16px;
+      width: 100%;
+    }
+    .buy-ticket-btn:active { transform: scale(0.97); }
     
     .floating-cart { position: fixed; bottom: 32px; right: 32px; z-index: 200; background: var(--red); border-radius: 80px; padding: 16px 28px; display: flex; align-items: center; gap: 18px; box-shadow: 0 12px 28px rgba(227,6,19,0.4); cursor: pointer; color: white; transition: transform 0.1s; }
     .floating-cart:active { transform: scale(0.96); }
@@ -165,6 +205,7 @@
       .hero-content h2 { font-size: 1.5rem; }
       .hero-badge { font-size: 1rem; padding: 10px 24px; }
       .hero-container { margin: 16px; }
+      .events-grid { grid-template-columns: 1fr; gap: 20px; }
     }
   </style>
 </head>
@@ -198,14 +239,41 @@
     </div>
 
     <div class="main-content">
-      <!-- Events Section -->
+      <!-- Events Section with Updated Banner Logic -->
       <div v-if="activeCategory === 'tickets'">
         <div v-if="loadingEvents" style="text-align:center; padding:60px"><i class="fas fa-spinner fa-pulse fa-2x"></i><p>Loading events...</p></div>
-        <div v-else-if="eventsList.length === 0" style="text-align:center; padding:60px"><i class="fas fa-calendar-alt fa-3x"></i><h3>No events available</h3></div>
+        <div v-else-if="eventsList.length === 0" style="text-align:center; padding:60px"><i class="fas fa-calendar-alt fa-3x"></i><h3>No events available</h3><p style="margin-top: 12px; color: var(--slate);">Check back soon for upcoming events!</p></div>
         <div class="events-grid" v-else>
           <div v-for="event in eventsList" :key="event.id" class="event-card" @click="openEventModal(event)">
-            <div class="event-image"><img :src="event.image_url || 'https://placehold.co/600x400/1a1a2e/white?text=Rands+Event'"><div class="event-date-badge"><i class="far fa-calendar-alt"></i> {{ formatEventDate(event.start_time) }}</div></div>
-            <div class="event-info"><div class="event-name">{{ event.name }}</div><div class="event-location"><i class="fas fa-map-marker-alt"></i> {{ event.location || 'Rands Venue' }}</div><div style="display:flex; justify-content:space-between; margin-top:16px"><span class="price-from">From</span><span class="price-amount">R {{ formatPrice(event.min_price || 0) }}</span></div></div>
+            <div class="event-image-container">
+              <img 
+                :src="getEventBannerImage(event)" 
+                alt="Event Banner" 
+                class="event-banner"
+                @error="handleEventImageError(event)"
+              >
+              <div class="event-date-badge">
+                <i class="far fa-calendar-alt"></i> {{ formatEventDate(event.start_time) }}
+              </div>
+            </div>
+            <div class="event-info">
+              <div class="event-name">{{ event.name }}</div>
+              <div class="event-location">
+                <i class="fas fa-map-marker-alt"></i> {{ event.location || 'Rands Venue' }}
+              </div>
+              <div class="event-datetime" v-if="event.start_time">
+                <i class="far fa-clock"></i> {{ formatEventTime(event.start_time) }}
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items: center; margin-top: 16px;">
+                <div>
+                  <span class="price-from">From</span>
+                  <span class="price-amount">R {{ formatPrice(event.min_price || 0) }}</span>
+                </div>
+                <button class="buy-ticket-btn" @click.stop="openEventModal(event)">
+                  <i class="fas fa-ticket-alt"></i> Buy Ticket
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -213,7 +281,7 @@
       <!-- Products Section -->
       <div v-else>
         <div v-if="loadingProducts" style="text-align:center; padding:60px"><i class="fas fa-spinner fa-pulse fa-2x"></i><p>Loading menu...</p></div>
-        <div v-else-if="filteredProducts.length === 0" style="text-align:center; padding:60px"><i class="fas fa-search fa-2x"></i><h3>No items found</h3></div>
+        <div v-else-if="filteredProducts.length === 0" style="text-align:center; padding:60px"><i class="fas fa-search fa-2x"></i><h3>No items found</h3><p style="margin-top: 12px; color: var(--slate);">Try adjusting your search or category filter.</p></div>
         <div class="products-grid" v-else>
           <div v-for="product in filteredProducts" :key="product.id" class="product-card" @click="openProductModal(product)">
             <div class="product-img"><img :src="product.image || 'https://picsum.photos/seed/drink/300/200'"><span v-if="product.alcohol" class="alcohol-tag"><i class="fas fa-wine-bottle"></i> Alcohol</span></div>
@@ -249,7 +317,28 @@
 
   <!-- Event Ticket Modal -->
   <div class="modal-mask" :class="{ open: eventModalOpen }" @click.self="closeEventModal">
-    <div class="modal-content"><div class="modal-body"><h2 style="margin-bottom:20px">{{ selectedEvent?.name }}</h2><div v-if="loadingTicketTypes" style="text-align:center; padding:20px"><i class="fas fa-spinner fa-pulse"></i> Loading tickets...</div><div v-else><div v-for="ticket in ticketTypes" :key="ticket.id" style="display:flex; justify-content:space-between; align-items:center; padding:16px; border-bottom:1px solid #eee"><div><div style="font-weight:700">{{ ticket.name }}</div><div style="color:var(--red); font-weight:800">R {{ formatPrice(ticket.price) }}</div></div><button class="quick-add" style="width:auto; padding:10px 20px" @click="addTicketToCart(ticket)">Add</button></div></div><button class="quick-add" style="background:#eee; color:var(--ink); margin-top:20px" @click="closeEventModal">Close</button></div></div>
+    <div class="modal-content"><div class="modal-body">
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+        <img :src="getEventBannerImage(selectedEvent)" style="width: 80px; height: 80px; object-fit: cover; border-radius: 16px;">
+        <div>
+          <h2 style="margin-bottom: 4px;">{{ selectedEvent?.name }}</h2>
+          <div style="color: var(--slate); font-size: 0.85rem;">
+            <i class="fas fa-map-marker-alt"></i> {{ selectedEvent?.location || 'Rands Venue' }}
+          </div>
+        </div>
+      </div>
+      <div v-if="loadingTicketTypes" style="text-align:center; padding:20px"><i class="fas fa-spinner fa-pulse"></i> Loading tickets...</div>
+      <div v-else>
+        <div v-for="ticket in ticketTypes" :key="ticket.id" style="display:flex; justify-content:space-between; align-items:center; padding:16px; border-bottom:1px solid #eee">
+          <div>
+            <div style="font-weight:700">{{ ticket.name }}</div>
+            <div style="color:var(--red); font-weight:800">R {{ formatPrice(ticket.price) }}</div>
+          </div>
+          <button class="quick-add" style="width:auto; padding:10px 20px" @click="addTicketToCart(ticket)">Add</button>
+        </div>
+      </div>
+      <button class="quick-add" style="background:#eee; color:var(--ink); margin-top:20px" @click="closeEventModal">Close</button>
+    </div></div>
   </div>
 
   <!-- Checkout Modal - NO LOGIN REQUIRED -->
@@ -370,8 +459,42 @@
     },
     methods: {
       formatPrice(n) { return Number(n).toFixed(2); },
-      formatEventDate(dateStr) { if(!dateStr) return 'TBD'; let d = new Date(dateStr); return d.toLocaleDateString('en-ZA', { month:'short', day:'numeric' }); },
+      formatEventDate(dateStr) { 
+        if(!dateStr) return 'TBD'; 
+        let d = new Date(dateStr); 
+        return d.toLocaleDateString('en-ZA', { month:'short', day:'numeric', year:'numeric' }); 
+      },
+      formatEventTime(dateStr) {
+        if(!dateStr) return '';
+        let d = new Date(dateStr);
+        return d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+      },
       showToast(msg, type='success') { this.toastMessage=msg; this.toastType=type; this.toastIcon=type==='error'?'fa-exclamation-triangle':'fa-check-circle'; this.toastVisible=true; setTimeout(()=>this.toastVisible=false,3000); },
+      
+      // Event Banner Helper Method - Priority: event.banner_url -> event.image_url -> event.banner -> event.image -> default local banner
+      getEventBannerImage(event) {
+        if (!event) return '../assets/images/event-banner.png';
+        
+        // Priority order for event banner images
+        const bannerImage = 
+          event.banner_url ||
+          event.image_url ||
+          event.banner ||
+          event.image ||
+          '../assets/images/event-banner.png';
+        
+        return bannerImage;
+      },
+      
+      handleEventImageError(event) {
+        // Fallback to default local banner if image fails to load
+        if (event.banner_url !== '../assets/images/event-banner.png' ||
+            event.image_url !== '../assets/images/event-banner.png') {
+          // Update the event object to use default banner
+          event.banner_url = '../assets/images/event-banner.png';
+          event.image_url = '../assets/images/event-banner.png';
+        }
+      },
       
       async loadProducts() {
         this.loadingProducts=true;
@@ -414,7 +537,7 @@
       addTicketToCart(ticket){
         let cartItem = {
           id: ticket.id, name: `${this.selectedEvent.name} - ${ticket.name}`,
-          price: ticket.price, quantity: 1, image: this.selectedEvent.image_url,
+          price: ticket.price, quantity: 1, image: this.getEventBannerImage(this.selectedEvent),
           event_id: this.selectedEvent.id, ticket_type_id: ticket.id, itemType: 'ticket'
         };
         let existing = this.cart.find(i => i.id === ticket.id && i.event_id === this.selectedEvent.id);
