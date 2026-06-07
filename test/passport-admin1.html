@@ -159,7 +159,7 @@
     import { supabase } from '../config/supabase.js';
     
     let accounts = [];
-    let selectedAccountId = null;
+    let selectedWalletId = null; // CHANGED: renamed from selectedAccountId for clarity
     let refundRequests = [];
     let modalResolve = null;
 
@@ -193,37 +193,143 @@
 
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
-    // ========== LOAD WALLETS (Fixed - no status column on wallets) ==========
+    // ========== FIXED: REUSABLE TOP-UP FUNCTION ==========
+    async function updateWalletBalanceAndLog(walletId, amountDelta, description) {
+        // Validate walletId
+        if (!walletId) {
+            console.error('❌ updateWalletBalanceAndLog: No walletId provided');
+            showToast('No wallet selected', true);
+            return false;
+        }
+        
+        // Validate amount > 0
+        if (isNaN(amountDelta) || amountDelta <= 0) {
+            console.error('❌ updateWalletBalanceAndLog: Invalid amount', amountDelta);
+            showToast('Amount must be greater than 0', true);
+            return false;
+        }
+        
+        console.log('💰 Starting top-up for wallet:', walletId);
+        console.log('💰 Amount:', amountDelta);
+        
+        try {
+            // Read current wallet balance
+            const { data: walletData, error: fetchError } = await supabase
+                .from('wallets')
+                .select('balance')
+                .eq('id', walletId)
+                .single();
+            
+            if (fetchError) {
+                console.error('❌ Failed to fetch current balance:', fetchError);
+                showToast('Failed to read current balance: ' + fetchError.message, true);
+                return false;
+            }
+            
+            const currentBalance = parseFloat(walletData.balance) || 0;
+            const newBalance = currentBalance + amountDelta;
+            
+            console.log('💰 Current balance:', currentBalance);
+            console.log('💰 New balance:', newBalance);
+            
+            // Update balance
+            const { error: updateError } = await supabase
+                .from('wallets')
+                .update({ 
+                    balance: newBalance,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', walletId);
+            
+            if (updateError) {
+                console.error('❌ Failed to update balance:', updateError);
+                showToast('Failed to update balance: ' + updateError.message, true);
+                return false;
+            }
+            
+            console.log('✅ Balance updated successfully');
+            
+            // Create transaction log
+            const { error: transactionError } = await supabase
+                .from('wallet_transactions')
+                .insert({
+                    wallet_id: walletId,
+                    amount: amountDelta,
+                    type: 'topup',
+                    description: description,
+                    performed_by: 'admin',
+                    status: 'completed',
+                    direction: 'credit',
+                    created_at: new Date().toISOString()
+                });
+            
+            if (transactionError) {
+                console.error('⚠️ Balance updated but transaction log failed:', transactionError);
+                // Don't return false here - balance was updated successfully
+                showToast('Balance updated but transaction not logged', true);
+            } else {
+                console.log('✅ Transaction logged successfully');
+            }
+            
+            return true;
+            
+        } catch (err) {
+            console.error('❌ Unexpected error in updateWalletBalanceAndLog:', err);
+            showToast('Top up failed: ' + err.message, true);
+            return false;
+        }
+    }
+
+    // ========== FIXED: REFRESH DATA FUNCTION ==========
+    async function refreshData() {
+        console.log('🔄 Refreshing dashboard data...');
+        showToast('Refreshing...');
+        await loadWallets();
+        if (accounts.length && !selectedWalletId) {
+            await selectAccount(accounts[0].id);
+        } else if (selectedWalletId && accounts.find(a => a.id === selectedWalletId)) {
+            await selectAccount(selectedWalletId);
+        } else if (accounts.length) {
+            await selectAccount(accounts[0].id);
+        } else {
+            selectedWalletId = null;
+            document.getElementById('selectedAccountPanel').style.display = 'none';
+        }
+        showToast('Dashboard refreshed');
+    }
+
+    // ========== LOAD WALLETS ==========
     async function loadWallets() {
         try {
-            // Join wallets with profiles to get user info and status from profiles
+            console.log('📡 Loading wallets from Supabase...');
+            
             const { data, error } = await supabase
                 .from('wallets')
                 .select(`
                     id,
                     balance,
                     created_at,
+                    updated_at,
                     user_id,
                     profiles:user_id (id, name, email, phone, status)
                 `);
             
             if (error) {
-                console.error('Supabase error:', error);
+                console.error('❌ Supabase error loading wallets:', error);
                 showToast('Error loading wallets: ' + error.message, true);
                 return;
             }
             
             if (!data || data.length === 0) {
-                console.log('No wallets found');
+                console.log('⚠️ No wallets found');
                 accounts = [];
                 renderAccountList();
                 updateStats();
                 return;
             }
             
-            console.log(`Loaded ${data.length} wallets`);
+            console.log(`✅ Loaded ${data.length} wallets`);
             
-            // Map data - status comes from profiles, not wallets
             accounts = data.map(w => ({
                 id: w.id,
                 wallet_id: w.id,
@@ -240,108 +346,44 @@
             updateStats();
             
         } catch (err) {
-            console.error('loadWallets error:', err);
+            console.error('❌ loadWallets error:', err);
             showToast('Failed to load wallets: ' + err.message, true);
             accounts = [];
             renderAccountList();
         }
     }
 
-    // ========== FETCH TRANSACTIONS ==========
+    // ========== FETCH TRANSACTIONS (FIXED) ==========
     async function fetchTransactions(walletId) {
         try {
+            console.log(`📡 Fetching transactions for wallet: ${walletId}`);
+            
             const { data, error } = await supabase
                 .from('wallet_transactions')
                 .select('*')
                 .eq('wallet_id', walletId)
                 .order('created_at', { ascending: false })
-                .limit(15);
+                .limit(20); // Changed to 20 transactions
             
-            if (error) throw error;
+            if (error) {
+                console.error('❌ Error fetching transactions:', error);
+                return [];
+            }
+            
+            console.log(`✅ Loaded ${data?.length || 0} transactions`);
             
             return data.map(tx => ({
+                id: tx.id,
                 desc: tx.description || (tx.type === 'topup' ? 'Top Up' : 'Transaction'),
                 amount: parseFloat(tx.amount),
                 date: tx.created_at ? new Date(tx.created_at).toLocaleDateString() : '',
                 time: tx.created_at ? new Date(tx.created_at).toLocaleTimeString() : '',
-                type: tx.type
+                type: tx.type,
+                status: tx.status
             }));
         } catch (err) {
-            console.error('fetchTransactions error:', err);
+            console.error('❌ fetchTransactions error:', err);
             return [];
-        }
-    }
-
-    // ========== ADD TRANSACTION ==========
-    async function addTransaction(walletId, amount, description) {
-        try {
-            const { error } = await supabase
-                .from('wallet_transactions')
-                .insert({
-                    wallet_id: walletId,
-                    amount: amount,
-                    type: amount > 0 ? 'topup' : 'adjustment',
-                    description: description,
-                    status: 'completed',
-                    direction: 'credit',
-                    created_at: new Date().toISOString()
-                });
-            if (error) throw error;
-        } catch (err) {
-            console.error('addTransaction error:', err);
-        }
-    }
-
-    // ========== UPDATE BALANCE ==========
-    async function updateBalance(walletId, amountDelta, description) {
-        if (!walletId || amountDelta <= 0) return false;
-        try {
-            const { data: walletData, error: fetchErr } = await supabase
-                .from('wallets')
-                .select('balance')
-                .eq('id', walletId)
-                .single();
-            
-            if (fetchErr) throw fetchErr;
-            
-            const newBalance = (parseFloat(walletData.balance) || 0) + amountDelta;
-            
-            const { error: updateErr } = await supabase
-                .from('wallets')
-                .update({ balance: newBalance, updated_at: new Date().toISOString() })
-                .eq('id', walletId);
-            
-            if (updateErr) throw updateErr;
-            
-            await addTransaction(walletId, amountDelta, description);
-            return true;
-            
-        } catch (err) {
-            showToast('Top up failed: ' + err.message, true);
-            return false;
-        }
-    }
-
-    // ========== UPDATE USER STATUS (on profiles table) ==========
-    async function setUserStatus(userId, newStatus) {
-        if (!userId) {
-            showToast('No user ID found for this wallet', true);
-            return false;
-        }
-        
-        try {
-            const supabaseStatus = newStatus === 'Active' ? 'Active' : 'Blocked';
-            const { error } = await supabase
-                .from('profiles')
-                .update({ status: supabaseStatus })
-                .eq('id', userId);
-            
-            if (error) throw error;
-            return true;
-            
-        } catch (err) {
-            showToast('Status update failed: ' + err.message, true);
-            return false;
         }
     }
 
@@ -385,7 +427,7 @@
         }
         
         container.innerHTML = filtered.map(acc => `
-            <div class="item-card ${selectedAccountId === acc.id ? 'selected' : ''}" onclick="selectAccount('${acc.id}')">
+            <div class="item-card ${selectedWalletId === acc.id ? 'selected' : ''}" onclick="selectAccount('${acc.id}')">
                 <div class="item-info">
                     <div class="name">${escapeHtml(acc.name)}</div>
                     <div class="meta">${escapeHtml(acc.email)} • ${escapeHtml(acc.phone || 'no phone')}</div>
@@ -400,7 +442,8 @@
 
     // ========== SELECT ACCOUNT ==========
     window.selectAccount = async function(walletId) {
-        selectedAccountId = walletId;
+        console.log('👤 Selected wallet:', walletId);
+        selectedWalletId = walletId;
         const acc = accounts.find(a => a.id === walletId);
         if (!acc) return;
         
@@ -433,9 +476,31 @@
     };
 
     // ========== BLOCK / UNBLOCK ==========
+    async function setUserStatus(userId, newStatus) {
+        if (!userId) {
+            showToast('No user ID found for this wallet', true);
+            return false;
+        }
+        
+        try {
+            const supabaseStatus = newStatus === 'Active' ? 'Active' : 'Blocked';
+            const { error } = await supabase
+                .from('profiles')
+                .update({ status: supabaseStatus })
+                .eq('id', userId);
+            
+            if (error) throw error;
+            return true;
+            
+        } catch (err) {
+            showToast('Status update failed: ' + err.message, true);
+            return false;
+        }
+    }
+    
     async function blockAccount() {
-        if (!selectedAccountId) { showToast('Select an account first', true); return; }
-        const acc = accounts.find(a => a.id === selectedAccountId);
+        if (!selectedWalletId) { showToast('Select an account first', true); return; }
+        const acc = accounts.find(a => a.id === selectedWalletId);
         if (!acc.user_id) { showToast('Cannot find user ID for this wallet', true); return; }
         if (acc.status === 'Blocked') { showToast('Already blocked', true); return; }
         
@@ -444,15 +509,14 @@
         
         const success = await setUserStatus(acc.user_id, 'Blocked');
         if (success) {
-            await loadWallets();
-            await selectAccount(selectedAccountId);
+            await refreshData();
             showToast(`User ${acc.name} blocked`);
         }
     }
     
     async function unblockAccount() {
-        if (!selectedAccountId) { showToast('Select an account first', true); return; }
-        const acc = accounts.find(a => a.id === selectedAccountId);
+        if (!selectedWalletId) { showToast('Select an account first', true); return; }
+        const acc = accounts.find(a => a.id === selectedWalletId);
         if (!acc.user_id) { showToast('Cannot find user ID for this wallet', true); return; }
         if (acc.status === 'Active') { showToast('Already active', true); return; }
         
@@ -461,30 +525,49 @@
         
         const success = await setUserStatus(acc.user_id, 'Active');
         if (success) {
-            await loadWallets();
-            await selectAccount(selectedAccountId);
+            await refreshData();
             showToast(`User ${acc.name} unblocked`);
         }
     }
 
-    // ========== TOP UP ==========
+    // ========== FIXED: QUICK TOP UP ==========
     async function quickTopUp() {
-        if (!selectedAccountId) { showToast('Select an account first', true); return; }
-        const amount = parseFloat(document.getElementById('quickTopupAmount').value);
-        if (isNaN(amount) || amount <= 0) { showToast('Valid amount required', true); return; }
+        if (!selectedWalletId) { 
+            showToast('Select an account first', true); 
+            return; 
+        }
         
-        const success = await updateBalance(selectedAccountId, amount, `Admin Quick Top Up: +R${amount.toFixed(2)}`);
+        const amount = parseFloat(document.getElementById('quickTopupAmount').value);
+        if (isNaN(amount) || amount <= 0) { 
+            showToast('Valid amount required', true); 
+            return; 
+        }
+        
+        console.log('💸 Quick Top Up - Wallet:', selectedWalletId, 'Amount:', amount);
+        
+        const success = await updateWalletBalanceAndLog(
+            selectedWalletId, 
+            amount, 
+            `Admin Quick Top Up: +R${amount.toFixed(2)}`
+        );
+        
         if (success) {
-            await loadWallets();
-            await selectAccount(selectedAccountId);
-            showToast(`R${amount.toFixed(2)} added`);
+            console.log('✅ Quick Top Up successful, refreshing data...');
+            await refreshData();
+            showToast(`R${amount.toFixed(2)} added successfully`);
+        } else {
+            console.error('❌ Quick Top Up failed');
         }
     }
     
+    // ========== FIXED: MODAL TOP UP ==========
     function openTopUpModal() {
-        if (!selectedAccountId) { showToast('Select an account first', true); return; }
-        const acc = accounts.find(a => a.id === selectedAccountId);
-        document.getElementById('modalAccountId').innerText = acc?.name || selectedAccountId;
+        if (!selectedWalletId) { 
+            showToast('Select an account first', true); 
+            return; 
+        }
+        const acc = accounts.find(a => a.id === selectedWalletId);
+        document.getElementById('modalAccountId').innerText = acc?.name || selectedWalletId;
         document.getElementById('modalTopupAmount').value = '';
         document.getElementById('topUpModal').classList.add('active');
     }
@@ -494,37 +577,37 @@
     }
     
     async function confirmTopUp() {
-        if (!selectedAccountId) { showToast('Select an account', true); closeTopUpModal(); return; }
-        const amount = parseFloat(document.getElementById('modalTopupAmount').value);
-        if (isNaN(amount) || amount <= 0) { showToast('Valid amount required', true); return; }
+        if (!selectedWalletId) { 
+            showToast('Select an account', true); 
+            closeTopUpModal(); 
+            return; 
+        }
         
-        const success = await updateBalance(selectedAccountId, amount, `Admin Top Up: +R${amount.toFixed(2)}`);
+        const amount = parseFloat(document.getElementById('modalTopupAmount').value);
+        if (isNaN(amount) || amount <= 0) { 
+            showToast('Valid amount required', true); 
+            return; 
+        }
+        
+        console.log('💸 Modal Top Up - Wallet:', selectedWalletId, 'Amount:', amount);
+        
+        const success = await updateWalletBalanceAndLog(
+            selectedWalletId, 
+            amount, 
+            `Admin Top Up: +R${amount.toFixed(2)}`
+        );
+        
         if (success) {
-            await loadWallets();
-            await selectAccount(selectedAccountId);
-            showToast(`R${amount.toFixed(2)} added`);
+            console.log('✅ Modal Top Up successful, refreshing data...');
+            await refreshData();
+            showToast(`R${amount.toFixed(2)} added successfully`);
             closeTopUpModal();
-        }
-    }
-    
-    // ========== REFRESH DATA ==========
-    async function refreshData() {
-        showToast('Refreshing...');
-        await loadWallets();
-        if (accounts.length && !selectedAccountId) {
-            await selectAccount(accounts[0].id);
-        } else if (selectedAccountId && accounts.find(a => a.id === selectedAccountId)) {
-            await selectAccount(selectedAccountId);
-        } else if (accounts.length) {
-            await selectAccount(accounts[0].id);
         } else {
-            selectedAccountId = null;
-            document.getElementById('selectedAccountPanel').style.display = 'none';
+            console.error('❌ Modal Top Up failed');
         }
-        showToast('Dashboard refreshed');
     }
     
-    // ========== REFUND UI (Demo) ==========
+    // ========== REFUND UI ==========
     function renderRefundRequests() {
         const container = document.getElementById('refundRequestsList');
         if (!refundRequests.length) { 
@@ -566,8 +649,12 @@
     };
     
     // ========== UI HELPERS ==========
-    function setQuickAmount(amt) { document.getElementById('quickTopupAmount').value = amt; }
-    function setModalAmount(amt) { document.getElementById('modalTopupAmount').value = amt; }
+    function setQuickAmount(amt) { 
+        document.getElementById('quickTopupAmount').value = amt; 
+    }
+    function setModalAmount(amt) { 
+        document.getElementById('modalTopupAmount').value = amt; 
+    }
     
     // ========== TAB SWITCHING ==========
     function switchTab(tabId) {
@@ -577,7 +664,7 @@
         document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
         
         if (tabId === 'accounts') {
-            document.getElementById('selectedAccountPanel').style.display = selectedAccountId ? 'block' : 'none';
+            document.getElementById('selectedAccountPanel').style.display = selectedWalletId ? 'block' : 'none';
         } else {
             document.getElementById('selectedAccountPanel').style.display = 'none';
         }
@@ -607,7 +694,7 @@
     
     // ========== INIT ==========
     async function init() {
-        console.log('Initializing Passport Admin...');
+        console.log('🚀 Initializing Passport Admin...');
         await loadWallets();
         refundRequests = [
             { id: 1, amount: 150, reason: 'Wrong ticket purchase', status: 'pending', userId: '123' },
