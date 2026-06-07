@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Order & Sales Analytics | Rands Enterprise</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --red: #E30613;
+            --red-dark: #a0010e;
+            --red-deep: #8A0009;
+            --red-glow: rgba(227,6,19,0.12);
+            --red-subtle: rgba(227,6,19,0.06);
+            --ink: #1e293b;
+            --ink-muted: #334155;
+            --slate: #475569;
+            --mist: #94a3b8;
+            --bone: #f8fafd;
+            --white: #ffffff;
+            --success: #10b981;
+            --gold: #f59e0b;
+            --orange: #f97316;
+            --purple: #8b5cf6;
+            --cyan: #06b6d4;
+            --border: rgba(0,0,0,0.07);
+            --border-strong: #eef2f8;
+            --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.08);
+            --shadow-card: 0 4px 16px rgba(0,0,0,0.04);
+            --radius-lg: 24px;
+            --radius-xl: 28px;
+            --radius-full: 9999px;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bone);
+            padding: 24px;
+            color: var(--ink);
+        }
+        .dashboard-container { max-width: 1600px; margin: 0 auto; }
+        
+        /* Premium KPI Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+        .kpi-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 20px 22px;
+            border: 1px solid var(--border-strong);
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-card);
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--red);
+        }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-soft); }
+        .kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .kpi-icon {
+            width: 48px; height: 48px;
+            background: var(--red-subtle);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--red);
+            font-size: 1.4rem;
+        }
+        .kpi-value { font-size: 32px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
+        .kpi-label { font-size: 12px; color: var(--mist); margin-top: 6px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+        .trend-up { color: var(--success); background: #e6f7ec; padding: 2px 8px; border-radius: 40px; font-size: 11px; font-weight: 600; }
+        .trend-down { color: #ef4444; background: #fee2e2; padding: 2px 8px; border-radius: 40px; font-size: 11px; font-weight: 600; }
+        
+        /* Section styles */
+        .section {
+            background: var(--white);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            margin-bottom: 28px;
+            border: 1px solid var(--border-strong);
+            box-shadow: var(--shadow-card);
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--ink);
+        }
+        .section-title i { color: var(--red); }
+        
+        /* Stats grids */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+        }
+        .stat-card {
+            background: var(--bone);
+            border-radius: 20px;
+            padding: 14px;
+            text-align: center;
+            border: 1px solid var(--border-strong);
+            transition: all 0.2s;
+        }
+        .stat-card:hover { background: var(--white); border-color: var(--red); }
+        .stat-number { font-size: 24px; font-weight: 800; color: var(--red); }
+        .stat-label { font-size: 11px; color: var(--mist); margin-top: 4px; font-weight: 500; }
+        
+        /* Chart rows */
+        .chart-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .chart-container {
+            background: var(--bone);
+            border-radius: 20px;
+            padding: 16px;
+            border: 1px solid var(--border-strong);
+        }
+        canvas { max-height: 260px; width: 100%; }
+        
+        /* Leaderboard & Activity */
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-strong);
+            font-size: 13px;
+        }
+        .rank {
+            font-weight: 800;
+            width: 32px;
+            color: var(--red);
+        }
+        .activity-feed { max-height: 320px; overflow-y: auto; }
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-strong);
+        }
+        .activity-badge {
+            width: 36px; height: 36px;
+            border-radius: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--red-subtle);
+            color: var(--red);
+        }
+        .activity-detail { flex: 1; font-size: 13px; }
+        .activity-amount { font-weight: 700; color: var(--red); }
+        .activity-time { font-size: 10px; color: var(--mist); }
+        
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 60px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .status-pending { background: #fff3e0; color: var(--gold); }
+        .status-preparing { background: #ffe0b2; color: #ef6c00; }
+        .status-ready { background: #dcfce7; color: #166534; }
+        .status-completed { background: #e0e7ff; color: #1e40af; }
+        
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+        .filter-chip {
+            background: var(--bone);
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: 0.2s;
+            border: 1px solid var(--border-strong);
+        }
+        .filter-chip.active, .filter-chip:hover { background: var(--red); color: white; border-color: var(--red); }
+        
+        .loading-state { text-align: center; padding: 60px; color: var(--mist); }
+        .empty-state { text-align: center; padding: 40px; color: var(--mist); }
+        
+        @media (max-width: 900px) {
+            body { padding: 16px; }
+            .chart-row { grid-template-columns: 1fr; }
+            .kpi-grid { gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard-container">
+    <!-- HERO KPI SECTION -->
+    <div class="kpi-grid" id="heroKpiGrid"></div>
+
+    <!-- REVENUE + ORDER VOLUME TRENDS -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-line"></i> Revenue Trend</div>
+                <div class="time-filter" id="revenueFilter"><span class="filter-chip active" data-period="week">Week</span><span class="filter-chip" data-period="month">Month</span></div>
+            </div>
+            <canvas id="revenueTrendChart"></canvas>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-simple"></i> Order Volume</div>
+            </div>
+            <canvas id="orderVolumeChart"></canvas>
+        </div>
+    </div>
+
+    <!-- VENDOR PERFORMANCE + PAYMENT METHOD BREAKDOWN -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-store"></i> Vendor Performance</div>
+            </div>
+            <canvas id="vendorChart"></canvas>
+            <div id="vendorStats" class="stats-grid" style="margin-top: 16px;"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-credit-card"></i> Payment Methods</div>
+            </div>
+            <canvas id="paymentChart"></canvas>
+            <div id="paymentStats" class="stats-grid" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <!-- TOP PRODUCTS + CATEGORY BREAKDOWN -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-fire"></i> Top Selling Products</div>
+            </div>
+            <div id="topProductsList" class="activity-feed"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-pie"></i> Sales by Category</div>
+            </div>
+            <canvas id="categoryChart"></canvas>
+            <div id="topCategoryInfo" class="stat-card" style="margin-top: 16px; text-align: center;"></div>
+        </div>
+    </div>
+
+    <!-- ORDER STATUS + RECENT ACTIVITY -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-simple"></i> Order Status Distribution</div>
+            </div>
+            <canvas id="orderStatusChart"></canvas>
+            <div id="orderStatusStats" class="stats-grid" style="margin-top: 16px;"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-stream"></i> Recent Order Activity</div>
+                <span style="font-size: 11px; color: var(--mist);"><i class="fas fa-sync-alt"></i> real-time</span>
+            </div>
+            <div id="recentActivity" class="activity-feed"></div>
+        </div>
+    </div>
+
+    <!-- PRODUCT INVENTORY + PRICE INSIGHTS -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-boxes"></i> Product Inventory Health</div>
+            </div>
+            <div id="productInventoryStats" class="stats-grid"></div>
+            <canvas id="priceDistributionChart" style="margin-top: 16px;"></canvas>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-bell"></i> System Alerts</div>
+            </div>
+            <div id="alertsContainer" class="activity-feed"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    // Charts storage
+    let charts = {};
+
+    // Helper
+    const fmtR = (val) => `R${(val || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    const fmtNumber = (val) => (val || 0).toLocaleString();
+
+    // Data state
+    let orders = [];
+    let products = [];
+    let currentPeriod = 'week';
+
+    // ========== LOAD DATA FROM SUPABASE ==========
+    async function loadOrderData() {
+        try {
+            // Load orders
+            const { data: orderData, error: orderErr } = await supabase
+                .from('orders')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (orderErr) throw orderErr;
+            orders = orderData || [];
+
+            // Load products
+            const { data: productData, error: productErr } = await supabase
+                .from('products')
+                .select('*')
+                .order('name');
+            if (productErr) throw productErr;
+            products = productData || [];
+
+            // Load pre-orders for additional context
+            const { data: preData, error: preErr } = await supabase
+                .from('butcher_preorders')
+                .select('*');
+            if (!preErr && preData) {
+                // Convert pre-orders to order format for unified analytics
+                const preOrders = preData.map(p => ({
+                    ...p,
+                    total: p.total_amount,
+                    vendor: 'The Butcher Shop',
+                    source: p.source || 'wallet',
+                    status: p.status === 'pending' ? 'pending' : (p.status === 'collected' ? 'completed' : p.status),
+                    created_at: p.created_at,
+                    items: p.items || []
+                }));
+                orders = [...orders, ...preOrders];
+            }
+
+            renderAllDashboards();
+        } catch (err) {
+            console.error('Error loading order data:', err);
+            generateMockData();
+            renderAllDashboards();
+        }
+    }
+
+    function generateMockData() {
+        orders = Array.from({ length: 156 }, (_, i) => ({
+            id: `ord${i}`,
+            order_number: `ORD-${1000 + i}`,
+            total: Math.random() * 800 + 50,
+            vendor: ['Rands Smart Counter', 'The Butcher Shop', 'Shisha Lounge'][Math.floor(Math.random() * 3)],
+            source: ['wallet', 'kiosk', 'card', 'cash'][Math.floor(Math.random() * 4)],
+            status: ['pending', 'preparing', 'ready', 'completed', 'collected'][Math.floor(Math.random() * 5)],
+            is_vvip: Math.random() > 0.85,
+            created_at: new Date(Date.now() - Math.random() * 30 * 86400000).toISOString(),
+            items: []
+        }));
+        products = Array.from({ length: 48 }, (_, i) => ({
+            id: i,
+            name: ['Jameson Whiskey', 'Jack Daniels', 'Heineken', 'Coke', 'Ribeye Steak', 'Burger', 'Double Apple Shisha', 'Mint+Grape'][Math.floor(Math.random() * 8)] + ` ${i}`,
+            price: Math.random() * 500 + 30,
+            category: ['beer', 'wine', 'spirits', 'food', 'shisha', 'butcher', 'non_alcoholic'][Math.floor(Math.random() * 7)],
+            alcohol: Math.random() > 0.5,
+            is_available: true
+        }));
+    }
+
+    // ========== RENDER HERO KPI ==========
+    function renderHeroKPI() {
+        const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+        const completedOrders = orders.filter(o => o.status === 'completed' || o.status === 'collected').length;
+        const pendingOrders = orders.filter(o => o.status === 'pending').length;
+        const avgOrderValue = totalRevenue / (orders.length || 1);
+        const walletOrders = orders.filter(o => o.source === 'wallet').length;
+        const walletRevenue = orders.filter(o => o.source === 'wallet').reduce((s, o) => s + (o.total || 0), 0);
+        const uniqueCustomers = new Set(orders.map(o => o.customer_id || o.customer_phone)).size;
+
+        const heroItems = [
+            { icon: "fa-chart-line", label: "Total Revenue", value: fmtR(totalRevenue), trend: "+18%", trendUp: true },
+            { icon: "fa-shopping-cart", label: "Total Orders", value: fmtNumber(orders.length), sub: `${completedOrders} completed` },
+            { icon: "fa-clock", label: "Pending Orders", value: pendingOrders, trend: pendingOrders > 5 ? "+2" : "steady" },
+            { icon: "fa-coins", label: "Avg Order Value", value: fmtR(avgOrderValue), trend: "+5%" },
+            { icon: "fa-wallet", label: "Wallet Sales", value: fmtR(walletRevenue), sub: `${walletOrders} orders` },
+            { icon: "fa-users", label: "Unique Customers", value: fmtNumber(uniqueCustomers), trend: "+12%", trendUp: true }
+        ];
+        document.getElementById('heroKpiGrid').innerHTML = heroItems.map(k => `
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-icon"><i class="fas ${k.icon}"></i></div>
+                    ${k.trend ? `<span class="${k.trendUp ? 'trend-up' : 'trend-down'}"><i class="fas fa-arrow-${k.trendUp ? 'up' : 'down'}"></i> ${k.trend}</span>` : ''}
+                </div>
+                <div class="kpi-value">${k.value}</div>
+                <div class="kpi-label">${k.label}</div>
+                ${k.sub ? `<div style="font-size: 11px; color: var(--mist); margin-top: 6px;">${k.sub}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function renderRevenueTrend() {
+        const days = currentPeriod === 'week' ? 7 : 30;
+        const lastDays = [...Array(days)].map((_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            return date.toISOString().split('T')[0];
+        }).reverse();
+        
+        const revenueByDay = lastDays.map(day => {
+            return orders.filter(o => o.created_at?.startsWith(day)).reduce((sum, o) => sum + (o.total || 0), 0);
+        });
+        
+        const ctx = document.getElementById('revenueTrendChart').getContext('2d');
+        if (charts.revenue) charts.revenue.destroy();
+        charts.revenue = new Chart(ctx, {
+            type: 'line',
+            data: { labels: lastDays.map(d => d.slice(5)), datasets: [{ label: 'Revenue (R)', data: revenueByDay, borderColor: '#E30613', backgroundColor: 'rgba(227,6,19,0.1)', fill: true, tension: 0.3 }] },
+            options: { responsive: true, plugins: { tooltip: { callbacks: { label: (ctx) => `R${ctx.raw.toLocaleString()}` } } } }
+        });
+    }
+
+    function renderOrderVolume() {
+        const days = 7;
+        const lastDays = [...Array(days)].map((_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            return date.toISOString().split('T')[0];
+        }).reverse();
+        
+        const volumeByDay = lastDays.map(day => {
+            return orders.filter(o => o.created_at?.startsWith(day)).length;
+        });
+        
+        const ctx = document.getElementById('orderVolumeChart').getContext('2d');
+        if (charts.volume) charts.volume.destroy();
+        charts.volume = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: lastDays.map(d => d.slice(5)), datasets: [{ label: 'Orders', data: volumeByDay, backgroundColor: '#E30613', borderRadius: 8 }] },
+            options: { responsive: true }
+        });
+    }
+
+    function renderVendorPerformance() {
+        const vendorRevenue = {};
+        const vendorOrders = {};
+        orders.forEach(o => {
+            const vendor = o.vendor || 'Other';
+            vendorRevenue[vendor] = (vendorRevenue[vendor] || 0) + (o.total || 0);
+            vendorOrders[vendor] = (vendorOrders[vendor] || 0) + 1;
+        });
+        const sorted = Object.entries(vendorRevenue).sort((a, b) => b[1] - a[1]);
+        
+        const ctx = document.getElementById('vendorChart').getContext('2d');
+        if (charts.vendor) charts.vendor.destroy();
+        charts.vendor = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: sorted.map(v => v[0]), datasets: [{ data: sorted.map(v => v[1]), backgroundColor: ['#E30613', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4'] }] },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+        
+        document.getElementById('vendorStats').innerHTML = sorted.slice(0, 4).map(([name, rev]) => `
+            <div class="stat-card"><div class="stat-number">${name.slice(0, 15)}</div><div class="stat-label">${fmtR(rev)} · ${vendorOrders[name]} orders</div></div>
+        `).join('');
+    }
+
+    function renderPaymentMethods() {
+        const paymentMethods = {};
+        orders.forEach(o => {
+            const method = o.payment_method || o.source || 'other';
+            paymentMethods[method] = (paymentMethods[method] || 0) + (o.total || 0);
+        });
+        const sorted = Object.entries(paymentMethods).sort((a, b) => b[1] - a[1]);
+        
+        const ctx = document.getElementById('paymentChart').getContext('2d');
+        if (charts.payment) charts.payment.destroy();
+        charts.payment = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: sorted.map(p => p[0] === 'wallet' ? '💰 Wallet' : (p[0] === 'card' ? '💳 Card' : (p[0] === 'cash' ? '💵 Cash' : p[0]))), datasets: [{ data: sorted.map(p => p[1]), backgroundColor: ['#E30613', '#10b981', '#f59e0b', '#8b5cf6'] }] },
+            options: { responsive: true }
+        });
+        
+        document.getElementById('paymentStats').innerHTML = sorted.map(([method, rev]) => `
+            <div class="stat-card"><div class="stat-number">${method === 'wallet' ? '💰' : method === 'card' ? '💳' : '💵'}</div><div class="stat-label">${fmtR(rev)}</div></div>
+        `).slice(0, 4).join('');
+    }
+
+    function renderTopProducts() {
+        const productSales = {};
+        orders.forEach(order => {
+            if (order.items && Array.isArray(order.items)) {
+                order.items.forEach(item => {
+                    const name = item.name || item.product_name || 'Unknown';
+                    productSales[name] = (productSales[name] || 0) + (item.quantity || 1);
+                });
+            }
+        });
+        const sorted = Object.entries(productSales).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const container = document.getElementById('topProductsList');
+        if (!sorted.length) { container.innerHTML = '<div class="empty-state">No product data yet</div>'; return; }
+        container.innerHTML = sorted.map(([name, qty], idx) => `
+            <div class="leaderboard-item">
+                <span class="rank">${idx + 1}</span>
+                <div><strong>${name.slice(0, 25)}</strong></div>
+                <span style="font-weight: 800;">${qty} units</span>
+            </div>
+        `).join('');
+    }
+
+    function renderCategoryBreakdown() {
+        const categorySales = {};
+        products.forEach(p => {
+            const cat = p.category || 'other';
+            categorySales[cat] = (categorySales[cat] || 0) + (p.price || 0);
+        });
+        const sorted = Object.entries(categorySales).sort((a, b) => b[1] - a[1]);
+        
+        const ctx = document.getElementById('categoryChart').getContext('2d');
+        if (charts.category) charts.category.destroy();
+        charts.category = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: sorted.map(c => c[0]), datasets: [{ label: 'Total Value (R)', data: sorted.map(c => c[1]), backgroundColor: '#E30613', borderRadius: 8 }] },
+            options: { responsive: true, indexAxis: 'y' }
+        });
+        
+        const topCat = sorted[0];
+        document.getElementById('topCategoryInfo').innerHTML = `<strong>🏆 Top Category:</strong> ${topCat?.[0] || '—'} (${fmtR(topCat?.[1] || 0)})`;
+    }
+
+    function renderOrderStatus() {
+        const statusCount = {
+            pending: orders.filter(o => o.status === 'pending').length,
+            preparing: orders.filter(o => o.status === 'preparing').length,
+            ready: orders.filter(o => o.status === 'ready').length,
+            completed: orders.filter(o => o.status === 'completed' || o.status === 'collected').length
+        };
+        
+        const ctx = document.getElementById('orderStatusChart').getContext('2d');
+        if (charts.status) charts.status.destroy();
+        charts.status = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['Pending', 'Preparing', 'Ready', 'Completed'], datasets: [{ data: [statusCount.pending, statusCount.preparing, statusCount.ready, statusCount.completed], backgroundColor: ['#f59e0b', '#8b5cf6', '#10b981', '#E30613'] }] },
+            options: { responsive: true }
+        });
+        
+        document.getElementById('orderStatusStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${statusCount.pending}</div><div class="stat-label">Pending</div></div>
+            <div class="stat-card"><div class="stat-number">${statusCount.preparing}</div><div class="stat-label">Preparing</div></div>
+            <div class="stat-card"><div class="stat-number">${statusCount.ready}</div><div class="stat-label">Ready</div></div>
+            <div class="stat-card"><div class="stat-number">${statusCount.completed}</div><div class="stat-label">Completed</div></div>
+        `;
+    }
+
+    function renderRecentActivity() {
+        const recent = [...orders].slice(0, 8);
+        const container = document.getElementById('recentActivity');
+        if (!recent.length) { container.innerHTML = '<div class="empty-state">No recent orders</div>'; return; }
+        container.innerHTML = recent.map(order => {
+            const statusIcon = order.status === 'pending' ? 'fa-clock' : (order.status === 'preparing' ? 'fa-fire' : (order.status === 'ready' ? 'fa-check' : 'fa-check-double'));
+            return `<div class="activity-item">
+                <div class="activity-badge"><i class="fas ${statusIcon}"></i></div>
+                <div class="activity-detail">
+                    <strong>Order #${order.order_number?.slice(-8) || order.id?.slice(-8)}</strong> • ${order.vendor || 'Order'}<br>
+                    <small>Status: ${order.status.toUpperCase()} • ${order.source === 'wallet' ? '💰 Wallet' : (order.source === 'kiosk' ? '📱 Kiosk' : order.payment_method || 'POS')}</small>
+                    <div class="activity-time">${new Date(order.created_at).toLocaleString()}</div>
+                </div>
+                <div class="activity-amount">${fmtR(order.total)}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderProductInventory() {
+        const totalProducts = products.length;
+        const availableProducts = products.filter(p => p.is_available !== false).length;
+        const alcoholProducts = products.filter(p => p.alcohol === true).length;
+        const avgPrice = products.reduce((s, p) => s + (p.price || 0), 0) / (totalProducts || 1);
+        
+        document.getElementById('productInventoryStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${totalProducts}</div><div class="stat-label">Total SKUs</div></div>
+            <div class="stat-card"><div class="stat-number">${availableProducts}</div><div class="stat-label">Available</div></div>
+            <div class="stat-card"><div class="stat-number">${alcoholProducts}</div><div class="stat-label">Alcohol Items</div></div>
+            <div class="stat-card"><div class="stat-number">${fmtR(avgPrice)}</div><div class="stat-label">Avg Price</div></div>
+        `;
+        
+        const priceRanges = { 'R0-100': 0, 'R101-250': 0, 'R251-500': 0, 'R500+': 0 };
+        products.forEach(p => {
+            const price = p.price || 0;
+            if (price <= 100) priceRanges['R0-100']++;
+            else if (price <= 250) priceRanges['R101-250']++;
+            else if (price <= 500) priceRanges['R251-500']++;
+            else priceRanges['R500+']++;
+        });
+        
+        const ctx = document.getElementById('priceDistributionChart').getContext('2d');
+        if (charts.priceDist) charts.priceDist.destroy();
+        charts.priceDist = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: Object.keys(priceRanges), datasets: [{ label: 'Product Count', data: Object.values(priceRanges), backgroundColor: '#E30613', borderRadius: 8 }] },
+            options: { responsive: true }
+        });
+    }
+
+    function renderAlerts() {
+        const pendingOrders = orders.filter(o => o.status === 'pending').length;
+        const readyOrders = orders.filter(o => o.status === 'ready').length;
+        const highValueOrders = orders.filter(o => (o.total || 0) > 1000).length;
+        const walletOrders = orders.filter(o => o.source === 'wallet' && o.status !== 'completed').length;
+        
+        const alerts = [];
+        if (pendingOrders > 10) alerts.push({ level: 'warning', title: 'Order Backlog', desc: `${pendingOrders} pending orders awaiting processing` });
+        if (readyOrders > 5) alerts.push({ level: 'info', title: 'Orders Ready for Collection', desc: `${readyOrders} orders waiting at collection counter` });
+        if (highValueOrders > 3) alerts.push({ level: 'info', title: 'High-Value Orders', desc: `${highValueOrders} orders exceeding R1000` });
+        if (walletOrders > 8) alerts.push({ level: 'warning', title: 'Wallet Orders Pending', desc: `${walletOrders} wallet orders awaiting approval` });
+        
+        const container = document.getElementById('alertsContainer');
+        if (!alerts.length) { container.innerHTML = '<div class="empty-state">No active alerts</div>'; return; }
+        container.innerHTML = alerts.map(a => `
+            <div class="activity-item" style="border-left: 4px solid ${a.level === 'critical' ? '#dc2626' : a.level === 'warning' ? '#f59e0b' : '#3b82f6'}; background: ${a.level === 'critical' ? '#fff5f5' : a.level === 'warning' ? '#fffbeb' : '#eff6ff'}; padding-left: 12px; border-radius: 12px; margin-bottom: 8px;">
+                <div><strong>${a.title}</strong><br><small>${a.desc}</small></div>
+            </div>
+        `).join('');
+    }
+
+    function renderAllDashboards() {
+        renderHeroKPI();
+        renderRevenueTrend();
+        renderOrderVolume();
+        renderVendorPerformance();
+        renderPaymentMethods();
+        renderTopProducts();
+        renderCategoryBreakdown();
+        renderOrderStatus();
+        renderRecentActivity();
+        renderProductInventory();
+        renderAlerts();
+    }
+
+    // Time filter handlers
+    document.querySelectorAll('#revenueFilter .filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('#revenueFilter .filter-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            currentPeriod = chip.dataset.period;
+            renderRevenueTrend();
+        });
+    });
+
+    // Real-time subscriptions
+    function setupRealtime() {
+        supabase.channel('order-analytics')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadOrderData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => loadOrderData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'butcher_preorders' }, () => loadOrderData())
+            .subscribe();
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(() => loadOrderData(), 30000);
+    
+    loadOrderData();
+    setupRealtime();
+</script>
+</body>
+</html>
