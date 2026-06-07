@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>Event Manager | Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #f8fafd; padding: 20px; color: #1e293b; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .stats-row { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 24px; }
+    .stat-card { background: white; border-radius: 20px; padding: 15px 20px; flex: 1; min-width: 140px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #eef2f8; }
+    .stat-number { font-size: 28px; font-weight: 800; color: #E30613; }
+    .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .section-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; color: #0f172a; }
+    .add-form { background: #f8fafc; padding: 20px; border-radius: 24px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    .add-form input, .add-form select { padding: 10px 16px; border-radius: 60px; border: 1px solid #cbd5e1; font-family: inherit; flex: 1; min-width: 150px; }
+    .add-form button, .btn-primary { background: #E30613; color: white; border: none; padding: 10px 24px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+    .btn-secondary { background: #f1f5f9; color: #1e293b; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+    .btn-danger { background: #fee2e2; color: #dc2626; border: none; padding: 8px 16px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+    .btn-warning { background: #fff3e0; color: #ef6c00; border: none; padding: 8px 16px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+    .carousel-section { margin-bottom: 24px; position: relative; }
+    .carousel-container { display: flex; align-items: center; gap: 12px; }
+    .carousel-wrapper { overflow-x: auto; scroll-behavior: smooth; scroll-snap-type: x mandatory; border-radius: 28px; scrollbar-width: thin; }
+    .carousel-wrapper::-webkit-scrollbar { height: 6px; }
+    .carousel-wrapper::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 10px; }
+    .carousel-wrapper::-webkit-scrollbar-thumb { background: #E30613; border-radius: 10px; }
+    .carousel-track { display: flex; gap: 20px; padding: 8px 4px 20px 4px; }
+    .event-card { flex: 0 0 300px; scroll-snap-align: start; background: white; border-radius: 28px; border: 1px solid #eef2f8; overflow: hidden; cursor: pointer; transition: 0.2s; }
+    .event-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); border-color: #E30613; }
+    .event-card.selected { border: 2px solid #E30613; }
+    .event-banner { height: 120px; background: linear-gradient(135deg, #E30613, #b91c1c); display: flex; align-items: flex-end; justify-content: flex-end; padding: 12px; }
+    .event-status { background: rgba(0,0,0,0.7); padding: 4px 12px; border-radius: 60px; font-size: 0.7rem; font-weight: 600; color: white; }
+    .event-content { padding: 16px; }
+    .event-name { font-weight: 800; font-size: 1rem; color: #E30613; margin-bottom: 8px; }
+    .event-detail { font-size: 0.7rem; color: #64748b; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .ticket-summary { margin-top: 12px; padding: 8px 12px; background: #fef5f5; border-radius: 20px; display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 600; }
+    .carousel-arrow { background: white; border: 1px solid #e2e8f0; border-radius: 60px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .carousel-arrow i { color: #E30613; }
+    .panel { background: white; border-radius: 28px; padding: 24px; border: 1px solid #eef2f8; margin-bottom: 24px; }
+    .action-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .selected-info { background: #f8fafc; border-radius: 20px; padding: 16px; margin-bottom: 20px; border: 1px solid #eef2f8; }
+    .ticket-inventory { background: #f8fafc; border-radius: 20px; padding: 16px; margin-bottom: 20px; }
+    .ticket-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eef2f8; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000; opacity: 0; visibility: hidden; transition: 0.2s; }
+    .modal-overlay.active { opacity: 1; visibility: visible; }
+    .modal-content { background: white; border-radius: 28px; max-width: 550px; width: 90%; max-height: 85vh; overflow-y: auto; }
+    .modal-header { padding: 20px 24px; background: #E30613; border-radius: 28px 28px 0 0; }
+    .modal-header h3 { color: white; font-size: 1.2rem; font-weight: 800; }
+    .modal-body { padding: 24px; }
+    .modal-body input, .modal-body select { width: 100%; padding: 10px 16px; margin: 8px 0 16px; border-radius: 60px; border: 1px solid #cbd5e1; }
+    .ticket-type-toggle { margin-bottom: 16px; border: 1px solid #eef2f8; border-radius: 20px; padding: 12px; }
+    .ticket-header { display: flex; justify-content: space-between; cursor: pointer; font-weight: 600; }
+    .ticket-fields { display: none; margin-top: 12px; }
+    .ticket-fields.active { display: block; }
+    .ticket-fields input { margin-bottom: 8px; }
+    .modal-footer { display: flex; gap: 12px; padding: 0 24px 24px 24px; }
+    .modal-footer button { flex: 1; }
+    .loading-state, .empty-state { text-align: center; padding: 40px; color: #94a3b8; }
+    .toast { position: fixed; bottom: 30px; right: 30px; background: #1e293b; color: white; padding: 12px 24px; border-radius: 60px; font-weight: 500; z-index: 1000; display: none; animation: slideIn 0.3s ease; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @media (max-width: 768px) { body { padding: 16px; } .stats-row { flex-direction: column; } .event-card { flex: 0 0 260px; } }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="stats-row">
+        <div class="stat-card"><div class="stat-number" id="totalTickets">-</div><div class="stat-label">Tickets Sold</div></div>
+        <div class="stat-card"><div class="stat-number" id="totalEvents">-</div><div class="stat-label">Active Events</div></div>
+        <div class="stat-card"><div class="stat-number" id="totalTicketHolders">-</div><div class="stat-label">Ticket Holders</div></div>
+        <div class="stat-card"><div class="stat-number" id="totalRevenue">R0</div><div class="stat-label">Revenue</div></div>
+    </div>
+
+    <div class="carousel-section">
+        <div class="carousel-container">
+            <div class="carousel-arrow" id="prevArrow"><i class="fas fa-chevron-left"></i></div>
+            <div class="carousel-wrapper" id="carouselWrapper">
+                <div class="carousel-track" id="eventCarousel"></div>
+            </div>
+            <div class="carousel-arrow" id="nextArrow"><i class="fas fa-chevron-right"></i></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="section-title"><i class="fas fa-calendar-alt"></i> Event Management</div>
+        <div class="action-bar">
+            <button class="btn-primary" id="addEventBtn"><i class="fas fa-plus"></i> Add Event</button>
+            <button class="btn-danger" id="deleteEventBtn"><i class="fas fa-trash"></i> Delete Selected</button>
+            <button class="btn-warning" id="editTicketsBtn"><i class="fas fa-edit"></i> Edit Tickets</button>
+            <button class="btn-secondary" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div id="selectedEventInfo" class="selected-info" style="display:none;"></div>
+        <div class="ticket-inventory">
+            <div class="section-title" style="font-size:1rem; margin-bottom:12px;"><i class="fas fa-ticket-alt"></i> Ticket Inventory</div>
+            <div id="ticketInventory"></div>
+        </div>
+        <div>
+            <div class="section-title" style="font-size:1rem; margin-bottom:12px;"><i class="fas fa-users"></i> Recent Purchases</div>
+            <div id="purchasesList"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Event Modal -->
+<div id="addEventModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header"><h3><i class="fas fa-calendar-plus"></i> Create Event</h3></div>
+        <div class="modal-body">
+            <input type="text" id="eventName" placeholder="Event name *">
+            <input type="date" id="eventDate">
+            <input type="text" id="eventLocation" placeholder="Location" value="Rands Cape Town">
+            <div class="ticket-type-toggle"><div class="ticket-header" onclick="toggleFields('earlyBird')"><span>🐦 Early Bird</span><i class="fas fa-chevron-down"></i></div><div id="earlyBirdFields" class="ticket-fields"><input type="number" id="ebPrice" placeholder="Price (R)"><input type="number" id="ebCap" placeholder="Capacity"></div></div>
+            <div class="ticket-type-toggle"><div class="ticket-header" onclick="toggleFields('general')"><span>🎟️ General Admission</span><i class="fas fa-chevron-down"></i></div><div id="generalFields" class="ticket-fields"><input type="number" id="genPrice" placeholder="Price (R)"><input type="number" id="genCap" placeholder="Capacity"></div></div>
+            <div class="ticket-type-toggle"><div class="ticket-header" onclick="toggleFields('vip')"><span>👑 VIP Experience</span><i class="fas fa-chevron-down"></i></div><div id="vipFields" class="ticket-fields"><input type="number" id="vipPrice" placeholder="Price (R)"><input type="number" id="vipCap" placeholder="Capacity"></div></div>
+        </div>
+        <div class="modal-footer"><button class="btn-primary" id="confirmAddEventBtn">Create</button><button class="btn-secondary" id="closeAddModalBtn">Cancel</button></div>
+    </div>
+</div>
+
+<!-- Edit Tickets Modal -->
+<div id="editTicketsModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header"><h3><i class="fas fa-edit"></i> Edit Tickets</h3></div>
+        <div class="modal-body">
+            <div><label>Early Bird</label><div style="display:flex; gap:8px;"><input type="number" id="editEbPrice" placeholder="Price" style="flex:1;"><input type="number" id="editEbCap" placeholder="Capacity" style="flex:1;"></div></div>
+            <div style="margin-top:16px;"><label>General</label><div style="display:flex; gap:8px;"><input type="number" id="editGenPrice" placeholder="Price" style="flex:1;"><input type="number" id="editGenCap" placeholder="Capacity" style="flex:1;"></div></div>
+            <div style="margin-top:16px;"><label>VIP</label><div style="display:flex; gap:8px;"><input type="number" id="editVipPrice" placeholder="Price" style="flex:1;"><input type="number" id="editVipCap" placeholder="Capacity" style="flex:1;"></div></div>
+        </div>
+        <div class="modal-footer"><button class="btn-primary" id="saveTicketsBtn">Save</button><button class="btn-secondary" id="closeEditModalBtn">Cancel</button></div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+    
+    let events = [];
+    let selectedEventId = null;
+
+    function showToast(msg, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.style.background = isError ? '#b91c1c' : '#1e293b';
+        toast.style.display = 'block';
+        setTimeout(() => toast.style.display = 'none', 3000);
+    }
+
+    function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+    async function loadEvents() {
+        try {
+            const { data: eventsData, error: eventsError } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+            if (eventsError) throw eventsError;
+            const { data: ticketTypes } = await supabase.from('ticket_types').select('*');
+            events = (eventsData || []).map(ev => {
+                const eventTickets = (ticketTypes || []).filter(tt => tt.event_id === ev.id);
+                return {
+                    id: ev.id, name: ev.name, date: ev.start_time?.split('T')[0] || '', location: ev.location || 'Rands',
+                    ticketTypes: { earlyBird: eventTickets.find(t => t.name?.toLowerCase().includes('early')) || { price: 0, capacity: 0, sold: 0 },
+                                  general: eventTickets.find(t => t.name?.toLowerCase().includes('general')) || { price: ev.base_price || 0, capacity: 0, sold: 0 },
+                                  vip: eventTickets.find(t => t.name?.toLowerCase().includes('vip')) || { price: ev.vip_price || 0, capacity: 0, sold: 0 } }
+                };
+            });
+            renderCarousel();
+            updateStats();
+            if (events.length && !selectedEventId) selectEvent(events[0].id);
+            else if (selectedEventId && events.find(e => e.id === selectedEventId)) selectEvent(selectedEventId);
+        } catch (err) { showToast('Error loading events', true); console.error(err); }
+    }
+
+    function updateStats() {
+        const tickets = JSON.parse(localStorage.getItem('rands_tickets') || '[]');
+        document.getElementById('totalTickets').innerText = tickets.length;
+        document.getElementById('totalEvents').innerText = events.filter(e => e.status !== 'cancelled').length;
+        const holders = new Set(tickets.map(t => t.ticketId?.split('_')[0])).size;
+        document.getElementById('totalTicketHolders').innerText = holders;
+        let revenue = 0;
+        for (let ev of events) {
+            for (let type of ['earlyBird', 'general', 'vip']) {
+                revenue += (ev.ticketTypes[type]?.sold || 0) * (ev.ticketTypes[type]?.price || 0);
+            }
+        }
+        document.getElementById('totalRevenue').innerText = 'R' + revenue.toLocaleString();
+    }
+
+    function renderCarousel() {
+        const track = document.getElementById('eventCarousel');
+        if (!events.length) { track.innerHTML = '<div class="empty-state">No events. Click Add Event.</div>'; return; }
+        track.innerHTML = events.map(ev => {
+            const totalSold = (ev.ticketTypes.earlyBird?.sold || 0) + (ev.ticketTypes.general?.sold || 0) + (ev.ticketTypes.vip?.sold || 0);
+            const totalCap = (ev.ticketTypes.earlyBird?.capacity || 0) + (ev.ticketTypes.general?.capacity || 0) + (ev.ticketTypes.vip?.capacity || 0);
+            const percent = totalCap ? Math.round((totalSold / totalCap) * 100) : 0;
+            return `<div class="event-card ${selectedEventId === ev.id ? 'selected' : ''}" data-id="${ev.id}">
+                <div class="event-banner"><span class="event-status">LIVE</span></div>
+                <div class="event-content">
+                    <div class="event-name">${escapeHtml(ev.name)}</div>
+                    <div class="event-detail"><i class="fas fa-calendar"></i> ${ev.date || 'TBD'}</div>
+                    <div class="event-detail"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(ev.location)}</div>
+                    <div class="ticket-summary"><span>🎟️ Sold ${totalSold}</span><span>📊 ${percent}% full</span></div>
+                </div>
+            </div>`;
+        }).join('');
+        document.querySelectorAll('.event-card').forEach(card => card.addEventListener('click', () => selectEvent(card.dataset.id)));
+    }
+
+    async function selectEvent(id) {
+        selectedEventId = id;
+        const ev = events.find(e => e.id === id);
+        if (!ev) return;
+        renderCarousel();
+        document.getElementById('selectedEventInfo').style.display = 'block';
+        document.getElementById('selectedEventInfo').innerHTML = `<div><strong>${escapeHtml(ev.name)}</strong></div><div>📅 ${ev.date} | 📍 ${escapeHtml(ev.location)}</div>`;
+        const container = document.getElementById('ticketInventory');
+        const types = [{ key: 'earlyBird', label: '🐦 Early Bird' }, { key: 'general', label: '🎟️ General' }, { key: 'vip', label: '👑 VIP' }];
+        container.innerHTML = types.map(t => {
+            const data = ev.ticketTypes[t.key];
+            if (!data.capacity) return '';
+            return `<div class="ticket-row"><span>${t.label}</span><span>R${data.price}</span><span>Cap: ${data.capacity}</span><span>Sold: ${data.sold}</span><span>Left: ${data.capacity - data.sold}</span></div>`;
+        }).join('') || '<div class="empty-state">No ticket types</div>';
+        
+        const tickets = JSON.parse(localStorage.getItem('rands_tickets') || '[]');
+        const eventTickets = tickets.filter(t => t.eventName === ev.name);
+        const purchasesDiv = document.getElementById('purchasesList');
+        if (!eventTickets.length) purchasesDiv.innerHTML = '<div class="empty-state">No purchases yet</div>';
+        else purchasesDiv.innerHTML = eventTickets.map(t => `<div class="ticket-row"><span>${escapeHtml(t.ticketType)}</span><span>ID: ${t.ticketId?.slice(-8)}</span><span>R${t.price?.toFixed(2)}</span></div>`).join('');
+    }
+
+    async function deleteEvent() {
+        if (!selectedEventId) { showToast('Select an event first', true); return; }
+        if (!confirm('Delete this event and all associated tickets?')) return;
+        const { data: tickets } = await supabase.from('tickets').select('id').eq('event_id', selectedEventId);
+        if (tickets?.length) await supabase.from('checkins').delete().in('ticket_id', tickets.map(t => t.id));
+        await supabase.from('tickets').delete().eq('event_id', selectedEventId);
+        await supabase.from('ticket_types').delete().eq('event_id', selectedEventId);
+        await supabase.from('events').delete().eq('id', selectedEventId);
+        showToast('Event deleted');
+        selectedEventId = null;
+        document.getElementById('selectedEventInfo').style.display = 'none';
+        await loadEvents();
+    }
+
+    async function addEvent() {
+        const name = document.getElementById('eventName').value.trim();
+        const date = document.getElementById('eventDate').value;
+        const location = document.getElementById('eventLocation').value.trim();
+        if (!name || !date) { showToast('Name and date required', true); return; }
+        const ebPrice = parseFloat(document.getElementById('ebPrice').value);
+        const ebCap = parseInt(document.getElementById('ebCap').value);
+        const genPrice = parseFloat(document.getElementById('genPrice').value);
+        const genCap = parseInt(document.getElementById('genCap').value);
+        const vipPrice = parseFloat(document.getElementById('vipPrice').value);
+        const vipCap = parseInt(document.getElementById('vipCap').value);
+        
+        const { data: ev, error } = await supabase.from('events').insert([{ name, location, start_time: date, base_price: genPrice || 0, vip_price: vipPrice || 0, status: 'active' }]).select().single();
+        if (error) { showToast(error.message, true); return; }
+        const ticketsToInsert = [];
+        if (ebPrice && ebCap) ticketsToInsert.push({ event_id: ev.id, name: 'Early Bird', price: ebPrice, capacity: ebCap, sold: 0 });
+        if (genPrice && genCap) ticketsToInsert.push({ event_id: ev.id, name: 'General Admission', price: genPrice, capacity: genCap, sold: 0 });
+        if (vipPrice && vipCap) ticketsToInsert.push({ event_id: ev.id, name: 'VIP Experience', price: vipPrice, capacity: vipCap, sold: 0 });
+        if (ticketsToInsert.length) await supabase.from('ticket_types').insert(ticketsToInsert);
+        showToast('Event created');
+        document.getElementById('addEventModal').classList.remove('active');
+        await loadEvents();
+    }
+
+    async function editTickets() {
+        if (!selectedEventId) { showToast('Select an event first', true); return; }
+        const ev = events.find(e => e.id === selectedEventId);
+        document.getElementById('editEbPrice').value = ev.ticketTypes.earlyBird?.price || '';
+        document.getElementById('editEbCap').value = ev.ticketTypes.earlyBird?.capacity || '';
+        document.getElementById('editGenPrice').value = ev.ticketTypes.general?.price || '';
+        document.getElementById('editGenCap').value = ev.ticketTypes.general?.capacity || '';
+        document.getElementById('editVipPrice').value = ev.ticketTypes.vip?.price || '';
+        document.getElementById('editVipCap').value = ev.ticketTypes.vip?.capacity || '';
+        document.getElementById('editTicketsModal').classList.add('active');
+    }
+
+    async function saveTickets() {
+        if (!selectedEventId) return;
+        const existing = await supabase.from('ticket_types').select('*').eq('event_id', selectedEventId);
+        for (let t of existing.data || []) await supabase.from('ticket_types').delete().eq('id', t.id);
+        const newTypes = [];
+        const ebPrice = parseFloat(document.getElementById('editEbPrice').value);
+        const ebCap = parseInt(document.getElementById('editEbCap').value);
+        const genPrice = parseFloat(document.getElementById('editGenPrice').value);
+        const genCap = parseInt(document.getElementById('editGenCap').value);
+        const vipPrice = parseFloat(document.getElementById('editVipPrice').value);
+        const vipCap = parseInt(document.getElementById('editVipCap').value);
+        if (ebPrice && ebCap) newTypes.push({ event_id: selectedEventId, name: 'Early Bird', price: ebPrice, capacity: ebCap, sold: 0 });
+        if (genPrice && genCap) newTypes.push({ event_id: selectedEventId, name: 'General Admission', price: genPrice, capacity: genCap, sold: 0 });
+        if (vipPrice && vipCap) newTypes.push({ event_id: selectedEventId, name: 'VIP Experience', price: vipPrice, capacity: vipCap, sold: 0 });
+        if (newTypes.length) await supabase.from('ticket_types').insert(newTypes);
+        showToast('Tickets updated');
+        document.getElementById('editTicketsModal').classList.remove('active');
+        await loadEvents();
+    }
+
+    window.toggleFields = (type) => document.getElementById(`${type}Fields`).classList.toggle('active');
+    
+    function setupCarousel() {
+        const wrapper = document.getElementById('carouselWrapper');
+        document.getElementById('prevArrow').onclick = () => wrapper.scrollBy({ left: -340, behavior: 'smooth' });
+        document.getElementById('nextArrow').onclick = () => wrapper.scrollBy({ left: 340, behavior: 'smooth' });
+    }
+
+    document.getElementById('addEventBtn').onclick = () => document.getElementById('addEventModal').classList.add('active');
+    document.getElementById('deleteEventBtn').onclick = deleteEvent;
+    document.getElementById('editTicketsBtn').onclick = editTickets;
+    document.getElementById('refreshEventsBtn').onclick = loadEvents;
+    document.getElementById('confirmAddEventBtn').onclick = addEvent;
+    document.getElementById('saveTicketsBtn').onclick = saveTickets;
+    document.getElementById('closeAddModalBtn').onclick = () => document.getElementById('addEventModal').classList.remove('active');
+    document.getElementById('closeEditModalBtn').onclick = () => document.getElementById('editTicketsModal').classList.remove('active');
+    
+    setupCarousel();
+    loadEvents();
+</script>
+</body>
+</html>

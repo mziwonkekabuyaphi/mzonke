@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Product Manager | Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f8fafd; padding: 20px; color: #1e293b; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .stats-row { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 20px; padding: 15px 20px; flex: 1; min-width: 140px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #eef2f8; }
+        .stat-number { font-size: 28px; font-weight: 800; color: #E30613; }
+        .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+        .section-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; color: #0f172a; }
+        .add-form { background: #f8fafc; padding: 20px; border-radius: 24px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+        .add-form input, .add-form select, .add-form textarea { padding: 10px 16px; border-radius: 60px; border: 1px solid #cbd5e1; font-family: inherit; flex: 1; min-width: 150px; }
+        .add-form textarea { border-radius: 20px; min-height: 60px; }
+        .add-form button, .btn-primary { background: #E30613; color: white; border: none; padding: 10px 24px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+        .btn-secondary { background: #f1f5f9; color: #1e293b; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+        .btn-danger { background: #fee2e2; color: #dc2626; border: none; padding: 6px 12px; border-radius: 60px; font-weight: 600; cursor: pointer; font-size: 0.7rem; }
+        .search-bar { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+        .search-bar input { flex: 1; padding: 10px 16px; border-radius: 60px; border: 1px solid #cbd5e1; font-family: inherit; }
+        .products-table { width: 100%; border-collapse: collapse; background: white; border-radius: 28px; overflow: hidden; border: 1px solid #eef2f8; }
+        .products-table th, .products-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eef2f8; }
+        .products-table th { background: #f1f5f9; font-weight: 600; color: #475569; }
+        .products-table tr:hover { background: #fef5f5; }
+        .image-thumb { width: 40px; height: 40px; border-radius: 12px; object-fit: cover; cursor: pointer; border: 1px solid #e2e8f0; }
+        .image-upload-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .image-preview { width: 60px; height: 60px; border-radius: 16px; object-fit: cover; }
+        .checkbox-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .loading-state, .empty-state { text-align: center; padding: 40px; color: #94a3b8; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #1e293b; color: white; padding: 12px 24px; border-radius: 60px; font-weight: 500; z-index: 1000; display: none; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @media (max-width: 768px) { body { padding: 16px; } .stats-row { flex-direction: column; } .products-table { display: block; overflow-x: auto; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="stats-row">
+        <div class="stat-card"><div class="stat-number" id="totalProducts">-</div><div class="stat-label">Total Products</div></div>
+        <div class="stat-card"><div class="stat-number" id="alcoholCount">-</div><div class="stat-label">Alcohol Items</div></div>
+        <div class="stat-card"><div class="stat-number" id="nonAlcoholCount">-</div><div class="stat-label">Non-Alcohol</div></div>
+        <div class="stat-card"><div class="stat-number" id="avgPrice">-</div><div class="stat-label">Avg Price (R)</div></div>
+    </div>
+
+    <div class="add-form">
+        <input type="text" id="productName" placeholder="Product name">
+        <input type="text" id="productDesc" placeholder="Description">
+        <input type="number" id="productPrice" placeholder="Price (R)" step="0.01">
+        <select id="productCategory">
+            <option value="beer">Beer</option><option value="wine">Wine</option><option value="spirits">Spirits</option>
+            <option value="food">Food</option><option value="shisha">Shisha</option><option value="butcher">Butcher</option>
+            <option value="non_alcoholic">Non-Alcoholic</option><option value="other">Other</option>
+        </select>
+        <div class="image-upload-row">
+            <label class="btn-secondary" style="margin:0;"><i class="fas fa-cloud-upload-alt"></i> Image<input type="file" id="productImageInput" accept="image/*" style="display:none;"></label>
+            <div id="imagePreviewContainer" style="display:none;"><img id="imagePreview" class="image-preview"><button type="button" class="btn-danger" id="removeImageBtn" style="padding:4px 12px;">Remove</button></div>
+        </div>
+        <div class="checkbox-row"><label><input type="checkbox" id="productAlcohol"> Contains Alcohol</label></div>
+        <button id="addProductBtn"><i class="fas fa-plus"></i> Add Product</button>
+    </div>
+
+    <div class="search-bar">
+        <i class="fas fa-search" style="color:#94a3b8;"></i>
+        <input type="text" id="searchInput" placeholder="Search products...">
+        <button class="btn-secondary" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table class="products-table" id="productsTable">
+            <thead>
+                <tr><th>ID</th><th>Image</th><th>Name</th><th>Description</th><th>Price</th><th>Category</th><th>Alcohol</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="productsList"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+    
+    let products = [];
+    let currentImageBase64 = null;
+    const STORAGE_BUCKET = 'product-images';
+
+    function showToast(msg, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.style.background = isError ? '#b91c1c' : '#1e293b';
+        toast.style.display = 'block';
+        setTimeout(() => toast.style.display = 'none', 3000);
+    }
+
+    function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+    function normalizeCategory(cat) {
+        if (!cat) return 'other';
+        const lower = cat.toLowerCase();
+        const spirits = ['rum', 'vodka', 'cognac', 'tequila', 'whisky', 'whiskey', 'gin', 'spirits'];
+        if (spirits.includes(lower)) return 'spirits';
+        if (['non-alc', 'non alcoholic', 'non-alcoholic', 'non_alcoholic'].includes(lower)) return 'non_alcoholic';
+        if (['the butcher', 'butcher_shop', 'butcher'].includes(lower)) return 'butcher';
+        return ['beer', 'wine', 'food', 'shisha', 'other'].includes(lower) ? lower : 'other';
+    }
+
+    function generateFileName(productName, fileExt) {
+        const timestamp = Date.now();
+        const safeName = (productName || 'product').replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+        return `products/${timestamp}-${safeName}.${fileExt}`;
+    }
+
+    async function uploadToStorage(file, productName) {
+        if (!file.type.startsWith('image/')) throw new Error('Not an image');
+        if (file.size > 2 * 1024 * 1024) throw new Error('Max 2MB');
+        const fileExt = file.name.split('.').pop();
+        const filePath = generateFileName(productName, fileExt);
+        const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(filePath, file, { cacheControl: '3600', upsert: true });
+        if (error) throw error;
+        const { data: { publicUrl } } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+        return publicUrl;
+    }
+
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
+    }
+
+    async function updateStats() {
+        document.getElementById('totalProducts').innerText = products.length;
+        document.getElementById('alcoholCount').innerText = products.filter(p => p.alcohol).length;
+        document.getElementById('nonAlcoholCount').innerText = products.filter(p => !p.alcohol && p.category !== 'butcher').length;
+        const avg = products.reduce((s, p) => s + (p.price || 0), 0) / (products.length || 1);
+        document.getElementById('avgPrice').innerText = 'R' + avg.toFixed(2);
+    }
+
+    async function loadProducts() {
+        try {
+            const { data, error } = await supabase.from('products').select('*').order('id', { ascending: true });
+            if (error) throw error;
+            products = (data || []).map(p => ({ ...p, category: normalizeCategory(p.category) }));
+            renderProducts();
+            await updateStats();
+            showToast('Products loaded');
+        } catch (error) { showToast('Error loading products', true); console.error(error); }
+    }
+
+    function renderProducts() {
+        const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+        let filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm) || (p.description || '').toLowerCase().includes(searchTerm));
+        const tbody = document.getElementById('productsList');
+        if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No products found</td></tr>'; return; }
+        tbody.innerHTML = filtered.map(p => `
+            <tr>
+                <td>${p.id}</td>
+                <td><img src="${p.image || 'https://placehold.co/400x400?text=No+Image'}" class="image-thumb" onclick="triggerImageUpload(${p.id})"><input type="file" id="fileInput${p.id}" style="display:none;" accept="image/*"></td>
+                <td><input type="text" value="${escapeHtml(p.name)}" class="edit-name" data-id="${p.id}" style="padding:6px 10px; border-radius:30px; border:1px solid #cbd5e1; width:140px;"></td>
+                <td><input type="text" value="${escapeHtml(p.description || '')}" class="edit-desc" data-id="${p.id}" style="padding:6px 10px; border-radius:30px; border:1px solid #cbd5e1; width:180px;"></td>
+                <td><input type="number" value="${p.price}" class="edit-price" data-id="${p.id}" step="0.01" style="padding:6px 10px; border-radius:30px; border:1px solid #cbd5e1; width:80px;"></td>
+                <td><select class="edit-category" data-id="${p.id}" style="padding:6px 10px; border-radius:30px; border:1px solid #cbd5e1;"><option value="beer" ${p.category === 'beer' ? 'selected' : ''}>Beer</option><option value="wine" ${p.category === 'wine' ? 'selected' : ''}>Wine</option><option value="spirits" ${p.category === 'spirits' ? 'selected' : ''}>Spirits</option><option value="food" ${p.category === 'food' ? 'selected' : ''}>Food</option><option value="shisha" ${p.category === 'shisha' ? 'selected' : ''}>Shisha</option><option value="butcher" ${p.category === 'butcher' ? 'selected' : ''}>Butcher</option><option value="non_alcoholic" ${p.category === 'non_alcoholic' ? 'selected' : ''}>Non-Alc</option><option value="other" ${p.category === 'other' ? 'selected' : ''}>Other</option></select></td>
+                <td><input type="checkbox" class="edit-alcohol" data-id="${p.id}" ${p.alcohol ? 'checked' : ''}></td>
+                <td><button class="btn-danger save-product" data-id="${p.id}">Save</button> <button class="btn-danger delete-product" data-id="${p.id}">Del</button></td>
+            </tr>
+        `).join('');
+        
+        document.querySelectorAll('.save-product').forEach(btn => btn.addEventListener('click', () => saveProduct(btn.dataset.id)));
+        document.querySelectorAll('.delete-product').forEach(btn => btn.addEventListener('click', () => deleteProduct(btn.dataset.id)));
+        document.querySelectorAll('.edit-name, .edit-desc, .edit-price, .edit-category, .edit-alcohol').forEach(el => el.addEventListener('change', () => saveProduct(el.dataset.id)));
+    }
+
+    window.triggerImageUpload = function(productId) {
+        const input = document.getElementById(`fileInput${productId}`);
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const product = products.find(p => p.id == productId);
+                const publicUrl = await uploadToStorage(file, product?.name || 'product');
+                await supabase.from('products').update({ image: publicUrl }).eq('id', productId);
+                showToast('Image updated');
+                await loadProducts();
+            } catch (err) { showToast(err.message, true); }
+        };
+        input.click();
+    };
+
+    async function saveProduct(id) {
+        const row = document.querySelector(`button.save-product[data-id="${id}"]`).closest('tr');
+        const name = row.querySelector('.edit-name').value.trim();
+        const desc = row.querySelector('.edit-desc').value;
+        const price = parseFloat(row.querySelector('.edit-price').value);
+        const category = row.querySelector('.edit-category').value;
+        const alcohol = row.querySelector('.edit-alcohol').checked;
+        if (!name || isNaN(price)) { showToast('Name and price required', true); return; }
+        const { error } = await supabase.from('products').update({ name, description: desc, price, category, alcohol }).eq('id', id);
+        if (error) showToast(error.message, true);
+        else { showToast('Saved'); await loadProducts(); }
+    }
+
+    async function deleteProduct(id) {
+        if (!confirm('Delete this product?')) return;
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) showToast(error.message, true);
+        else { showToast('Deleted'); await loadProducts(); }
+    }
+
+    async function addProduct() {
+        const name = document.getElementById('productName').value.trim();
+        const desc = document.getElementById('productDesc').value.trim();
+        const price = parseFloat(document.getElementById('productPrice').value);
+        const category = document.getElementById('productCategory').value;
+        const alcohol = document.getElementById('productAlcohol').checked;
+        if (!name || isNaN(price)) { showToast('Name and price required', true); return; }
+        
+        let imageUrl = currentImageBase64 || '';
+        if (currentImageBase64 && currentImageBase64.startsWith('data:image')) {
+            const blob = await fetch(currentImageBase64).then(r => r.blob());
+            try { imageUrl = await uploadToStorage(blob, name); } catch(e) { showToast('Image upload failed', true); }
+        }
+        
+        const { error } = await supabase.from('products').insert([{ name, description: desc, price, category, alcohol, image: imageUrl, is_available: true }]);
+        if (error) showToast(error.message, true);
+        else {
+            document.getElementById('productName').value = '';
+            document.getElementById('productDesc').value = '';
+            document.getElementById('productPrice').value = '';
+            document.getElementById('productAlcohol').checked = false;
+            currentImageBase64 = null;
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+            showToast('Product added');
+            await loadProducts();
+        }
+    }
+
+    // Image upload for add form
+    const imageInput = document.getElementById('productImageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const previewContainer = document.getElementById('imagePreviewContainer');
+    const removeImageBtn = document.getElementById('removeImageBtn');
+    
+    imageInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            if (file.size > 2 * 1024 * 1024) { showToast('Max 2MB', true); return; }
+            const base64 = await fileToBase64(file);
+            currentImageBase64 = base64;
+            imagePreview.src = base64;
+            previewContainer.style.display = 'flex';
+        }
+    });
+    
+    removeImageBtn.addEventListener('click', () => { currentImageBase64 = null; previewContainer.style.display = 'none'; imageInput.value = ''; });
+    
+    document.getElementById('addProductBtn').addEventListener('click', addProduct);
+    document.getElementById('refreshBtn').addEventListener('click', loadProducts);
+    document.getElementById('searchInput').addEventListener('keyup', () => renderProducts());
+    
+    async function ensureBucket() {
+        try {
+            const { data: buckets } = await supabase.storage.listBuckets();
+            if (!buckets?.some(b => b.name === STORAGE_BUCKET)) {
+                await supabase.storage.createBucket(STORAGE_BUCKET, { public: true, allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], fileSizeLimit: 2097152 });
+            }
+        } catch (err) { console.warn(err); }
+    }
+    
+    await ensureBucket();
+    loadProducts();
+</script>
+</body>
+</html>
