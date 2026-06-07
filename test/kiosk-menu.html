@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Rands | Self-Service Kiosk</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+      }
+    }
+  </script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --red: #E30613;
+      --red-dark: #B5040F;
+      --red-glow: rgba(227,6,19,0.25);
+      --red-soft: rgba(227,6,19,0.08);
+      --ink: #0F0F12;
+      --ink-light: #2C2C35;
+      --slate: #5E5E6E;
+      --mist: #A1A1B0;
+      --bone: #F8F7F4;
+      --white: #FFFFFF;
+      --card-shadow: 0 12px 28px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.02);
+      --card-hover: 0 20px 40px rgba(0,0,0,0.12);
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-sm: 14px;
+      --transition-fast: 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      --transition-smooth: 0.35s cubic-bezier(0.15, 0.85, 0.35, 1);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bone);
+      color: var(--ink);
+      overflow-x: hidden;
+    }
+
+    /* Hardware acceleration */
+    .products-grid, .category-track, .hero-slide, .modal-content, .cart-drawer {
+      transform: translateZ(0);
+      will-change: transform;
+    }
+
+    /* Header */
+    .kiosk-header {
+      background: var(--white);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 120;
+    }
+
+    .brand-area {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      color: white;
+      box-shadow: 0 8px 18px var(--red-glow);
+    }
+
+    .brand-text h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .kiosk-search {
+      flex: 0 1 380px;
+      position: relative;
+    }
+
+    .kiosk-search i {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--mist);
+      font-size: 1.2rem;
+    }
+
+    .kiosk-search input {
+      width: 100%;
+      padding: 16px 20px 16px 52px;
+      border: 2px solid transparent;
+      border-radius: 60px;
+      font-size: 1rem;
+      font-weight: 500;
+      background: var(--bone);
+      transition: var(--transition-fast);
+    }
+
+    .kiosk-search input:focus {
+      outline: none;
+      background: white;
+      border-color: var(--red);
+      box-shadow: 0 0 0 4px var(--red-glow);
+    }
+
+    /* Hero carousel */
+    .hero-container {
+      margin: 24px 32px 20px;
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      background: linear-gradient(135deg, #1a1a2e, #0a0a15);
+      position: relative;
+    }
+
+    .hero-slide {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 32px 48px;
+      background-size: cover;
+      min-height: 220px;
+    }
+
+    .hero-content h2 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: white;
+      margin-bottom: 8px;
+    }
+
+    .hero-content p {
+      color: rgba(255,255,255,0.85);
+      font-size: 1rem;
+    }
+
+    .hero-badge {
+      background: var(--red);
+      padding: 12px 28px;
+      border-radius: 60px;
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: white;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .hero-dots {
+      position: absolute;
+      bottom: 16px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: rgba(255,255,255,0.5);
+      border-radius: 10px;
+      transition: var(--transition-fast);
+    }
+
+    .dot.active {
+      width: 28px;
+      background: var(--red);
+    }
+
+    /* Category carousel */
+    .category-section {
+      padding: 0 32px 16px;
+    }
+
+    .category-track {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 12px;
+    }
+
+    .category-track::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    .category-card {
+      flex: 0 0 auto;
+      scroll-snap-align: start;
+      background: var(--white);
+      padding: 14px 28px;
+      border-radius: 60px;
+      font-weight: 600;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: var(--card-shadow);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .category-card i {
+      font-size: 1.2rem;
+      color: var(--red);
+    }
+
+    .category-card.active {
+      background: var(--red);
+      color: white;
+      transform: scale(1.02);
+      box-shadow: 0 8px 20px var(--red-glow);
+    }
+
+    .category-card.active i {
+      color: white;
+    }
+
+    /* Products grid - large touch cards */
+    .products-area {
+      padding: 20px 32px 120px;
+    }
+
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 28px;
+    }
+
+    .product-card {
+      background: var(--white);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      transition: transform 0.25s ease, box-shadow 0.3s;
+      cursor: pointer;
+      box-shadow: var(--card-shadow);
+      border: 1px solid rgba(0,0,0,0.04);
+    }
+
+    .product-card:active {
+      transform: scale(0.98);
+    }
+
+    .product-card:hover {
+      transform: translateY(-6px);
+      box-shadow: var(--card-hover);
+    }
+
+    .product-img {
+      height: 190px;
+      background: #e9e9ef;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .product-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.5s;
+    }
+
+    .product-card:hover .product-img img {
+      transform: scale(1.05);
+    }
+
+    .alcohol-tag {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--red);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 40px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .product-info {
+      padding: 18px;
+    }
+
+    .product-name {
+      font-weight: 700;
+      font-size: 1.2rem;
+      margin-bottom: 6px;
+    }
+
+    .product-price {
+      font-weight: 800;
+      font-size: 1.35rem;
+      color: var(--red);
+      margin: 10px 0;
+    }
+
+    .quick-add {
+      background: var(--red);
+      border: none;
+      width: 100%;
+      padding: 14px;
+      border-radius: 60px;
+      color: white;
+      font-weight: 700;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: 0.2s;
+      cursor: pointer;
+    }
+
+    /* Floating cart button */
+    .floating-cart {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      z-index: 200;
+      background: var(--red);
+      border-radius: 80px;
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      box-shadow: 0 12px 28px rgba(227,6,19,0.4);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: none;
+      color: white;
+    }
+
+    .floating-cart:active {
+      transform: scale(0.96);
+    }
+
+    .cart-badge {
+      background: white;
+      color: var(--red);
+      border-radius: 40px;
+      padding: 4px 12px;
+      font-weight: 800;
+      font-size: 1rem;
+    }
+
+    .cart-total {
+      font-weight: 800;
+      font-size: 1.3rem;
+    }
+
+    /* Cart Drawer */
+    .cart-drawer {
+      position: fixed;
+      top: 0;
+      right: -480px;
+      width: 100%;
+      max-width: 480px;
+      height: 100vh;
+      background: var(--white);
+      z-index: 300;
+      box-shadow: -8px 0 32px rgba(0,0,0,0.2);
+      transition: right 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cart-drawer.open {
+      right: 0;
+    }
+
+    .drawer-header {
+      padding: 28px;
+      border-bottom: 1px solid var(--border-soft);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .drawer-items {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .cart-item {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      padding: 12px;
+      background: var(--bone);
+      border-radius: var(--radius-md);
+    }
+
+    .cart-item-img {
+      width: 70px;
+      height: 70px;
+      background: #ddd;
+      border-radius: 16px;
+      object-fit: cover;
+    }
+
+    .cart-item-details {
+      flex: 1;
+    }
+
+    .cart-item-name {
+      font-weight: 700;
+    }
+
+    .cart-qty-control {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .qty-btn {
+      background: white;
+      border: 1px solid #ddd;
+      width: 36px;
+      height: 36px;
+      border-radius: 40px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .drawer-footer {
+      padding: 24px;
+      border-top: 2px solid #eee;
+    }
+
+    .checkout-drawer-btn {
+      background: var(--red);
+      width: 100%;
+      padding: 18px;
+      border-radius: 60px;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Modal (product details) */
+    .modal-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 400;
+      opacity: 0;
+      visibility: hidden;
+      transition: 0.25s;
+    }
+
+    .modal-mask.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .product-modal {
+      background: white;
+      max-width: 600px;
+      width: 90%;
+      border-radius: 48px;
+      overflow: hidden;
+      transform: scale(0.95);
+      transition: transform 0.3s;
+    }
+
+    .modal-mask.open .product-modal {
+      transform: scale(1);
+    }
+
+    .modal-img {
+      width: 100%;
+      height: 280px;
+      object-fit: cover;
+    }
+
+    .modal-body {
+      padding: 28px;
+    }
+
+    .modal-qty {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin: 20px 0;
+    }
+
+    .big-qty-btn {
+      width: 52px;
+      height: 52px;
+      border-radius: 30px;
+      background: var(--bone);
+      border: none;
+      font-size: 1.6rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Checkout stepper */
+    .step-indicator {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .step {
+      flex:1;
+      text-align:center;
+      padding:8px;
+      border-bottom:3px solid #ddd;
+    }
+    .step.active { border-color: var(--red); color: var(--red); font-weight:700;}
+
+    .pay-option-card {
+      border: 2px solid #eee;
+      border-radius: 32px;
+      padding: 18px;
+      margin: 12px 0;
+      cursor: pointer;
+    }
+    .pay-option-card.selected {
+      border-color: var(--red);
+      background: var(--red-soft);
+    }
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 120px;
+      left: 50%;
+      transform: translateX(-50%) translateY(30px);
+      background: var(--ink);
+      color: white;
+      padding: 14px 28px;
+      border-radius: 80px;
+      opacity: 0;
+      transition: 0.25s;
+      z-index: 500;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0);}
+
+    @media (max-width: 800px) {
+      .kiosk-header { flex-direction: column; gap: 12px; padding: 16px; }
+      .hero-slide { flex-direction: column; text-align: center; padding: 24px; }
+      .products-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+      .category-section { padding: 0 16px; }
+      .products-area { padding: 16px; }
+    }
+    button { cursor: pointer; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- header -->
+  <div class="kiosk-header">
+    <div class="brand-area" @click="resetToHome">
+      <div class="brand-logo"><i class="fas fa-crown"></i></div>
+      <div class="brand-text"><h1>Rands</h1></div>
+    </div>
+    <div class="kiosk-search"><i class="fas fa-search"></i><input type="text" v-model="searchQuery" placeholder="Search menu... (beer, steak, etc.)"></div>
+  </div>
+
+  <!-- Hero carousel -->
+  <div class="hero-container">
+    <div class="hero-slide" :style="{ backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0.7), rgba(0,0,0,0.2)), url('${heroBackground}')`, backgroundSize: 'cover' }">
+      <div class="hero-content"><h2>{{ heroTitle }}</h2><p>{{ heroDesc }}</p></div>
+      <div class="hero-badge" @click="quickHeroAction">{{ heroCta }}</div>
+    </div>
+    <div class="hero-dots"><div v-for="(h, idx) in heroSlides" :key="idx" class="dot" :class="{ active: heroIndex === idx }" @click="heroIndex = idx"></div></div>
+  </div>
+
+  <!-- Category Carousel -->
+  <div class="category-section"><div class="category-track">
+    <div v-for="cat in categoryList" :key="cat.id" class="category-card" :class="{ active: activeCategory === cat.id }" @click="selectCategory(cat.id)">
+      <i :class="cat.icon"></i><span>{{ cat.name }}</span>
+    </div>
+  </div></div>
+
+  <!-- Products Grid -->
+  <div class="products-area">
+    <div v-if="loadingProducts" style="text-align:center; padding:60px"><i class="fas fa-spinner fa-pulse fa-2x"></i><p>Loading menu...</p></div>
+    <div v-else-if="filteredProducts.length === 0" style="text-align:center; padding:60px"><i class="fas fa-mug-hot fa-2x"></i><h3>No items match</h3></div>
+    <div class="products-grid" v-else>
+      <div v-for="product in filteredProducts" :key="product.id" class="product-card" @click="openProductModal(product)">
+        <div class="product-img"><img :src="product.image || getFallbackImage(product)" @error="handleImageError" loading="lazy"><span v-if="product.alcohol" class="alcohol-tag"><i class="fas fa-wine-bottle"></i> Alcohol</span></div>
+        <div class="product-info"><div class="product-name">{{ product.name }}</div><div class="product-price">R {{ formatPrice(product.price) }}</div><button class="quick-add" @click.stop="quickAddToCart(product)"><i class="fas fa-plus-circle"></i> Add</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Cart -->
+  <div class="floating-cart" @click="openCartDrawer" v-if="cartItemCount > 0">
+    <i class="fas fa-shopping-bag fa-lg"></i>
+    <span class="cart-badge">{{ cartItemCount }}</span>
+    <span class="cart-total">R {{ formatPrice(cartTotal) }}</span>
+  </div>
+
+  <!-- Cart Drawer -->
+  <div class="cart-drawer" :class="{ open: drawerOpen }">
+    <div class="drawer-header"><h2><i class="fas fa-bag-shopping"></i> Your Order</h2><i class="fas fa-times fa-2x" style="cursor:pointer" @click="drawerOpen=false"></i></div>
+    <div class="drawer-items">
+      <div v-for="(item, idx) in cart" :key="idx" class="cart-item">
+        <img class="cart-item-img" :src="item.image || getFallbackImage(item)">
+        <div class="cart-item-details"><div class="cart-item-name">{{ item.name }}</div><div>R {{ formatPrice(item.price) }}</div><div class="cart-qty-control"><button class="qty-btn" @click="updateCartQty(item, item.quantity-1)">−</button><span style="min-width:36px;text-align:center">{{ item.quantity }}</span><button class="qty-btn" @click="updateCartQty(item, item.quantity+1)">+</button><button style="margin-left:12px;background:none;border:none;color:var(--red)" @click="removeCartItem(item)"><i class="fas fa-trash-alt"></i></button></div></div>
+        <div style="font-weight:800">R {{ formatPrice(item.price * item.quantity) }}</div>
+      </div>
+    </div>
+    <div class="drawer-footer"><div style="display:flex;justify-content:space-between;margin-bottom:16px"><span>Total</span><span style="font-size:1.6rem;font-weight:800;color:var(--red)">R {{ formatPrice(cartTotal) }}</span></div><button class="checkout-drawer-btn" @click="startCheckout">Proceed to Checkout</button></div>
+  </div>
+
+  <!-- Product Modal -->
+  <div class="modal-mask" :class="{ open: productModalOpen }" @click.self="productModalOpen=false">
+    <div class="product-modal"><img class="modal-img" :src="selectedProduct?.image || getFallbackImage(selectedProduct)" /><div class="modal-body"><h2>{{ selectedProduct?.name }}</h2><p style="color:var(--slate);margin:8px 0">{{ selectedProduct?.description || 'Premium selection from Rands' }}</p><div class="product-price" style="font-size:1.8rem">R {{ formatPrice(selectedProduct?.price || 0) }}</div><div class="modal-qty"><button class="big-qty-btn" @click="modalQty = Math.max(1, modalQty-1)">−</button><span style="font-size:1.4rem;min-width:60px;text-align:center">{{ modalQty }}</span><button class="big-qty-btn" @click="modalQty++">+</button></div><button class="quick-add" style="background:var(--red);font-size:1.1rem" @click="addModalToCart">Add to Cart • {{ modalQty }} item(s)</button></div></div>
+  </div>
+
+  <!-- Checkout Modal (Step by step) -->
+  <div class="modal-mask" :class="{ open: checkoutModalOpen }" @click.self="closeCheckoutModal">
+    <div class="product-modal" style="max-width:560px"><div class="modal-body">
+      <div class="step-indicator"><div class="step" :class="{active: checkoutStep===1}">Review</div><div class="step" :class="{active: checkoutStep===2}">Payment</div><div class="step" :class="{active: checkoutStep===3}">Approve</div><div class="step" :class="{active: checkoutStep===4}">Done</div></div>
+      <div v-if="checkoutStep===1"><h3>Review Order</h3><div v-for="i in cart" :key="i.id" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>{{ i.quantity }}x {{ i.name }}</span><span>R{{ formatPrice(i.price*i.quantity) }}</span></div><div style="font-weight:800;margin:16px 0">Total: R{{ formatPrice(cartTotal) }}</div><button class="quick-add" style="background:var(--red)" @click="checkoutStep=2">Continue to Payment</button></div>
+      <div v-if="checkoutStep===2"><h3>Select Payment</h3><div class="pay-option-card" :class="{selected: selectedPayMethod === 'wallet'}" @click="selectedPayMethod='wallet'"><i class="fas fa-wallet"></i> Rands Wallet (Phone)</div><div class="pay-option-card" :class="{selected: selectedPayMethod === 'fingerprint'}" @click="selectedPayMethod='fingerprint'"><i class="fas fa-fingerprint"></i> Fingerprint Scan</div><div v-if="selectedPayMethod==='wallet'"><input type="tel" v-model="walletPhone" placeholder="+27 XX XXX XXXX" style="width:100%;padding:14px;border-radius:40px;border:1px solid #ccc;margin:12px 0"><button class="quick-add" @click="sendWalletCheckout">Request Payment</button></div><div v-if="selectedPayMethod==='fingerprint'"><div @click="simulateFingerprint" style="background:var(--bone);border-radius:80px;padding:24px;text-align:center;margin:12px 0"><i class="fas fa-fingerprint fa-3x" style="color:var(--red)"></i><p>Tap to scan fingerprint</p></div></div><button class="btn-ghost" style="margin-top:12px;background:transparent;border:1px solid #ccc" @click="checkoutStep=1">Back</button></div>
+      <div v-if="checkoutStep===3"><div style="text-align:center"><i class="fas fa-spinner fa-pulse fa-3x" style="color:var(--red)"></i><h3>Waiting for Approval</h3><p>Open Rands Wallet to confirm payment</p><div class="timer-display" style="font-size:2rem;font-family:monospace">{{ formatTime(remainingSeconds) }}</div><button class="btn-ghost" style="margin-top:16px" @click="cancelPaymentFlow">Cancel</button></div></div>
+      <div v-if="checkoutStep===4"><div style="text-align:center"><i class="fas fa-check-circle fa-4x" style="color:#059669"></i><h2>Payment Approved!</h2><p>Order #{{ orderNumber }}</p><button class="quick-add" style="background:#059669" @click="finalizeSuccess">Continue</button></div></div>
+    </div></div>
+  </div>
+  
+  <div class="toast" :class="{ show: toastVisible }"><i class="fas" :class="toastIcon"></i> {{ toastMsg }}</div>
+</div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+  new Vue({
+    el: '#app',
+    data: {
+      searchQuery: '', activeCategory: 'all', loadingProducts: true, products: [], cart: [],
+      drawerOpen: false, productModalOpen: false, selectedProduct: null, modalQty: 1,
+      checkoutModalOpen: false, checkoutStep: 1, selectedPayMethod: 'wallet', walletPhone: '',
+      waitingModalOpenInternal: false, remainingSeconds: 120, paymentSubscription: null, currentPaymentRequestId: null,
+      orderNumber: '', toastVisible: false, toastMsg: '', toastIcon: 'fa-check-circle',
+      heroIndex: 0, heroSlides: [
+        { title: 'The Butcher\'s Cut', desc: 'Premium dry-aged steaks', cta: 'Order Now', action: 'butcher' },
+        { title: 'Cocktail Hour', desc: 'Signature mixology', cta: 'Explore Drinks', action: 'spirits' },
+        { title: 'Rooftop Party', desc: 'Early Bird Tickets Live', cta: 'Get Tickets', action: 'tickets' }
+      ], heroBackground: 'https://placehold.co/1400x300/1a1a2e/white?text=Rands+Experience',
+      demoProductsFallback: [
+        { id: 'd1', name: 'Heineken', price: 48, alcohol: true, category: 'beer', image: null, description: 'Premium Import' },
+        { id: 'd2', name: 'Jack Daniels', price: 85, alcohol: true, category: 'spirits', image: null },
+        { id: 'd3', name: 'Coke Zero', price: 28, alcohol: false, category: 'soft drinks', image: null },
+        { id: 'd4', name: 'Ribeye Steak', price: 189, alcohol: false, category: 'butcher', image: null }
+      ]
+    },
+    computed: {
+      cartItemCount() { return this.cart.reduce((s,i)=>s+i.quantity,0); },
+      cartTotal() { return this.cart.reduce((s,i)=>s+i.price*i.quantity,0); },
+      filteredProducts() {
+        let list = this.products;
+        if(this.activeCategory !== 'all') list = list.filter(p => p.category?.toLowerCase() === this.activeCategory.toLowerCase());
+        if(this.searchQuery.trim()){ let q=this.searchQuery.toLowerCase(); list = list.filter(p=>p.name.toLowerCase().includes(q)||(p.description||'').toLowerCase().includes(q)); }
+        return list;
+      },
+      categoryList() {
+        let cats = [
+          { id: 'all', name: 'All', icon: 'fas fa-grid-2' },
+          { id: 'beer', name: '🍺 Beer', icon: 'fas fa-beer-mug-empty' },
+          { id: 'spirits', name: '🥃 Spirits', icon: 'fas fa-crown' },
+          { id: 'wine', name: '🍷 Wine', icon: 'fas fa-wine-glass' },
+          { id: 'soft drinks', name: '🥤 Soft Drinks', icon: 'fas fa-droplet' },
+          { id: 'butcher', name: '🥩 Butcher', icon: 'fas fa-utensils' },
+          { id: 'tickets', name: '🎟 Events', icon: 'fas fa-ticket-alt' }
+        ];
+        return cats;
+      },
+      heroTitle() { return this.heroSlides[this.heroIndex].title; },
+      heroDesc() { return this.heroSlides[this.heroIndex].desc; },
+      heroCta() { return this.heroSlides[this.heroIndex].cta; }
+    },
+    async mounted() {
+      await this.loadProducts(); this.startHeroRotation();
+    },
+    beforeDestroy() { if(this.intervalHero) clearInterval(this.intervalHero); if(this.paymentSubscription) supabase.removeChannel(this.paymentSubscription); },
+    methods: {
+      formatPrice(n){ return Number(n).toFixed(2); },
+      formatTime(s){ let m=Math.floor(s/60), sec=s%60; return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`; },
+      getFallbackImage(p){ return 'https://picsum.photos/seed/drink/300/200'; },
+      handleImageError(e){ e.target.src='https://picsum.photos/seed/fallback/300/200'; },
+      async loadProducts(){
+        this.loadingProducts=true;
+        try{
+          let { data, error } = await supabase.from('products').select('*');
+          if(error) throw error;
+          if(data && data.length) this.products = data.map(p=>({ ...p, price: p.price || p.unit_price, category: p.category || p.product_type }));
+          else this.products = this.demoProductsFallback;
+        } catch(e){ this.products = this.demoProductsFallback; this.showToast('Using demo menu', 'info'); }
+        finally{ this.loadingProducts=false; }
+      },
+      selectCategory(id){ this.activeCategory=id; this.searchQuery=''; },
+      openProductModal(p){ this.selectedProduct=p; this.modalQty=1; this.productModalOpen=true; },
+      addModalToCart(){ if(this.selectedProduct) this.addToCartInternal(this.selectedProduct, this.modalQty); this.productModalOpen=false; },
+      quickAddToCart(p){ this.addToCartInternal(p,1); },
+      addToCartInternal(product, qty){ let existing=this.cart.find(i=>i.id===product.id); if(existing) existing.quantity+=qty; else this.cart.push({...product, quantity: qty, itemType:'menu'}); this.showToast(`${product.name} added`); },
+      updateCartQty(item, newQty){ if(newQty<=0) this.cart = this.cart.filter(i=>i.id!==item.id); else item.quantity=newQty; },
+      removeCartItem(item){ this.cart=this.cart.filter(i=>i.id!==item.id); },
+      openCartDrawer(){ this.drawerOpen=true; },
+      startCheckout(){ if(this.cartItemCount===0) return; this.drawerOpen=false; this.checkoutModalOpen=true; this.checkoutStep=1; },
+      closeCheckoutModal(){ if(this.paymentSubscription) this.cancelPaymentFlow(); this.checkoutModalOpen=false; this.checkoutStep=1; },
+      async sendWalletCheckout(){
+        if(this.walletPhone.trim().length<10){ this.showToast('Valid phone number required','error'); return; }
+        this.checkoutStep=3; this.remainingSeconds=120;
+        try{
+          const { data:profile } = await supabase.from('profiles').select('id').eq('phone', this.walletPhone).single();
+          if(!profile) throw new Error('No wallet');
+          const { data:wallet } = await supabase.from('wallets').select('id').eq('user_id', profile.id).single();
+          const { data:order } = await supabase.from('orders').insert({
+            customer_phone: this.walletPhone, total_amount: this.cartTotal, payment_method:'wallet', payment_status:'pending', status:'pending', source:'kiosk',
+            order_number: `KIO-${Date.now()}`, items: this.cart.map(i=>({name:i.name,quantity:i.quantity,price:i.price}))
+          }).select().single();
+          const { data:payReq } = await supabase.from('payment_requests').insert({
+            customer_phone: this.walletPhone, customer_profile_id: profile.id, wallet_id: wallet.id, order_id: order.id, total_amount: this.cartTotal,
+            status:'pending', requested_at:new Date(), expires_at: new Date(Date.now()+120000), request_type:'kiosk_order'
+          }).select().single();
+          this.currentPaymentRequestId = payReq.id; this.setupListener(payReq.id); this.startTimer();
+        } catch(e){ this.showToast(e.message,'error'); this.checkoutModalOpen=false; }
+      },
+      setupListener(id){
+        if(this.paymentSubscription) supabase.removeChannel(this.paymentSubscription);
+        this.paymentSubscription = supabase.channel(`pay-${id}`).on('postgres_changes', { event:'UPDATE', schema:'public', table:'payment_requests', filter:`id=eq.${id}` }, async(payload)=>{
+          if(payload.new.status === 'approved'){ this.cleanupPayment(); this.orderNumber = payload.new.order_number || `ORD-${Date.now()}`; this.checkoutStep=4; }
+          else if(payload.new.status === 'rejected'){ this.showToast('Payment rejected','error'); this.closeCheckoutModal(); }
+        }).subscribe();
+      },
+      startTimer(){
+        let timer = setInterval(()=>{ if(this.remainingSeconds>0 && this.checkoutStep===3) this.remainingSeconds--; else{ clearInterval(timer); if(this.remainingSeconds===0 && this.checkoutStep===3){ this.showToast('Expired','error'); this.closeCheckoutModal(); } } },1000);
+        this.$once('hook:beforeDestroy',()=>clearInterval(timer));
+      },
+      simulateFingerprint(){ this.showToast('Fingerprint mock: redirect to wallet','info'); this.selectedPayMethod='wallet'; },
+      cancelPaymentFlow(){ if(this.currentPaymentRequestId) supabase.from('payment_requests').update({status:'cancelled'}).eq('id',this.currentPaymentRequestId); this.cleanupPayment(); this.closeCheckoutModal(); },
+      cleanupPayment(){ if(this.paymentSubscription) supabase.removeChannel(this.paymentSubscription); this.paymentSubscription=null; this.currentPaymentRequestId=null; },
+      finalizeSuccess(){ this.cart=[]; this.checkoutModalOpen=false; this.showToast('Enjoy your order!','success'); },
+      quickHeroAction(){ let action=this.heroSlides[this.heroIndex].action; if(action==='butcher') this.activeCategory='butcher'; else if(action==='spirits') this.activeCategory='spirits'; else if(action==='tickets') this.activeCategory='tickets'; },
+      startHeroRotation(){ this.intervalHero=setInterval(()=>{ this.heroIndex=(this.heroIndex+1)%this.heroSlides.length; },5000); },
+      resetToHome(){ this.activeCategory='all'; this.searchQuery=''; },
+      showToast(msg, type='success'){ this.toastMsg=msg; this.toastIcon=type==='error'?'fa-exclamation-triangle':'fa-check-circle'; this.toastVisible=true; setTimeout(()=>this.toastVisible=false,3000); }
+    }
+  });
+</script>
+</body>
+</html>
