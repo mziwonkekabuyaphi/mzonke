@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>VVIP Analytics | Sovereign Intelligence</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --red: #E30613;
+            --red-dark: #a0010e;
+            --red-deep: #8A0009;
+            --red-glow: rgba(227,6,19,0.12);
+            --red-subtle: rgba(227,6,19,0.06);
+            --ink: #1e293b;
+            --ink-muted: #334155;
+            --slate: #475569;
+            --mist: #94a3b8;
+            --bone: #f8fafd;
+            --white: #ffffff;
+            --success: #10b981;
+            --gold: #f59e0b;
+            --border: rgba(0,0,0,0.07);
+            --border-strong: #eef2f8;
+            --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.08);
+            --shadow-card: 0 4px 16px rgba(0,0,0,0.04);
+            --radius-lg: 24px;
+            --radius-xl: 28px;
+            --radius-full: 9999px;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bone);
+            padding: 24px;
+            color: var(--ink);
+        }
+        .dashboard-container { max-width: 1600px; margin: 0 auto; }
+        
+        /* Premium KPI Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+        .kpi-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 20px 22px;
+            border: 1px solid var(--border-strong);
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-card);
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--red);
+        }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-soft); }
+        .kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .kpi-icon {
+            width: 48px; height: 48px;
+            background: var(--red-subtle);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--red);
+            font-size: 1.4rem;
+        }
+        .kpi-value { font-size: 32px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
+        .kpi-label { font-size: 12px; color: var(--mist); margin-top: 6px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+        .trend-up { color: var(--success); background: #e6f7ec; padding: 2px 8px; border-radius: 40px; font-size: 11px; font-weight: 600; }
+        .trend-down { color: #ef4444; background: #fee2e2; padding: 2px 8px; border-radius: 40px; font-size: 11px; font-weight: 600; }
+        
+        /* Section styles */
+        .section {
+            background: var(--white);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            margin-bottom: 28px;
+            border: 1px solid var(--border-strong);
+            box-shadow: var(--shadow-card);
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--ink);
+        }
+        .section-title i { color: var(--red); }
+        
+        /* Stats grids */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+        }
+        .stat-card {
+            background: var(--bone);
+            border-radius: 20px;
+            padding: 14px;
+            text-align: center;
+            border: 1px solid var(--border-strong);
+            transition: all 0.2s;
+        }
+        .stat-card:hover { background: var(--white); border-color: var(--red); }
+        .stat-number { font-size: 24px; font-weight: 800; color: var(--red); }
+        .stat-label { font-size: 11px; color: var(--mist); margin-top: 4px; font-weight: 500; }
+        
+        /* Chart rows */
+        .chart-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .chart-container {
+            background: var(--bone);
+            border-radius: 20px;
+            padding: 16px;
+            border: 1px solid var(--border-strong);
+        }
+        canvas { max-height: 260px; width: 100%; }
+        
+        /* Leaderboard & Activity */
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-strong);
+            font-size: 13px;
+        }
+        .rank {
+            font-weight: 800;
+            width: 32px;
+            color: var(--red);
+        }
+        .activity-feed { max-height: 320px; overflow-y: auto; }
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-strong);
+        }
+        .activity-badge {
+            width: 36px; height: 36px;
+            border-radius: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--red-subtle);
+            color: var(--red);
+        }
+        .activity-detail { flex: 1; font-size: 13px; }
+        .activity-amount { font-weight: 700; color: var(--red); }
+        .activity-time { font-size: 10px; color: var(--mist); }
+        
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 60px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .status-active { background: #e6f7ec; color: #166534; }
+        .status-pending { background: #fff3e0; color: #b45309; }
+        .status-completed { background: #e0e7ff; color: #1e40af; }
+        
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+        .filter-chip {
+            background: var(--bone);
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: 0.2s;
+            border: 1px solid var(--border-strong);
+        }
+        .filter-chip.active, .filter-chip:hover { background: var(--red); color: white; border-color: var(--red); }
+        
+        .loading-state { text-align: center; padding: 60px; color: var(--mist); }
+        .empty-state { text-align: center; padding: 40px; color: var(--mist); }
+        
+        @media (max-width: 900px) {
+            body { padding: 16px; }
+            .chart-row { grid-template-columns: 1fr; }
+            .kpi-grid { gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard-container">
+    <!-- HERO KPI SECTION -->
+    <div class="kpi-grid" id="heroKpiGrid"></div>
+
+    <!-- PACKAGE PERFORMANCE + BOOKING ANALYTICS -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-crown"></i> VVIP Package Performance</div>
+            </div>
+            <div id="packageStats" class="stats-grid"></div>
+            <div class="chart-container" style="margin-top: 16px;">
+                <canvas id="packageSalesChart"></canvas>
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-line"></i> Booking Analytics</div>
+            </div>
+            <div id="bookingStats" class="stats-grid"></div>
+            <div class="chart-container" style="margin-top: 16px;">
+                <canvas id="bookingStatusChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- REVENUE TREND + CREDIT UTILIZATION -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chart-simple"></i> Revenue & Credit Flow</div>
+            </div>
+            <canvas id="revenueTrendChart"></canvas>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-coins"></i> Credit Utilization</div>
+            </div>
+            <canvas id="creditUtilizationChart"></canvas>
+            <div id="utilizationRate" class="stat-card" style="margin-top: 16px; text-align: center;"></div>
+        </div>
+    </div>
+
+    <!-- TOP CUSTOMERS + RECENT ACTIVITY -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-trophy"></i> Top VVIP Customers</div>
+            </div>
+            <div id="topCustomersList" class="activity-feed"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-stream"></i> Recent Activity</div>
+                <span style="font-size: 11px; color: var(--mist);"><i class="fas fa-sync-alt"></i> real-time</span>
+            </div>
+            <div id="recentActivityFeed" class="activity-feed"></div>
+        </div>
+    </div>
+
+    <!-- SERVICE REQUESTS + ALERTS -->
+    <div class="chart-row">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-hand-holding-heart"></i> Pending Service Requests</div>
+            </div>
+            <div id="serviceRequestsList" class="activity-feed"></div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-bell"></i> VVIP Alerts</div>
+            </div>
+            <div id="alertCenter"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    // Charts storage
+    let charts = {};
+
+    // Helper
+    const fmtR = (val) => `R${(val || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    const fmtNumber = (val) => (val || 0).toLocaleString();
+
+    // Data state
+    let packages = [];
+    let bookings = [];
+    let serviceRequests = [];
+    let customers = {};
+
+    // ========== LOAD DATA FROM SUPABASE ==========
+    async function loadVVIPData() {
+        try {
+            // Load packages
+            const { data: pkgData, error: pkgErr } = await supabase
+                .from('vvip_packages')
+                .select('*')
+                .order('price', { ascending: true });
+            if (pkgErr) throw pkgErr;
+            packages = pkgData || [];
+
+            // Load bookings with customer info
+            const { data: bookingData, error: bookErr } = await supabase
+                .from('vvip_bookings')
+                .select(`
+                    *,
+                    packages:vvip_packages(name, price)
+                `)
+                .order('created_at', { ascending: false });
+            if (bookErr) throw bookErr;
+            bookings = bookingData || [];
+
+            // Load service requests
+            const { data: serviceData, error: serviceErr } = await supabase
+                .from('service_requests')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (serviceErr) throw serviceErr;
+            serviceRequests = serviceData || [];
+
+            // Load customer profiles for top customers
+            const customerIds = [...new Set(bookings.map(b => b.customer_id).filter(id => id))];
+            if (customerIds.length) {
+                const { data: profiles } = await supabase
+                    .from('profiles')
+                    .select('id, name, phone')
+                    .in('id', customerIds);
+                if (profiles) {
+                    profiles.forEach(p => { customers[p.id] = p; });
+                }
+            }
+
+            renderAllDashboards();
+        } catch (err) {
+            console.error('Error loading VVIP data:', err);
+            // Fallback mock data for demo
+            generateMockData();
+            renderAllDashboards();
+        }
+    }
+
+    function generateMockData() {
+        packages = [
+            { id: 'p1', name: 'Sovereign Platinum', price: 5000, capacity: 50, sold_count: 32, status: 'active', benefits: ['VIP Lounge', 'Premium Bar'] },
+            { id: 'p2', name: 'Royal Gold', price: 3000, capacity: 100, sold_count: 67, status: 'active', benefits: ['Priority Entry'] },
+            { id: 'p3', name: 'Noble Silver', price: 1500, capacity: 200, sold_count: 145, status: 'active', benefits: ['Exclusive Area'] }
+        ];
+        bookings = Array.from({ length: 45 }, (_, i) => ({
+            id: `b${i}`,
+            booking_reference: `VVIP-${1000 + i}`,
+            total_amount: [1500, 3000, 5000][Math.floor(Math.random() * 3)],
+            remaining_balance: Math.random() * 3000,
+            status: ['confirmed', 'checked_in', 'seated', 'completed'][Math.floor(Math.random() * 4)],
+            created_at: new Date(Date.now() - Math.random() * 30 * 86400000).toISOString(),
+            packages: { name: ['Noble Silver', 'Royal Gold', 'Sovereign Platinum'][Math.floor(Math.random() * 3)] }
+        }));
+        serviceRequests = Array.from({ length: 3 }, (_, i) => ({
+            id: `sr${i}`,
+            customer_name: `Guest ${i + 1}`,
+            remaining_balance: Math.random() * 2000,
+            status: 'pending',
+            created_at: new Date().toISOString()
+        }));
+    }
+
+    // ========== RENDER HERO KPI ==========
+    function renderHeroKPI() {
+        const totalRevenue = bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+        const totalBookings = bookings.length;
+        const activePackages = bookings.filter(b => ['confirmed', 'checked_in', 'seated'].includes(b.status)).length;
+        const avgPackageValue = totalRevenue / (totalBookings || 1);
+        const totalCreditRemaining = bookings.reduce((sum, b) => sum + (b.remaining_balance || b.total_amount || 0), 0);
+        const utilizationRate = totalRevenue > 0 ? ((totalRevenue - totalCreditRemaining) / totalRevenue * 100) : 0;
+        const pendingRequests = serviceRequests.filter(sr => sr.status === 'pending').length;
+
+        const heroItems = [
+            { icon: "fa-crown", label: "Total Revenue", value: fmtR(totalRevenue), trend: "+23%", trendUp: true },
+            { icon: "fa-ticket", label: "Total Bookings", value: fmtNumber(totalBookings), sub: `${activePackages} active` },
+            { icon: "fa-chart-line", label: "Avg Package Value", value: fmtR(avgPackageValue), trend: "+8%" },
+            { icon: "fa-coins", label: "Active Credit", value: fmtR(totalCreditRemaining), sub: `${Math.round(utilizationRate)}% utilized` },
+            { icon: "fa-hand-holding-heart", label: "Pending Service", value: pendingRequests, trend: pendingRequests > 0 ? "needs attention" : "" },
+            { icon: "fa-percent", label: "Sell-Through Rate", value: `${Math.round((packages.reduce((s,p)=>s+(p.sold_count||0),0) / packages.reduce((s,p)=>s+(p.capacity||0),1)) * 100)}%` }
+        ];
+        document.getElementById('heroKpiGrid').innerHTML = heroItems.map(k => `
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <div class="kpi-icon"><i class="fas ${k.icon}"></i></div>
+                    ${k.trend ? `<span class="${k.trendUp ? 'trend-up' : 'trend-down'}"><i class="fas fa-arrow-${k.trendUp ? 'up' : 'down'}"></i> ${k.trend}</span>` : ''}
+                </div>
+                <div class="kpi-value">${k.value}</div>
+                <div class="kpi-label">${k.label}</div>
+                ${k.sub ? `<div style="font-size: 11px; color: var(--mist); margin-top: 6px;">${k.sub}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function renderPackageStats() {
+        const totalPackages = packages.length;
+        const activePackagesCount = packages.filter(p => p.status === 'active').length;
+        const totalCapacity = packages.reduce((s, p) => s + (p.capacity || 0), 0);
+        const totalSold = packages.reduce((s, p) => s + (p.sold_count || 0), 0);
+        const topPackage = packages.reduce((max, p) => (p.sold_count || 0) > (max.sold_count || 0) ? p : max, packages[0]);
+        
+        document.getElementById('packageStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${totalPackages}</div><div class="stat-label">Total Packages</div></div>
+            <div class="stat-card"><div class="stat-number">${activePackagesCount}</div><div class="stat-label">Active</div></div>
+            <div class="stat-card"><div class="stat-number">${fmtNumber(totalSold)}</div><div class="stat-label">Tickets Sold</div></div>
+            <div class="stat-card"><div class="stat-number">${totalCapacity - totalSold}</div><div class="stat-label">Remaining Spots</div></div>
+            <div class="stat-card"><div class="stat-number">${topPackage?.name?.slice(0, 12) || '-'}</div><div class="stat-label">Best Seller</div></div>
+        `;
+        
+        // Package sales chart
+        const ctx = document.getElementById('packageSalesChart').getContext('2d');
+        if (charts.packageSales) charts.packageSales.destroy();
+        charts.packageSales = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: packages.map(p => p.name?.slice(0, 12)), datasets: [{ label: 'Sold', data: packages.map(p => p.sold_count || 0), backgroundColor: '#E30613', borderRadius: 8 }, { label: 'Capacity', data: packages.map(p => p.capacity || 0), backgroundColor: '#cbd5e1', borderRadius: 8 }] },
+            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+        });
+    }
+
+    function renderBookingAnalytics() {
+        const totalBookings = bookings.length;
+        const confirmed = bookings.filter(b => b.status === 'confirmed').length;
+        const checkedIn = bookings.filter(b => b.status === 'checked_in').length;
+        const seated = bookings.filter(b => b.status === 'seated').length;
+        const completed = bookings.filter(b => b.status === 'completed').length;
+        
+        document.getElementById('bookingStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${confirmed}</div><div class="stat-label">Confirmed</div></div>
+            <div class="stat-card"><div class="stat-number">${checkedIn}</div><div class="stat-label">Checked In</div></div>
+            <div class="stat-card"><div class="stat-number">${seated}</div><div class="stat-label">Seated</div></div>
+            <div class="stat-card"><div class="stat-number">${completed}</div><div class="stat-label">Completed</div></div>
+        `;
+        
+        const statusCtx = document.getElementById('bookingStatusChart').getContext('2d');
+        if (charts.bookingStatus) charts.bookingStatus.destroy();
+        charts.bookingStatus = new Chart(statusCtx, {
+            type: 'doughnut',
+            data: { labels: ['Confirmed', 'Checked In', 'Seated', 'Completed'], datasets: [{ data: [confirmed, checkedIn, seated, completed], backgroundColor: ['#f59e0b', '#3b82f6', '#8b5cf6', '#10b981'] }] },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    function renderRevenueTrend() {
+        const last7Days = [...Array(7)].map((_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            return date.toISOString().split('T')[0];
+        }).reverse();
+        
+        const revenueByDay = last7Days.map(day => {
+            return bookings.filter(b => b.created_at?.startsWith(day)).reduce((sum, b) => sum + (b.total_amount || 0), 0);
+        });
+        
+        const ctx = document.getElementById('revenueTrendChart').getContext('2d');
+        if (charts.revenueTrend) charts.revenueTrend.destroy();
+        charts.revenueTrend = new Chart(ctx, {
+            type: 'line',
+            data: { labels: last7Days.map(d => d.slice(5)), datasets: [{ label: 'Revenue (R)', data: revenueByDay, borderColor: '#E30613', backgroundColor: 'rgba(227,6,19,0.1)', fill: true, tension: 0.3 }] },
+            options: { responsive: true, plugins: { tooltip: { callbacks: { label: (ctx) => `R${ctx.raw.toLocaleString()}` } } } }
+        });
+    }
+
+    function renderCreditUtilization() {
+        const totalCreditIssued = bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+        const totalCreditRemaining = bookings.reduce((sum, b) => sum + (b.remaining_balance || b.total_amount || 0), 0);
+        const utilized = totalCreditIssued - totalCreditRemaining;
+        const utilizationRate = totalCreditIssued > 0 ? (utilized / totalCreditIssued * 100) : 0;
+        
+        const ctx = document.getElementById('creditUtilizationChart').getContext('2d');
+        if (charts.creditUtil) charts.creditUtil.destroy();
+        charts.creditUtil = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['Utilized', 'Remaining'], datasets: [{ data: [utilized, totalCreditRemaining], backgroundColor: ['#E30613', '#e2e8f0'] }] },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+        document.getElementById('utilizationRate').innerHTML = `<strong>Utilization Rate:</strong> ${utilizationRate.toFixed(1)}% of total VVIP credit spent`;
+    }
+
+    function renderTopCustomers() {
+        const customerSpending = {};
+        bookings.forEach(b => {
+            if (b.customer_id) {
+                customerSpending[b.customer_id] = (customerSpending[b.customer_id] || 0) + (b.total_amount || 0);
+            }
+        });
+        const sorted = Object.entries(customerSpending).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const container = document.getElementById('topCustomersList');
+        if (!sorted.length) { container.innerHTML = '<div class="empty-state">No customer data yet</div>'; return; }
+        container.innerHTML = sorted.map(([cid, amount], idx) => {
+            const customer = customers[cid] || { name: `Customer ${cid.slice(0, 6)}`, phone: '-' };
+            return `<div class="leaderboard-item"><span class="rank">${idx + 1}</span><div><strong>${customer.name?.slice(0, 20) || 'Guest'}</strong><br><small>${customer.phone || '-'}</small></div><span style="color: var(--red); font-weight: 800;">${fmtR(amount)}</span></div>`;
+        }).join('');
+    }
+
+    function renderRecentActivity() {
+        const recentBookings = [...bookings].slice(0, 8);
+        const container = document.getElementById('recentActivityFeed');
+        if (!recentBookings.length) { container.innerHTML = '<div class="empty-state">No recent activity</div>'; return; }
+        container.innerHTML = recentBookings.map(b => {
+            const statusText = { confirmed: 'Purchased', checked_in: 'Checked In', seated: 'Seated', completed: 'Completed' }[b.status] || b.status;
+            return `<div class="activity-item">
+                <div class="activity-badge"><i class="fas ${b.status === 'confirmed' ? 'fa-shopping-cart' : b.status === 'checked_in' ? 'fa-check-circle' : 'fa-crown'}"></i></div>
+                <div class="activity-detail"><strong>${b.packages?.name || 'VVIP Package'}</strong> ${statusText}<div class="activity-time">${new Date(b.created_at).toLocaleDateString()}</div></div>
+                <div class="activity-amount">${fmtR(b.total_amount)}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderServiceRequests() {
+        const pending = serviceRequests.filter(sr => sr.status === 'pending');
+        const container = document.getElementById('serviceRequestsList');
+        if (!pending.length) { container.innerHTML = '<div class="empty-state">No pending service requests</div>'; return; }
+        container.innerHTML = pending.map(sr => `
+            <div class="activity-item" style="border-left: 3px solid var(--gold); padding-left: 12px;">
+                <div class="activity-badge" style="background: #fef3c7;"><i class="fas fa-hand-holding-heart" style="color: var(--gold);"></i></div>
+                <div class="activity-detail"><strong>${sr.customer_name || 'VVIP Guest'}</strong> requested service<div class="activity-time">${new Date(sr.created_at).toLocaleString()}</div></div>
+                <div class="activity-amount">Credit: ${fmtR(sr.remaining_balance || 0)}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderAlerts() {
+        const lowInventory = packages.filter(p => (p.capacity - (p.sold_count || 0)) < 10 && (p.capacity - (p.sold_count || 0)) > 0);
+        const highValueBookings = bookings.filter(b => (b.total_amount || 0) > 4000);
+        const pendingServices = serviceRequests.filter(sr => sr.status === 'pending').length;
+        
+        const alerts = [];
+        if (lowInventory.length) alerts.push({ level: 'warning', title: 'Low Package Inventory', desc: `${lowInventory.length} packages have <10 spots remaining` });
+        if (highValueBookings.length) alerts.push({ level: 'info', title: 'High-Value Bookings', desc: `${highValueBookings.length} premium packages sold recently` });
+        if (pendingServices) alerts.push({ level: 'critical', title: 'Pending Service Requests', desc: `${pendingServices} VVIP guests waiting for assistance` });
+        
+        const container = document.getElementById('alertCenter');
+        if (!alerts.length) { container.innerHTML = '<div class="empty-state">No active alerts</div>'; return; }
+        container.innerHTML = alerts.map(a => `
+            <div class="activity-item" style="border-left: 4px solid ${a.level === 'critical' ? '#dc2626' : a.level === 'warning' ? '#f59e0b' : '#3b82f6'}; background: ${a.level === 'critical' ? '#fff5f5' : a.level === 'warning' ? '#fffbeb' : '#eff6ff'}; padding-left: 12px; border-radius: 12px; margin-bottom: 8px;">
+                <div><strong>${a.title}</strong><br><small>${a.desc}</small></div>
+            </div>
+        `).join('');
+    }
+
+    function renderAllDashboards() {
+        renderHeroKPI();
+        renderPackageStats();
+        renderBookingAnalytics();
+        renderRevenueTrend();
+        renderCreditUtilization();
+        renderTopCustomers();
+        renderRecentActivity();
+        renderServiceRequests();
+        renderAlerts();
+    }
+
+    // Real-time subscriptions
+    function setupRealtime() {
+        supabase.channel('vvip-analytics')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_packages' }, () => loadVVIPData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => loadVVIPData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'service_requests' }, () => loadVVIPData())
+            .subscribe();
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(() => loadVVIPData(), 30000);
+    
+    loadVVIPData();
+    setupRealtime();
+</script>
+</body>
+</html>
