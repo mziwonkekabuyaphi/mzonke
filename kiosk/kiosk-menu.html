@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+  <title>Rands | Self-Service Kiosk</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://js.yoco.com/sdk/v1/yoco-sdk-web.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs2@1.0.0/qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --red: #E30613;
+      --red-dark: #B5040F;
+      --red-glow: rgba(227,6,19,0.25);
+      --ink: #0F0F12;
+      --ink-light: #2C2C35;
+      --slate: #5E5E6E;
+      --mist: #A1A1B0;
+      --bone: #F8F7F4;
+      --white: #FFFFFF;
+      --gold: #D4AF37;
+      --card-shadow: 0 12px 28px rgba(0,0,0,0.08);
+      --card-hover: 0 20px 40px rgba(0,0,0,0.12);
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-full: 9999px;
+      --transition-fast: 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      background: var(--bone);
+      color: var(--ink);
+      overflow-x: hidden;
+    }
+    
+    h1, h2, h3, h4, h5, h6,
+    .page-title, .section-title, .card-title,
+    .brand-text h1, .event-name, .modal h2 {
+      font-family: 'Manrope', sans-serif;
+      font-weight: 800;
+    }
+    
+    p, .description, .subtitle, .card-text,
+    .product-description, .event-location, .event-datetime,
+    .cart-item-name, .info-label, .item-meta, .toast-message {
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+    }
+    
+    button, .btn, .action-button, .quick-add,
+    .buy-ticket-btn, .checkout-drawer-btn, .hero-badge,
+    .qty-btn, .big-qty-btn, .sidebar-item, .step {
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    
+    .price, .ticket-price, .product-price, .amount,
+    .price-amount, .cart-total, .total-amount,
+    .grand-total span:last-child, .item-price {
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+    }
+    
+    .hero-content h2, .brand-logo-alt {
+      font-family: 'Playfair Display', serif;
+    }
+    
+    /* Fixed product image sizing - shows full image without cropping */
+    .product-img {
+      height: 220px;
+      background: #e9e9ef;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .product-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #f5f5f5;
+      padding: 12px;
+    }
+    
+    /* Receipt Modal Styles */
+    .receipt-modal {
+      max-width: 500px;
+      width: 90%;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .receipt-content {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 20px;
+      background: white;
+    }
+    .receipt-header {
+      text-align: center;
+      border-bottom: 2px dashed #000;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .receipt-header h3 {
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .ticket-item {
+      border: 2px solid #000;
+      margin-bottom: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      page-break-after: always;
+    }
+    .ticket-item:last-child {
+      page-break-after: auto;
+    }
+    .ticket-header {
+      text-align: center;
+      border-bottom: 2px dashed #000;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+    }
+    .ticket-header h4 {
+      font-size: 20px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .vip-badge {
+      color: var(--gold);
+      font-size: 12px;
+      margin: 5px 0;
+    }
+    .qr-container {
+      text-align: center;
+      margin: 15px 0;
+      padding: 10px;
+      background: white;
+    }
+    .print-button {
+      background: var(--red);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 40px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px;
+      width: calc(100% - 20px);
+    }
+    .print-button:hover {
+      background: var(--red-dark);
+    }
+    
+    .kiosk-header { background: var(--white); border-bottom: 1px solid rgba(0,0,0,0.05); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 120; flex-wrap: wrap; gap: 16px; }
+    .brand-area { display: flex; align-items: center; gap: 14px; cursor: pointer; }
+    .brand-logo { width: 52px; height: 52px; background: linear-gradient(135deg, var(--red), var(--red-dark)); border-radius: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; box-shadow: 0 8px 18px var(--red-glow); }
+    .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .brand-text h1 { font-family: 'Manrope', sans-serif; font-size: 1.6rem; font-weight: 800; }
+    .kiosk-search { flex: 0 1 380px; position: relative; }
+    .kiosk-search i { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: var(--slate); font-size: 1.1rem; }
+    .kiosk-search input { 
+      width: 100%; padding: 16px 20px 16px 52px; border: 2px solid var(--red); border-radius: 60px; font-size: 1rem; font-family: 'Inter', sans-serif;
+      background: var(--white); transition: var(--transition-fast); color: var(--ink);
+    }
+    .kiosk-search input::placeholder { color: var(--mist); font-weight: 400; opacity: 1; font-family: 'Inter', sans-serif; }
+    .kiosk-search input:focus { outline: none; border-color: var(--red-dark); box-shadow: 0 0 0 4px var(--red-glow); }
+    
+    .hero-container { margin: 24px 32px 20px; border-radius: var(--radius-xl); overflow: hidden; background: linear-gradient(135deg, #1a1a2e, #0a0a15); position: relative; min-height: 260px; }
+    .hero-slide { display: flex; align-items: center; justify-content: space-between; padding: 48px 56px; background-size: cover; background-position: center; min-height: 280px; transition: background-image 0.5s ease-in-out; }
+    .hero-content h2 { font-family: 'Playfair Display', serif; font-size: 2.2rem; font-weight: 800; color: white; margin-bottom: 12px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+    .hero-content p { font-family: 'Inter', sans-serif; font-weight: 400; color: rgba(255,255,255,0.95); font-size: 1.1rem; text-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
+    .hero-badge { background: var(--red); padding: 14px 32px; border-radius: 60px; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.3px; font-size: 1.2rem; color: white; cursor: pointer; transition: transform 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .hero-badge:hover { transform: scale(1.05); }
+    .hero-dots { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 12px; }
+    .dot { width: 8px; height: 8px; background: rgba(255,255,255,0.5); border-radius: 10px; cursor: pointer; transition: all 0.3s; }
+    .dot.active { width: 32px; background: var(--red); }
+    
+    .kiosk-layout { display: flex; min-height: calc(100vh - 88px); }
+    .category-sidebar { width: 280px; flex-shrink: 0; background: var(--white); border-right: 1px solid rgba(0,0,0,0.06); padding: 24px 12px; position: sticky; top: 88px; height: calc(100vh - 88px); overflow-y: auto; }
+    .sidebar-item { display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-radius: var(--radius-md); margin-bottom: 8px; cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.3px; color: var(--ink-light); transition: all 0.2s; }
+    .sidebar-item i { width: 28px; font-size: 1.3rem; color: var(--red); }
+    .sidebar-item.active { background: var(--red); color: white; box-shadow: 0 8px 18px var(--red-glow); }
+    .sidebar-item.active i { color: white; }
+    .sidebar-item:hover:not(.active) { background: var(--bone); transform: translateX(4px); }
+    .main-content { flex: 1; overflow-y: auto; padding: 24px 32px 120px; }
+    
+    .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 28px; }
+    .product-card { background: var(--white); border-radius: var(--radius-lg); overflow: hidden; cursor: pointer; transition: transform 0.25s, box-shadow 0.3s; box-shadow: var(--card-shadow); }
+    .product-card:hover { transform: translateY(-4px); box-shadow: var(--card-hover); }
+    .product-card:active { transform: scale(0.98); }
+    .product-img { height: 220px; background: #f5f5f5; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .product-img img { width: 100%; height: 100%; object-fit: contain; padding: 12px; }
+    .alcohol-tag { position: absolute; top: 12px; right: 12px; background: var(--red); color: white; padding: 6px 12px; border-radius: 40px; font-size: 0.7rem; font-family: 'Inter', sans-serif; font-weight: 700; z-index: 2; }
+    .product-info { padding: 18px; }
+    .product-name { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 1.2rem; margin-bottom: 6px; color: var(--ink); }
+    .product-description { font-family: 'Inter', sans-serif; font-weight: 400; font-size: 0.85rem; color: var(--slate); margin-bottom: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .product-price { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.35rem; color: var(--red); margin: 10px 0; }
+    .quick-add { background: var(--red); border: none; width: 100%; padding: 12px; border-radius: 60px; color: white; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.3px; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: transform 0.1s; }
+    .quick-add:active { transform: scale(0.97); }
+    
+    .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 28px; }
+    .event-card { background: var(--white); border-radius: var(--radius-xl); overflow: hidden; cursor: pointer; transition: transform 0.25s, box-shadow 0.3s; box-shadow: var(--card-shadow); }
+    .event-card:hover { transform: translateY(-4px); box-shadow: var(--card-hover); }
+    .event-image-container { width: 100%; height: 180px; overflow: hidden; position: relative; background: linear-gradient(135deg, #1a1a2e, #2a2a3e); border-radius: 12px 12px 0 0; }
+    .event-banner { width: 100%; height: 180px; object-fit: cover; display: block; border-radius: 12px 12px 0 0; }
+    .event-date-badge { position: absolute; top: 16px; left: 16px; background: var(--red); color: white; padding: 8px 16px; border-radius: 40px; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 0.8rem; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .event-info { padding: 20px; }
+    .event-name { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 1.3rem; margin-bottom: 8px; color: var(--ink); }
+    .event-location { font-family: 'Inter', sans-serif; font-weight: 400; color: var(--slate); font-size: 0.85rem; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .price-from { font-size: 0.8rem; color: var(--mist); font-family: 'Inter', sans-serif; font-weight: 400; }
+    .price-amount { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.3rem; color: var(--red); }
+    .buy-ticket-btn { background: var(--red); border: none; padding: 10px 20px; border-radius: 60px; color: white; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.3px; font-size: 0.9rem; cursor: pointer; transition: transform 0.1s; margin-top: 16px; width: 100%; }
+    .buy-ticket-btn:active { transform: scale(0.97); }
+    
+    .floating-cart { position: fixed; bottom: 32px; right: 32px; z-index: 200; background: var(--red); border-radius: 80px; padding: 16px 28px; display: flex; align-items: center; gap: 18px; box-shadow: 0 12px 28px rgba(227,6,19,0.4); cursor: pointer; color: white; transition: transform 0.1s; }
+    .floating-cart:active { transform: scale(0.96); }
+    .cart-badge { background: white; color: var(--red); border-radius: 40px; padding: 4px 12px; font-family: 'Inter', sans-serif; font-weight: 800; }
+    .cart-total { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.3rem; }
+    
+    .cart-drawer { position: fixed; top: 0; right: -500px; width: 100%; max-width: 500px; height: 100vh; background: var(--white); z-index: 300; box-shadow: -8px 0 32px rgba(0,0,0,0.2); transition: right 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1); display: flex; flex-direction: column; }
+    .cart-drawer.open { right: 0; }
+    .drawer-header { padding: 28px; border-bottom: 1px solid rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; }
+    .drawer-header h2 { font-family: 'Manrope', sans-serif; font-weight: 800; }
+    .drawer-items { flex: 1; overflow-y: auto; padding: 16px; }
+    .cart-item { display: flex; gap: 16px; margin-bottom: 24px; padding: 12px; background: var(--bone); border-radius: var(--radius-md); }
+    .cart-item-img { width: 70px; height: 70px; background: #ddd; border-radius: 16px; object-fit: contain; background: #f5f5f5; padding: 8px; }
+    .cart-item-name { font-family: 'Inter', sans-serif; font-weight: 600; }
+    .cart-qty-control { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+    .qty-btn { background: white; border: 1px solid #ddd; width: 36px; height: 36px; border-radius: 40px; font-size: 1.2rem; font-family: 'Inter', sans-serif; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .qty-btn:hover { background: var(--red); color: white; border-color: var(--red); }
+    .drawer-footer { padding: 24px; border-top: 2px solid #eee; }
+    .checkout-drawer-btn { background: var(--red); width: 100%; padding: 18px; border-radius: 60px; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.3px; font-size: 1.2rem; color: white; border: none; cursor: pointer; transition: transform 0.1s; }
+    .checkout-drawer-btn:active { transform: scale(0.98); }
+    
+    .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 400; opacity: 0; visibility: hidden; transition: 0.25s; }
+    .modal-mask.open { opacity: 1; visibility: visible; }
+    .modal-content { background: white; max-width: 500px; width: 90%; border-radius: 48px; overflow: hidden; max-height: 85vh; overflow-y: auto; }
+    .modal-body { padding: 28px; }
+    .modal-body h2 { font-family: 'Manrope', sans-serif; font-weight: 800; margin-bottom: 8px; }
+    .modal-qty { display: flex; align-items: center; gap: 24px; margin: 20px 0; justify-content: center; }
+    .big-qty-btn { width: 52px; height: 52px; border-radius: 30px; background: var(--bone); border: none; font-size: 1.6rem; font-family: 'Inter', sans-serif; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .big-qty-btn:hover { background: var(--red); color: white; }
+    
+    .step-indicator { display: flex; justify-content: space-between; margin-bottom: 28px; }
+    .step { flex: 1; text-align: center; padding: 10px; border-bottom: 3px solid #ddd; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.3px; }
+    .step.active { border-color: var(--red); color: var(--red); }
+    .pay-option-card { border: 2px solid #eee; border-radius: 32px; padding: 20px; margin: 12px 0; cursor: pointer; display: flex; align-items: center; gap: 16px; transition: all 0.2s; }
+    .pay-option-card:hover { border-color: var(--red); background: rgba(227,6,19,0.05); }
+    .pay-option-card i { font-size: 1.8rem; color: var(--red); }
+    .pay-option-card strong { font-family: 'Inter', sans-serif; font-weight: 600; }
+    .pay-option-card p { font-family: 'Inter', sans-serif; font-weight: 400; font-size: 0.8rem; color: var(--mist); }
+    .pay-option-card.selected { border-color: var(--red); background: rgba(227,6,19,0.05); }
+    
+    .yoco-card-container { margin: 20px 0; padding: 16px; background: var(--bone); border-radius: 24px; border: 2px solid #eee; transition: all 0.2s; }
+    .yoco-card-container:focus-within { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
+    .yoco-card-frame { width: 100%; min-height: 56px; }
+    
+    .toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%) translateY(30px); background: var(--ink); color: white; padding: 14px 28px; border-radius: 80px; opacity: 0; transition: 0.25s; z-index: 500; font-family: 'Inter', sans-serif; font-weight: 500; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.success { background: #10b981; }
+    .toast.error { background: var(--red); }
+    
+    .field-input { padding: 12px; border-radius: 40px; border: 1px solid #ddd; width: 100%; font-family: 'Inter', sans-serif; transition: all 0.2s; }
+    .field-input:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
+    
+    @media (max-width: 900px) {
+      .kiosk-layout { flex-direction: column; }
+      .category-sidebar { width: 100%; position: static; height: auto; display: flex; overflow-x: auto; padding: 12px; gap: 8px; }
+      .sidebar-item { white-space: nowrap; flex-shrink: 0; }
+      .main-content { padding: 20px 16px 120px; }
+      .hero-slide { flex-direction: column; text-align: center; gap: 20px; padding: 32px 24px; }
+      .hero-content h2 { font-size: 1.5rem; }
+      .hero-badge { font-size: 1rem; padding: 10px 24px; }
+      .hero-container { margin: 16px; }
+      .products-grid { grid-template-columns: 1fr; gap: 20px; }
+      .product-img { height: 200px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="kiosk-header">
+    <div class="brand-area" @click="resetToHome">
+      <div class="brand-logo"><img src="../assets/images/rands-logo.png" alt="Rands" @error="e=>e.target.src='https://placehold.co/100x100/1a1a2e/white?text=R'"></div>
+      <div class="brand-text"><h1>Rands</h1></div>
+    </div>
+    <div class="kiosk-search">
+      <i class="fas fa-search"></i>
+      <input type="text" v-model="searchQuery" placeholder="Search menu... e.g., burger, beer, wine">
+    </div>
+  </div>
+
+  <div class="hero-container" v-if="activeCategory === 'all'">
+    <div class="hero-slide" :style="{ backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0.7), rgba(0,0,0,0.2)), url('${heroSlides[heroIndex].bgImage}')`, backgroundSize: 'cover', backgroundPosition: 'center' }">
+      <div class="hero-content"><h2>{{ heroTitle }}</h2><p>{{ heroDesc }}</p></div>
+      <div class="hero-badge" @click="quickHeroAction">{{ heroCta }}</div>
+    </div>
+    <div class="hero-dots"><div v-for="(h, idx) in heroSlides" :key="idx" class="dot" :class="{ active: heroIndex === idx }" @click="heroIndex = idx"></div></div>
+  </div>
+
+  <div class="kiosk-layout">
+    <div class="category-sidebar">
+      <div v-for="cat in mainCategories" :key="cat.id" class="sidebar-item" :class="{ active: activeCategory === cat.id }" @click="selectCategory(cat.id)">
+        <i :class="cat.icon"></i><span>{{ cat.name }}</span>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div v-if="activeCategory === 'tickets'">
+        <div v-if="loadingEvents" style="text-align:center; padding:60px"><i class="fas fa-spinner fa-pulse fa-2x"></i><p>Loading events...</p></div>
+        <div v-else-if="eventsList.length === 0" style="text-align:center; padding:60px"><i class="fas fa-calendar-alt fa-3x"></i><h3>No events available</h3><p style="margin-top: 12px; color: var(--slate);">Check back soon for upcoming events!</p></div>
+        <div class="events-grid" v-else>
+          <div v-for="event in eventsList" :key="event.id" class="event-card" @click="openEventModal(event)">
+            <div class="event-image-container">
+              <img :src="getEventBannerImage(event)" alt="Event Banner" class="event-banner" @error="handleEventImageError(event)">
+              <div class="event-date-badge"><i class="far fa-calendar-alt"></i> {{ formatEventDate(event.start_time) }}</div>
+            </div>
+            <div class="event-info">
+              <div class="event-name">{{ event.name }}</div>
+              <div class="event-location"><i class="fas fa-map-marker-alt"></i> {{ event.location || 'Rands Venue' }}</div>
+              <div style="display:flex; justify-content:space-between; align-items: center; margin-top: 16px;">
+                <div><span class="price-from">From</span><span class="price-amount">R {{ formatPrice(event.min_price || 0) }}</span></div>
+                <button class="buy-ticket-btn" @click.stop="openEventModal(event)"><i class="fas fa-ticket-alt"></i> Buy Ticket</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else>
+        <div v-if="loadingProducts" style="text-align:center; padding:60px"><i class="fas fa-spinner fa-pulse fa-2x"></i><p>Loading menu...</p></div>
+        <div v-else-if="filteredProducts.length === 0" style="text-align:center; padding:60px"><i class="fas fa-search fa-2x"></i><h3>No items found</h3><p style="margin-top: 12px; color: var(--slate);">Try adjusting your search or category filter.</p></div>
+        <div class="products-grid" v-else>
+          <div v-for="product in filteredProducts" :key="product.id" class="product-card" @click="openProductModal(product)">
+            <div class="product-img">
+              <img :src="product.image || 'https://picsum.photos/seed/drink/300/200'">
+              <span v-if="product.alcohol" class="alcohol-tag"><i class="fas fa-wine-bottle"></i> Alcohol</span>
+            </div>
+            <div class="product-info">
+              <div class="product-name">{{ product.name }}</div>
+              <div class="product-description">{{ product.description || 'No description available' }}</div>
+              <div class="product-price">R {{ formatPrice(product.price) }}</div>
+              <button class="quick-add" @click.stop="quickAddToCart(product)">
+                <i class="fas fa-plus-circle"></i> Add to Order
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="floating-cart" @click="openCartDrawer" v-if="cartItemCount > 0">
+    <i class="fas fa-shopping-bag fa-lg"></i>
+    <span class="cart-badge">{{ cartItemCount }}</span>
+    <span class="cart-total">R {{ formatPrice(cartTotal) }}</span>
+  </div>
+
+  <div class="cart-drawer" :class="{ open: drawerOpen }">
+    <div class="drawer-header"><h2><i class="fas fa-bag-shopping"></i> Your Order</h2><i class="fas fa-times fa-2x" style="cursor:pointer" @click="drawerOpen=false"></i></div>
+    <div class="drawer-items">
+      <div v-for="(item, idx) in cart" :key="idx" class="cart-item">
+        <img class="cart-item-img" :src="item.image || 'https://picsum.photos/seed/drink/70/70'">
+        <div class="cart-item-details">
+          <div class="cart-item-name" style="font-weight: 600;">{{ item.name }}</div>
+          <div style="font-size: 0.85rem; color: var(--slate);" v-if="item.description">{{ item.description.substring(0, 60) }}...</div>
+          <div class="price">R {{ formatPrice(item.price) }}</div>
+          <div class="cart-qty-control">
+            <button class="qty-btn" @click="updateCartQty(item, item.quantity-1)">−</button>
+            <span style="min-width:36px;text-align:center">{{ item.quantity }}</span>
+            <button class="qty-btn" @click="updateCartQty(item, item.quantity+1)">+</button>
+            <button style="margin-left:12px;background:none;border:none;color:var(--red);font-size:1.2rem;cursor:pointer" @click="removeCartItem(item)"><i class="fas fa-trash-alt"></i></button>
+          </div>
+        </div>
+        <div class="item-price">R {{ formatPrice(item.price * item.quantity) }}</div>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px"><span>Subtotal</span><span class="price">R {{ formatPrice(cartTotal) }}</span></div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px"><span>VAT (15%)</span><span class="price">R {{ formatPrice(cartTotal * 0.15) }}</span></div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:24px; padding-top:12px; border-top:2px solid #eee"><span style="font-size:1.2rem; font-weight:800">Total</span><span class="cart-total" style="font-size:1.6rem;">R {{ formatPrice(cartTotal) }}</span></div>
+      <button class="checkout-drawer-btn" @click="startCheckout">Proceed to Checkout</button>
+    </div>
+  </div>
+
+  <!-- Product Modal -->
+  <div class="modal-mask" :class="{ open: productModalOpen }" @click.self="productModalOpen=false">
+    <div class="modal-content">
+      <div class="modal-body">
+        <h2>{{ selectedProduct?.name }}</h2>
+        <p class="description" style="color:var(--slate); margin:8px 0; line-height: 1.5;">{{ selectedProduct?.description || 'Premium selection from Rands' }}</p>
+        <div class="product-price" style="font-size:1.8rem; margin: 16px 0;">R {{ formatPrice(selectedProduct?.price || 0) }}</div>
+        <div class="modal-qty">
+          <button class="big-qty-btn" @click="modalQty = Math.max(1, modalQty-1)">−</button>
+          <span style="font-size:1.4rem;min-width:60px;text-align:center">{{ modalQty }}</span>
+          <button class="big-qty-btn" @click="modalQty++">+</button>
+        </div>
+        <button class="quick-add" style="background:var(--red);font-size:1.1rem" @click="addModalToCart">
+          <i class="fas fa-shopping-cart"></i> Add to Cart • {{ modalQty }} item(s)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Ticket Modal -->
+  <div class="modal-mask" :class="{ open: eventModalOpen }" @click.self="closeEventModal">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+          <img :src="getEventBannerImage(selectedEvent)" style="width: 80px; height: 80px; object-fit: cover; border-radius: 16px;">
+          <div>
+            <h2 style="margin-bottom: 4px;">{{ selectedEvent?.name }}</h2>
+            <div class="event-location" style="margin-bottom: 0;"><i class="fas fa-map-marker-alt"></i> {{ selectedEvent?.location || 'Rands Venue' }}</div>
+          </div>
+        </div>
+        <div v-if="loadingTicketTypes" style="text-align:center; padding:20px"><i class="fas fa-spinner fa-pulse"></i> Loading tickets...</div>
+        <div v-else>
+          <div v-for="ticket in ticketTypes" :key="ticket.id" style="display:flex; justify-content:space-between; align-items:center; padding:16px; border-bottom:1px solid #eee">
+            <div><div style="font-family:'Manrope',sans-serif; font-weight:700;">{{ ticket.name }}</div><div class="ticket-price" style="color:var(--red); font-weight:700">R {{ formatPrice(ticket.price) }}</div></div>
+            <button class="quick-add" style="width:auto; padding:10px 20px" @click="addTicketToCart(ticket)">Add</button>
+          </div>
+        </div>
+        <button class="quick-add" style="background:#eee; color:var(--ink); margin-top:20px" @click="closeEventModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Receipt & Tickets Modal (Shows after payment) -->
+  <div class="modal-mask" :class="{ open: receiptModalOpen }" @click.self="receiptModalOpen=false">
+    <div class="modal-content receipt-modal">
+      <div class="modal-body" style="padding: 0;">
+        <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="margin: 0;"><i class="fas fa-receipt"></i> Your Order Summary</h2>
+          <i class="fas fa-times fa-2x" style="cursor:pointer; color: var(--slate);" @click="receiptModalOpen=false"></i>
+        </div>
+        <div class="receipt-content" v-html="receiptHtml"></div>
+        <div style="padding: 20px; border-top: 1px solid #eee; display: flex; gap: 12px;">
+          <button class="print-button" @click="printReceiptContent">
+            <i class="fas fa-print"></i> Print Tickets & Receipt
+          </button>
+          <button class="print-button" style="background: #059669;" @click="finalizeSuccess">
+            <i class="fas fa-check"></i> Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout Modal -->
+  <div class="modal-mask" :class="{ open: checkoutModalOpen }" @click.self="closeCheckoutModal">
+    <div class="modal-content" style="max-width:560px">
+      <div class="modal-body">
+        <div class="step-indicator">
+          <div class="step" :class="{active: checkoutStep===1}">Review</div>
+          <div class="step" :class="{active: checkoutStep===2}">Payment</div>
+          <div class="step" :class="{active: checkoutStep===3}">Complete</div>
+        </div>
+        
+        <div v-if="checkoutStep===1">
+          <h3>Review Order</h3>
+          <div v-for="i in cart" :key="i.id" style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #eee">
+            <span>{{ i.quantity }}x {{ i.name }}</span>
+            <span class="price">R{{ formatPrice(i.price*i.quantity) }}</span>
+          </div>
+          <div style="font-weight:800;margin:16px 0; font-size:1.2rem">Total: R{{ formatPrice(cartTotal) }}</div>
+          <button class="quick-add" style="background:var(--red)" @click="checkoutStep=2">Continue to Payment</button>
+        </div>
+        
+        <div v-if="checkoutStep===2">
+          <h3>Select Payment Method</h3>
+          <div class="pay-option-card" :class="{selected: selectedPayMethod === 'yoco'}" @click="selectedPayMethod='yoco'">
+            <i class="fas fa-credit-card"></i>
+            <div><strong>Card Payment</strong><p>Visa, Mastercard, Apple Pay</p></div>
+          </div>
+          <div class="pay-option-card" :class="{selected: selectedPayMethod === 'cash'}" @click="selectedPayMethod='cash'">
+            <i class="fas fa-money-bill-wave"></i>
+            <div><strong>Cash</strong><p>Pay at the counter</p></div>
+          </div>
+          <div class="pay-option-card" :class="{selected: selectedPayMethod === 'voucher'}" @click="selectedPayMethod='voucher'">
+            <i class="fas fa-ticket-alt"></i>
+            <div><strong>1Voucher</strong><p>Redeem airtime/data voucher</p></div>
+          </div>
+          
+          <div v-if="selectedPayMethod === 'yoco'">
+            <div class="yoco-card-container"><div id="yoco-card-element" class="yoco-card-frame"></div></div>
+            <button class="quick-add" @click="processYocoPayment" :disabled="yocoProcessing" style="background:#2563EB">
+              <i class="fas fa-lock"></i> {{ yocoProcessing ? 'Processing...' : `Pay R${formatPrice(cartTotal)}` }}
+            </button>
+          </div>
+          
+          <div v-if="selectedPayMethod === 'cash'">
+            <div style="background:var(--bone); border-radius:32px; padding:20px; text-align:center; margin:12px 0">
+              <i class="fas fa-coins fa-3x" style="color:var(--red)"></i>
+              <p style="margin:12px 0">Please pay R{{ formatPrice(cartTotal) }} at the counter</p>
+              <button class="quick-add" style="background:#059669" @click="completeCashPayment">Mark as Paid (Cash)</button>
+            </div>
+          </div>
+          
+          <div v-if="selectedPayMethod === 'voucher'">
+            <div style="margin:12px 0">
+              <input type="text" class="field-input" v-model="voucherCode" placeholder="Enter 16-digit voucher PIN">
+            </div>
+            <button class="quick-add" @click="processVoucherPayment" :disabled="voucherProcessing" style="background:#8B5CF6">
+              <i class="fas fa-ticket-alt"></i> {{ voucherProcessing ? 'Validating...' : 'Redeem Voucher' }}
+            </button>
+          </div>
+          
+          <button class="btn-ghost" style="margin-top:12px; background:transparent; border:1px solid #ccc; padding:12px; border-radius:40px; width:100%; cursor:pointer" @click="checkoutStep=1">Back</button>
+        </div>
+        
+        <div v-if="checkoutStep===3">
+          <div style="text-align:center">
+            <i class="fas fa-check-circle fa-4x" style="color:#059669"></i>
+            <h2>Order Placed!</h2>
+            <p>Order #{{ orderNumber }}</p>
+            <p style="margin:16px 0; color:var(--slate)">Thank you for your order!</p>
+            <button class="quick-add" style="background:#059669" @click="showReceiptAndClose">View Tickets & Receipt</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="toast" :class="{ show: toastVisible, success: toastType === 'success', error: toastType === 'error' }">
+    <i :class="toastIcon"></i> <span class="toast-message">{{ toastMessage }}</span>
+  </div>
+</div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+  
+  new Vue({
+    el: '#app',
+    data: {
+      searchQuery: '', activeCategory: 'all', loadingProducts: true, loadingEvents: false, loadingTicketTypes: false,
+      products: [], eventsList: [], ticketTypes: [], cart: [], drawerOpen: false,
+      productModalOpen: false, selectedProduct: null, modalQty: 1,
+      eventModalOpen: false, selectedEvent: null,
+      checkoutModalOpen: false, checkoutStep: 1, selectedPayMethod: 'yoco',
+      orderNumber: '', customerName: '', customerPhone: '',
+      yocoProcessing: false, yocoInstance: null,
+      voucherCode: '', voucherProcessing: false,
+      toastVisible: false, toastMessage: '', toastType: '', toastIcon: '',
+      heroIndex: 0,
+      receiptModalOpen: false,
+      receiptHtml: '',
+      generatedTickets: [],
+      heroSlides: [
+        { title: 'The Butcher Shop', desc: 'Fresh. Flame. Flavour.', cta: 'Order Now', action: 'butcher', bgImage: '../assets/images/butcher-kiosk-banner.png' },
+        { title: 'Khayelitsha Vibes', desc: '#See Your Vibes', cta: 'Explore Drinks', action: 'spirits', bgImage: '../assets/images/vibe-kiosk-banner.png' },
+        { title: 'The Next Big Vibe', desc: 'Secure Your Spot Early', cta: 'Get Tickets', action: 'tickets', bgImage: '../assets/images/event-kiosk-banner.png' }
+      ]
+    },
+    computed: {
+      cartItemCount() { return this.cart.reduce((s,i)=>s+i.quantity,0); },
+      cartTotal() { return this.cart.reduce((s,i)=>s+i.price*i.quantity,0); },
+      hasAlcohol() { return this.cart.some(item => item.itemType === 'menu' && item.alcohol === true); },
+      hasEventTickets() { return this.cart.some(item => item.itemType === 'ticket'); },
+      mainCategories() {
+        return [
+          { id: 'all', name: 'All Items', icon: 'fas fa-border-all' },
+          { id: 'beer', name: 'Beer', icon: 'fas fa-beer-mug-empty' },
+          { id: 'spirits', name: 'Premium Spirits', icon: 'fas fa-crown' },
+          { id: 'wine', name: 'Wine', icon: 'fas fa-wine-glass' },
+          { id: 'soft drinks', name: 'Soft Drinks', icon: 'fas fa-droplet' },
+          { id: 'butcher', name: 'The Butcher', icon: 'fas fa-utensils' },
+          { id: 'tickets', name: 'Event Tickets', icon: 'fas fa-ticket-alt' }
+        ];
+      },
+      filteredProducts() {
+        let list = this.products;
+        if (this.activeCategory !== 'all') {
+          list = list.filter(p => (p.category || '').toLowerCase() === this.activeCategory.toLowerCase());
+        }
+        if (this.searchQuery.trim()) {
+          let q = this.searchQuery.toLowerCase();
+          list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
+        }
+        return list;
+      },
+      heroTitle() { return this.heroSlides[this.heroIndex].title; },
+      heroDesc() { return this.heroSlides[this.heroIndex].desc; },
+      heroCta() { return this.heroSlides[this.heroIndex].cta; }
+    },
+    async mounted() {
+      await this.loadProducts();
+      await this.loadEvents();
+      this.startHeroRotation();
+      this.initYoco();
+    },
+    methods: {
+      formatPrice(n) { return Number(n).toFixed(2); },
+      formatEventDate(dateStr) { if(!dateStr) return 'TBD'; let d = new Date(dateStr); return d.toLocaleDateString('en-ZA', { month:'short', day:'numeric', year:'numeric' }); },
+      showToast(msg, type='success') { this.toastMessage=msg; this.toastType=type; this.toastIcon=type==='error'?'fa-exclamation-triangle':'fa-check-circle'; this.toastVisible=true; setTimeout(()=>this.toastVisible=false,3000); },
+      
+      getEventBannerImage(event) {
+        if (!event) return '../assets/images/event-banner.png';
+        return event.banner_url || event.image_url || event.banner || event.image || '../assets/images/event-banner.png';
+      },
+      
+      handleEventImageError(event) {
+        if (event.banner_url !== '../assets/images/event-banner.png') {
+          event.banner_url = '../assets/images/event-banner.png';
+        }
+      },
+      
+      generateManualEntryCode(ticketId) {
+        const parts = ticketId.split('-');
+        if (parts.length >= 2) {
+          const idPart = parts[parts.length - 1];
+          return idPart.slice(-8).toUpperCase();
+        }
+        return ticketId.slice(-8).toUpperCase();
+      },
+      
+      formatDateForTicket(dateStr) {
+        if (!dateStr) return 'TBD';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase();
+      },
+      
+      formatTimeForTicket(dateStr) {
+        if (!dateStr) return 'TBD';
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+      },
+      
+      async generateReceiptHtml(orderData, ticketRecords = []) {
+        const { orderNumber, items, total, paymentMethod } = orderData;
+        const ticketItems = items.filter(i => i.type === 'ticket');
+        const alcoholItems = items.filter(i => i.type === 'menu' && i.alcohol === true);
+        
+        let html = '';
+        
+        // Generate ticket section if there are tickets
+        if (ticketItems.length > 0 && ticketRecords.length > 0) {
+          for (let i = 0; i < ticketRecords.length; i++) {
+            const ticket = ticketRecords[i];
+            const event = this.eventsList.find(e => e.id === ticket.event_id);
+            const qrData = JSON.stringify({
+              ticket_id: ticket.id,
+              event_id: ticket.event_id,
+              ticket_type: ticket.ticket_type,
+              manual_code: this.generateManualEntryCode(ticket.id),
+              issued_at: new Date().toISOString()
+            });
+            const qrId = `qr-${ticket.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            
+            html += `
+              <div class="ticket-item">
+                <div class="ticket-header">
+                  <h4>RANDS EVENTS</h4>
+                  <div style="font-size: 10px;">PREMIUM ADMISSION TICKET</div>
+                </div>
+                <div style="text-align: center;">
+                  <div style="font-size: 22px; font-weight: bold; margin: 10px 0;">${(event?.name || 'Event').toUpperCase()}</div>
+                  ${ticket.ticket_type === 'vip' ? '<div style="color: #D4AF37; font-size: 14px; font-weight: bold;">★★★★★ VIP ACCESS ★★★★★</div>' : ''}
+                </div>
+                <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; margin: 10px 0;">
+                  <div><strong>DATE:</strong> ${this.formatDateForTicket(event?.start_time)}</div>
+                  <div><strong>TIME:</strong> ${this.formatTimeForTicket(event?.start_time)}</div>
+                  <div><strong>VENUE:</strong> ${(event?.location || 'RANDS LIFESTYLE').toUpperCase()}</div>
+                  <div><strong>TICKET TYPE:</strong> ${ticket.ticket_type?.toUpperCase() || 'GENERAL'}</div>
+                </div>
+                <div style="text-align: center; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; margin: 10px 0;">
+                  <div style="font-size: 10px;">TICKET ID</div>
+                  <div style="font-size: 16px; font-weight: bold; letter-spacing: 1px;">${ticket.id}</div>
+                  <div style="font-size: 10px; margin-top: 4px;">MANUAL: ${this.generateManualEntryCode(ticket.id)}</div>
+                </div>
+                <div class="qr-container">
+                  <div id="${qrId}" style="display: inline-block;"></div>
+                  <div style="font-size: 10px; margin-top: 8px;">SCAN FOR ENTRY</div>
+                </div>
+                <div style="text-align: center; font-size: 9px; margin-top: 10px;">
+                  NO REFUNDS • VALID FOR ONE ENTRY
+                </div>
+                <div style="text-align: center; font-size: 10px; font-weight: bold; margin-top: 8px;">RANDS.CO.ZA</div>
+              </div>
+            `;
+            
+            // Store QR data for later injection
+            setTimeout(() => {
+              const container = document.getElementById(qrId);
+              if (container && typeof QRCode !== 'undefined') {
+                new QRCode(container, {
+                  text: qrData,
+                  width: 120,
+                  height: 120,
+                  colorDark: "#000000",
+                  colorLight: "#ffffff",
+                  correctLevel: QRCode.CorrectLevel.H
+                });
+              }
+            }, 100);
+          }
+        }
+        
+        // Generate alcohol receipt section
+        if (alcoholItems.length > 0) {
+          html += `
+            <div style="border: 1px solid #ccc; padding: 15px; margin-top: 20px; border-radius: 8px;">
+              <div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3>RANDS KIOSK</h3>
+                <div>${new Date().toLocaleString()}</div>
+              </div>
+          `;
+          
+          alcoholItems.forEach(item => {
+            html += `
+              <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                <span>${item.quantity} x ${item.name}</span>
+                <span>R ${this.formatPrice(item.price * item.quantity)}</span>
+              </div>
+            `;
+          });
+          
+          html += `
+              <div style="border-top: 1px solid #000; margin-top: 10px; padding-top: 10px;">
+                <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                  <span>TOTAL</span>
+                  <span>R ${this.formatPrice(total)}</span>
+                </div>
+              </div>
+              <div style="margin-top: 15px;">
+                <div><strong>ORDER:</strong> ${orderNumber}</div>
+                <div><strong>PAYMENT:</strong> ${paymentMethod.toUpperCase()}</div>
+              </div>
+              <div style="text-align: center; border-top: 2px dashed #000; padding-top: 10px; margin-top: 15px; font-size: 9px;">
+                Thank you for your order!<br>Please drink responsibly
+              </div>
+            </div>
+          `;
+        }
+        
+        return html;
+      },
+      
+      async createTicketRecords(orderData) {
+        const ticketItems = orderData.items.filter(i => i.type === 'ticket');
+        const createdTickets = [];
+        
+        for (let i = 0; i < ticketItems.length; i++) {
+          const ticketItem = ticketItems[i];
+          const quantity = ticketItem.quantity;
+          
+          for (let j = 0; j < quantity; j++) {
+            const event = this.eventsList.find(e => e.id === ticketItem.event_id);
+            const ticketType = this.ticketTypes.find(t => t.id === ticketItem.ticket_type_id);
+            
+            if (event && ticketType) {
+              const ticketId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${j}`;
+              
+              const { data: newTicket, error: ticketError } = await supabase
+                .from('tickets')
+                .insert({
+                  id: ticketId,
+                  event_id: event.id,
+                  ticket_type_id: ticketType.id,
+                  customer_phone: null,
+                  status: 'issued',
+                  issued_at: new Date().toISOString(),
+                  checked_in: false,
+                  ticket_type: ticketType.name.toLowerCase().includes('vip') ? 'vip' : 'general',
+                  qr_token: `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`
+                })
+                .select()
+                .single();
+              
+              if (!ticketError && newTicket) {
+                createdTickets.push(newTicket);
+              }
+            }
+          }
+        }
+        
+        return createdTickets;
+      },
+      
+      async processPaymentAndPrint(orderData) {
+        try {
+          // Create ticket records in database
+          const ticketRecords = await this.createTicketRecords(orderData);
+          
+          // Generate receipt HTML
+          const receiptHtml = await this.generateReceiptHtml(orderData, ticketRecords);
+          this.receiptHtml = receiptHtml;
+          this.generatedTickets = ticketRecords;
+          
+          // Show receipt modal
+          this.receiptModalOpen = true;
+          
+          // Auto-print after a short delay
+          setTimeout(() => {
+            this.printReceiptContent();
+          }, 500);
+          
+          return true;
+        } catch (error) {
+          console.error('Error generating receipt:', error);
+          this.showToast('Error generating tickets', 'error');
+          return false;
+        }
+      },
+      
+      printReceiptContent() {
+        const printContent = document.querySelector('.receipt-content').cloneNode(true);
+        
+        // Generate QR codes in the print content
+        const qrContainers = printContent.querySelectorAll('[id^="qr-"]');
+        qrContainers.forEach(container => {
+          const qrId = container.id;
+          const ticket = this.generatedTickets.find(t => `qr-${t.id.replace(/[^a-zA-Z0-9]/g, '')}` === qrId);
+          if (ticket) {
+            const qrData = JSON.stringify({
+              ticket_id: ticket.id,
+              event_id: ticket.event_id,
+              ticket_type: ticket.ticket_type,
+              manual_code: this.generateManualEntryCode(ticket.id)
+            });
+            // Create canvas QR
+            const canvas = document.createElement('canvas');
+            // Simple QR representation for print
+            container.innerHTML = `<div style="width:120px;height:120px;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;">QR CODE<br>${this.generateManualEntryCode(ticket.id)}</div>`;
+          }
+        });
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>Rands Tickets & Receipt</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: 'Courier New', monospace; padding: 20px; background: white; }
+              .ticket-item { border: 2px solid #000; margin-bottom: 20px; padding: 15px; border-radius: 8px; page-break-after: always; }
+              .ticket-item:last-child { page-break-after: auto; }
+              .ticket-header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 12px; }
+              .ticket-header h4 { font-size: 18px; }
+              .qr-container { text-align: center; margin: 15px 0; }
+              @media print {
+                body { padding: 0; }
+                .ticket-item { page-break-after: always; border: none; }
+              }
+            </style>
+          </head>
+          <body>
+            ${printContent.innerHTML}
+            <script>
+              setTimeout(() => {
+                window.print();
+                setTimeout(() => window.close(), 1000);
+              }, 500);
+            <\/script>
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+      },
+      
+      async loadProducts() {
+        this.loadingProducts=true;
+        try{
+          let { data, error } = await supabase.from('products').select('*');
+          if(error) throw error;
+          this.products = (data || []).map(p=>({ ...p, price: p.price || p.unit_price || 0, category: p.category || p.product_type, description: p.description || p.product_description || 'No description available' }));
+        } catch(e){ console.warn(e); this.products = []; }
+        finally{ this.loadingProducts=false; }
+      },
+      
+      async loadEvents() {
+        this.loadingEvents=true;
+        try{
+          let { data: events, error } = await supabase.from('events').select('*').eq('is_active', true).eq('status', 'active');
+          if(error) throw error;
+          this.eventsList = events || [];
+          for(let event of this.eventsList){
+            let { data: tickets } = await supabase.from('ticket_types').select('price').eq('event_id', event.id).order('price', { ascending: true }).limit(1);
+            event.min_price = tickets?.[0]?.price || event.base_price || 0;
+          }
+        } catch(e){ console.error(e); this.eventsList = []; }
+        finally{ this.loadingEvents=false; }
+      },
+      
+      async openEventModal(event){
+        this.selectedEvent = event;
+        this.eventModalOpen = true;
+        this.loadingTicketTypes = true;
+        try{
+          let { data, error } = await supabase.from('ticket_types').select('*').eq('event_id', event.id);
+          if(error) throw error;
+          this.ticketTypes = data || [];
+        } catch(e){ this.ticketTypes = []; }
+        finally{ this.loadingTicketTypes = false; }
+      },
+      
+      closeEventModal(){ this.eventModalOpen = false; this.selectedEvent = null; this.ticketTypes = []; },
+      
+      addTicketToCart(ticket){
+        let cartItem = {
+          id: ticket.id, name: `${this.selectedEvent.name} - ${ticket.name}`,
+          price: ticket.price, quantity: 1, image: this.getEventBannerImage(this.selectedEvent),
+          event_id: this.selectedEvent.id, ticket_type_id: ticket.id, itemType: 'ticket', 
+          description: ticket.description || `${ticket.name} ticket for ${this.selectedEvent.name}`,
+          alcohol: false
+        };
+        let existing = this.cart.find(i => i.id === ticket.id && i.event_id === this.selectedEvent.id);
+        if(existing) existing.quantity += 1;
+        else this.cart.push(cartItem);
+        this.showToast(`${ticket.name} ticket added!`);
+        this.closeEventModal();
+      },
+      
+      selectCategory(id){ this.activeCategory = id; this.searchQuery = ''; },
+      resetToHome(){ this.activeCategory = 'all'; this.searchQuery = ''; },
+      openProductModal(p){ this.selectedProduct=p; this.modalQty=1; this.productModalOpen=true; },
+      addModalToCart(){ if(this.selectedProduct) this.addToCartInternal(this.selectedProduct, this.modalQty); this.productModalOpen=false; },
+      quickAddToCart(p){ this.addToCartInternal(p,1); },
+      addToCartInternal(product, qty){ 
+        let existing = this.cart.find(i => i.id === product.id && i.itemType !== 'ticket'); 
+        if(existing) existing.quantity += qty; 
+        else this.cart.push({...product, quantity: qty, itemType: 'menu', description: product.description || 'No description available', alcohol: product.alcohol || false}); 
+        this.showToast(`${product.name} added`); 
+      },
+      updateCartQty(item, newQty){ if(newQty<=0) this.cart = this.cart.filter(i=>i!==item); else item.quantity=newQty; },
+      removeCartItem(item){ this.cart=this.cart.filter(i=>i!==item); },
+      openCartDrawer(){ this.drawerOpen=true; },
+      startCheckout(){ if(this.cartItemCount===0) return; this.drawerOpen=false; this.checkoutModalOpen=true; this.checkoutStep=1; },
+      closeCheckoutModal(){ this.checkoutModalOpen=false; this.checkoutStep=1; this.yocoProcessing=false; this.voucherProcessing=false; this.voucherCode=''; },
+      showReceiptAndClose() { 
+        this.checkoutModalOpen = false; 
+        this.receiptModalOpen = true;
+      },
+      
+      initYoco() {
+        if (window.YocoSDK) {
+          this.yocoInstance = new window.YocoSDK({
+            publicKey: 'pk_live_8f6d8c3b9a2e4d7f1c5e8a9b3d6f2c4e'
+          });
+          setTimeout(() => {
+            if (document.getElementById('yoco-card-element')) {
+              this.yocoInstance.mount({ cardContainer: 'yoco-card-element' });
+            }
+          }, 100);
+        } else { setTimeout(() => this.initYoco(), 500); }
+      },
+      
+      async processYocoPayment() {
+        if (!this.yocoInstance) { this.showToast('Payment system initializing...', 'error'); return; }
+        this.yocoProcessing = true;
+        try {
+          const result = await this.yocoInstance.createToken();
+          if (result.error) throw new Error(result.error.message);
+          
+          const orderNumber = `RANDS-${Date.now()}`;
+          const orderData = {
+            orderNumber: orderNumber,
+            customerName: 'Guest',
+            customerPhone: null,
+            total: this.cartTotal,
+            subtotal: this.cartTotal,
+            paymentMethod: 'card',
+            items: this.cart.map(i => ({ 
+              name: i.name, 
+              quantity: i.quantity, 
+              price: i.price, 
+              type: i.itemType,
+              description: i.description,
+              alcohol: i.alcohol || false,
+              event_id: i.event_id,
+              ticket_type_id: i.ticket_type_id
+            }))
+          };
+          
+          const { error: orderError } = await supabase.from('orders').insert({
+            customer_name: 'Guest',
+            customer_phone: null,
+            total_amount: this.cartTotal,
+            payment_method: 'card',
+            payment_status: 'paid',
+            status: 'placed',
+            source: 'kiosk',
+            order_number: orderNumber,
+            items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description, alcohol: i.alcohol }))
+          });
+          if (orderError) throw orderError;
+          
+          this.orderNumber = orderNumber;
+          this.checkoutStep = 3;
+          this.showToast('Payment successful!', 'success');
+          
+          await this.processPaymentAndPrint(orderData);
+        } catch(err) { this.showToast(err.message, 'error'); }
+        finally { this.yocoProcessing = false; }
+      },
+      
+      async completeCashPayment() {
+        const orderNumber = `CASH-${Date.now()}`;
+        const orderData = {
+          orderNumber: orderNumber,
+          customerName: 'Guest',
+          customerPhone: null,
+          total: this.cartTotal,
+          subtotal: this.cartTotal,
+          paymentMethod: 'cash',
+          items: this.cart.map(i => ({ 
+            name: i.name, 
+            quantity: i.quantity, 
+            price: i.price, 
+            type: i.itemType,
+            description: i.description,
+            alcohol: i.alcohol || false,
+            event_id: i.event_id,
+            ticket_type_id: i.ticket_type_id
+          }))
+        };
+        
+        const { error } = await supabase.from('orders').insert({
+          customer_name: 'Guest',
+          customer_phone: null,
+          total_amount: this.cartTotal,
+          payment_method: 'cash',
+          payment_status: 'paid',
+          status: 'placed',
+          source: 'kiosk',
+          order_number: orderNumber,
+          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description, alcohol: i.alcohol }))
+        });
+        if (error) { this.showToast('Error placing order', 'error'); return; }
+        this.orderNumber = orderNumber;
+        this.checkoutStep = 3;
+        this.showToast('Cash order placed!', 'success');
+        
+        await this.processPaymentAndPrint(orderData);
+      },
+      
+      async processVoucherPayment() {
+        if (!this.voucherCode || this.voucherCode.length < 8) { this.showToast('Enter valid voucher code', 'error'); return; }
+        this.voucherProcessing = true;
+        await new Promise(r => setTimeout(r, 1500));
+        const orderNumber = `VCH-${Date.now()}`;
+        const orderData = {
+          orderNumber: orderNumber,
+          customerName: 'Guest',
+          customerPhone: null,
+          total: this.cartTotal,
+          subtotal: this.cartTotal,
+          paymentMethod: 'voucher',
+          items: this.cart.map(i => ({ 
+            name: i.name, 
+            quantity: i.quantity, 
+            price: i.price, 
+            type: i.itemType,
+            description: i.description,
+            alcohol: i.alcohol || false,
+            event_id: i.event_id,
+            ticket_type_id: i.ticket_type_id
+          }))
+        };
+        
+        const { error } = await supabase.from('orders').insert({
+          customer_name: 'Guest',
+          customer_phone: null,
+          total_amount: this.cartTotal,
+          payment_method: 'voucher',
+          payment_status: 'paid',
+          status: 'placed',
+          source: 'kiosk',
+          order_number: orderNumber,
+          items: this.cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, type: i.itemType, description: i.description, alcohol: i.alcohol }))
+        });
+        if (error) { this.showToast('Error processing voucher', 'error'); this.voucherProcessing=false; return; }
+        this.orderNumber = orderNumber;
+        this.checkoutStep = 3;
+        this.showToast('Voucher redeemed!', 'success');
+        
+        await this.processPaymentAndPrint(orderData);
+        this.voucherProcessing = false;
+      },
+      
+      finalizeSuccess() { 
+        this.cart = []; 
+        this.checkoutModalOpen = false; 
+        this.receiptModalOpen = false;
+        this.showToast('Enjoy your Rands experience!', 'success'); 
+      },
+      
+      quickHeroAction(){ let action=this.heroSlides[this.heroIndex].action; if(action==='butcher') this.activeCategory='butcher'; else if(action==='spirits') this.activeCategory='spirits'; else if(action==='tickets') this.activeCategory='tickets'; },
+      startHeroRotation(){ setInterval(()=>{ this.heroIndex=(this.heroIndex+1)%this.heroSlides.length; }, 10000); }
+    }
+  });
+</script>
+</body>
+</html>
