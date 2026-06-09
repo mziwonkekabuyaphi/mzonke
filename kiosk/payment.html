@@ -820,8 +820,22 @@
 
     /* Print Styles */
     @media print {
-      .no-print { display: none; }
-      .receipt-print { display: block; }
+      body * {
+        visibility: hidden;
+      }
+      .receipt-print, .receipt-print * {
+        visibility: visible;
+      }
+      .receipt-print {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 20px;
+        background: white;
+        color: black;
+        font-family: monospace;
+      }
     }
   </style>
 </head>
@@ -857,26 +871,26 @@
 
         <div class="section-title"><i class="fas fa-credit-card"></i> PAYMENT METHOD</div>
 
-        <!-- NFC Wristband Payment -->
+        <!-- NFC Wristband Payment (Integrated with Rands Wallet) -->
         <div class="pay-option" :class="{ selected: selectedPayMethod === 'nfc' }" @click="selectedPayMethod = 'nfc'">
           <div class="pay-option-header">
             <div class="pay-icon-wrap"><i class="fas fa-hand-peace"></i></div>
             <div>
               <div class="pay-option-title">NFC Wristband</div>
-              <div class="pay-option-desc">Tap wristband to pay instantly</div>
+              <div class="pay-option-desc">Tap wristband to pay from Rands Wallet</div>
             </div>
           </div>
           <div v-if="selectedPayMethod === 'nfc'" class="pay-option-expand">
             <div style="background: rgba(227,6,19,0.08); border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 16px;">
               <p style="font-size: 0.7rem; color: var(--red); font-weight: 600;">
-                <i class="fas fa-bolt"></i> Tap wristband on reader for instant payment
+                <i class="fas fa-bolt"></i> Tap wristband on reader — wallet payment in under 2 seconds
               </p>
             </div>
             <button class="btn btn-primary" @click="processNfcPayment" :disabled="processing || cart.length === 0" style="margin-top: 16px;">
-              <i class="fas fa-hand-peace"></i> {{ processing ? 'Processing...' : `Tap to Pay R ${formatPrice(totalAmount)}` }}
+              <i class="fas fa-hand-peace"></i> {{ processing ? 'Processing...' : `Tap Wristband to Pay R ${formatPrice(totalAmount)}` }}
             </button>
             <div style="font-size: 0.65rem; color: var(--muted); text-align: center; margin-top: 12px;">
-              <i class="fas fa-shield-alt"></i> Secure · Under 2 seconds · Festival-grade
+              <i class="fas fa-shield-alt"></i> Secure · Festival-grade cashless
             </div>
           </div>
         </div>
@@ -900,13 +914,13 @@
           </div>
         </div>
 
-        <!-- Rands Wallet -->
+        <!-- Rands Wallet (Manual) -->
         <div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'">
           <div class="pay-option-header">
             <div class="pay-icon-wrap"><img src="../assets/icons/wallet-icon.png" alt="Rands Wallet" @error="handleImageError"></div>
             <div>
               <div class="pay-option-title">Rands Wallet</div>
-              <div class="pay-option-desc">Pay with your Rands Wallet balance</div>
+              <div class="pay-option-desc">Pay with Wallet balance (manual)</div>
             </div>
           </div>
           <div v-if="selectedPayMethod === 'wallet'" class="pay-option-expand">
@@ -915,6 +929,9 @@
             <button class="btn btn-primary" @click="processWalletPayment" :disabled="!walletAccountId || processing || cart.length === 0" style="margin-top: 12px;">
               <i class="fas fa-wallet"></i> {{ processing ? 'Processing...' : `Pay R ${formatPrice(totalAmount)}` }}
             </button>
+            <div style="font-size: 0.65rem; color: var(--muted); text-align: center; margin-top: 12px;">
+              <i class="fas fa-info-circle"></i> Enter phone number or 16-digit Wallet ID
+            </div>
           </div>
         </div>
 
@@ -1060,7 +1077,7 @@
       <div id="manualInputContainer" style="display: none; margin-top: 20px;">
         <div class="manual-input-field">
           <label class="field-label">Enter Wristband UID</label>
-          <input type="text" id="manualUidInput" class="field-input" placeholder="e.g., 04:5E:8A:2F:1C" maxlength="20" autocomplete="off">
+          <input type="text" id="manualUidInput" class="field-input" placeholder="e.g., 04:5E:8A:2F:1C" maxlength="50" autocomplete="off">
           <button class="btn btn-primary" onclick="window.submitManualUid && submitManualUid()" style="margin-top: 12px;">
             <i class="fas fa-search"></i> Find Wallet
           </button>
@@ -1080,12 +1097,14 @@
         <div><strong>Time:</strong> <span id="receiptTime"></span></div>
         <div><strong>Order #:</strong> <span id="receiptOrderNo"></span></div>
         <div><strong>Payment:</strong> <span id="receiptMethod"></span></div>
+        <div><strong>Wallet ID:</strong> <span id="receiptWalletId"></span></div>
       </div>
       <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
       <div style="text-align: left;" id="receiptItems"></div>
       <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
       <div style="text-align: left;">
         <div><strong>Total Paid:</strong> R <span id="receiptTotal"></span></div>
+        <div><strong>New Balance:</strong> R <span id="receiptNewBalance"></span></div>
       </div>
       <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
       <div style="font-size: 10px; text-align: center;">Thank you for choosing Rands<br>#LiveTheVibe</div>
@@ -1101,14 +1120,14 @@
   import { supabase } from '../config/supabase.js';
 
   // ============================================================
-  // NFC WRISTBAND SYSTEM - Production Grade
+  // NFC WRISTBAND SYSTEM - Integrated with Rands Wallet
   // ============================================================
   
   const NFCModule = {
     currentUid: null,
     currentWristband: null,
+    currentProfile: null,
     currentWallet: null,
-    currentCustomer: null,
     currentAmount: 0,
     isProcessing: false,
     isManualMode: false,
@@ -1116,34 +1135,13 @@
     nfcTimer: null,
     autoConfirmTimer: null,
     confirming: false,
-    cachedWallets: new Map(),
     lastTapTime: 0,
     MIN_TAP_INTERVAL_MS: 2000,
     currentState: 'idle',
     
     init() {
-      this.loadCachedData();
       this.setupNFCListener();
       console.log('[NFC] Module initialized');
-    },
-    
-    loadCachedData() {
-      try {
-        const cached = localStorage.getItem('nfc_cached_wallets');
-        if (cached) {
-          const data = JSON.parse(cached);
-          this.cachedWallets = new Map(Object.entries(data));
-        }
-      } catch(e) { console.warn('Cache load failed', e); }
-    },
-    
-    saveCachedWallet(uid, walletData) {
-      this.cachedWallets.set(uid, {
-        ...walletData,
-        cached_at: Date.now()
-      });
-      const toStore = Object.fromEntries(this.cachedWallets);
-      localStorage.setItem('nfc_cached_wallets', JSON.stringify(toStore));
     },
     
     setupNFCListener() {
@@ -1190,32 +1188,61 @@
       await this.logInteraction(uid, 'tap');
       
       try {
-        const wristband = await this.fetchWristband(uid);
-        if (!wristband) {
+        // Step 1: Find wristband by UID
+        const { data: wristband, error: wristbandError } = await supabase
+          .from('wristbands')
+          .select('*')
+          .eq('uid', uid)
+          .single();
+        
+        if (wristbandError || !wristband) {
           await this.logInteraction(uid, 'fail', 'wristband_not_found');
           this.showError('Wristband not recognized');
           return;
         }
-        if (wristband.status !== 'active') {
+        
+        if (!wristband.active) {
           await this.logInteraction(uid, 'fail', 'wristband_inactive');
           this.showError('Wristband is inactive. Please see customer service.');
           return;
         }
         
         this.currentWristband = wristband;
-        const wallet = await this.fetchWallet(wristband.wallet_id);
-        if (!wallet) {
-          await this.logInteraction(uid, 'fail', 'wallet_not_found');
+        
+        // Step 2: Find profile by wallet_id (wristband.wallet_id matches profiles.wallet_id)
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, name, phone, wallet_id, email')
+          .eq('wallet_id', wristband.wallet_id)
+          .single();
+        
+        if (profileError || !profile) {
+          await this.logInteraction(uid, 'fail', 'profile_not_found');
           this.showError('Wallet not linked to this wristband');
           return;
         }
         
-        this.currentWallet = wallet;
-        const customer = await this.fetchCustomer(wallet.user_id);
-        this.currentCustomer = customer;
-        this.saveCachedWallet(uid, { wallet, customer });
-        this.showCustomerPreview(customer, wallet, uid);
+        this.currentProfile = profile;
         
+        // Step 3: Find wallet by user_id
+        const { data: wallet, error: walletError } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('user_id', profile.id)
+          .single();
+        
+        if (walletError || !wallet) {
+          await this.logInteraction(uid, 'fail', 'wallet_not_found');
+          this.showError('Wallet not found for this user');
+          return;
+        }
+        
+        this.currentWallet = wallet;
+        
+        // Show customer preview
+        this.showCustomerPreview(profile, wallet, uid);
+        
+        // Auto-confirm after 2 seconds
         if (this.autoConfirmTimer) clearTimeout(this.autoConfirmTimer);
         this.autoConfirmTimer = setTimeout(() => {
           if (this.currentState === 'found') {
@@ -1232,53 +1259,41 @@
       }
     },
     
-    async fetchWristband(uid) {
-      const cached = this.cachedWallets.get(uid);
-      if (cached && (Date.now() - cached.cached_at) < 30000) {
-        return { wallet_id: cached.wallet.id, status: 'active', uid };
-      }
-      const { data, error } = await supabase.from('wristbands').select('*').eq('uid', uid).single();
-      if (error) return null;
-      return data;
-    },
-    
-    async fetchWallet(walletId) {
-      const { data, error } = await supabase.from('wallets').select('*').eq('id', walletId).single();
-      if (error) return null;
-      return data;
-    },
-    
-    async fetchCustomer(userId) {
-      const { data, error } = await supabase.from('profiles').select('id, name, phone, email').eq('id', userId).single();
-      if (error) return { name: 'Customer', phone: 'Unknown' };
-      return data;
-    },
-    
     async deductWallet(walletId, amount, metadata = {}) {
-      const { data: wallet, error: fetchError } = await supabase.from('wallets').select('balance').eq('id', walletId).single();
+      const { data: wallet, error: fetchError } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('id', walletId)
+        .single();
+      
       if (fetchError) throw new Error('Wallet not found');
       if (wallet.balance < amount) throw new Error('Insufficient balance');
       
       const newBalance = wallet.balance - amount;
-      const { error: updateError } = await supabase.from('wallets').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', walletId);
+      const { error: updateError } = await supabase
+        .from('wallets')
+        .update({ balance: newBalance, updated_at: new Date().toISOString() })
+        .eq('id', walletId);
+      
       if (updateError) throw new Error('Failed to update balance');
+      
       return newBalance;
     },
     
     async createTransaction(walletId, amount, metadata = {}) {
       const orderNumber = metadata.order_number || `NFC-${Date.now()}`;
-      const { error } = await supabase.from('wallet_transactions').insert({
-        wallet_id: walletId,
-        amount: amount,
-        type: 'payment',
-        direction: 'debit',
-        status: 'completed',
-        description: `NFC wristband payment: ${orderNumber}`,
-        module: 'kiosk',
-        reference: orderNumber,
-        metadata: { payment_method: 'nfc_wristband', kiosk_id: 'kiosk-01', ...metadata },
-        created_at: new Date().toISOString()
-      });
+      const { error } = await supabase
+        .from('wallet_transactions')
+        .insert({
+          wallet_id: walletId,
+          amount: amount,
+          type: 'payment',
+          direction: 'debit',
+          status: 'completed',
+          description: `NFC wristband payment: ${orderNumber}`,
+          created_at: new Date().toISOString(),
+          metadata: { payment_method: 'nfc_wristband', kiosk_id: 'kiosk-01', ...metadata }
+        });
       if (error) throw error;
     },
     
@@ -1307,16 +1322,17 @@
       });
     },
     
-    showCustomerPreview(customer, wallet, uid) {
+    showCustomerPreview(profile, wallet, uid) {
       this.showState('found');
+      const maskedWalletId = profile.wallet_id ? profile.wallet_id.slice(-8).padStart(8, '*') : '****';
       const previewHtml = `
         <div class="customer-card">
-          <div class="customer-avatar">${customer.name ? customer.name.charAt(0).toUpperCase() : '👤'}</div>
-          <div class="customer-name">${customer.name || 'Valued Customer'}</div>
+          <div class="customer-avatar">${profile.name ? profile.name.charAt(0).toUpperCase() : '👤'}</div>
+          <div class="customer-name">${profile.name || 'Valued Customer'}</div>
           <div class="customer-balance">R ${(wallet.balance || 0).toFixed(2)}</div>
-          <div class="customer-uid">UID: ${uid.slice(-8).toUpperCase()}</div>
+          <div class="customer-uid">Wallet: ${maskedWalletId}</div>
           <div class="customer-detail-row">
-            <span style="color: var(--muted);">📞 ${customer.phone ? customer.phone.slice(-4).padStart(4,'*') : '****'}</span>
+            <span style="color: var(--muted);">📞 ${profile.phone ? profile.phone.slice(-4).padStart(4,'*') : '****'}</span>
             <span style="color: var(--green);">✓ Active</span>
           </div>
         </div>
@@ -1337,24 +1353,41 @@
       if (this.confirming) return;
       this.confirming = true;
       if (this.autoConfirmTimer) clearTimeout(this.autoConfirmTimer);
+      
       if (this.currentWallet && this.currentWallet.balance < this.currentAmount) {
         this.showError(`Insufficient balance. Available: R${this.currentWallet.balance.toFixed(2)}`);
         this.confirming = false;
         return;
       }
+      
       try {
-        await this.deductWallet(this.currentWallet.id, this.currentAmount, { order_number: `NFC-${Date.now()}`, cart_items: [] });
-        await this.createTransaction(this.currentWallet.id, this.currentAmount, { order_number: `NFC-${Date.now()}`, cart_items: [] });
+        const newBalance = await this.deductWallet(this.currentWallet.id, this.currentAmount, { 
+          order_number: `NFC-${Date.now()}`, 
+          cart_items: [] 
+        });
+        
+        await this.createTransaction(this.currentWallet.id, this.currentAmount, { 
+          order_number: `NFC-${Date.now()}`, 
+          cart_items: [] 
+        });
+        
         await this.logInteraction(this.currentUid, 'payment_success');
+        
         this.showState('success');
+        
         setTimeout(() => {
+          if (typeof window.completePaymentFromNFC === 'function') {
+            window.completePaymentFromNFC('NFC Wristband', this.currentProfile, this.currentWallet, newBalance);
+          }
           if (typeof window.printReceipt === 'function') window.printReceipt();
           if (typeof window.showToast === 'function') window.showToast(`Payment of R${this.currentAmount.toFixed(2)} successful!`, 'success');
         }, 500);
+        
         setTimeout(() => {
           this.reset();
-          if (typeof window.completePaymentFromNFC === 'function') window.completePaymentFromNFC('NFC Wristband');
+          this.close();
         }, 2500);
+        
       } catch (err) {
         console.error('[NFC] Payment error:', err);
         await this.logInteraction(this.currentUid, 'payment_failed', err.message);
@@ -1367,13 +1400,14 @@
     cancelPayment() {
       this.logInteraction(this.currentUid, 'payment_cancelled');
       this.reset();
+      this.close();
     },
     
     reset() {
       this.currentUid = null;
       this.currentWristband = null;
+      this.currentProfile = null;
       this.currentWallet = null;
-      this.currentCustomer = null;
       this.isProcessing = false;
       this.confirming = false;
       if (this.autoConfirmTimer) clearTimeout(this.autoConfirmTimer);
@@ -1450,6 +1484,7 @@
         lastPaidAmount: 0,
         lastOrderNumber: null,
         lastPaymentMethod: '',
+        lastWalletInfo: null,
         redirectSeconds: 5,
         redirectTimer: null,
         toastVisible: false,
@@ -1527,12 +1562,22 @@
         document.getElementById('receiptOrderNo').innerText = orderNo;
         document.getElementById('receiptMethod').innerText = this.lastPaymentMethod;
         document.getElementById('receiptTotal').innerText = this.lastPaidAmount.toFixed(2);
+        
+        if (this.lastWalletInfo) {
+          document.getElementById('receiptWalletId').innerText = this.lastWalletInfo.wallet_id || 'N/A';
+          document.getElementById('receiptNewBalance').innerText = this.lastWalletInfo.new_balance?.toFixed(2) || '0.00';
+        } else {
+          document.getElementById('receiptWalletId').innerText = 'N/A';
+          document.getElementById('receiptNewBalance').innerText = '0.00';
+        }
+        
         let itemsHtml = '';
         const savedCart = JSON.parse(localStorage.getItem('rands_kiosk_cart') || '[]');
         savedCart.forEach(item => {
           itemsHtml += `<div>${item.quantity}× ${item.name} - R${(item.price * item.quantity).toFixed(2)}</div>`;
         });
         document.getElementById('receiptItems').innerHTML = itemsHtml;
+        
         const printWindow = window.open('', '_blank');
         printWindow.document.write('<html><head><title>Rands Receipt</title></head><body>');
         printWindow.document.write(document.getElementById('receiptTemplate').innerHTML);
@@ -1561,22 +1606,39 @@
         }, 1000);
       },
       
-      completePayment(paymentMethod) {
+      completePayment(paymentMethod, walletInfo = null) {
         this.lastPaidAmount = this.totalAmount;
         this.lastOrderNumber = `RND-${Date.now()}`;
         this.lastPaymentMethod = paymentMethod;
-        const orderData = { order_number: this.lastOrderNumber, amount: this.totalAmount, items: this.cart, payment_method: paymentMethod, timestamp: new Date().toISOString() };
+        this.lastWalletInfo = walletInfo;
+        
+        const orderData = { 
+          order_number: this.lastOrderNumber, 
+          amount: this.totalAmount, 
+          items: this.cart, 
+          payment_method: paymentMethod, 
+          timestamp: new Date().toISOString(),
+          wallet: walletInfo
+        };
         localStorage.setItem('last_order', JSON.stringify(orderData));
+        localStorage.removeItem('rands_kiosk_cart');
+        this.cart = [];
         this.successModalOpen = true;
         this.startRedirectCountdown();
       },
       
-      completePaymentFromNFC(paymentMethod) {
+      completePaymentFromNFC(paymentMethod, profile, wallet, newBalance) {
         this.lastPaidAmount = this.totalAmount;
-        this.lastOrderNumber = `RND-${Date.now()}`;
+        this.lastOrderNumber = `NFC-${Date.now()}`;
         this.lastPaymentMethod = paymentMethod;
+        this.lastWalletInfo = {
+          wallet_id: profile.wallet_id,
+          user_name: profile.name,
+          new_balance: newBalance
+        };
         localStorage.removeItem('rands_kiosk_cart');
         this.cart = [];
+        this.showToast(`Payment of R${this.totalAmount.toFixed(2)} successful from wallet!`, 'success');
       },
       
       processNfcPayment() {
@@ -1613,40 +1675,79 @@
         try {
           let profile = null;
           const isPhone = this.walletAccountId.match(/^[\+]?[0-9]{9,15}$/);
+          
           if (isPhone) {
-            const { data, error } = await supabase.from('profiles').select('id, name, phone, wallet_id').eq('phone', this.walletAccountId).single();
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('id, name, phone, wallet_id')
+              .eq('phone', this.walletAccountId)
+              .single();
             if (!error && data) profile = data;
           } else {
-            const { data, error } = await supabase.from('profiles').select('id, name, phone, wallet_id').eq('wallet_id', this.walletAccountId).single();
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('id, name, phone, wallet_id')
+              .eq('wallet_id', this.walletAccountId)
+              .single();
             if (!error && data) profile = data;
           }
+          
           if (!profile) {
             this.showToast('No wallet found with this phone number or ID', 'error');
             this.processing = false;
             return;
           }
-          const { data: wallet, error: walletError } = await supabase.from('wallets').select('*').eq('user_id', profile.id).single();
+          
+          const { data: wallet, error: walletError } = await supabase
+            .from('wallets')
+            .select('*')
+            .eq('user_id', profile.id)
+            .single();
+          
           if (walletError || !wallet) {
             this.showToast('Wallet not found for this user', 'error');
             this.processing = false;
             return;
           }
+          
           if (wallet.balance < this.totalAmount) {
             this.showToast(`Insufficient balance. Available: R${wallet.balance.toFixed(2)}`, 'error');
             this.processing = false;
             return;
           }
+          
           const newBalance = wallet.balance - this.totalAmount;
           const orderNumber = `KIO-${Date.now()}`;
-          await supabase.from('wallets').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', wallet.id);
-          await supabase.from('wallet_transactions').insert({
-            wallet_id: wallet.id, user_id: profile.id, amount: this.totalAmount,
-            type: 'payment', direction: 'debit', status: 'completed',
-            description: `Kiosk purchase: ${orderNumber}`, created_at: new Date().toISOString(),
-            metadata: { payment_method: 'wallet', cart_items: this.cart }
-          });
+          
+          const { error: updateError } = await supabase
+            .from('wallets')
+            .update({ balance: newBalance, updated_at: new Date().toISOString() })
+            .eq('id', wallet.id);
+          
+          if (updateError) throw updateError;
+          
+          const { error: txError } = await supabase
+            .from('wallet_transactions')
+            .insert({
+              wallet_id: wallet.id,
+              amount: this.totalAmount,
+              type: 'payment',
+              direction: 'debit',
+              status: 'completed',
+              description: `Kiosk purchase: ${orderNumber}`,
+              created_at: new Date().toISOString(),
+              metadata: { payment_method: 'wallet_manual', cart_items: this.cart }
+            });
+          
+          if (txError) throw txError;
+          
           this.showToast(`Payment of R${this.formatPrice(this.totalAmount)} successful!`, 'success');
-          this.completePayment('Rands Wallet');
+          this.completePayment('Rands Wallet', {
+            wallet_id: profile.wallet_id,
+            user_name: profile.name,
+            new_balance: newBalance
+          });
+          
         } catch (err) {
           console.error('Wallet payment error:', err);
           this.showToast('Payment failed. Please try again.', 'error');
