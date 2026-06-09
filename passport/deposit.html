@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
   <title>Rands | Top Up Wallet</title>
-  <!-- MATCHING APP FONTS (same as Profile & Statement) -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script type="importmap">
@@ -78,7 +77,6 @@
       margin: 0 auto;
     }
 
-    /* Header card - EXACT padding and spacing like Profile (padding: 28px 24px) */
     .topup-header-card {
       background: var(--white);
       border-radius: var(--radius-xl);
@@ -110,7 +108,6 @@
     }
     .close-topup-btn:active { transform: scale(0.94); background: var(--white); }
 
-    /* Financial section - matching avatar-section spacing (gap: 24px, margin-bottom: 24px) */
     .financial-section {
       display: flex;
       align-items: center;
@@ -118,7 +115,6 @@
       flex-wrap: wrap;
       margin-bottom: 24px;
     }
-    /* Icon badge - same size as avatar-large (96px) */
     .topup-icon-badge {
       width: 96px;
       height: 96px;
@@ -149,7 +145,6 @@
       font-weight: 500;
       margin-top: 4px;
     }
-    /* Wallet preview - matching profile exactly */
     .wallet-preview {
       background: var(--bone);
       border-radius: 24px;
@@ -170,7 +165,6 @@
       font-weight: 800;
       color: var(--ink);
     }
-    /* Header actions - matching profile */
     .header-actions {
       display: flex;
       gap: 12px;
@@ -201,7 +195,6 @@
     }
     .action-btn:active { transform: scale(0.96); }
 
-    /* Steps indicator */
     .steps {
       display: flex;
       align-items: center;
@@ -256,7 +249,6 @@
       background: var(--red);
     }
 
-    /* Section title matching Profile */
     .section-title {
       font-size: 0.7rem;
       font-weight: 800;
@@ -272,7 +264,6 @@
       color: var(--red);
     }
 
-    /* Amount display card */
     .amount-display {
       background: var(--bone);
       border-radius: var(--radius-lg);
@@ -307,7 +298,6 @@
       margin-right: 3px;
     }
 
-    /* Quick amount chips */
     .quick-amounts {
       display: flex;
       flex-wrap: wrap;
@@ -390,7 +380,6 @@
       text-transform: uppercase;
     }
 
-    /* Pay options - matching action-item style */
     .pay-option {
       border: 1.5px solid var(--border-light);
       border-radius: var(--radius-lg);
@@ -444,7 +433,6 @@
       padding-top: 8px;
     }
 
-    /* Info cards */
     .request-info-card {
       background: rgba(227,6,19,0.05);
       border-radius: var(--radius-md);
@@ -496,7 +484,6 @@
       border-radius: 20px;
     }
 
-    /* Buttons */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -539,7 +526,6 @@
     }
     .btn-ghost:active { background: var(--white); }
 
-    /* Modals */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -634,7 +620,6 @@
       40% { transform: scale(1); opacity: 1; }
     }
 
-    /* Toast */
     .toast {
       position: fixed;
       bottom: 30px;
@@ -678,7 +663,7 @@
 <body>
 <div id="app">
   <div class="topup-container">
-    <!-- Header card - EXACT padding and spacing like Profile (padding: 28px 24px) -->
+    <!-- Header card -->
     <div class="topup-header-card">
       <div class="close-topup-btn" @click="goHome">
         <i class="fas fa-times"></i>
@@ -728,7 +713,7 @@
     <div v-if="currentStep === 2">
       <div class="section-title"><i class="fas fa-credit-card"></i> Select Payment Method</div>
       
-      <!-- Card Payment (Yoco) -->
+      <!-- Card Payment (Yoco) - WORKING TOP-UP -->
       <div class="pay-option" :class="{ selected: selectedPayMethod === 'yoco' }" @click="selectedPayMethod = 'yoco'">
         <div class="pay-option-header">
           <div class="pay-icon-wrap"><i class="fas fa-credit-card"></i></div>
@@ -827,6 +812,21 @@
       await this.loadUserBalance();
       this.previewRef = this.generateRef();
       this.setupRealtimeListener();
+
+      // --- Handle Yoco payment callback (top-up) ---
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentStatus = urlParams.get('payment');
+      const txId = urlParams.get('transaction_id');
+      if (paymentStatus === 'success' && txId) {
+        await this.completeYocoTopUp(txId);
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (paymentStatus === 'cancel') {
+        this.showToast('Payment was cancelled', 'info');
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (paymentStatus === 'failed') {
+        this.showToast('Payment failed. Please try again.', 'error');
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     },
     beforeDestroy() {
       if (this.approvalTimer) clearInterval(this.approvalTimer);
@@ -884,6 +884,7 @@
         this.waitingModalOpen = false;
         this.showToast('Request cancelled or expired', 'error');
       },
+      // ----- Voucher & Capitec top-up (unchanged) -----
       async completeTopup(amount) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
@@ -951,7 +952,8 @@
           }
         }).subscribe();
       },
-      
+
+      // ----- YOCO TOP-UP (deposit page) -----
       async startYocoPayment() {
         if (this.topupAmount <= 0 || this.topupAmount < 5) {
           this.showToast('Please select a valid top-up amount (min R5)', 'error');
@@ -962,7 +964,8 @@
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           if (sessionError || !session) throw new Error('You must be logged in to make a payment');
           const userId = session.user.id;
-          
+
+          // Create pending transaction
           const { data: pendingTx, error: insertError } = await supabase
             .from('wallet_transactions')
             .insert({
@@ -978,36 +981,92 @@
             })
             .select('id')
             .single();
-          
+
           if (insertError) throw new Error('Could not initialize payment. Please try again.');
           const transactionId = pendingTx.id;
           const amountCents = Math.round(this.topupAmount * 100);
-          
+
+          // Build redirect URLs for this page
+          const baseUrl = window.location.origin + window.location.pathname;
+          const successUrl = `${baseUrl}?payment=success&transaction_id=${transactionId}`;
+          const cancelUrl = `${baseUrl}?payment=cancel`;
+          const failureUrl = `${baseUrl}?payment=failed`;
+
+          // Call edge function with custom URLs
           const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', {
             body: {
-              wallet_transaction_id: transactionId,
               amount_cents: amountCents,
-              currency: 'ZAR'
+              transaction_id: transactionId,
+              currency: 'ZAR',
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+              failure_url: failureUrl
             }
           });
-          
+
           if (edgeError) {
             console.error('Edge function error:', edgeError);
             await supabase.from('wallet_transactions').update({ status: 'failed', metadata: { error: edgeError.message } }).eq('id', transactionId);
             throw new Error(edgeError.message || 'Payment gateway error');
           }
-          
-          const checkoutUrl = edgeResponse?.checkout_url || edgeResponse?.checkoutUrl;
+
+          const checkoutUrl = edgeResponse?.checkout_url;
           if (!checkoutUrl) {
-            console.error('Invalid edge response - missing checkout URL', edgeResponse);
             throw new Error('Invalid response from payment gateway');
           }
-          
+
           window.location.href = checkoutUrl;
         } catch (err) {
           console.error('Yoco payment initiation error:', err);
           this.showToast(err.message || 'Payment initiation failed', 'error');
           this.yocoProcessing = false;
+        }
+      },
+
+      async completeYocoTopUp(transactionId) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not logged in');
+
+          // Get the pending transaction
+          const { data: tx, error: txError } = await supabase
+            .from('wallet_transactions')
+            .select('*')
+            .eq('id', transactionId)
+            .single();
+
+          if (txError || !tx) throw new Error('Transaction not found');
+          if (tx.status === 'completed') {
+            // Already processed – just reload balance
+            await this.loadUserBalance();
+            return;
+          }
+
+          // Mark as completed
+          await supabase
+            .from('wallet_transactions')
+            .update({ status: 'completed' })
+            .eq('id', transactionId);
+
+          // Add funds to wallet
+          const { data: wallet } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', session.user.id)
+            .single();
+
+          const newBalance = (wallet?.balance || 0) + tx.amount;
+          await supabase
+            .from('wallets')
+            .update({ balance: newBalance })
+            .eq('user_id', session.user.id);
+
+          this.walletBalance = newBalance;
+          this.showToast(`R${tx.amount.toFixed(2)} added to your wallet!`, 'success');
+          setTimeout(() => window.location.href = 'home.html', 2000);
+        } catch (err) {
+          console.error('Complete top-up error:', err);
+          this.showToast('Payment verified but failed to update wallet. Contact support.', 'error');
         }
       }
     }
