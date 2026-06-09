@@ -1457,22 +1457,14 @@
           localStorage.setItem('pending_payment_transaction', transactionId);
           localStorage.setItem('pending_payment_cart', JSON.stringify(this.cart));
           
-          // Get session token if available (optional for kiosk mode)
-          let token = null;
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) token = session.access_token;
-          } catch(e) { console.log('No auth session, continuing as guest'); }
-          
-          // Call Yoco edge function
-          const headers = { 'Content-Type': 'application/json' };
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          
+          // Call Yoco edge function (no auth required - public endpoint)
           const response = await fetch(
             'https://odpugxrihfspaucsdqjj.supabase.co/functions/v1/yoco-create-checkout',
             {
               method: 'POST',
-              headers: headers,
+              headers: {
+                'Content-Type': 'application/json',
+              },
               body: JSON.stringify({
                 amount_cents: amountCents,
                 transaction_id: transactionId,
@@ -1484,14 +1476,14 @@
           const data = await response.json();
           
           if (!response.ok) {
-            throw new Error(data.error || 'Payment initialization failed');
+            throw new Error(data.error || `Payment initialization failed (${response.status})`);
           }
           
           if (data.checkout_url) {
             // Redirect to Yoco checkout page
             window.location.href = data.checkout_url;
           } else {
-            throw new Error('No checkout URL received');
+            throw new Error('No checkout URL received from payment gateway');
           }
           
         } catch (error) {
