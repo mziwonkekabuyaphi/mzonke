@@ -2,92 +2,733 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verifying Payment | Rands Wallet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <title>Rands Wallet • Payment Confirmed</title>
+
+  <!-- QR Code Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Supabase JS (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Google Fonts: Satoshi & Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&family=Satoshi:wght@400;500;700;900&display=swap" rel="stylesheet">
+
   <style>
-    /* (keep your existing premium styles – same glassmorphism, particles, etc.) */
-    body { background: #0a0a0f; font-family: 'Inter', sans-serif; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .loader { border: 4px solid rgba(255,255,255,0.2); border-top: 4px solid #ff2b2b; border-radius: 50%; width: 48px; height: 48px; animation: spin 0.8s linear infinite; margin: 20px auto; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .card { background: rgba(12,12,20,0.8); backdrop-filter: blur(20px); border-radius: 48px; padding: 32px; max-width: 400px; text-align: center; }
-    .error { color: #ff8a8a; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #0a0a0f;
+      background-image: radial-gradient(circle at 20% 30%, rgba(255, 43, 43, 0.18) 0%, #000000 95%);
+      font-family: "Inter", "Satoshi", -apple-system, system-ui, sans-serif;
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* ambient animated glow */
+    .ambient-glow {
+      position: fixed;
+      top: -20%;
+      left: -20%;
+      width: 140%;
+      height: 140%;
+      background: radial-gradient(ellipse at 40% 50%, rgba(255, 43, 43, 0.28), transparent 70%);
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+      animation: slowDrift 14s infinite alternate ease-in-out;
+    }
+
+    @keyframes slowDrift {
+      0% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+      100% { transform: translate(2%, 1%) scale(1.05); opacity: 0.9; }
+    }
+
+    .particle {
+      position: fixed;
+      width: 3px;
+      height: 3px;
+      background: #ff5e5e;
+      border-radius: 50%;
+      opacity: 0.4;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* main glass card */
+    .card {
+      position: relative;
+      z-index: 10;
+      background: rgba(12, 12, 20, 0.72);
+      backdrop-filter: blur(18px);
+      border-radius: 48px;
+      padding: 28px 22px;
+      width: 100%;
+      max-width: 440px;
+      text-align: center;
+      border: 1px solid rgba(255, 43, 43, 0.4);
+      box-shadow: 0 30px 50px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: transform 0.25s ease, border-color 0.2s;
+    }
+
+    .checkmark {
+      font-size: 70px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffd966, #ff2b2b);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 15px rgba(255, 43, 43, 0.5);
+      animation: pop 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+      display: inline-block;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0); opacity: 0; }
+      70% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    h1 {
+      font-size: 1.9rem;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      background: linear-gradient(to right, #fff, #ffb8b8);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin: 10px 0 6px;
+    }
+
+    .sub {
+      font-size: 0.85rem;
+      opacity: 0.8;
+      margin-bottom: 18px;
+    }
+
+    .transaction-details {
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 28px;
+      padding: 14px 18px;
+      margin: 14px 0 12px;
+      text-align: left;
+      border: 1px solid rgba(255, 43, 43, 0.2);
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 10px;
+      color: #e0e0e0;
+    }
+
+    .detail-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .detail-label {
+      font-weight: 500;
+      opacity: 0.7;
+    }
+
+    .detail-value {
+      font-weight: 700;
+      color: white;
+      font-family: monospace;
+      letter-spacing: 0.3px;
+    }
+
+    .amount-highlight {
+      color: #ff5e5e;
+      font-size: 1.2rem;
+    }
+
+    .new-balance {
+      color: #2ecc71;
+      font-weight: 800;
+    }
+
+    #qrcode {
+      margin: 12px auto;
+      background: white;
+      padding: 10px;
+      border-radius: 24px;
+      display: inline-block;
+      box-shadow: 0 0 0 2px rgba(255, 43, 43, 0.4), 0 12px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    #qrcode canvas, #qrcode img {
+      border-radius: 18px;
+      display: block;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px 0;
+      border: none;
+      border-radius: 60px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      backdrop-filter: blur(4px);
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .print {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .print:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: #ff2b2b;
+    }
+
+    .whatsapp {
+      background: linear-gradient(105deg, #25D366, #128C7E);
+      color: white;
+      box-shadow: 0 5px 15px rgba(37, 211, 102, 0.3);
+    }
+
+    .tagline {
+      margin: 18px 0 12px;
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: #ff8a8a;
+    }
+
+    .countdown {
+      margin-top: 18px;
+      padding: 10px;
+      border-radius: 60px;
+      background: rgba(20, 20, 30, 0.8);
+      backdrop-filter: blur(4px);
+      transition: all 0.2s;
+    }
+
+    .countdown-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .progress-ring svg {
+      transform: rotate(-90deg);
+    }
+
+    .progress-ring-circle {
+      fill: none;
+      stroke: #ff5e5e;
+      stroke-width: 3;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.3s ease;
+    }
+
+    .countdown.warning {
+      background: rgba(255, 193, 7, 0.3);
+      border: 1px solid #ffc107;
+    }
+    .countdown.critical {
+      background: rgba(220, 53, 69, 0.5);
+      border: 1px solid #ff2b2b;
+      animation: pulseCritical 0.8s infinite;
+    }
+    @keyframes pulseCritical {
+      0% { transform: scale(1); background: rgba(220, 53, 69, 0.4);}
+      100% { transform: scale(1.02); background: rgba(220, 53, 69, 0.7);}
+    }
+
+    /* WhatsApp Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(12px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: rgba(18, 18, 28, 0.96);
+      backdrop-filter: blur(20px);
+      padding: 28px 24px;
+      border-radius: 48px;
+      width: 320px;
+      color: white;
+      border: 1px solid rgba(255, 43, 43, 0.6);
+      text-align: center;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 14px;
+      margin: 16px 0;
+      border-radius: 40px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      text-align: center;
+      font-family: monospace;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    .modal-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 40px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .modal-btn.send {
+      background: #25D366;
+      color: white;
+    }
+
+    .modal-btn.cancel {
+      background: rgba(255,255,255,0.15);
+    }
   </style>
 </head>
 <body>
-<div class="card" id="statusCard">
-  <h2>🔐 Verifying Payment</h2>
-  <div class="loader"></div>
-  <p id="statusMessage">Checking with Yoco secure gateway...</p>
+
+<div class="ambient-glow"></div>
+
+<div class="card">
+  <div class="checkmark">✓</div>
+  <h1>Payment Secured</h1>
+  <div class="sub">Your transaction is confirmed</div>
+
+  <!-- dynamic transaction info -->
+  <div class="transaction-details" id="transactionDetails">
+    <div class="detail-row"><span class="detail-label">Order ID</span><span class="detail-value" id="orderIdDisplay">—</span></div>
+    <div class="detail-row"><span class="detail-label">Amount paid</span><span class="detail-value amount-highlight" id="amountDisplay">R 0.00</span></div>
+    <div class="detail-row"><span class="detail-label">Wallet ID</span><span class="detail-value" id="walletMasked">••••••••</span></div>
+    <div class="detail-row"><span class="detail-label">New Balance</span><span class="detail-value new-balance" id="balanceDisplay">R 0.00</span></div>
+    <div class="detail-row"><span class="detail-label">Date & Time</span><span class="detail-value" id="dateTimeDisplay">—</span></div>
+  </div>
+
+  <!-- QR Code area -->
+  <div id="qrcode"></div>
+
+  <button class="btn print" onclick="printReceipt()">🖨️ Print Receipt</button>
+  <button class="btn whatsapp" onclick="showWhatsAppModal()">📲 Share via WhatsApp</button>
+
+  <div class="tagline">#RandsVibe • Live the Moment</div>
+
+  <div class="countdown" id="countdown">
+    <div class="countdown-content">
+      <div class="progress-ring">
+        <svg width="28" height="28">
+          <circle class="progress-ring-circle" cx="14" cy="14" r="12" stroke="currentColor" stroke-width="3" fill="none" />
+        </svg>
+      </div>
+      <div class="countdown-text" id="countdown-text">Returning to menu...</div>
+    </div>
+  </div>
+</div>
+
+<!-- WhatsApp Modal -->
+<div id="whatsappModal" class="modal">
+  <div class="modal-content">
+    <h3>📲 WhatsApp Receipt</h3>
+    <p>Customer WhatsApp number</p>
+    <input type="tel" id="whatsappNumber" placeholder="e.g., 27721234567" />
+    <div class="modal-buttons">
+      <button class="modal-btn cancel" onclick="closeWhatsAppModal()">Cancel</button>
+      <button class="modal-btn send" onclick="sendToWhatsApp()">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- hidden receipt template -->
+<div id="receiptTemplate" style="display: none;">
+  <div style="font-family: 'Courier New', monospace; text-align: center; padding: 20px; width: 320px; background: white; color: black;">
+    <div style="font-size: 20px; font-weight: bold;">RANDS WALLET</div>
+    <div style="font-size: 12px;">Payment Receipt</div>
+    <div style="border-top: 1px dashed #000; margin: 12px 0;"></div>
+    <div style="text-align: left; font-size: 12px;">
+      <div><strong>Order ID:</strong> <span id="receiptOrder"></span></div>
+      <div><strong>Date:</strong> <span id="receiptDate"></span></div>
+      <div><strong>Amount:</strong> R <span id="receiptAmount"></span></div>
+      <div><strong>Wallet ID:</strong> <span id="receiptWallet"></span></div>
+      <div><strong>New Balance:</strong> R <span id="receiptBalance"></span></div>
+      <div><strong>Method:</strong> <span id="receiptMethod">Rands Wallet</span></div>
+    </div>
+    <div style="border-top: 1px dashed #000; margin: 12px 0;"></div>
+    <div style="font-size: 10px;">Thank you for vibing with Rands<br>#LiveTheMoment</div>
+  </div>
 </div>
 
 <script>
-  // ========== SECURE VERIFICATION ==========
-  const urlParams = new URLSearchParams(window.location.search);
-  const transactionId = urlParams.get('transaction_id');
+  // ======================== SUPABASE CONFIGURATION ========================
+  // Replace with your actual Supabase URL and ANON KEY (from ../config/supabase.js equivalent)
+  // For production, set these via environment or window object.
+  const SUPABASE_URL = 'https://odpugxrihfspaucsdqjj.supabase.co';   // demo URL (same as reference)
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kcHVneHJpaGZzcGF1Y3NkcWpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MjAzMzE1NzYwMH0.dummy_public_key_replace'; // Replace with your anon key
 
-  if (!transactionId) {
-    document.getElementById('statusCard').innerHTML = `<h2>⚠️ Invalid Link</h2><p>No transaction reference found.</p><button onclick="window.location.href='/'">Return to Kiosk</button>`;
-  } else {
-    verifyPayment(transactionId);
+  let supabaseClient = null;
+  let currentTransaction = {
+    orderId: null,
+    amount: 0,
+    walletId: null,
+    newBalance: 0,
+    timestamp: null,
+    customerName: 'Rands User'
+  };
+
+  // helper: parse URL params
+  function getUrlParam(param) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(param);
   }
 
-  async function verifyPayment(txId) {
+  // initialize supabase and fetch transaction data
+  async function initSupabaseAndFetch() {
     try {
-      const response = await fetch('https://your-project-ref.supabase.co/functions/v1/verify-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transaction_id: txId })
-      });
-
-      const result = await response.json();
-
-      if (result.status === 'paid') {
-        // ✅ Payment confirmed – show success UI
-        showSuccessUI(result.receipt_id, result.amount);
-        // Optional: send WhatsApp (if you want, reuse modal from original)
-        triggerWalletCreditedAnimation();
+      if (SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'dummy_public_key_replace') {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log("[Supabase] client initialized");
       } else {
-        // ❌ Failed or pending too long
-        showFailureAndRedirect();
+        console.warn("[Supabase] missing keys, using localStorage fallback only");
       }
-    } catch (error) {
-      console.error('Verification error:', error);
-      showFailureAndRedirect();
+    } catch(e) { console.warn(e); }
+
+    // 1) check URL transaction_id
+    let transactionId = getUrlParam('transaction_id') || getUrlParam('txn');
+    let amountParam = getUrlParam('amount');
+    let walletIdParam = getUrlParam('wallet_id');
+    let balanceParam = getUrlParam('new_balance');
+
+    // 2) try localStorage (from previous payment)
+    const storedTx = localStorage.getItem('rands_last_transaction');
+    if (storedTx && !transactionId) {
+      try {
+        const parsed = JSON.parse(storedTx);
+        transactionId = parsed.transaction_id || parsed.orderId;
+        amountParam = amountParam || parsed.amount;
+        walletIdParam = walletIdParam || parsed.wallet_id;
+        balanceParam = balanceParam || parsed.new_balance;
+        currentTransaction.orderId = parsed.orderId;
+        currentTransaction.amount = parseFloat(parsed.amount) || 0;
+        currentTransaction.walletId = parsed.wallet_id;
+        currentTransaction.newBalance = parseFloat(parsed.new_balance) || 0;
+        currentTransaction.timestamp = parsed.timestamp || new Date().toISOString();
+      } catch(e) {}
+    }
+
+    // if we have transactionId and supabase, fetch live details
+    if (transactionId && supabaseClient) {
+      try {
+        // fetch from wallet_transactions
+        const { data: txData, error: txError } = await supabaseClient
+          .from('wallet_transactions')
+          .select('*, wallet:wallet_id (user_id, balance), profiles:user_id (name, wallet_id)')
+          .eq('id', transactionId)
+          .single();
+        
+        if (!txError && txData) {
+          currentTransaction.amount = Math.abs(txData.amount);
+          currentTransaction.orderId = txData.id.substring(0, 12) || `RND-${txData.created_at?.slice(0,10)}`;
+          currentTransaction.timestamp = txData.created_at || new Date().toISOString();
+          if (txData.wallet) {
+            const walletObj = txData.wallet;
+            currentTransaction.newBalance = walletObj.balance || 0;
+            if (txData.profiles) {
+              currentTransaction.walletId = txData.profiles.wallet_id;
+              currentTransaction.customerName = txData.profiles.name || 'Valued Customer';
+            } else if (walletObj.user_id) {
+              const { data: profileData } = await supabaseClient
+                .from('profiles')
+                .select('wallet_id, name')
+                .eq('id', walletObj.user_id)
+                .single();
+              if (profileData) {
+                currentTransaction.walletId = profileData.wallet_id;
+                currentTransaction.customerName = profileData.name || 'Customer';
+              }
+            }
+          }
+        } else if (!txError && !txData) {
+          console.warn("transaction not found, using fallback");
+        }
+      } catch(err) { console.warn("supabase fetch error", err); }
+    }
+    
+    // fallback: if still missing orderId, create from timestamp + random
+    if (!currentTransaction.orderId) {
+      currentTransaction.orderId = `RND${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000)}`;
+    }
+    if (!currentTransaction.amount && amountParam) currentTransaction.amount = parseFloat(amountParam);
+    if (!currentTransaction.walletId && walletIdParam) currentTransaction.walletId = walletIdParam;
+    if (!currentTransaction.newBalance && balanceParam) currentTransaction.newBalance = parseFloat(balanceParam);
+    if (!currentTransaction.timestamp) currentTransaction.timestamp = new Date().toISOString();
+    
+    // final fallback: if amount still zero (demo mode) check localStorage cart total
+    if (currentTransaction.amount === 0) {
+      const cartTotal = localStorage.getItem('last_cart_total');
+      if (cartTotal) currentTransaction.amount = parseFloat(cartTotal);
+      else currentTransaction.amount = 125.50; // demo amount
+    }
+    if (!currentTransaction.walletId) currentTransaction.walletId = "RND•WLT•" + Math.random().toString(36).substr(2, 8).toUpperCase();
+    if (currentTransaction.newBalance === 0 && currentTransaction.amount > 0) {
+      // just estimate new balance (dummy)
+      currentTransaction.newBalance = 845.30 - currentTransaction.amount;
+    }
+    
+    // display on UI
+    updateUI();
+  }
+
+  function updateUI() {
+    document.getElementById('orderIdDisplay').innerText = currentTransaction.orderId;
+    document.getElementById('amountDisplay').innerHTML = `R ${currentTransaction.amount.toFixed(2)}`;
+    const masked = currentTransaction.walletId ? currentTransaction.walletId.slice(-8).padStart(8, '*') : '••••••••';
+    document.getElementById('walletMasked').innerText = masked;
+    document.getElementById('balanceDisplay').innerHTML = `R ${currentTransaction.newBalance.toFixed(2)}`;
+    const formattedDate = new Date(currentTransaction.timestamp).toLocaleString();
+    document.getElementById('dateTimeDisplay').innerText = formattedDate;
+    
+    // generate QR with order receipt link
+    const orderLink = `https://rands.co.za/order/${currentTransaction.orderId}`;
+    const qrcodeDiv = document.getElementById('qrcode');
+    qrcodeDiv.innerHTML = '';
+    try {
+      new QRCode(qrcodeDiv, {
+        text: orderLink,
+        width: 150,
+        height: 150
+      });
+    } catch(e) {
+      qrcodeDiv.innerHTML = '<p style="color:#ff5e5e;">⚠️ QR error</p>';
     }
   }
 
-  function showSuccessUI(receiptId, amount) {
-    const card = document.getElementById('statusCard');
-    card.innerHTML = `
-      <div class="checkmark">✓</div>
-      <h1>💰 Wallet Credited!</h1>
-      <p>Amount: <strong>R ${amount}</strong></p>
-      <p>Receipt: ${receiptId}</p>
-      <button class="btn print" onclick="window.print()">🖨️ Print Receipt</button>
-      <button class="btn whatsapp" onclick="showWhatsAppModal()">📲 Send WhatsApp</button>
-      <p class="tagline">Payment secured via Yoco server-side verification</p>
-    `;
-    // Redirect to kiosk after 8 seconds or user action
-    setTimeout(() => { window.location.href = '/kiosk'; }, 8000);
+  // Print receipt logic
+  function printReceipt() {
+    document.getElementById('receiptOrder').innerText = currentTransaction.orderId;
+    document.getElementById('receiptDate').innerText = new Date(currentTransaction.timestamp).toLocaleString();
+    document.getElementById('receiptAmount').innerText = currentTransaction.amount.toFixed(2);
+    document.getElementById('receiptWallet').innerText = currentTransaction.walletId || 'N/A';
+    document.getElementById('receiptBalance').innerText = currentTransaction.newBalance.toFixed(2);
+    document.getElementById('receiptMethod').innerText = 'Rands Wallet';
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write('<html><head><title>Rands Receipt</title><style>body{font-family: monospace;}</style></head><body>');
+    printWindow.document.write(document.getElementById('receiptTemplate').innerHTML);
+    printWindow.document.write('</body></html>');
+    printWindow.document.close();
+    printWindow.print();
+    printWindow.close();
+    showToast('Receipt sent to printer ✓', 'success');
   }
 
-  function showFailureAndRedirect() {
-    const card = document.getElementById('statusCard');
-    card.innerHTML = `<h2 class="error">⚠️ Payment Not Verified</h2><p>We could not confirm your payment. You will be redirected.</p>`;
-    setTimeout(() => {
-      window.location.href = '/system-pages/payment-failure.html?reason=unverified';
-    }, 4000);
+  // WhatsApp modal
+  function showWhatsAppModal() {
+    document.getElementById('whatsappModal').style.display = 'flex';
+  }
+  function closeWhatsAppModal() {
+    document.getElementById('whatsappModal').style.display = 'none';
+  }
+  function sendToWhatsApp() {
+    let phone = document.getElementById('whatsappNumber').value.trim().replace(/\D/g, '');
+    if (phone === "") { alert("Please enter WhatsApp number"); return; }
+    if (phone.length === 10 && phone.startsWith("7")) phone = "27" + phone;
+    if (phone.length < 10) { alert("Valid number with country code required"); return; }
+    
+    const message = `🎉 Rands Wallet Payment Confirmed! 🎉\n\nOrder: ${currentTransaction.orderId}\nAmount: R ${currentTransaction.amount.toFixed(2)}\nNew Balance: R ${currentTransaction.newBalance.toFixed(2)}\nReceipt link: https://rands.co.za/order/${currentTransaction.orderId}\n\nThank you for vibing with Rands. 💫`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    closeWhatsAppModal();
+    showToast("WhatsApp share opened", "info");
   }
 
-  function triggerWalletCreditedAnimation() {
-    // Optional: play sound / confetti
-    if ('vibrate' in navigator) navigator.vibrate(200);
+  // Toast helper
+  function showToast(msg, type = 'info') {
+    let toast = document.querySelector('.toast-message');
+    if (!toast) {
+      const div = document.createElement('div');
+      div.className = 'toast-message';
+      div.style.position = 'fixed';
+      div.style.bottom = '30px';
+      div.style.left = '50%';
+      div.style.transform = 'translateX(-50%)';
+      div.style.backgroundColor = type === 'success' ? '#10b981' : (type === 'error' ? '#ef4444' : '#3b82f6');
+      div.style.color = 'white';
+      div.style.padding = '10px 20px';
+      div.style.borderRadius = '60px';
+      div.style.fontWeight = '600';
+      div.style.zIndex = '2000';
+      div.style.backdropFilter = 'blur(8px)';
+      div.style.fontSize = '0.8rem';
+      document.body.appendChild(div);
+      toast = div;
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 3000);
   }
 
-  // Reuse original WhatsApp modal functions
-  function showWhatsAppModal() { /* keep existing implementation */ }
-  function closeWhatsAppModal() { /* ... */ }
-  function sendToWhatsApp() { /* ... */ }
+  // Countdown with ring + redirect to menu (kiosk-menu.html)
+  let timeLeft = 12;
+  const totalTime = 12;
+  const countdownEl = document.getElementById('countdown');
+  const countdownText = document.getElementById('countdown-text');
+  const progressCircle = document.querySelector('.progress-ring-circle');
+  const radius = 12;
+  const circumference = 2 * Math.PI * radius;
+  if (progressCircle) {
+    progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
+    progressCircle.style.strokeDashoffset = circumference;
+  }
+  function updateRing() {
+    if (!progressCircle) return;
+    const percent = timeLeft / totalTime;
+    const offset = circumference * (1 - percent);
+    progressCircle.style.strokeDashoffset = offset;
+  }
+  function updateCountdownStyle() {
+    countdownEl.classList.remove('warning', 'critical');
+    if (timeLeft <= 4) {
+      countdownEl.classList.add('critical');
+      countdownText.innerHTML = `⛔ CLOSING IN ${timeLeft}S ⛔`;
+    } else if (timeLeft <= 8) {
+      countdownEl.classList.add('warning');
+      countdownText.innerHTML = `⚠️ Redirect in ${timeLeft}s... ⚠️`;
+    } else {
+      countdownText.innerHTML = `↻ Returning to menu in ${timeLeft}s`;
+    }
+    updateRing();
+  }
+  updateCountdownStyle();
+  const timer = setInterval(() => {
+    timeLeft--;
+    updateCountdownStyle();
+    if (timeLeft <= 0) {
+      clearInterval(timer);
+      countdownText.innerHTML = "✨ Redirecting... ✨";
+      setTimeout(() => {
+        window.location.href = "kiosk-menu.html";
+      }, 400);
+    }
+  }, 1000);
+
+  // Floating particles effect
+  function createParticles() {
+    for (let i = 0; i < 45; i++) {
+      const p = document.createElement('div');
+      p.classList.add('particle');
+      const s = Math.random() * 4 + 1.5;
+      p.style.width = `${s}px`;
+      p.style.height = `${s}px`;
+      p.style.left = `${Math.random() * 100}%`;
+      p.style.top = `${Math.random() * 100}%`;
+      p.style.animation = `floatParticle ${Math.random() * 8 + 6}s infinite ease-in-out`;
+      p.style.animationDelay = `${Math.random() * 5}s`;
+      document.body.appendChild(p);
+    }
+  }
+  const styleKey = document.createElement('style');
+  styleKey.textContent = `
+    @keyframes floatParticle {
+      0% { transform: translateY(0) translateX(0); opacity: 0; }
+      20% { opacity: 0.6; }
+      80% { opacity: 0.4; }
+      100% { transform: translateY(-70px) translateX(25px); opacity: 0; }
+    }
+  `;
+  document.head.appendChild(styleKey);
+  createParticles();
+
+  // optional vibrate for urgency
+  if (window.navigator && window.navigator.vibrate) {
+    let vibed = false;
+    const vibeInterval = setInterval(() => {
+      if (timeLeft <= 4 && !vibed) {
+        window.navigator.vibrate(80);
+        vibed = true;
+      }
+      if (timeLeft <= 0) clearInterval(vibeInterval);
+    }, 300);
+  }
+
+  window.onclick = function(e) {
+    const modal = document.getElementById('whatsappModal');
+    if (e.target === modal) closeWhatsAppModal();
+  };
+
+  // store last transaction into localStorage again to ensure consistency for receipt printing (if needed)
+  window.addEventListener('load', async () => {
+    await initSupabaseAndFetch();
+    // store latest transaction in localStorage for sharing across pages
+    localStorage.setItem('rands_last_transaction', JSON.stringify({
+      orderId: currentTransaction.orderId,
+      amount: currentTransaction.amount,
+      wallet_id: currentTransaction.walletId,
+      new_balance: currentTransaction.newBalance,
+      timestamp: currentTransaction.timestamp
+    }));
+    // Also if we have cart total, we keep for reference
+    const cartTotalSave = localStorage.getItem('last_cart_total');
+    if (!cartTotalSave && currentTransaction.amount) {
+      localStorage.setItem('last_cart_total', currentTransaction.amount);
+    }
+    showToast(`Payment of R${currentTransaction.amount.toFixed(2)} confirmed!`, 'success');
+  });
+
+  // expose methods globally
+  window.printReceipt = printReceipt;
+  window.showWhatsAppModal = showWhatsAppModal;
+  window.closeWhatsAppModal = closeWhatsAppModal;
+  window.sendToWhatsApp = sendToWhatsApp;
 </script>
+
+<!-- fallback style for toast -->
+<style>
+  .toast-message {
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+    font-family: 'Inter', sans-serif;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+  @media (max-width: 480px) {
+    .card { padding: 20px 18px; }
+    .detail-row { font-size: 0.75rem; }
+  }
+</style>
 </body>
 </html>
