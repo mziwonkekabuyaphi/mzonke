@@ -62,7 +62,7 @@ closeInstallBtn?.addEventListener('click', () => {
 });
 
 window.addEventListener('appinstalled', () => {
-  console.log('🎉 App installed successfully');
+  console.log('App installed successfully');
   deferredPrompt = null;
   if (installBanner) installBanner.style.display = 'none';
 });
