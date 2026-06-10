@@ -154,7 +154,7 @@ function animate(timestamp) {
   } else if (progress >= 100 && !splashDismissed) {
     // When progress reaches 100%, just hold the "100%" look – still wait for user tap
     updateStatus(100);
-    updateMessage("🚀 Ready. Tap to enter.");
+    updateMessage("Tap anywhere to enter.");
   }
 }
 animationRequestId = requestAnimationFrame(animate);
