@@ -919,7 +919,7 @@
         // Get active VVIP booking with remaining balance
         const { data: booking } = await supabase
             .from('vvip_bookings')
-            .select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price, description)`)
+            .select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price, description, capacity, benefits)`)
             .eq('customer_id', currentProfile.id)
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
@@ -967,11 +967,17 @@
         const pkg = activePackage.package;
         const remaining = activePackage.remainingAmount;
         const used = activePackage.totalAmount - remaining;
+        const tablesCount = pkg.capacity || 0;
+        const pricePerTable = tablesCount > 0 ? (activePackage.totalAmount / tablesCount).toFixed(2) : 0;
         
         container.innerHTML = `
             <div class="package-balance-row">
                 <span class="package-balance-label"><i class="fas fa-tag"></i> Package</span>
                 <span class="package-balance-value">${escapeHtml(pkg.name)}</span>
+            </div>
+            <div class="package-balance-row">
+                <span class="package-balance-label"><i class="fas fa-table"></i> Tables</span>
+                <span class="package-balance-value">${tablesCount} (R${pricePerTable}/table)</span>
             </div>
             <div class="package-balance-row">
                 <span class="package-balance-label"><i class="fas fa-wallet"></i> Package Value</span>
@@ -1051,28 +1057,39 @@
         const container = document.getElementById('packagesGrid');
         if (!data?.length) { container.innerHTML = '<div class="empty-state"><i class="fas fa-crown"></i><p>No VVIP Tables available</p></div>'; return; }
         container.innerHTML = data.map(pkg => {
-            const available = (pkg.capacity - (pkg.sold_count || 0));
+            const tablesTotal = pkg.capacity || 0;
+            const tablesSold = pkg.sold_count || 0;
+            const tablesAvailable = tablesTotal - tablesSold;
+            const pricePerTable = tablesTotal > 0 ? (pkg.price / tablesTotal).toFixed(2) : 0;
             return `<div class="package-card" onclick="window.selectPackage(${JSON.stringify(pkg).replace(/"/g, '&quot;')})">
                 <div class="package-image">${pkg.image ? `<img src="${pkg.image}" style="width:100%;height:100%;object-fit:cover;">` : '<i class="fas fa-crown"></i>'}</div>
                 <div class="package-content">
                     <div class="package-header"><span class="package-name">${escapeHtml(pkg.name)}</span><span class="package-price">R${pkg.price}</span></div>
                     <div class="package-description">${escapeHtml(pkg.description || 'Premium VVIP experience')}</div>
                     <div class="benefits-list">${(pkg.benefits || []).slice(0,2).map(b => `<span class="benefit-tag">${escapeHtml(b)}</span>`).join('')}</div>
-                    <div class="availability"><i class="fas fa-users"></i> ${available} of ${pkg.capacity} spots</div>
-                    <button class="purchase-btn" ${available <= 0 ? 'disabled' : ''}>${available <= 0 ? 'Sold Out' : 'Purchase Package'}</button>
+                    <div class="availability"><i class="fas fa-table"></i> ${tablesAvailable} of ${tablesTotal} tables available (R${pricePerTable}/table)</div>
+                    <button class="purchase-btn" ${tablesAvailable <= 0 ? 'disabled' : ''}>${tablesAvailable <= 0 ? 'Sold Out' : 'Purchase Package'}</button>
                 </div>
             </div>`;
         }).join('');
     }
 
     window.selectPackage = function(pkg) {
-        if (currentTabCredit < pkg.price && currentTabCredit > 0) { 
-            showToastMsg(`Cannot purchase - existing package has R${currentTabCredit} remaining. Use that first.`, true); 
+        if (currentTabCredit > 0) { 
+            showToastMsg(`Cannot purchase - you already have an active package with R${currentTabCredit} remaining. Use that first.`, true); 
             return;
         }
         selectedPackage = pkg;
+        const tablesCount = pkg.capacity || 0;
+        const pricePerTable = tablesCount > 0 ? (pkg.price / tablesCount).toFixed(2) : 0;
         document.getElementById('purchaseModalTitle').innerText = pkg.name;
-        document.getElementById('purchaseModalMessage').innerHTML = `<div style="background:var(--bone);padding:16px;border-radius:16px;"><div>Package Price: <strong>R${pkg.price}</strong></div><div>Current Credit: <strong>R${currentTabCredit}</strong></div><div>After Purchase: <strong>R${pkg.price}</strong> (new package value)</div></div>`;
+        document.getElementById('purchaseModalMessage').innerHTML = `
+            <div style="background:var(--bone);padding:16px;border-radius:16px;">
+                <div><strong>${tablesCount} tables</strong> @ R${pricePerTable}/table</div>
+                <div style="margin-top:8px;">Package Price: <strong>R${pkg.price}</strong></div>
+                <div style="margin-top:8px;">After purchase you will have <strong>R${pkg.price}</strong> tab credit.</div>
+            </div>
+        `;
         document.getElementById('purchaseModal').classList.add('active');
     };
 
