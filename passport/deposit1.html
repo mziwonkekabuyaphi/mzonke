@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+  <title>Rands | Top Up Wallet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <style>
+    /* ========== EXACTLY matching Profile & Statement styles ========== */
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --red: #E30613;
+      --red-dark: #a0010e;
+      --red-glow: rgba(227,6,19,0.25);
+      --glass-bg: rgba(255,255,255,0.75);
+      --glass-border: rgba(255,255,255,0.4);
+      --ink: #1e293b;
+      --ink-muted: #334155;
+      --slate: #475569;
+      --mist: #94a3b8;
+      --bone: #f8fafd;
+      --white: #ffffff;
+      --shadow: 0 20px 35px -12px rgba(0,0,0,0.1);
+      --shadow-card: 0 4px 12px rgba(0,0,0,0.04);
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-full: 9999px;
+      --border-light: rgba(227,6,19,0.08);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f0f2f8;
+      transition: background 0.2s;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    body.dark {
+      --bone: #0f172a;
+      --white: #1e293b;
+      --ink: #f1f5f9;
+      --ink-muted: #cbd5e1;
+      --slate: #94a3b8;
+      --mist: #64748b;
+      --glass-bg: rgba(15,23,42,0.85);
+      --glass-border: rgba(255,255,255,0.1);
+      background: #0b1120;
+    }
+
+    #app {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .topup-container {
+      max-width: 680px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Header card - EXACT padding and spacing like Profile */
+    .topup-header-card {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      padding: 28px 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-light);
+      position: relative;
+    }
+
+    .close-topup-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: var(--bone);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      border: 1px solid rgba(227,6,19,0.15);
+      color: var(--red);
+      font-size: 1.1rem;
+      z-index: 2;
+    }
+    .close-topup-btn:active { transform: scale(0.94); background: var(--white); }
+
+    .financial-section {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .topup-icon-badge {
+      width: 96px;
+      height: 96px;
+      background: linear-gradient(145deg, var(--red), var(--red-dark));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 24px -10px var(--red-glow);
+    }
+    .topup-icon-badge i {
+      font-size: 2.8rem;
+      color: white;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.2));
+    }
+    .financial-titles {
+      flex: 1;
+    }
+    .page-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.3px;
+    }
+    .page-subtitle {
+      color: var(--mist);
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-top: 4px;
+    }
+    .wallet-preview {
+      background: var(--bone);
+      border-radius: 24px;
+      padding: 14px 18px;
+      margin: 20px 0 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .preview-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--mist);
+    }
+    .preview-amount {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 60px;
+      font-weight: 700;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.2,0.9,0.4,1.1);
+      border: none;
+    }
+    .pdf-btn {
+      background: linear-gradient(95deg, var(--red), var(--red-dark));
+      color: white;
+      box-shadow: 0 4px 12px var(--red-glow);
+    }
+    .reset-btn {
+      background: var(--white);
+      border: 1.5px solid var(--red);
+      color: var(--red);
+    }
+    .action-btn:active { transform: scale(0.96); }
+
+    .steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin-bottom: 28px;
+    }
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .step-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 800;
+      transition: all 0.2s;
+    }
+    .step-dot.done {
+      background: var(--red);
+      color: white;
+    }
+    .step-dot.active {
+      background: var(--ink);
+      color: white;
+    }
+    .step-dot.pending {
+      background: #eef2f8;
+      color: var(--mist);
+    }
+    .step-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--mist);
+    }
+    .step-line {
+      width: 48px;
+      height: 2px;
+      background: #eef2f8;
+      margin: 0 6px;
+      margin-bottom: 18px;
+    }
+    .step-line.done {
+      background: var(--red);
+    }
+
+    .section-title {
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--mist);
+      margin: 24px 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title i {
+      color: var(--red);
+    }
+
+    .amount-display {
+      background: var(--bone);
+      border-radius: var(--radius-lg);
+      padding: 24px 20px;
+      text-align: center;
+      margin-bottom: 20px;
+      border: 1px solid var(--border-light);
+    }
+    .amount-display-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--mist);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .amount-display-value {
+      font-family: 'Playfair Display', serif;
+      font-size: 3.2rem;
+      font-weight: 900;
+      color: var(--ink);
+      line-height: 1.1;
+    }
+    .amount-display-value.has-value {
+      color: var(--red);
+    }
+    .amount-display-value span {
+      font-size: 1.6rem;
+      font-weight: 800;
+      opacity: 0.5;
+      vertical-align: super;
+      margin-right: 3px;
+    }
+
+    .quick-amounts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .quick-chip {
+      flex: 1;
+      min-width: 70px;
+      padding: 12px 8px;
+      border: 1.5px solid var(--border-light);
+      border-radius: var(--radius-full);
+      background: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--ink);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    .quick-chip:hover {
+      border-color: var(--red);
+      background: rgba(227,6,19,0.05);
+      color: var(--red);
+    }
+    .quick-chip.active {
+      border-color: var(--red);
+      background: rgba(227,6,19,0.08);
+      color: var(--red);
+    }
+    .quick-chip:active { transform: scale(0.96); }
+
+    .field-wrap {
+      margin-bottom: 18px;
+    }
+    .field-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--slate);
+      margin-bottom: 8px;
+      display: block;
+    }
+    .field-input {
+      width: 100%;
+      padding: 14px 18px;
+      border: 2px solid #eef2f8;
+      border-radius: var(--radius-full);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      background: var(--white);
+      transition: all 0.2s;
+      outline: none;
+      color: var(--ink);
+    }
+    .field-input:focus {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px var(--red-glow);
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #eef2f8;
+    }
+    .divider-text {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--mist);
+      text-transform: uppercase;
+    }
+
+    .pay-option {
+      border: 1.5px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      margin-bottom: 14px;
+      background: var(--white);
+    }
+    .pay-option:hover {
+      border-color: var(--red);
+      background: rgba(227,6,19,0.03);
+    }
+    .pay-option.selected {
+      border-color: var(--red);
+      background: rgba(227,6,19,0.05);
+    }
+    .pay-option-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .pay-icon-wrap {
+      width: 52px;
+      height: 52px;
+      background: rgba(227,6,19,0.08);
+      border-radius: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .pay-icon-wrap i {
+      font-size: 1.5rem;
+      color: var(--red);
+    }
+    .pay-option-title {
+      font-weight: 800;
+      font-size: 1rem;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .pay-option-desc {
+      font-size: 0.7rem;
+      color: var(--mist);
+    }
+    .pay-option-expand {
+      overflow: hidden;
+      transition: all 0.2s;
+      margin-top: 14px;
+      padding-top: 8px;
+    }
+
+    .request-info-card {
+      background: rgba(227,6,19,0.05);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      border: 1px solid rgba(227,6,19,0.15);
+    }
+    .request-info-card i {
+      color: var(--red);
+      font-size: 1rem;
+      margin-top: 2px;
+    }
+    .request-info-card p {
+      font-size: 0.75rem;
+      color: var(--red-dark);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .request-preview {
+      background: var(--bone);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      margin-top: 16px;
+      border: 1px solid var(--border-light);
+    }
+    .request-preview-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--slate);
+      margin-bottom: 8px;
+    }
+    .request-preview-row:last-child { margin-bottom: 0; }
+    .request-preview-row strong {
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .request-ref {
+      font-family: monospace;
+      font-size: 0.7rem;
+      color: var(--mist);
+      background: #eef2f8;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 24px;
+      border-radius: var(--radius-full);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      width: 100%;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-red {
+      background: linear-gradient(95deg, var(--red), var(--red-dark));
+      color: white;
+      box-shadow: 0 4px 12px var(--red-glow);
+    }
+    .btn-red:disabled {
+      opacity: 0.6;
+      transform: none;
+      cursor: not-allowed;
+    }
+    .btn-blue {
+      background: #2563EB;
+      color: white;
+      box-shadow: 0 4px 12px rgba(37,99,235,0.2);
+    }
+    .btn-blue:disabled {
+      opacity: 0.6;
+    }
+    .btn-ghost {
+      background: var(--bone);
+      color: var(--slate);
+      border: 1px solid var(--border-light);
+      margin-top: 12px;
+    }
+    .btn-ghost:active { background: var(--white); }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .modal-backdrop.open {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal-box {
+      background: var(--white);
+      border-radius: 48px;
+      max-width: 420px;
+      width: 90%;
+      padding: 32px 28px;
+      text-align: center;
+      transform: translateY(30px) scale(0.95);
+      transition: transform 0.35s cubic-bezier(0.34, 1.2, 0.64, 1);
+      max-height: 85vh;
+      overflow-y: auto;
+      border: 2px solid var(--red);
+      box-shadow: 0 30px 50px rgba(0,0,0,0.3);
+    }
+    .modal-backdrop.open .modal-box {
+      transform: translateY(0) scale(1);
+    }
+    .modal-emblem {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
+      border-radius: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .modal-emblem i {
+      font-size: 2rem;
+      color: white;
+    }
+    .modal-emblem.wait-emblem {
+      background: linear-gradient(135deg, #2563EB, #1e40af);
+    }
+    .modal-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+    .modal-subtitle {
+      font-size: 0.85rem;
+      color: var(--mist);
+    }
+    .modal-request-summary {
+      background: var(--bone);
+      border-radius: 28px;
+      padding: 18px;
+      margin: 20px 0;
+      text-align: left;
+    }
+    .timer-display {
+      font-family: monospace;
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 16px 0;
+      color: var(--red);
+    }
+    .waiting-anim {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .waiting-dot {
+      width: 12px;
+      height: 12px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--ink);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 60px;
+      font-weight: 600;
+      z-index: 2000;
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.8rem;
+      backdrop-filter: blur(8px);
+      white-space: nowrap;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .toast.success { background: #10b981; }
+    .toast.error { background: var(--red); }
+    .toast.info { background: var(--ink); }
+
+    @media (max-width: 500px) {
+      .topup-container { padding: 0; }
+      .financial-section { gap: 16px; }
+      .page-title { font-size: 1.3rem; }
+      .topup-icon-badge { width: 70px; height: 70px; }
+      .topup-icon-badge i { font-size: 2rem; }
+      .quick-chip { font-size: 0.75rem; }
+      .topup-header-card { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="topup-container">
+    <div class="topup-header-card">
+      <div class="close-topup-btn" @click="goHome">
+        <i class="fas fa-times"></i>
+      </div>
+      <div class="financial-section">
+        <div class="topup-icon-badge">
+          <i class="fas fa-arrow-up"></i>
+        </div>
+        <div class="financial-titles">
+          <div class="page-title">Top Up Wallet</div>
+          <div class="page-subtitle">Add funds to your Rands balance</div>
+        </div>
+      </div>
+      <div class="wallet-preview">
+        <div>
+          <div class="preview-label">Current balance</div>
+          <div class="preview-amount">R {{ formatPrice(walletBalance) }}</div>
+        </div>
+        <i class="fas fa-wallet" style="color: var(--red); font-size: 1.5rem;"></i>
+      </div>
+      <div class="header-actions">
+        <button class="action-btn pdf-btn" @click="goToStatement"><i class="fas fa-receipt"></i> Statement</button>
+        <button class="action-btn reset-btn" @click="resetToStep1"><i class="fas fa-sync-alt"></i> Reset</button>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-dot" :class="currentStep >= 1 ? (currentStep > 1 ? 'done' : 'active') : 'pending'"><i v-if="currentStep > 1" class="fas fa-check" style="font-size:0.65rem;"></i><span v-else>1</span></div><div class="step-label">Amount</div></div>
+      <div class="step-line" :class="currentStep > 1 ? 'done' : ''"></div>
+      <div class="step"><div class="step-dot" :class="currentStep >= 2 ? (currentStep > 2 ? 'done' : 'active') : 'pending'"><i v-if="currentStep > 2" class="fas fa-check" style="font-size:0.65rem;"></i><span v-else>2</span></div><div class="step-label">Method</div></div>
+      <div class="step-line" :class="currentStep > 2 ? 'done' : ''"></div>
+      <div class="step"><div class="step-dot" :class="currentStep >= 3 ? 'active' : 'pending'">3</div><div class="step-label">Confirm</div></div>
+    </div>
+
+    <div v-if="currentStep === 1">
+      <div class="section-title"><i class="fas fa-coins"></i> How much to top up?</div>
+      <div class="amount-display"><div class="amount-display-label">Top-Up Amount</div><div class="amount-display-value" :class="{ 'has-value': topupAmount > 0 }"><span>R</span>{{ topupAmount > 0 ? formatPrice(topupAmount) : '0.00' }}</div></div>
+      <div class="quick-amounts"><div v-for="preset in presets" :key="preset" class="quick-chip" :class="{ active: topupAmount === preset && !customMode }" @click="selectPreset(preset)">R {{ preset }}</div></div>
+      <div class="divider"><span class="divider-text">or enter custom</span></div>
+      <div class="field-wrap"><input type="number" class="field-input" v-model.number="customAmount" placeholder="Custom amount (e.g. 250)" min="5" @input="onCustomAmount" /></div>
+      <button class="btn btn-red" :disabled="topupAmount <= 0" @click="goToStep2">Continue <i class="fas fa-arrow-right"></i></button>
+    </div>
+
+    <div v-if="currentStep === 2">
+      <div class="section-title"><i class="fas fa-credit-card"></i> Select Payment Method</div>
+      
+      <div class="pay-option" :class="{ selected: selectedPayMethod === 'yoco' }" @click="selectedPayMethod = 'yoco'">
+        <div class="pay-option-header">
+          <div class="pay-icon-wrap"><i class="fas fa-credit-card"></i></div>
+          <div><div class="pay-option-title">Card Payment</div><div class="pay-option-desc">Visa, Mastercard, Apple Pay & EFT</div></div>
+          <div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'yoco'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div>
+        </div>
+        <div v-if="selectedPayMethod === 'yoco'" class="pay-option-expand">
+          <div class="request-info-card"><i class="fas fa-lock"></i><p><strong>Secure payment powered by Yoco.</strong> Supports cards, Apple Pay and EFT. Your balance will be updated after successful payment confirmation.</p></div>
+          <button class="btn btn-red" @click="startYocoPayment" :disabled="yocoProcessing || topupAmount <= 0"><i class="fas fa-arrow-right"></i> {{ yocoProcessing ? 'Redirecting...' : 'Continue to Payment' }}</button>
+          <p style="font-size:0.65rem; color:var(--mist); margin-top:12px; text-align:center;">You will be redirected to a secure Yoco checkout page.</p>
+        </div>
+      </div>
+
+      <div class="pay-option" :class="{ selected: selectedPayMethod === '1voucher' }" @click="selectedPayMethod = '1voucher'">
+        <div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-ticket-alt"></i></div><div><div class="pay-option-title">1Voucher</div><div class="pay-option-desc">Redeem Airtime, Data or Electricity voucher</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === '1voucher'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div></div>
+        <div v-if="selectedPayMethod === '1voucher'" class="pay-option-expand"><label class="field-label">Voucher PIN / Code</label><input type="text" class="field-input" v-model="voucherCode" placeholder="Enter 16-digit voucher PIN" maxlength="20" /><button class="btn btn-red" @click="processVoucherPayment" :disabled="!voucherCode || processing"><i class="fas fa-ticket-alt"></i> {{ processing ? 'Processing...' : 'Redeem Voucher' }}</button></div>
+      </div>
+
+      <div class="pay-option" :class="{ selected: selectedPayMethod === 'capitecpay' }" @click="selectedPayMethod = 'capitecpay'">
+        <div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-university"></i></div><div><div class="pay-option-title">CapitecPay</div><div class="pay-option-desc">Pay via your Capitec banking app</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'capitecpay'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div></div>
+        <div v-if="selectedPayMethod === 'capitecpay'" class="pay-option-expand"><label class="field-label">Capitec Mobile Number</label><input type="tel" class="field-input" v-model="capitecNumber" placeholder="+27 XX XXX XXXX" /><button class="btn btn-red" @click="processCapitecPay" :disabled="!capitecNumber || processing"><i class="fas fa-university"></i> {{ processing ? 'Processing...' : 'Pay with CapitecPay' }}</button><p style="font-size:0.65rem; color:var(--mist); margin-top:10px; text-align:center;">You'll receive a push notification on your Capitec app</p></div>
+      </div>
+
+      <div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'">
+        <div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-exchange-alt"></i></div><div><div class="pay-option-title">Rands Wallet</div><div class="pay-option-desc">Request funds from another wallet user</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'wallet'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div></div>
+        <div v-if="selectedPayMethod === 'wallet'" class="pay-option-expand">
+          <div class="request-info-card"><i class="fas fa-info-circle"></i><p>This sends a <strong>top-up request</strong> to the other person's Rands Wallet. They will receive a notification and must approve before funds reach your balance.</p></div>
+          <label class="field-label">Their Wallet ID / Phone Number</label>
+          <input type="tel" class="field-input" v-model="requestTargetId" placeholder="e.g. 0635713652" />
+          <div class="field-wrap" style="margin-top:12px;"><label class="field-label">Add a Note (Optional)</label><input type="text" class="field-input" v-model="requestNote" placeholder="e.g. Paying you back for lunch" maxlength="60" /></div>
+          <div class="request-preview" v-if="requestTargetId"><div class="request-preview-row"><span>Requesting from</span><strong>{{ requestTargetId }}</strong></div><div class="request-preview-row"><span>Amount</span><strong style="color:var(--red);">R {{ formatPrice(topupAmount) }}</strong></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Ref</span><span class="request-ref">TU-{{ previewRef }}</span></div></div>
+          <button class="btn btn-blue" @click="proceedWalletStep" :disabled="!requestTargetId"><i class="fas fa-arrow-right"></i> Review Request</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:6px;"><button class="btn btn-ghost" @click="currentStep = 1" style="margin-top:0;"><i class="fas fa-arrow-left"></i> Back</button></div>
+    </div>
+
+    <div v-if="currentStep === 3">
+      <div class="section-title"><i class="fas fa-check-circle" style="color:var(--red);"></i> Review & Send Request</div>
+      <div style="background:var(--bone); border-radius:32px; padding:24px; margin-bottom:24px;">
+        <div style="text-align:center; margin-bottom:20px;"><div style="font-family:'Playfair Display',serif; font-size:2.2rem; font-weight:900; color:var(--red);">R {{ formatPrice(topupAmount) }}</div><div style="font-size:0.75rem;color:var(--mist);">will be credited to your Rands Wallet</div></div>
+        <div style="border-top:1px solid var(--border-light); padding-top:16px;"><div class="request-preview-row"><span>From</span><strong>{{ requestTargetId }}</strong></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Reference</span><span class="request-ref">TU-{{ previewRef }}</span></div><div class="request-preview-row"><span>Type</span><span style="background:rgba(227,6,19,0.08);color:var(--red);padding:4px 12px;border-radius:40px;font-size:0.7rem;font-weight:700;">Wallet Request</span></div></div>
+      </div>
+      <div class="request-info-card"><i class="fas fa-bell"></i><p><strong>{{ requestTargetId }}</strong> will get a notification and must approve this request. Funds will arrive once approved.</p></div>
+      <button class="btn btn-red" @click="sendTopupRequest" :disabled="sending"><i class="fas fa-paper-plane"></i> {{ sending ? 'Sending...' : 'Send Top-Up Request' }}</button>
+      <button class="btn btn-ghost" @click="currentStep = 2"><i class="fas fa-arrow-left"></i> Back</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" :class="{ open: waitingModalOpen }"><div class="modal-box"><div class="modal-emblem wait-emblem"><i class="fas fa-paper-plane"></i></div><h2 class="modal-title">Request Sent!</h2><p class="modal-subtitle">Waiting for <strong>{{ requestTargetId }}</strong> to approve your top-up request</p><div class="modal-request-summary"><div class="request-preview-row"><span>Amount requested</span><span class="modal-request-amount" style="font-weight:800;color:var(--red);">R {{ formatPrice(topupAmount) }}</span></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Reference</span><span class="request-ref">TU-{{ previewRef }}</span></div></div><div class="waiting-anim"><div class="waiting-dot"></div><div class="waiting-dot"></div><div class="waiting-dot"></div></div><div class="timer-display">{{ formatTime(remainingSeconds) }}</div><button class="btn btn-ghost" @click="cancelRequest" style="margin-top:0;"><i class="fas fa-times"></i> Cancel Request</button></div></div>
+
+  <div class="toast" :class="[toastType, { show: toastVisible }]"><i :class="toastIcon"></i> {{ toastMessage }}</div>
+</div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  window.supabase = supabase;
+
+  // ============================================================
+  // TEST MODE: BYPASS LOGIN - Hardcoded test customer (Fundisa Dolopho)
+  // ============================================================
+  const TEST_CUSTOMER_ID = "d8ef0570-3bf3-4544-8652-dab126beacc6";
+  const TEST_CUSTOMER_PHONE = "0812345878";
+
+  let testUser = null;
+  let testWalletId = null;
+
+  new Vue({
+    el: '#app',
+    data() {
+      return {
+        walletBalance: 0,
+        currentStep: 1,
+        topupAmount: 0,
+        customAmount: null,
+        customMode: false,
+        presets: [50,100,150,200,500],
+        selectedPayMethod: 'yoco',
+        requestTargetId: '',
+        requestNote: '',
+        previewRef: '',
+        currentRequestId: null,
+        voucherCode: '',
+        capitecNumber: '',
+        sending: false,
+        processing: false,
+        waitingModalOpen: false,
+        remainingSeconds: 120,
+        approvalTimer: null,
+        toastVisible: false,
+        toastMessage: '',
+        toastType: '',
+        toastIcon: '',
+        toastTimer: null,
+        realtimeChannel: null,
+        yocoProcessing: false,
+        testUserId: TEST_CUSTOMER_ID,
+        testWalletId: null
+      };
+    },
+    async mounted() {
+      await this.loadTestCustomer();
+      this.previewRef = this.generateRef();
+      this.setupRealtimeListener();
+    },
+    beforeDestroy() {
+      if (this.approvalTimer) clearInterval(this.approvalTimer);
+      if (this.realtimeChannel) this.realtimeChannel.unsubscribe();
+    },
+    methods: {
+      formatPrice(n) { return Number(n || 0).toFixed(2); },
+      formatTime(s) { const m = Math.floor(s / 60); return `${m.toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`; },
+      generateRef() { return Date.now().toString().slice(-8).toUpperCase(); },
+      showToast(msg, type = 'info') { if(this.toastTimer) clearTimeout(this.toastTimer); const icons={success:'fas fa-check-circle',error:'fas fa-exclamation-circle',info:'fas fa-info-circle'}; this.toastMessage=msg; this.toastType=type; this.toastIcon=icons[type]||icons.info; this.toastVisible=true; this.toastTimer=setTimeout(()=>{ this.toastVisible=false; },3500); },
+      goHome() { window.location.href = 'home.html'; },
+      goToStatement() { window.location.href = 'statement.html'; },
+      resetToStep1() { this.currentStep = 1; this.topupAmount = 0; this.customAmount = null; this.customMode = false; this.selectedPayMethod = 'yoco'; this.requestTargetId = ''; this.requestNote = ''; this.voucherCode = ''; this.capitecNumber = ''; this.previewRef = this.generateRef(); },
+      
+      async loadTestCustomer() {
+        try {
+          // Fetch profile
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, name, phone')
+            .eq('id', TEST_CUSTOMER_ID)
+            .maybeSingle();
+          if (profileError || !profile) {
+            this.showToast('Test customer not found', 'error');
+            return;
+          }
+          // Fetch wallet
+          const { data: wallet, error: walletErr } = await supabase
+            .from('wallets')
+            .select('id, balance')
+            .eq('user_id', profile.id)
+            .maybeSingle();
+          if (walletErr) console.warn('Wallet fetch error:', walletErr);
+          this.walletBalance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
+          this.testWalletId = wallet?.id || null;
+          testUser = { id: profile.id, walletId: this.testWalletId };
+          console.log('Test customer loaded:', profile.name, 'Wallet:', this.testWalletId, 'Balance:', this.walletBalance);
+        } catch (err) {
+          console.error('Error loading test customer:', err);
+          this.showToast('Failed to load customer data', 'error');
+        }
+      },
+      
+      selectPreset(amount) { this.topupAmount = amount; this.customAmount = null; this.customMode = false; },
+      onCustomAmount() { if(this.customAmount > 0) { this.topupAmount = this.customAmount; this.customMode = true; } },
+      goToStep2() { if(this.topupAmount < 5) { this.showToast('Minimum top-up is R5','error'); return; } this.previewRef = this.generateRef(); this.currentStep = 2; },
+      proceedWalletStep() { if(!this.requestTargetId || this.requestTargetId.length < 5) { this.showToast('Enter a valid wallet ID or phone number','error'); return; } this.currentStep = 3; },
+      
+      async sendTopupRequest() {
+        if(!this.requestTargetId) { this.showToast('Please enter a wallet ID','error'); return; }
+        if(!this.testWalletId) { this.showToast('Wallet not found for test user','error'); return; }
+        this.sending = true;
+        try {
+          const { error } = await supabase.from('topup_requests').insert({
+            requester_wallet_id: this.testWalletId,
+            target_identifier: this.requestTargetId,
+            amount: this.topupAmount,
+            note: this.requestNote || null,
+            status: 'pending',
+            reference: `TU-${this.previewRef}`,
+            created_at: new Date().toISOString()
+          });
+          if (error) throw error;
+          this.showToast(`Request sent to ${this.requestTargetId}`, 'success');
+          this.startTimer();
+        } catch(err) { console.error(err); this.showToast('Failed to send request', 'error'); }
+        this.sending = false;
+      },
+      
+      startTimer() {
+        this.remainingSeconds = 120;
+        this.waitingModalOpen = true;
+        if(this.approvalTimer) clearInterval(this.approvalTimer);
+        this.approvalTimer = setInterval(() => { if(this.remainingSeconds > 0) this.remainingSeconds--; else this.cancelRequest(); }, 1000);
+      },
+      
+      cancelRequest() {
+        if(this.approvalTimer) clearInterval(this.approvalTimer);
+        this.waitingModalOpen = false;
+        this.showToast('Request cancelled or expired', 'error');
+      },
+      
+      async completeTopup(amount) {
+        if (!this.testWalletId) { this.showToast('Wallet not found','error'); return; }
+        const { data: wallet, error: fetchErr } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('id', this.testWalletId)
+          .single();
+        if(fetchErr) { this.showToast('Wallet error','error'); return; }
+        const newBalance = (wallet.balance || 0) + amount;
+        await supabase.from('wallets').update({ balance: newBalance }).eq('id', this.testWalletId);
+        await supabase.from('wallet_transactions').insert({
+          wallet_id: this.testWalletId,
+          amount: amount,
+          type: 'deposit',
+          description: `Top-up via ${this.selectedPayMethod === '1voucher' ? '1Voucher' : 'CapitecPay'}`,
+          status: 'completed',
+          created_at: new Date().toISOString()
+        });
+        this.walletBalance = newBalance;
+        this.showToast(`R${amount.toFixed(2)} added!`, 'success');
+        setTimeout(() => window.location.href = 'home.html', 2000);
+      },
+      
+      async processVoucherPayment() {
+        if(!this.voucherCode.trim()) { this.showToast('Enter voucher code','error'); return; }
+        if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
+        this.processing = true;
+        try {
+          await new Promise(r => setTimeout(r, 1200));
+          const valid = this.voucherCode.length >= 8;
+          if(!valid) throw new Error('Invalid voucher');
+          await this.completeTopup(this.topupAmount);
+        } catch(err) { this.showToast('Invalid voucher code','error'); }
+        this.processing = false;
+      },
+      
+      async processCapitecPay() {
+        if(!this.capitecNumber.trim()) { this.showToast('Enter Capitec number','error'); return; }
+        if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
+        this.processing = true;
+        try {
+          await new Promise(r => setTimeout(r, 1500));
+          const accepted = Math.random() > 0.1;
+          if(!accepted) throw new Error('Payment declined by bank');
+          await this.completeTopup(this.topupAmount);
+        } catch(err) { this.showToast('CapitecPay failed','error'); }
+        this.processing = false;
+      },
+      
+      setupRealtimeListener() {
+        this.realtimeChannel = supabase.channel('topup-approvals').on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'topup_requests', filter: `status=eq.approved`
+        }, async (payload) => {
+          const approved = payload.new;
+          if (approved.reference === `TU-${this.previewRef}` && this.waitingModalOpen) {
+            clearInterval(this.approvalTimer);
+            this.waitingModalOpen = false;
+            if (!this.testWalletId) return;
+            const { data: wallet } = await supabase.from('wallets').select('balance').eq('id', this.testWalletId).single();
+            const newBal = (wallet.balance || 0) + approved.amount;
+            await supabase.from('wallets').update({ balance: newBal }).eq('id', this.testWalletId);
+            await supabase.from('wallet_transactions').insert({
+              wallet_id: this.testWalletId, amount: approved.amount, type: 'deposit',
+              description: `Top-up from wallet request (${approved.reference})`, status: 'completed', created_at: new Date().toISOString()
+            });
+            this.walletBalance = newBal;
+            this.showToast(`R${approved.amount.toFixed(2)} added from wallet request!`, 'success');
+            setTimeout(() => window.location.href = 'home.html', 2000);
+          }
+        }).subscribe();
+      },
+      
+      // Yoco payment using test user
+      async startYocoPayment() {
+        if (this.topupAmount <= 0 || this.topupAmount < 5) {
+          this.showToast('Please select a valid top-up amount (min R5)', 'error');
+          this.yocoProcessing = false;
+          return;
+        }
+        if (!this.testUserId) {
+          this.showToast('Test user not loaded', 'error');
+          return;
+        }
+        this.yocoProcessing = true;
+        try {
+          const userId = this.testUserId;
+          // Create pending transaction
+          const { data: pendingTx, error: insertError } = await supabase
+            .from('wallet_transactions')
+            .insert({
+              user_id: userId,
+              amount: this.topupAmount,
+              type: 'topup',
+              status: 'pending',
+              provider: 'yoco',
+              direction: 'credit',
+              description: `Yoco card top-up: R${this.formatPrice(this.topupAmount)}`,
+              created_at: new Date().toISOString(),
+              metadata: { payment_method: 'yoco_card' }
+            })
+            .select('id')
+            .maybeSingle();
+          if (insertError || !pendingTx || !pendingTx.id) {
+            throw new Error('Could not initialize payment');
+          }
+          const transactionId = pendingTx.id;
+          const amountCents = Math.round(this.topupAmount * 100);
+          const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', {
+            body: {
+              wallet_transaction_id: transactionId,
+              amount_cents: amountCents,
+              currency: 'ZAR'
+            }
+          });
+          if (edgeError) {
+            await supabase
+              .from('wallet_transactions')
+              .update({ status: 'failed', metadata: { error: edgeError.message } })
+              .eq('id', transactionId);
+            throw new Error(edgeError.message || 'Payment gateway error');
+          }
+          const checkoutUrl = edgeResponse.checkout_url || edgeResponse.checkoutUrl;
+          if (!checkoutUrl || typeof checkoutUrl !== 'string') {
+            await supabase
+              .from('wallet_transactions')
+              .update({ status: 'failed', metadata: { error: 'Missing checkout URL' } })
+              .eq('id', transactionId);
+            throw new Error('Invalid gateway response');
+          }
+          window.location.href = checkoutUrl;
+          setTimeout(() => { this.yocoProcessing = false; }, 2000);
+        } catch (err) {
+          console.error('Yoco error:', err);
+          this.showToast(err.message || 'Payment failed', 'error');
+          this.yocoProcessing = false;
+        }
+      }
+    }
+  });
+</script>
+</body>
+</html>
