@@ -626,22 +626,24 @@
             <form id="packageForm">
                 <div class="form-group">
                     <label>Package Name *</label>
-                    <input type="text" id="packageName" required placeholder="e.g., Platinum VVIP Experience">
+                    <input type="text" id="packageName" required placeholder="e.g., Paradise VVIP Experience">
                 </div>
                 
                 <div class="form-group">
                     <label>Description</label>
-                    <textarea id="packageDescription" placeholder="Describe what this package includes..."></textarea>
+                    <textarea id="packageDescription" placeholder="Describe what this package includes (e.g., table capacity, amenities)..."></textarea>
                 </div>
                 
                 <div class="form-group">
-                    <label>Price (R) *</label>
+                    <label>Total Price (R) *</label>
                     <input type="number" id="packagePrice" step="0.01" required placeholder="0.00">
+                    <small style="color: var(--mist); font-size: 0.7rem;">Total price for all tables in this package</small>
                 </div>
                 
                 <div class="form-group">
-                    <label>Capacity (Max Guests) *</label>
-                    <input type="number" id="packageCapacity" min="1" required placeholder="1">
+                    <label>Number of Tables *</label>
+                    <input type="number" id="packageCapacity" min="1" required placeholder="e.g., 15">
+                    <small style="color: var(--mist); font-size: 0.7rem;" id="pricePerTableHint"></small>
                 </div>
                 
                 <div class="form-group">
@@ -666,9 +668,9 @@
                 </div>
                 
                 <div class="form-group">
-                    <label>Benefits</label>
+                    <label>Benefits (e.g., table capacity, VIP perks)</label>
                     <div class="benefits-input-group">
-                        <input type="text" id="benefitInput" placeholder="e.g., VIP Lounge Access">
+                        <input type="text" id="benefitInput" placeholder="e.g., 4 seats per table, Private lounge">
                         <button type="button" class="btn-secondary" id="addBenefitBtn" style="width: auto; padding: 0 20px;">Add</button>
                     </div>
                     <div id="benefitsList" class="benefits-tags"></div>
@@ -711,6 +713,21 @@
             if (m === '>') return '&gt;';
             return m;
         });
+    }
+    
+    // Update price per table hint dynamically
+    function updatePricePerTableHint() {
+        const priceInput = document.getElementById('packagePrice');
+        const tablesInput = document.getElementById('packageCapacity');
+        const hintSpan = document.getElementById('pricePerTableHint');
+        const price = parseFloat(priceInput.value);
+        const tables = parseInt(tablesInput.value);
+        if (!isNaN(price) && !isNaN(tables) && tables > 0 && price > 0) {
+            const perTable = price / tables;
+            hintSpan.innerHTML = `💰 Price per table: R${perTable.toFixed(2)}`;
+        } else {
+            hintSpan.innerHTML = 'Enter total price and number of tables to see price per table';
+        }
     }
     
     // ========== BENEFITS MANAGEMENT ==========
@@ -868,7 +885,11 @@
                 return;
             }
             
-            container.innerHTML = packages.map(pkg => `
+            container.innerHTML = packages.map(pkg => {
+                const totalPrice = pkg.price;
+                const tables = pkg.capacity;
+                const pricePerTable = tables > 0 ? (totalPrice / tables).toFixed(2) : 0;
+                return `
                 <div class="package-card">
                     <div class="package-image">
                         ${pkg.image ? `<img src="${pkg.image}" alt="${escapeHtml(pkg.name)}" style="width:100%; height:100%; object-fit:cover;">` : '<i class="fas fa-crown"></i>'}
@@ -876,10 +897,10 @@
                     <div class="package-content">
                         <div class="package-header">
                             <span class="package-name">${escapeHtml(pkg.name)}</span>
-                            <span class="package-price">R${pkg.price}</span>
+                            <span class="package-price">R${totalPrice}</span>
                         </div>
                         <div class="package-meta">
-                            <span><i class="fas fa-users"></i> Capacity: ${pkg.capacity}</span>
+                            <span><i class="fas fa-table"></i> Tables: ${tables} (R${pricePerTable}/table)</span>
                             <span><i class="fas fa-ticket-alt"></i> Sold: ${pkg.sold_count || 0}</span>
                             <span class="status-badge ${pkg.status === 'active' ? 'status-active' : 'status-inactive'}">${pkg.status}</span>
                         </div>
@@ -894,7 +915,7 @@
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             
             await loadStats();
         } catch (error) {
@@ -919,6 +940,7 @@
         document.getElementById('packageStatus').value = 'active';
         updateBenefitsDisplay();
         resetImageUpload();
+        updatePricePerTableHint();
         
         document.getElementById('packageModal').classList.add('active');
         document.body.style.overflow = 'hidden';
@@ -939,6 +961,7 @@
         document.getElementById('packageCapacity').value = pkg.capacity;
         document.getElementById('packageStatus').value = pkg.status || 'active';
         updateBenefitsDisplay();
+        updatePricePerTableHint();
         
         // Handle image preview
         if (pkg.image) {
@@ -998,18 +1021,18 @@
             image: currentImageBase64 || null
         };
         
-        if (!packageData.name || !packageData.price || !packageData.capacity) {
+        if (!packageData.name || isNaN(packageData.price) || !packageData.capacity) {
             showToast('Please fill in all required fields', true);
             return;
         }
         
         if (packageData.price <= 0) {
-            showToast('Price must be greater than 0', true);
+            showToast('Total price must be greater than 0', true);
             return;
         }
         
         if (packageData.capacity <= 0) {
-            showToast('Capacity must be at least 1', true);
+            showToast('Number of tables must be at least 1', true);
             return;
         }
         
@@ -1046,6 +1069,10 @@
             closeModal();
         }
     });
+    
+    // Live price per table update
+    document.getElementById('packagePrice').addEventListener('input', updatePricePerTableHint);
+    document.getElementById('packageCapacity').addEventListener('input', updatePricePerTableHint);
     
     // ========== REAL-TIME SUBSCRIPTION ==========
     function setupRealtime() {
