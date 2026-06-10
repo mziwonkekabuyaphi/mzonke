@@ -253,14 +253,12 @@
             font-weight: 800;
             color: var(--red);
         }
-        .tables-info {
-            background: var(--bone);
-            padding: 8px 12px;
-            border-radius: var(--radius-md);
+        .package-meta {
+            display: flex;
+            gap: 16px;
             margin: 12px 0;
             font-size: 0.8rem;
-            display: flex;
-            justify-content: space-between;
+            color: var(--mist);
         }
         .benefits-list {
             display: flex;
@@ -407,7 +405,6 @@
         @media (max-width: 768px) {
             .packages-grid { grid-template-columns: 1fr; }
             .lookup-card { flex-direction: column; align-items: stretch; }
-            .topup-form { flex-direction: column; }
             .payment-options { flex-direction: column; }
         }
     </style>
@@ -429,7 +426,7 @@
         <button class="clear-btn" id="clearCustomerBtn"><i class="fas fa-times"></i> Clear</button>
     </div>
 
-    <!-- Customer Tab Credit Section (visible only after loading) -->
+    <!-- Customer Tab Credit Section (visible after loading) -->
     <div id="creditSection" class="credit-card" style="display: none;">
         <div class="credit-info">
             <div class="credit-icon"><i class="fas fa-wallet"></i></div>
@@ -488,8 +485,9 @@
     import { supabase } from '../config/supabase.js';
 
     let currentProfile = null;
-    let currentActiveBooking = null;
-    let currentTabCredit = 0;
+    let currentActiveBooking = null;   // existing VVIP booking (for tab credit)
+    let currentTabCredit = 0;          // remaining_balance from active booking OR from vvip_tab_accounts
+    let currentCreditSource = null;     // 'booking' or 'tab_account'
     let packages = [];
     let selectedTopupMethod = 'card';
 
@@ -513,7 +511,7 @@
         return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
     }
 
-    // Load customer by phone or wallet_id
+    // Load customer by phone or wallet_id, get their current tab credit
     async function loadCustomer() {
         const identifier = document.getElementById('customerIdentifier').value.trim();
         if (!identifier) {
@@ -543,32 +541,43 @@
         }
         currentProfile = profile;
         document.getElementById('customerName').innerText = profile.name || profile.phone || 'Guest';
-        // Load active tab credit (VVIP booking)
-        await refreshCustomerCredit();
-        // Load packages if not loaded yet
-        if (packages.length === 0) await loadPackages();
-        document.getElementById('creditSection').style.display = 'flex';
-        document.getElementById('packagesSection').style.display = 'block';
-        showToast(`Loaded ${profile.name || profile.phone}`);
-    }
-
-    async function refreshCustomerCredit() {
-        if (!currentProfile) return;
+        
+        // Fetch current tab credit – first from active VVIP booking, then from vvip_tab_accounts
         const { data: booking } = await supabase
             .from('vvip_bookings')
-            .select('id, remaining_balance, total_amount, packages:vvip_packages(name)')
-            .eq('customer_id', currentProfile.id)
+            .select('id, remaining_balance')
+            .eq('customer_id', profile.id)
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
             .maybeSingle();
-        if (booking && booking.remaining_balance !== undefined && booking.remaining_balance > 0) {
+        
+        if (booking && booking.remaining_balance > 0) {
+            currentActiveBooking = { id: booking.id, remaining: booking.remaining_balance };
             currentTabCredit = booking.remaining_balance;
-            currentActiveBooking = booking;
+            currentCreditSource = 'booking';
         } else {
-            currentTabCredit = 0;
-            currentActiveBooking = null;
+            // No active booking – check vvip_tab_accounts
+            const { data: tabAcc } = await supabase
+                .from('vvip_tab_accounts')
+                .select('id, balance')
+                .eq('user_id', profile.id)
+                .maybeSingle();
+            if (tabAcc && tabAcc.balance > 0) {
+                currentTabCredit = tabAcc.balance;
+                currentCreditSource = 'tab_account';
+                currentActiveBooking = null;
+            } else {
+                currentTabCredit = 0;
+                currentCreditSource = null;
+                currentActiveBooking = null;
+            }
         }
+        
         document.getElementById('tabCreditAmount').innerHTML = `R${currentTabCredit.toFixed(2)}`;
+        document.getElementById('creditSection').style.display = 'flex';
+        document.getElementById('packagesSection').style.display = 'block';
+        await loadPackages(); // ensure packages loaded
+        showToast(`Loaded ${profile.name || profile.phone} | Tab credit: R${currentTabCredit.toFixed(2)}`);
     }
 
     async function loadPackages() {
@@ -593,7 +602,7 @@
         }
         container.innerHTML = packages.map(pkg => {
             const tables = pkg.capacity || 0;
-            const pricePerTable = tables > 0 ? (pkg.price / tables).toFixed(2) : 0;
+            const tabCredit = pkg.tab_credit || 0;
             const benefits = pkg.benefits || [];
             return `
                 <div class="package-card">
@@ -605,9 +614,9 @@
                             <span class="package-name">${escapeHtml(pkg.name)}</span>
                             <span class="package-price">R${pkg.price}</span>
                         </div>
-                        <div class="tables-info">
+                        <div class="package-meta">
                             <span><i class="fas fa-table"></i> ${tables} tables</span>
-                            <span><i class="fas fa-tag"></i> R${pricePerTable} / table</span>
+                            <span><i class="fas fa-coins"></i> Tab credit: R${tabCredit}</span>
                         </div>
                         <div class="benefits-list">
                             ${benefits.slice(0, 3).map(b => `<span class="benefit-tag"><i class="fas fa-check"></i> ${escapeHtml(b)}</span>`).join('')}
@@ -622,7 +631,7 @@
                 </div>
             `;
         }).join('');
-        // Attach event listeners
+        
         document.querySelectorAll('.pay-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const packageData = JSON.parse(btn.dataset.package);
@@ -637,26 +646,45 @@
             showModal('No Customer', 'Please load a customer first.');
             return;
         }
+        
+        // Tab Credit payment: need existing credit (from booking or tab account) to cover the package price
         if (method === 'tab') {
-            if (!currentActiveBooking) {
-                showModal('No Tab Credit', 'Customer has no active VVIP tab credit. Please top up or use Cash/Card.');
-                return;
-            }
             if (currentTabCredit < pkg.price) {
-                showModal('Insufficient Credit', `Need R${pkg.price}, have R${currentTabCredit.toFixed(2)}. Please top up.`);
+                showModal('Insufficient Tab Credit', `You need R${pkg.price} but have only R${currentTabCredit.toFixed(2)}. Please top up or use another payment method.`);
                 return;
             }
-            const newBalance = currentTabCredit - pkg.price;
-            const { error: updateError } = await supabase
-                .from('vvip_bookings')
-                .update({ remaining_balance: newBalance })
-                .eq('id', currentActiveBooking.id);
-            if (updateError) {
-                showModal('Payment Failed', updateError.message);
+            // Deduct the package price from current credit source
+            let newBalance = currentTabCredit - pkg.price;
+            if (currentCreditSource === 'booking' && currentActiveBooking) {
+                const { error: updateErr } = await supabase
+                    .from('vvip_bookings')
+                    .update({ remaining_balance: newBalance })
+                    .eq('id', currentActiveBooking.id);
+                if (updateErr) throw updateErr;
+            } else if (currentCreditSource === 'tab_account') {
+                // update vvip_tab_accounts
+                const { data: tabAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .select('id')
+                    .eq('user_id', currentProfile.id)
+                    .single();
+                if (tabAcc) {
+                    const { error: updateErr } = await supabase
+                        .from('vvip_tab_accounts')
+                        .update({ balance: newBalance })
+                        .eq('id', tabAcc.id);
+                    if (updateErr) throw updateErr;
+                } else {
+                    showModal('Error', 'Tab account not found', true);
+                    return;
+                }
+            } else {
+                showModal('Error', 'No active credit source', true);
                 return;
             }
+            // Create new booking for the package with remaining_balance = pkg.tab_credit
             const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
-            const { error: insertError } = await supabase.from('vvip_bookings').insert([{
+            const { error: insertErr } = await supabase.from('vvip_bookings').insert([{
                 package_id: pkg.id,
                 customer_id: currentProfile.id,
                 customer_phone: currentProfile.phone || '',
@@ -664,18 +692,23 @@
                 booking_reference: bookingRef,
                 quantity: 1,
                 total_amount: pkg.price,
-                remaining_balance: pkg.price,
-                status: 'confirmed'
+                remaining_balance: pkg.tab_credit || 0,
+                status: 'confirmed',
+                created_at: new Date().toISOString()
             }]);
-            if (insertError) throw insertError;
+            if (insertErr) throw insertErr;
+            
+            // Update sold count
             await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
-            showToast(`Package purchased! New tab credit: R${newBalance.toFixed(2)}`, false);
-            await refreshCustomerCredit();
-            await loadPackages();
+            
+            // Refresh local credit (the new booking becomes the active one)
+            await loadCustomer(); // reloads the customer's credit (will pick up the new booking)
+            showToast(`Package purchased using Tab Credit! New tab credit: R${newBalance.toFixed(2)}`);
         } 
         else if (method === 'cash') {
+            // Cash: simply create booking with remaining_balance = pkg.tab_credit
             const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
-            const { error: insertError } = await supabase.from('vvip_bookings').insert([{
+            const { error: insertErr } = await supabase.from('vvip_bookings').insert([{
                 package_id: pkg.id,
                 customer_id: currentProfile.id,
                 customer_phone: currentProfile.phone || '',
@@ -683,130 +716,36 @@
                 booking_reference: bookingRef,
                 quantity: 1,
                 total_amount: pkg.price,
-                remaining_balance: pkg.price,
-                status: 'confirmed'
+                remaining_balance: pkg.tab_credit || 0,
+                status: 'confirmed',
+                created_at: new Date().toISOString()
             }]);
-            if (insertError) throw insertError;
+            if (insertErr) throw insertErr;
             await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
-            showToast(`Package reserved for cash payment. Reference: ${bookingRef}`, false);
-            await refreshCustomerCredit();
-            await loadPackages();
+            await loadCustomer();
+            showToast(`Package reserved for cash payment. Booking ref: ${bookingRef}`);
         }
         else if (method === 'card') {
-            if (pkg.price <= 0) {
-                showModal('Invalid Amount', 'Package price must be greater than 0');
-                return;
-            }
-            localStorage.setItem('pending_package_purchase', JSON.stringify({
-                package_id: pkg.id,
-                price: pkg.price,
-                name: pkg.name,
-                customer_id: currentProfile.id,
-                customer_phone: currentProfile.phone || '',
-                customer_name: currentProfile.name || 'Guest'
-            }));
-            const amountCents = Math.round(pkg.price * 100);
-            const transactionId = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            try {
-                const response = await fetch(
-                    'https://odpugxrihfspaucsdqjj.supabase.co/functions/v1/yoco-create-checkout',
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            amount_cents: amountCents,
-                            transaction_id: transactionId,
-                            currency: 'ZAR'
-                        })
-                    }
-                );
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Yoco error');
-                if (data.checkout_url) {
-                    window.location.href = data.checkout_url;
-                } else {
-                    throw new Error('No checkout URL');
-                }
-            } catch (err) {
-                showModal('Payment Error', err.message);
-            }
-        }
-    }
-
-    async function handleYocoCallback() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const paymentStatus = urlParams.get('payment');
-        const transactionRef = urlParams.get('transaction_id');
-        if (paymentStatus === 'success' && transactionRef) {
-            const pending = localStorage.getItem('pending_package_purchase');
-            if (pending) {
-                const pkgData = JSON.parse(pending);
+            // Dummy Yoco – show alert then create booking
+            if (confirm(`Pay R${pkg.price} with Yoco card? (Demo – no actual charge)`)) {
                 const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
-                const { error: insertError } = await supabase.from('vvip_bookings').insert([{
-                    package_id: pkgData.package_id,
-                    customer_id: pkgData.customer_id,
-                    customer_phone: pkgData.customer_phone,
-                    customer_name: pkgData.customer_name,
+                const { error: insertErr } = await supabase.from('vvip_bookings').insert([{
+                    package_id: pkg.id,
+                    customer_id: currentProfile.id,
+                    customer_phone: currentProfile.phone || '',
+                    customer_name: currentProfile.name || 'Guest',
                     booking_reference: bookingRef,
                     quantity: 1,
-                    total_amount: pkgData.price,
-                    remaining_balance: pkgData.price,
-                    status: 'confirmed'
+                    total_amount: pkg.price,
+                    remaining_balance: pkg.tab_credit || 0,
+                    status: 'confirmed',
+                    created_at: new Date().toISOString()
                 }]);
-                if (!insertError) {
-                    await supabase.from('vvip_packages').update({ sold_count: supabase.rpc('increment', { row_id: pkgData.package_id }) }).eq('id', pkgData.package_id);
-                    showToast(`Package "${pkgData.name}" purchased successfully!`, false);
-                    // Reload current customer if matches
-                    if (currentProfile && currentProfile.id === pkgData.customer_id) {
-                        await refreshCustomerCredit();
-                        await loadPackages();
-                    }
-                } else {
-                    showToast('Payment recorded but booking failed. Please contact support.', true);
-                }
-                localStorage.removeItem('pending_package_purchase');
+                if (insertErr) throw insertErr;
+                await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+                await loadCustomer();
+                showToast(`Package purchased with Card! Booking ref: ${bookingRef}`);
             }
-            const pendingTopup = localStorage.getItem('pending_topup_amount');
-            if (pendingTopup && currentProfile) {
-                const amount = parseFloat(pendingTopup);
-                if (currentActiveBooking) {
-                    const newBalance = currentTabCredit + amount;
-                    await supabase.from('vvip_bookings').update({ remaining_balance: newBalance }).eq('id', currentActiveBooking.id);
-                } else {
-                    const { data: tabAcc } = await supabase.from('vvip_tab_accounts').select('*').eq('user_id', currentProfile.id).maybeSingle();
-                    if (tabAcc) {
-                        const newBalance = (tabAcc.balance || 0) + amount;
-                        await supabase.from('vvip_tab_accounts').update({ balance: newBalance }).eq('id', tabAcc.id);
-                    } else {
-                        const { data: newAcc } = await supabase.from('vvip_tab_accounts').insert({
-                            user_id: currentProfile.id,
-                            balance: amount,
-                            credit_limit: 0,
-                            status: 'active'
-                        }).select().single();
-                        if (newAcc) {
-                            await supabase.from('vvip_tab_transactions').insert({
-                                account_id: newAcc.id,
-                                amount: amount,
-                                balance_after: amount,
-                                type: 'deposit',
-                                reference: `Yoco top-up ${transactionRef}`,
-                                description: 'Card top-up'
-                            });
-                        }
-                    }
-                }
-                await refreshCustomerCredit();
-                showToast(`Tab credit topped up by R${amount}!`, false);
-                localStorage.removeItem('pending_topup_amount');
-            }
-            window.history.replaceState({}, '', window.location.pathname);
-        } else if (paymentStatus === 'cancel') {
-            showToast('Payment was cancelled', 'info');
-            window.history.replaceState({}, '', window.location.pathname);
-        } else if (paymentStatus === 'failed') {
-            showToast('Payment failed. Please try again.', 'error');
-            window.history.replaceState({}, '', window.location.pathname);
         }
     }
 
@@ -821,47 +760,67 @@
             return false;
         }
         if (method === 'card') {
-            localStorage.setItem('pending_topup_amount', amount);
-            const amountCents = Math.round(amount * 100);
-            const transactionId = `TOPUP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            try {
-                const response = await fetch(
-                    'https://odpugxrihfspaucsdqjj.supabase.co/functions/v1/yoco-create-checkout',
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            amount_cents: amountCents,
-                            transaction_id: transactionId,
-                            currency: 'ZAR'
-                        })
+            // Dummy Yoco
+            if (confirm(`Pay R${amount} with Yoco card? (Demo)`)) {
+                // Add amount to current tab credit source
+                let newBalance;
+                if (currentCreditSource === 'booking' && currentActiveBooking) {
+                    newBalance = currentTabCredit + amount;
+                    const { error: updateErr } = await supabase
+                        .from('vvip_bookings')
+                        .update({ remaining_balance: newBalance })
+                        .eq('id', currentActiveBooking.id);
+                    if (updateErr) throw updateErr;
+                } else if (currentCreditSource === 'tab_account') {
+                    const { data: tabAcc } = await supabase
+                        .from('vvip_tab_accounts')
+                        .select('id')
+                        .eq('user_id', currentProfile.id)
+                        .single();
+                    if (tabAcc) {
+                        newBalance = currentTabCredit + amount;
+                        const { error: updateErr } = await supabase
+                            .from('vvip_tab_accounts')
+                            .update({ balance: newBalance })
+                            .eq('id', tabAcc.id);
+                        if (updateErr) throw updateErr;
+                    } else {
+                        // create new tab account
+                        const { data: newAcc } = await supabase
+                            .from('vvip_tab_accounts')
+                            .insert({ user_id: currentProfile.id, balance: amount })
+                            .select()
+                            .single();
+                        if (newAcc) newBalance = amount;
+                        else throw new Error('Failed to create tab account');
                     }
-                );
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Yoco error');
-                if (data.checkout_url) {
-                    window.location.href = data.checkout_url;
                 } else {
-                    throw new Error('No checkout URL');
+                    // no credit source – create new tab account
+                    const { data: newAcc } = await supabase
+                        .from('vvip_tab_accounts')
+                        .insert({ user_id: currentProfile.id, balance: amount })
+                        .select()
+                        .single();
+                    if (newAcc) newBalance = amount;
+                    else throw new Error('Failed to create tab account');
                 }
-            } catch (err) {
-                showModal('Payment Error', err.message);
-                return false;
+                await loadCustomer(); // refresh display
+                showToast(`Topped up R${amount}! New tab credit: R${newBalance.toFixed(2)}`);
+                return true;
             }
-            return true;
-        } 
-        else if (method === 'wallet') {
-            const { data: wallet, error: walletError } = await supabase
+        } else if (method === 'wallet') {
+            // Deduct from Rands Wallet (wallets table)
+            const { data: wallet, error: walletErr } = await supabase
                 .from('wallets')
-                .select('*')
+                .select('id, balance')
                 .eq('user_id', currentProfile.id)
                 .single();
-            if (walletError || !wallet) {
-                showModal('Wallet Error', 'No wallet found for this user.');
+            if (walletErr || !wallet) {
+                showModal('Wallet Error', 'No Rands Wallet found for this user.');
                 return false;
             }
             if (wallet.balance < amount) {
-                showModal('Insufficient Wallet Balance', `You have R${wallet.balance.toFixed(2)} in wallet.`);
+                showModal('Insufficient Wallet Balance', `You have R${wallet.balance.toFixed(2)} in your wallet.`);
                 return false;
             }
             const newWalletBalance = wallet.balance - amount;
@@ -869,46 +828,50 @@
                 .from('wallets')
                 .update({ balance: newWalletBalance, updated_at: new Date().toISOString() })
                 .eq('id', wallet.id);
-            if (updateWallet) {
-                showModal('Wallet Error', updateWallet.message);
-                return false;
-            }
-            if (currentActiveBooking) {
-                const newTabBalance = currentTabCredit + amount;
+            if (updateWallet) throw updateWallet;
+            
+            // Add amount to tab credit source
+            let newTabBalance;
+            if (currentCreditSource === 'booking' && currentActiveBooking) {
+                newTabBalance = currentTabCredit + amount;
                 const { error: updateTab } = await supabase
                     .from('vvip_bookings')
                     .update({ remaining_balance: newTabBalance })
                     .eq('id', currentActiveBooking.id);
-                if (updateTab) {
-                    showModal('Top-up Failed', updateTab.message);
-                    return false;
+                if (updateTab) throw updateTab;
+            } else if (currentCreditSource === 'tab_account') {
+                const { data: tabAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .select('id')
+                    .eq('user_id', currentProfile.id)
+                    .single();
+                if (tabAcc) {
+                    newTabBalance = currentTabCredit + amount;
+                    const { error: updateTab } = await supabase
+                        .from('vvip_tab_accounts')
+                        .update({ balance: newTabBalance })
+                        .eq('id', tabAcc.id);
+                    if (updateTab) throw updateTab;
+                } else {
+                    const { data: newAcc } = await supabase
+                        .from('vvip_tab_accounts')
+                        .insert({ user_id: currentProfile.id, balance: amount })
+                        .select()
+                        .single();
+                    if (newAcc) newTabBalance = amount;
+                    else throw new Error('Failed to create tab account');
                 }
             } else {
-                const { data: tabAcc } = await supabase.from('vvip_tab_accounts').select('*').eq('user_id', currentProfile.id).maybeSingle();
-                if (tabAcc) {
-                    const newBalance = (tabAcc.balance || 0) + amount;
-                    await supabase.from('vvip_tab_accounts').update({ balance: newBalance }).eq('id', tabAcc.id);
-                } else {
-                    const { data: newAcc } = await supabase.from('vvip_tab_accounts').insert({
-                        user_id: currentProfile.id,
-                        balance: amount,
-                        credit_limit: 0,
-                        status: 'active'
-                    }).select().single();
-                    if (newAcc) {
-                        await supabase.from('vvip_tab_transactions').insert({
-                            account_id: newAcc.id,
-                            amount: amount,
-                            balance_after: amount,
-                            type: 'deposit',
-                            reference: `Wallet top-up ${Date.now()}`,
-                            description: 'Topped up using Rands Wallet'
-                        });
-                    }
-                }
+                const { data: newAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .insert({ user_id: currentProfile.id, balance: amount })
+                    .select()
+                    .single();
+                if (newAcc) newTabBalance = amount;
+                else throw new Error('Failed to create tab account');
             }
-            await refreshCustomerCredit();
-            showToast(`Successfully added R${amount.toFixed(2)} to tab credit!`, false);
+            await loadCustomer();
+            showToast(`Topped up R${amount} using Rands Wallet! New tab credit: R${newTabBalance.toFixed(2)}`);
             return true;
         }
     }
@@ -919,6 +882,7 @@
         currentProfile = null;
         currentActiveBooking = null;
         currentTabCredit = 0;
+        currentCreditSource = null;
         document.getElementById('creditSection').style.display = 'none';
         document.getElementById('packagesSection').style.display = 'none';
         document.getElementById('customerIdentifier').value = '';
@@ -950,11 +914,26 @@
         await topUpTabCredit(amount, selectedTopupMethod);
     });
 
+    // Real-time subscription to refresh credit after any change
+    function setupRealtime() {
+        if (!currentProfile) return;
+        supabase.channel('vvip-store')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings', filter: `customer_id=eq.${currentProfile.id}` }, () => loadCustomer())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_tab_accounts', filter: `user_id=eq.${currentProfile.id}` }, () => loadCustomer())
+            .subscribe();
+    }
+    
     // Initial load (no customer, just show lookup)
-    handleYocoCallback();
-    // Also listen for Yoco redirect return
+    // also preload packages so they're ready
+    loadPackages();
+    // later when customer loads, realtime will be set
     window.addEventListener('load', () => {
-        // If there's a customer already loaded from previous session? Not needed.
+        // realtime subscription will be added after first customer load
+        const originalLoad = loadCustomer;
+        window.loadCustomer = async function() {
+            await originalLoad();
+            setupRealtime();
+        };
     });
 </script>
 </body>
