@@ -15,7 +15,6 @@
   </script>
   <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
   <style>
-    /* ========== EXACTLY matching Profile & Statement styles ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     :root {
@@ -77,7 +76,6 @@
       margin: 0 auto;
     }
 
-    /* Header card - EXACT padding and spacing like Profile */
     .topup-header-card {
       background: var(--white);
       border-radius: var(--radius-xl);
@@ -626,7 +624,7 @@
       bottom: 30px;
       left: 50%;
       transform: translateX(-50%) translateY(20px);
-      background: var(--ink);
+      background: #333;
       color: white;
       padding: 12px 24px;
       border-radius: 60px;
@@ -642,13 +640,13 @@
       backdrop-filter: blur(8px);
       white-space: nowrap;
     }
-    .toast.show {
+    .toast.visible {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
     .toast.success { background: #10b981; }
     .toast.error { background: var(--red); }
-    .toast.info { background: var(--ink); }
+    .toast.info { background: #3b82f6; }
 
     @media (max-width: 500px) {
       .topup-container { padding: 0; }
@@ -710,6 +708,7 @@
     <div v-if="currentStep === 2">
       <div class="section-title"><i class="fas fa-credit-card"></i> Select Payment Method</div>
       
+      <!-- Card Payment (Yoco) - WORKING VERSION -->
       <div class="pay-option" :class="{ selected: selectedPayMethod === 'yoco' }" @click="selectedPayMethod = 'yoco'">
         <div class="pay-option-header">
           <div class="pay-icon-wrap"><i class="fas fa-credit-card"></i></div>
@@ -723,16 +722,19 @@
         </div>
       </div>
 
+      <!-- 1Voucher -->
       <div class="pay-option" :class="{ selected: selectedPayMethod === '1voucher' }" @click="selectedPayMethod = '1voucher'">
         <div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-ticket-alt"></i></div><div><div class="pay-option-title">1Voucher</div><div class="pay-option-desc">Redeem Airtime, Data or Electricity voucher</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === '1voucher'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div></div>
         <div v-if="selectedPayMethod === '1voucher'" class="pay-option-expand"><label class="field-label">Voucher PIN / Code</label><input type="text" class="field-input" v-model="voucherCode" placeholder="Enter 16-digit voucher PIN" maxlength="20" /><button class="btn btn-red" @click="processVoucherPayment" :disabled="!voucherCode || processing"><i class="fas fa-ticket-alt"></i> {{ processing ? 'Processing...' : 'Redeem Voucher' }}</button></div>
       </div>
 
+      <!-- CapitecPay -->
       <div class="pay-option" :class="{ selected: selectedPayMethod === 'capitecpay' }" @click="selectedPayMethod = 'capitecpay'">
         <div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-university"></i></div><div><div class="pay-option-title">CapitecPay</div><div class="pay-option-desc">Pay via your Capitec banking app</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'capitecpay'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div></div>
         <div v-if="selectedPayMethod === 'capitecpay'" class="pay-option-expand"><label class="field-label">Capitec Mobile Number</label><input type="tel" class="field-input" v-model="capitecNumber" placeholder="+27 XX XXX XXXX" /><button class="btn btn-red" @click="processCapitecPay" :disabled="!capitecNumber || processing"><i class="fas fa-university"></i> {{ processing ? 'Processing...' : 'Pay with CapitecPay' }}</button><p style="font-size:0.65rem; color:var(--mist); margin-top:10px; text-align:center;">You'll receive a push notification on your Capitec app</p></div>
       </div>
 
+      <!-- Rands Wallet Request -->
       <div class="pay-option" :class="{ selected: selectedPayMethod === 'wallet' }" @click="selectedPayMethod = 'wallet'">
         <div class="pay-option-header"><div class="pay-icon-wrap"><i class="fas fa-exchange-alt"></i></div><div><div class="pay-option-title">Rands Wallet</div><div class="pay-option-desc">Request funds from another wallet user</div></div><div style="margin-left:auto;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div v-if="selectedPayMethod === 'wallet'" style="width:12px;height:12px;background:var(--red);border-radius:50%;"></div></div></div></div>
         <div v-if="selectedPayMethod === 'wallet'" class="pay-option-expand">
@@ -760,9 +762,24 @@
     </div>
   </div>
 
-  <div class="modal-backdrop" :class="{ open: waitingModalOpen }"><div class="modal-box"><div class="modal-emblem wait-emblem"><i class="fas fa-paper-plane"></i></div><h2 class="modal-title">Request Sent!</h2><p class="modal-subtitle">Waiting for <strong>{{ requestTargetId }}</strong> to approve your top-up request</p><div class="modal-request-summary"><div class="request-preview-row"><span>Amount requested</span><span class="modal-request-amount" style="font-weight:800;color:var(--red);">R {{ formatPrice(topupAmount) }}</span></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Reference</span><span class="request-ref">TU-{{ previewRef }}</span></div></div><div class="waiting-anim"><div class="waiting-dot"></div><div class="waiting-dot"></div><div class="waiting-dot"></div></div><div class="timer-display">{{ formatTime(remainingSeconds) }}</div><button class="btn btn-ghost" @click="cancelRequest" style="margin-top:0;"><i class="fas fa-times"></i> Cancel Request</button></div></div>
+  <!-- Success Modal -->
+  <div class="modal-backdrop" :class="{ open: successModalOpen }">
+    <div class="modal-box">
+      <div class="modal-emblem"><i class="fas fa-check"></i></div>
+      <h2 class="modal-title">Top-up Successful!</h2>
+      <p style="color: var(--mist);">Amount <strong style="color: var(--red);">R{{ formatPrice(lastPaidAmount) }}</strong> added to your wallet.</p>
+      <div style="display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap;">
+        <button class="btn btn-red" @click="closeSuccessAndReturn" style="flex: 1;">
+          <i class="fas fa-home"></i> Return to Home
+        </button>
+      </div>
+    </div>
+  </div>
 
-  <div class="toast" :class="[toastType, { show: toastVisible }]"><i :class="toastIcon"></i> {{ toastMessage }}</div>
+  <!-- Wait modal for wallet request -->
+  <div class="modal-backdrop" :class="{ open: waitingModalOpen }"><div class="modal-box"><div class="modal-emblem wait-emblem"><i class="fas fa-paper-plane"></i></div><h2 class="modal-title">Request Sent!</h2><p class="modal-subtitle">Waiting for <strong>{{ requestTargetId }}</strong> to approve your top-up request</p><div class="modal-request-summary"><div class="request-preview-row"><span>Amount requested</span><span style="font-weight:800;color:var(--red);">R {{ formatPrice(topupAmount) }}</span></div><div class="request-preview-row" v-if="requestNote"><span>Note</span><strong>"{{ requestNote }}"</strong></div><div class="request-preview-row"><span>Reference</span><span class="request-ref">TU-{{ previewRef }}</span></div></div><div class="waiting-anim"><div class="waiting-dot"></div><div class="waiting-dot"></div><div class="waiting-dot"></div></div><div class="timer-display">{{ formatTime(remainingSeconds) }}</div><button class="btn btn-ghost" @click="cancelRequest" style="margin-top:0;"><i class="fas fa-times"></i> Cancel Request</button></div></div>
+
+  <div class="toast" :class="[toastType, { visible: toastVisible }]"><i :class="toastIcon"></i> {{ toastMessage }}</div>
 </div>
 
 <script type="module">
@@ -809,17 +826,53 @@
         realtimeChannel: null,
         yocoProcessing: false,
         testUserId: TEST_CUSTOMER_ID,
-        testWalletId: null
+        testWalletId: null,
+        // For Yoco callback / success modal
+        successModalOpen: false,
+        lastPaidAmount: 0,
+        lastOrderNumber: null,
+        redirectTimer: null
       };
     },
     async mounted() {
       await this.loadTestCustomer();
       this.previewRef = this.generateRef();
       this.setupRealtimeListener();
+
+      // Handle Yoco payment callback
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentStatus = urlParams.get('payment');
+      const transactionRef = urlParams.get('transaction_id');
+      
+      if (paymentStatus === 'success' && transactionRef) {
+        const pendingAmount = localStorage.getItem('pending_topup_amount');
+        if (pendingAmount) {
+          this.lastPaidAmount = parseFloat(pendingAmount);
+          this.lastOrderNumber = transactionRef;
+          // Add the amount to wallet
+          await this.addFundsToWallet(this.lastPaidAmount);
+          this.showToast(`Top-up of R${this.lastPaidAmount.toFixed(2)} successful!`, 'success');
+          this.successModalOpen = true;
+          // Clear pending data
+          localStorage.removeItem('pending_topup_amount');
+          localStorage.removeItem('pending_topup_transaction');
+          // Auto redirect after 3 seconds
+          setTimeout(() => { this.closeSuccessAndReturn(); }, 3000);
+        }
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (paymentStatus === 'cancel') {
+        this.showToast('Payment was cancelled', 'info');
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (paymentStatus === 'failed') {
+        this.showToast('Payment failed. Please try again.', 'error');
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     },
     beforeDestroy() {
       if (this.approvalTimer) clearInterval(this.approvalTimer);
       if (this.realtimeChannel) this.realtimeChannel.unsubscribe();
+      if (this.redirectTimer) clearInterval(this.redirectTimer);
     },
     methods: {
       formatPrice(n) { return Number(n || 0).toFixed(2); },
@@ -832,7 +885,6 @@
       
       async loadTestCustomer() {
         try {
-          // Fetch profile
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id, name, phone')
@@ -842,7 +894,6 @@
             this.showToast('Test customer not found', 'error');
             return;
           }
-          // Fetch wallet
           const { data: wallet, error: walletErr } = await supabase
             .from('wallets')
             .select('id, balance')
@@ -852,11 +903,31 @@
           this.walletBalance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
           this.testWalletId = wallet?.id || null;
           testUser = { id: profile.id, walletId: this.testWalletId };
-          console.log('Test customer loaded:', profile.name, 'Wallet:', this.testWalletId, 'Balance:', this.walletBalance);
         } catch (err) {
-          console.error('Error loading test customer:', err);
+          console.error(err);
           this.showToast('Failed to load customer data', 'error');
         }
+      },
+      
+      async addFundsToWallet(amount) {
+        if (!this.testWalletId) return;
+        const { data: wallet, error: fetchErr } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('id', this.testWalletId)
+          .single();
+        if (fetchErr) throw fetchErr;
+        const newBalance = (wallet.balance || 0) + amount;
+        await supabase.from('wallets').update({ balance: newBalance }).eq('id', this.testWalletId);
+        await supabase.from('wallet_transactions').insert({
+          wallet_id: this.testWalletId,
+          amount: amount,
+          type: 'deposit',
+          description: `Yoco card top-up`,
+          status: 'completed',
+          created_at: new Date().toISOString()
+        });
+        this.walletBalance = newBalance;
       },
       
       selectPreset(amount) { this.topupAmount = amount; this.customAmount = null; this.customMode = false; },
@@ -866,7 +937,7 @@
       
       async sendTopupRequest() {
         if(!this.requestTargetId) { this.showToast('Please enter a wallet ID','error'); return; }
-        if(!this.testWalletId) { this.showToast('Wallet not found for test user','error'); return; }
+        if(!this.testWalletId) { this.showToast('Wallet not found','error'); return; }
         this.sending = true;
         try {
           const { error } = await supabase.from('topup_requests').insert({
@@ -898,55 +969,6 @@
         this.showToast('Request cancelled or expired', 'error');
       },
       
-      async completeTopup(amount) {
-        if (!this.testWalletId) { this.showToast('Wallet not found','error'); return; }
-        const { data: wallet, error: fetchErr } = await supabase
-          .from('wallets')
-          .select('balance')
-          .eq('id', this.testWalletId)
-          .single();
-        if(fetchErr) { this.showToast('Wallet error','error'); return; }
-        const newBalance = (wallet.balance || 0) + amount;
-        await supabase.from('wallets').update({ balance: newBalance }).eq('id', this.testWalletId);
-        await supabase.from('wallet_transactions').insert({
-          wallet_id: this.testWalletId,
-          amount: amount,
-          type: 'deposit',
-          description: `Top-up via ${this.selectedPayMethod === '1voucher' ? '1Voucher' : 'CapitecPay'}`,
-          status: 'completed',
-          created_at: new Date().toISOString()
-        });
-        this.walletBalance = newBalance;
-        this.showToast(`R${amount.toFixed(2)} added!`, 'success');
-        setTimeout(() => window.location.href = 'home.html', 2000);
-      },
-      
-      async processVoucherPayment() {
-        if(!this.voucherCode.trim()) { this.showToast('Enter voucher code','error'); return; }
-        if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
-        this.processing = true;
-        try {
-          await new Promise(r => setTimeout(r, 1200));
-          const valid = this.voucherCode.length >= 8;
-          if(!valid) throw new Error('Invalid voucher');
-          await this.completeTopup(this.topupAmount);
-        } catch(err) { this.showToast('Invalid voucher code','error'); }
-        this.processing = false;
-      },
-      
-      async processCapitecPay() {
-        if(!this.capitecNumber.trim()) { this.showToast('Enter Capitec number','error'); return; }
-        if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
-        this.processing = true;
-        try {
-          await new Promise(r => setTimeout(r, 1500));
-          const accepted = Math.random() > 0.1;
-          if(!accepted) throw new Error('Payment declined by bank');
-          await this.completeTopup(this.topupAmount);
-        } catch(err) { this.showToast('CapitecPay failed','error'); }
-        this.processing = false;
-      },
-      
       setupRealtimeListener() {
         this.realtimeChannel = supabase.channel('topup-approvals').on('postgres_changes', {
           event: 'UPDATE', schema: 'public', table: 'topup_requests', filter: `status=eq.approved`
@@ -970,70 +992,94 @@
         }).subscribe();
       },
       
-      // Yoco payment using test user
+      // ========== WORKING YOCO PAYMENT METHOD (FROM SECURE PAYMENT PAGE) ==========
       async startYocoPayment() {
         if (this.topupAmount <= 0 || this.topupAmount < 5) {
           this.showToast('Please select a valid top-up amount (min R5)', 'error');
           this.yocoProcessing = false;
           return;
         }
-        if (!this.testUserId) {
-          this.showToast('Test user not loaded', 'error');
-          return;
-        }
         this.yocoProcessing = true;
+        
         try {
-          const userId = this.testUserId;
-          // Create pending transaction
-          const { data: pendingTx, error: insertError } = await supabase
-            .from('wallet_transactions')
-            .insert({
-              user_id: userId,
-              amount: this.topupAmount,
-              type: 'topup',
-              status: 'pending',
-              provider: 'yoco',
-              direction: 'credit',
-              description: `Yoco card top-up: R${this.formatPrice(this.topupAmount)}`,
-              created_at: new Date().toISOString(),
-              metadata: { payment_method: 'yoco_card' }
-            })
-            .select('id')
-            .maybeSingle();
-          if (insertError || !pendingTx || !pendingTx.id) {
-            throw new Error('Could not initialize payment');
-          }
-          const transactionId = pendingTx.id;
           const amountCents = Math.round(this.topupAmount * 100);
-          const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', {
-            body: {
-              wallet_transaction_id: transactionId,
-              amount_cents: amountCents,
-              currency: 'ZAR'
+          const transactionId = `TOPUP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          
+          // Store pending info for callback
+          localStorage.setItem('pending_topup_amount', this.topupAmount);
+          localStorage.setItem('pending_topup_transaction', transactionId);
+          
+          // Call Yoco edge function (public endpoint)
+          const response = await fetch(
+            'https://odpugxrihfspaucsdqjj.supabase.co/functions/v1/yoco-create-checkout',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount_cents: amountCents,
+                transaction_id: transactionId,
+                currency: 'ZAR'
+              }),
             }
-          });
-          if (edgeError) {
-            await supabase
-              .from('wallet_transactions')
-              .update({ status: 'failed', metadata: { error: edgeError.message } })
-              .eq('id', transactionId);
-            throw new Error(edgeError.message || 'Payment gateway error');
+          );
+          
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.error || `Payment initialization failed (${response.status})`);
           }
-          const checkoutUrl = edgeResponse.checkout_url || edgeResponse.checkoutUrl;
-          if (!checkoutUrl || typeof checkoutUrl !== 'string') {
-            await supabase
-              .from('wallet_transactions')
-              .update({ status: 'failed', metadata: { error: 'Missing checkout URL' } })
-              .eq('id', transactionId);
-            throw new Error('Invalid gateway response');
+          
+          if (data.checkout_url) {
+            // Redirect to Yoco checkout
+            window.location.href = data.checkout_url;
+          } else {
+            throw new Error('No checkout URL received');
           }
-          window.location.href = checkoutUrl;
-          setTimeout(() => { this.yocoProcessing = false; }, 2000);
-        } catch (err) {
-          console.error('Yoco error:', err);
-          this.showToast(err.message || 'Payment failed', 'error');
+        } catch (error) {
+          console.error('Yoco payment error:', error);
+          this.showToast(error.message || 'Payment failed. Please try again.', 'error');
           this.yocoProcessing = false;
         }
+      },
+      
+      // 1Voucher (dummy)
+      async processVoucherPayment() {
+        if(!this.voucherCode.trim()) { this.showToast('Enter voucher code','error'); return; }
+        if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
+        this.processing = true;
+        try {
+          await new Promise(r => setTimeout(r, 1200));
+          const valid = this.voucherCode.length >= 8;
+          if(!valid) throw new Error('Invalid voucher');
+          await this.addFundsToWallet(this.topupAmount);
+          this.showToast(`R${this.topupAmount.toFixed(2)} added via voucher!`, 'success');
+          this.resetToStep1();
+          setTimeout(() => window.location.href = 'home.html', 2000);
+        } catch(err) { this.showToast('Invalid voucher code','error'); }
+        this.processing = false;
+      },
+      
+      // CapitecPay (dummy)
+      async processCapitecPay() {
+        if(!this.capitecNumber.trim()) { this.showToast('Enter Capitec number','error'); return; }
+        if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
+        this.processing = true;
+        try {
+          await new Promise(r => setTimeout(r, 1500));
+          const accepted = Math.random() > 0.1;
+          if(!accepted) throw new Error('Payment declined by bank');
+          await this.addFundsToWallet(this.topupAmount);
+          this.showToast(`R${this.topupAmount.toFixed(2)} added via CapitecPay!`, 'success');
+          this.resetToStep1();
+          setTimeout(() => window.location.href = 'home.html', 2000);
+        } catch(err) { this.showToast('CapitecPay failed','error'); }
+        this.processing = false;
+      },
+      
+      closeSuccessAndReturn() {
+        if (this.redirectTimer) clearInterval(this.redirectTimer);
+        this.successModalOpen = false;
+        window.location.href = 'home.html';
       }
     }
   });
