@@ -85,14 +85,21 @@ const percentageElement = document.getElementById('percentage');
 // Splash Messages
 // --------------------
 const messageStages = [
-  { threshold: 0, text: "✨ Molo, welcome to Rands" },
-  { threshold: 10, text: "🔐 Securing your Vibe Passport" },
-  { threshold: 25, text: "💳 Loading your Vibe Card" },
-  { threshold: 40, text: "💰 Syncing your Flow Balance" },
-  { threshold: 55, text: "🥃 Activating Lifestyle Zones" },
-  { threshold: 70, text: "📊 Preparing your Vibe Dashboard" },
-  { threshold: 85, text: "✨ Almost there... syncing complete" },
-  { threshold: 95, text: "🚀 Entering the Vibe Zone..." }
+  { threshold: 0, text: "Molo, welcome to Rands" },
+
+  { threshold: 10, text: "Securing your Rands account" },
+
+  { threshold: 25, text: "Loading your wallet" },
+
+  { threshold: 40, text: "Syncing balance and transactions" },
+
+  { threshold: 55, text: "Preparing event access system" },
+
+  { threshold: 70, text: "Loading your dashboard" },
+
+  { threshold: 85, text: "Finalising secure connection" },
+
+  { threshold: 95, text: "Entering Rands platform" }
 ];
 
 function updateMessage(text) {
