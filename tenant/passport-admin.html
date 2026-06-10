@@ -21,12 +21,12 @@
     padding: 0;
   }
   .module-container {
-    max-width: 700px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 24px;
   }
 
-  /* ===== RED LINE STATS (matching event manager) ===== */
+  /* ===== RED LINE STATS ===== */
   .stats-row {
     display: flex;
     flex-wrap: wrap;
@@ -70,13 +70,22 @@
     margin-top: 0.25rem;
   }
 
-  /* Cards */
+  /* Two-column layout for laptop */
+  .dashboard-two-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 1000px) {
+    .dashboard-two-columns { grid-template-columns: 1fr; }
+  }
+
   .dashboard-card {
     background: white;
     border-radius: 32px;
     border: 1px solid #edf2f7;
     overflow: hidden;
-    margin-bottom: 28px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.02);
   }
   .card-header {
@@ -100,8 +109,8 @@
     padding: 24px;
   }
 
-  /* Account list */
-  .account-list, .refund-list { max-height: 400px; overflow-y: auto; }
+  /* Account & Refund lists */
+  .account-list, .refund-list { max-height: 450px; overflow-y: auto; }
   .account-item, .refund-item {
     background: #f8fafd;
     border-radius: 24px;
@@ -278,7 +287,7 @@
   .custom-modal {
     background: white;
     border-radius: 32px;
-    max-width: 400px;
+    max-width: 450px;
     width: 90%;
     padding: 28px 24px;
     text-align: center;
@@ -330,9 +339,51 @@
     color: #475569;
     border: 1px solid #e2e8f0;
   }
-  .custom-modal-btn.confirm:active, .custom-modal-btn.cancel:active {
-    transform: scale(0.96);
+
+  /* Simple Modal */
+  .simple-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 3000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
   }
+  .simple-modal.active { display: flex; }
+  .simple-modal-content {
+    background: white;
+    border-radius: 36px;
+    padding: 28px;
+    max-width: 500px;
+    width: 90%;
+  }
+  .simple-modal-header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #f0f2f5;
+    padding-bottom: 16px;
+  }
+  .simple-modal-header h3 { color: #E30613; font-size: 1.3rem; font-weight: 800; }
+  .simple-modal-footer {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .simple-modal-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 60px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+  }
+  .simple-modal-btn.confirm { background: #E30613; color: white; }
+  .simple-modal-btn.cancel { background: #f1f5f9; color: #1f2a48; border: 1px solid #e2e8f0; }
 
   /* Toast */
   .toast {
@@ -365,60 +416,6 @@
     padding: 40px;
     color: #6c7a8e;
   }
-
-  /* Top-up modal (simple) */
-  .simple-modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 3000;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .simple-modal.active { display: flex; }
-  .simple-modal-content {
-    background: white;
-    border-radius: 36px;
-    padding: 28px;
-    max-width: 450px;
-    width: 100%;
-  }
-  .simple-modal-header {
-    text-align: center;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #f0f2f5;
-    padding-bottom: 16px;
-  }
-  .simple-modal-header h3 { color: #E30613; font-size: 1.3rem; font-weight: 800; }
-  .simple-modal-footer {
-    display: flex;
-    gap: 12px;
-    margin-top: 24px;
-  }
-  .simple-modal-btn {
-    flex: 1;
-    padding: 14px;
-    border-radius: 60px;
-    font-weight: 700;
-    border: none;
-    cursor: pointer;
-  }
-  .simple-modal-btn.confirm { background: #E30613; color: white; }
-  .simple-modal-btn.cancel { background: #f1f5f9; color: #1f2a48; border: 1px solid #e2e8f0; }
-  .your-account-badge {
-    background: #E30613;
-    color: white;
-    padding: 2px 12px;
-    border-radius: 60px;
-    font-size: 0.6rem;
-    font-weight: 600;
-    margin-left: 8px;
-  }
 </style>
 </head>
 <body>
@@ -434,41 +431,58 @@
     <div class="stat-card"><i class="fas fa-coins"></i><div class="stat-value" id="totalRefundAmount">R0</div><div class="stat-label">Refunded</div></div>
   </div>
 
-  <!-- Accounts Card -->
-  <div class="dashboard-card">
-    <div class="card-header"><h3><i class="fas fa-address-card"></i> Accounts</h3><div class="search-box"><input type="text" id="searchAccount" placeholder="Search..." onkeyup="filterAccounts()"><i class="fas fa-search"></i></div></div>
-    <div class="card-body"><div class="account-list" id="accountList"></div></div>
-  </div>
+  <!-- Two‑column layout for laptop -->
+  <div class="dashboard-two-columns">
+    <!-- LEFT COLUMN: Accounts + Actions -->
+    <div class="dashboard-card">
+      <div class="card-header">
+        <h3><i class="fas fa-address-card"></i> Accounts</h3>
+        <div class="search-box"><input type="text" id="searchAccount" placeholder="Search..." onkeyup="filterAccounts()"><i class="fas fa-search"></i></div>
+      </div>
+      <div class="card-body">
+        <div class="account-list" id="accountList"></div>
+      </div>
+    </div>
 
-  <!-- Actions Card -->
-  <div class="dashboard-card">
-    <div class="card-header"><h3><i class="fas fa-bolt"></i> Actions</h3><span id="selectedAccountDisplay" style="color:#E30613; font-size:0.75rem; font-weight:500;">None selected</span></div>
-    <div class="card-body">
-      <div class="action-buttons">
-        <button class="action-btn primary" id="topUpBtn"><i class="fas fa-plus-circle"></i> Top Up</button>
-        <button class="action-btn danger" id="blockBtn"><i class="fas fa-ban"></i> Block</button>
-        <button class="action-btn success" id="unblockBtn"><i class="fas fa-check-circle"></i> Unblock</button>
-        <button class="action-btn info" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+    <!-- RIGHT COLUMN: Actions & Transactions -->
+    <div class="dashboard-card">
+      <div class="card-header">
+        <h3><i class="fas fa-bolt"></i> Actions & Management</h3>
+        <span id="selectedAccountDisplay" style="color:#E30613; font-size:0.75rem; font-weight:500;">None selected</span>
       </div>
-      <div id="selectedAccountInfo" class="selected-info">
-        <div><span>Account:</span> <span style="color:#E30613; font-weight:700;" id="selAccountId">-</span></div>
-        <div><span>Holder:</span> <span id="selHolderName">-</span></div>
-        <div><span>Balance:</span> <span style="color:#2b7a3e; font-weight:800;" id="selBalance">R0</span></div>
-        <div><span>Status:</span> <span id="selStatus" class="status-active" style="display:inline-block;">-</span></div>
+      <div class="card-body">
+        <div class="action-buttons">
+          <button class="action-btn primary" id="topUpBtn"><i class="fas fa-plus-circle"></i> Top Up</button>
+          <button class="action-btn danger" id="blockBtn"><i class="fas fa-ban"></i> Block</button>
+          <button class="action-btn success" id="unblockBtn"><i class="fas fa-check-circle"></i> Unblock</button>
+          <button class="action-btn warning" id="manualRefundBtn"><i class="fas fa-hand-holding-usd"></i> Manual Refund</button>
+          <button class="action-btn info" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+        <div id="selectedAccountInfo" class="selected-info">
+          <div><span>Account:</span> <span style="color:#E30613; font-weight:700;" id="selAccountId">-</span></div>
+          <div><span>Holder:</span> <span id="selHolderName">-</span></div>
+          <div><span>Balance:</span> <span style="color:#2b7a3e; font-weight:800;" id="selBalance">R0</span></div>
+          <div><span>Status:</span> <span id="selStatus" class="status-active" style="display:inline-block;">-</span></div>
+        </div>
+        <div class="topup-section">
+          <div class="topup-title"><i class="fas fa-hand-holding-usd"></i> Quick Top Up</div>
+          <div class="topup-input-group"><input type="number" id="quickTopupAmount" placeholder="Amount" class="topup-input" value="100"><button class="action-btn success" id="quickTopUpBtn">Add</button></div>
+          <div class="preset-amounts"><button class="preset-btn" data-amount="50">R50</button><button class="preset-btn" data-amount="100">R100</button><button class="preset-btn" data-amount="200">R200</button><button class="preset-btn" data-amount="500">R500</button><button class="preset-btn" data-amount="1000">R1000</button></div>
+        </div>
+        <div><div style="color:#E30613; font-weight:700; margin-bottom:16px;"><i class="fas fa-history"></i> Recent Transactions</div><div id="accountTransactions" class="transaction-list"></div></div>
       </div>
-      <div class="topup-section">
-        <div class="topup-title"><i class="fas fa-hand-holding-usd"></i> Quick Top Up</div>
-        <div class="topup-input-group"><input type="number" id="quickTopupAmount" placeholder="Amount" class="topup-input" value="100"><button class="action-btn success" id="quickTopUpBtn">Add</button></div>
-        <div class="preset-amounts"><button class="preset-btn" data-amount="50">R50</button><button class="preset-btn" data-amount="100">R100</button><button class="preset-btn" data-amount="200">R200</button><button class="preset-btn" data-amount="500">R500</button><button class="preset-btn" data-amount="1000">R1000</button></div>
-      </div>
-      <div><div style="color:#E30613; font-weight:700; margin-bottom:16px;"><i class="fas fa-history"></i> Recent Transactions</div><div id="accountTransactions" class="transaction-list"></div></div>
     </div>
   </div>
 
-  <!-- Refund Requests Card -->
+  <!-- Refund Requests Card (full width) -->
   <div class="dashboard-card">
-    <div class="card-header"><h3><i class="fas fa-undo-alt"></i> Refund Requests</h3><button class="action-btn info" id="refreshRefundsBtn"><i class="fas fa-sync-alt"></i> Refresh</button></div>
-    <div class="card-body"><div class="refund-list" id="refundRequestsList"></div></div>
+    <div class="card-header">
+      <h3><i class="fas fa-undo-alt"></i> Refund Requests</h3>
+      <button class="action-btn info" id="refreshRefundsBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+    <div class="card-body">
+      <div class="refund-list" id="refundRequestsList"></div>
+    </div>
   </div>
 </div>
 
@@ -482,6 +496,19 @@
       <div class="preset-amounts"><button class="preset-btn" data-modal-amount="50">R50</button><button class="preset-btn" data-modal-amount="100">R100</button><button class="preset-btn" data-modal-amount="200">R200</button><button class="preset-btn" data-modal-amount="500">R500</button><button class="preset-btn" data-modal-amount="1000">R1000</button></div>
     </div>
     <div class="simple-modal-footer"><button class="simple-modal-btn confirm" id="confirmTopUpBtn">Confirm</button><button class="simple-modal-btn cancel" id="closeTopUpModalBtn">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Manual Refund Modal -->
+<div id="manualRefundModal" class="simple-modal">
+  <div class="simple-modal-content">
+    <div class="simple-modal-header"><h3><i class="fas fa-hand-holding-usd"></i> Manual Refund</h3></div>
+    <div class="simple-modal-body">
+      <div><label>Customer: <span id="manualRefundCustomer" style="color:#E30613;">-</span></label></div>
+      <div class="topup-input-group" style="margin-top:16px;"><input type="number" id="manualRefundAmount" placeholder="Amount (R)" class="topup-input"></div>
+      <div class="topup-input-group"><input type="text" id="manualRefundReason" placeholder="Reason (optional)" class="topup-input"></div>
+    </div>
+    <div class="simple-modal-footer"><button class="simple-modal-btn confirm" id="confirmManualRefundBtn">Issue Refund</button><button class="simple-modal-btn cancel" id="closeManualRefundModalBtn">Cancel</button></div>
   </div>
 </div>
 
@@ -651,6 +678,131 @@
     }
   }
   
+  // ========== REFUND LOGIC (DATABASE) ==========
+  async function loadRefundRequests() {
+    try {
+      const { data, error } = await supabase
+        .from('refund_requests')
+        .select('*, profiles:customer_id (name, phone)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      refundRequests = (data || []).map(r => ({
+        id: r.id,
+        customer_id: r.customer_id,
+        customer_phone: r.customer_phone,
+        customer_name: r.profiles?.name || 'Unknown',
+        amount: parseFloat(r.amount),
+        reason: r.reason,
+        status: r.status,
+        created_at: r.created_at,
+        processed_at: r.processed_at
+      }));
+      renderRefundRequests();
+      updateStats();
+    } catch (err) {
+      console.error('Load refunds error:', err);
+      // If table doesn't exist, show warning
+      if (err.message.includes('relation') && err.message.includes('does not exist')) {
+        showToast('⚠️ refund_requests table missing. Run SQL to create it.', 'warning');
+      } else {
+        showToast('Error loading refunds', 'error');
+      }
+      refundRequests = [];
+      renderRefundRequests();
+    }
+  }
+  
+  async function approveRefund(refundId) {
+    const confirmed = await showConfirm('Approve this refund? The amount will be added back to the customer\'s wallet.');
+    if (!confirmed) return;
+    try {
+      const { data: refund, error: fetchErr } = await supabase
+        .from('refund_requests')
+        .select('*')
+        .eq('id', refundId)
+        .single();
+      if (fetchErr) throw fetchErr;
+      if (refund.status !== 'pending') {
+        showToast('Refund already processed', 'warning');
+        return;
+      }
+      // Add funds to customer's wallet
+      const { data: wallet, error: walletErr } = await supabase
+        .from('wallets')
+        .select('id, balance')
+        .eq('user_id', refund.customer_id)
+        .single();
+      if (walletErr) throw walletErr;
+      const newBalance = (parseFloat(wallet.balance) || 0) + refund.amount;
+      await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id);
+      await addTransaction(wallet.id, refund.amount, `Refund approved: ${refund.reason || 'Customer refund'}`);
+      // Update refund status
+      const { error: updateErr } = await supabase
+        .from('refund_requests')
+        .update({ status: 'approved', processed_at: new Date().toISOString() })
+        .eq('id', refundId);
+      if (updateErr) throw updateErr;
+      showToast(`Refund of R${refund.amount} approved`, 'success');
+      await loadRefundRequests();
+      await refreshData(); // refresh wallets and selected account
+    } catch (err) {
+      showToast(`Approval failed: ${err.message}`, 'error');
+    }
+  }
+  
+  async function rejectRefund(refundId) {
+    const confirmed = await showConfirm('Reject this refund request?');
+    if (!confirmed) return;
+    try {
+      const { error } = await supabase
+        .from('refund_requests')
+        .update({ status: 'rejected', processed_at: new Date().toISOString() })
+        .eq('id', refundId);
+      if (error) throw error;
+      showToast('Refund rejected', 'warning');
+      await loadRefundRequests();
+    } catch (err) {
+      showToast(`Rejection failed: ${err.message}`, 'error');
+    }
+  }
+  
+  async function createManualRefund(customerId, amount, reason) {
+    if (!customerId) { showToast('No customer selected', 'error'); return false; }
+    if (amount <= 0) { showToast('Amount must be greater than 0', 'error'); return false; }
+    const confirmed = await showConfirm(`Issue manual refund of R${amount.toFixed(2)} to this customer?`);
+    if (!confirmed) return false;
+    try {
+      // Get customer wallet
+      const { data: wallet, error: walletErr } = await supabase
+        .from('wallets')
+        .select('id, balance')
+        .eq('user_id', customerId)
+        .single();
+      if (walletErr) throw walletErr;
+      const newBalance = (parseFloat(wallet.balance) || 0) + amount;
+      await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id);
+      await addTransaction(wallet.id, amount, `Manual refund: ${reason || 'Admin adjustment'}`);
+      // Create a refund record (optional, for tracking)
+      const { error: insertErr } = await supabase
+        .from('refund_requests')
+        .insert({
+          customer_id: customerId,
+          amount: amount,
+          reason: reason || 'Manual refund by admin',
+          status: 'approved',
+          processed_at: new Date().toISOString()
+        });
+      if (insertErr) console.warn('Could not insert refund record:', insertErr);
+      showToast(`Manual refund of R${amount.toFixed(2)} issued`, 'success');
+      await refreshData();
+      await loadRefundRequests();
+      return true;
+    } catch (err) {
+      showToast(`Refund failed: ${err.message}`, 'error');
+      return false;
+    }
+  }
+  
   // ========== UI RENDERING ==========
   async function renderAccountList() {
     const searchTerm = document.getElementById('searchAccount')?.value.toLowerCase() || '';
@@ -673,7 +825,6 @@
         </div>
       </div>
     `).join('');
-    // Attach click handlers
     document.querySelectorAll('.account-item').forEach(el => {
       el.addEventListener('click', () => selectAccount(el.dataset.id));
     });
@@ -706,6 +857,32 @@
       </div>
     `).join('');
     renderAccountList();
+  }
+  
+  function renderRefundRequests() {
+    const container = document.getElementById('refundRequestsList');
+    if (!refundRequests.length) { container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i> No refund requests</div>'; return; }
+    container.innerHTML = refundRequests.map(req => `
+      <div class="refund-item">
+        <div>
+          <div class="account-id">${escapeHtml(req.customer_name || req.customer_phone)}</div>
+          <div class="account-name">${escapeHtml(req.reason || 'No reason')} • ${new Date(req.created_at).toLocaleDateString()}</div>
+        </div>
+        <div>
+          <div class="account-balance">R${(req.amount || 0).toFixed(2)}</div>
+          <div class="account-status ${req.status === 'pending' ? 'status-pending' : req.status === 'approved' ? 'status-approved' : 'status-rejected'}">${req.status?.toUpperCase() || 'PENDING'}</div>
+          ${req.status === 'pending' ? `<div style="display:flex; gap:8px; margin-top:10px;"><button class="action-btn success" style="padding:4px 12px; font-size:0.65rem;" data-refund-id="${req.id}" data-action="approve"><i class="fas fa-check"></i> Approve</button><button class="action-btn danger" style="padding:4px 12px; font-size:0.65rem;" data-refund-id="${req.id}" data-action="reject"><i class="fas fa-times"></i> Reject</button></div>` : ''}
+        </div>
+      </div>
+    `).join('');
+    document.querySelectorAll('[data-refund-id]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const refundId = parseInt(btn.dataset.refundId);
+        const action = btn.dataset.action;
+        if (action === 'approve') await approveRefund(refundId);
+        else if (action === 'reject') await rejectRefund(refundId);
+      });
+    });
   }
   
   async function updateStats() {
@@ -775,66 +952,33 @@
     }
   }
   
-  // Refund handling (in-memory demo)
-  function renderRefundRequests() {
-    const container = document.getElementById('refundRequestsList');
-    if (!refundRequests.length) { container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i> No refund requests</div>'; return; }
-    container.innerHTML = refundRequests.map(req => `
-      <div class="refund-item">
-        <div>
-          <div class="account-id">#${req.id}</div>
-          <div class="account-name">${escapeHtml(req.userPhone || req.userId)} • ${req.reason || 'No reason'}</div>
-        </div>
-        <div>
-          <div class="account-balance">R${(req.amount || 0).toFixed(2)}</div>
-          <div class="account-status ${req.status === 'pending' ? 'status-pending' : req.status === 'approved' ? 'status-approved' : 'status-rejected'}">${req.status?.toUpperCase() || 'PENDING'}</div>
-          ${req.status === 'pending' ? `<div style="display:flex; gap:8px; margin-top:10px;"><button class="action-btn success" style="padding:4px 12px; font-size:0.65rem;" data-refund-id="${req.id}" data-action="approve"><i class="fas fa-check"></i> Approve</button><button class="action-btn danger" style="padding:4px 12px; font-size:0.65rem;" data-refund-id="${req.id}" data-action="reject"><i class="fas fa-times"></i> Reject</button></div>` : ''}
-        </div>
-      </div>
-    `).join('');
-    // Attach refund action handlers
-    document.querySelectorAll('[data-refund-id]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const refundId = parseInt(btn.dataset.refundId);
-        const action = btn.dataset.action;
-        if (action === 'approve') {
-          const confirm = await showConfirm('Approve this refund request? The amount will be credited to the user\'s wallet.');
-          if (confirm) {
-            const refund = refundRequests.find(r => r.id === refundId);
-            if (refund) { refund.status = 'approved'; refund.processedAt = new Date().toISOString(); }
-            renderRefundRequests();
-            updateStats();
-            showToast(`Refund #${refundId} approved`, 'success');
-          }
-        } else if (action === 'reject') {
-          const confirm = await showConfirm('Reject this refund request?');
-          if (confirm) {
-            const refund = refundRequests.find(r => r.id === refundId);
-            if (refund) refund.status = 'rejected';
-            renderRefundRequests();
-            updateStats();
-            showToast(`Refund #${refundId} rejected`, 'warning');
-          }
-        }
-      });
-    });
+  function openManualRefundModal() {
+    if (!selectedAccountId) { showToast('Select an account first', 'error'); return; }
+    const acc = accounts.find(a => a.id === selectedAccountId);
+    document.getElementById('manualRefundCustomer').innerText = acc?.name || acc?.email || selectedAccountId;
+    document.getElementById('manualRefundAmount').value = '';
+    document.getElementById('manualRefundReason').value = '';
+    document.getElementById('manualRefundModal').classList.add('active');
   }
   
-  function refreshRefunds() { renderRefundRequests(); showToast('Refund list refreshed', 'success'); }
+  async function submitManualRefund() {
+    if (!selectedAccountId) { showToast('No account selected', 'error'); return; }
+    const amount = parseFloat(document.getElementById('manualRefundAmount').value);
+    const reason = document.getElementById('manualRefundReason').value.trim();
+    if (isNaN(amount) || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
+    const acc = accounts.find(a => a.id === selectedAccountId);
+    await createManualRefund(acc.user_id, amount, reason);
+    document.getElementById('manualRefundModal').classList.remove('active');
+  }
   
   // ========== INIT ==========
   async function init() {
     accounts = await loadWallets();
-    // Sample refunds for demo
-    refundRequests = [
-      { id: 1, userId: 'user123', userPhone: '0812345678', amount: 250, reason: 'Duplicate payment', status: 'pending', createdAt: new Date().toISOString() },
-      { id: 2, userId: 'user456', userPhone: '0823456789', amount: 100, reason: 'Wrong amount', status: 'pending', createdAt: new Date().toISOString() }
-    ];
+    await loadRefundRequests();
     if (accounts.length) selectedAccountId = accounts[0].id;
     await renderAccountList();
     if (selectedAccountId) await selectAccount(selectedAccountId);
     updateStats();
-    renderRefundRequests();
     showToast(`Dashboard ready • ${accounts.length} wallets`, 'success');
     
     // Event listeners
@@ -858,8 +1002,12 @@
     });
     document.getElementById('blockBtn').addEventListener('click', () => { if (selectedAccountId) blockAccount(selectedAccountId); else showToast('Select an account', 'error'); });
     document.getElementById('unblockBtn').addEventListener('click', () => { if (selectedAccountId) unblockAccount(selectedAccountId); else showToast('Select an account', 'error'); });
+    document.getElementById('manualRefundBtn').addEventListener('click', openManualRefundModal);
+    document.getElementById('confirmManualRefundBtn').addEventListener('click', submitManualRefund);
+    document.getElementById('closeManualRefundModalBtn').addEventListener('click', () => document.getElementById('manualRefundModal').classList.remove('active'));
     document.getElementById('refreshBtn').addEventListener('click', refreshData);
-    document.getElementById('refreshRefundsBtn').addEventListener('click', refreshRefunds);
+    document.getElementById('refreshRefundsBtn').addEventListener('click', loadRefundRequests);
+    
     // Preset amounts
     document.querySelectorAll('.preset-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -872,6 +1020,10 @@
         const amount = btn.dataset.modalAmount;
         if (amount) document.getElementById('modalTopupAmount').value = amount;
       });
+    });
+    // Close modal on overlay click
+    document.getElementById('manualRefundModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('manualRefundModal')) document.getElementById('manualRefundModal').classList.remove('active');
     });
   }
   
