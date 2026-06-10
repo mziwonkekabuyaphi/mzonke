@@ -42,7 +42,6 @@
             max-width: 1400px;
             margin: 0 auto;
         }
-        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
@@ -80,6 +79,54 @@
             background: var(--red);
             color: white;
             border-color: var(--red);
+        }
+
+        /* Customer lookup card */
+        .lookup-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-strong);
+            padding: 20px;
+            margin-bottom: 28px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-end;
+        }
+        .lookup-field {
+            flex: 2;
+            min-width: 200px;
+        }
+        .lookup-field label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--mist);
+            margin-bottom: 6px;
+        }
+        .lookup-field input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: var(--radius-full);
+            border: 1px solid var(--border-strong);
+            font-size: 0.9rem;
+        }
+        .lookup-btn {
+            background: var(--red);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: var(--radius-full);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .clear-btn {
+            background: var(--white);
+            border: 1px solid var(--border-strong);
+            padding: 12px 24px;
+            border-radius: var(--radius-full);
+            font-weight: 600;
+            cursor: pointer;
         }
 
         /* Credit Card */
@@ -136,7 +183,6 @@
             color: white;
         }
 
-        /* Sections */
         .section {
             background: var(--white);
             border-radius: var(--radius-lg);
@@ -155,7 +201,6 @@
             color: var(--red);
         }
 
-        /* Packages grid */
         .packages-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -267,7 +312,6 @@
             cursor: not-allowed;
         }
 
-        /* Top-up form */
         .topup-form {
             display: flex;
             flex-wrap: wrap;
@@ -362,8 +406,8 @@
         }
         @media (max-width: 768px) {
             .packages-grid { grid-template-columns: 1fr; }
+            .lookup-card { flex-direction: column; align-items: stretch; }
             .topup-form { flex-direction: column; }
-            .topup-buttons { width: 100%; }
             .payment-options { flex-direction: column; }
         }
     </style>
@@ -375,27 +419,37 @@
         <button class="back-btn" onclick="window.location.href='home.html'"><i class="fas fa-arrow-left"></i> Back to Home</button>
     </div>
 
-    <!-- Customer Tab Credit Section -->
-    <div class="credit-card" id="creditSection">
+    <!-- Customer Lookup (No Login Required) -->
+    <div class="lookup-card">
+        <div class="lookup-field">
+            <label><i class="fas fa-mobile-alt"></i> Phone Number or Wallet ID</label>
+            <input type="text" id="customerIdentifier" placeholder="e.g., 0712345678 or 16-digit Wallet ID">
+        </div>
+        <button class="lookup-btn" id="loadCustomerBtn"><i class="fas fa-search"></i> Load Customer</button>
+        <button class="clear-btn" id="clearCustomerBtn"><i class="fas fa-times"></i> Clear</button>
+    </div>
+
+    <!-- Customer Tab Credit Section (visible only after loading) -->
+    <div id="creditSection" class="credit-card" style="display: none;">
         <div class="credit-info">
             <div class="credit-icon"><i class="fas fa-wallet"></i></div>
             <div class="credit-details">
-                <h3>Your Tab Credit</h3>
+                <h3>Tab Credit for <span id="customerName">-</span></h3>
                 <div class="credit-amount" id="tabCreditAmount">R0.00</div>
             </div>
         </div>
         <button class="topup-btn" id="openTopupBtn"><i class="fas fa-plus-circle"></i> Top Up Credit</button>
     </div>
 
-    <!-- Packages Section -->
-    <div class="section">
+    <!-- Packages Section (visible after customer loaded) -->
+    <div id="packagesSection" class="section" style="display: none;">
         <div class="section-title"><i class="fas fa-gift"></i> Exclusive VVIP Tables</div>
         <div id="packagesContainer" class="packages-grid">
             <div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading packages...</div>
         </div>
     </div>
 
-    <!-- Top-up Section (hidden initially, shown via modal) -->
+    <!-- Top-up Modal -->
     <div id="topupModal" class="modal-overlay">
         <div class="modal-content">
             <h3 style="margin-bottom: 20px;">Top Up Tab Credit</h3>
@@ -417,7 +471,7 @@
         </div>
     </div>
 
-    <!-- Generic Modal -->
+    <!-- Info Modal -->
     <div id="infoModal" class="modal-overlay">
         <div class="modal-content">
             <i class="fas fa-crown" style="font-size: 48px; color: var(--red); margin-bottom: 16px;"></i>
@@ -433,14 +487,12 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    let currentUser = null;
     let currentProfile = null;
-    let currentActiveBooking = null;   // active VVIP booking (with remaining_balance)
+    let currentActiveBooking = null;
     let currentTabCredit = 0;
     let packages = [];
-    let selectedTopupMethod = 'card';   // 'card' or 'wallet'
+    let selectedTopupMethod = 'card';
 
-    // Helper functions
     function showToast(msg, isError = false) {
         const toast = document.getElementById('toastMessage');
         toast.innerText = msg;
@@ -453,7 +505,7 @@
         document.getElementById('modalMessage').innerHTML = message;
         document.getElementById('infoModal').classList.add('active');
     }
-    function closeModal() {
+    window.closeModal = function() {
         document.getElementById('infoModal').classList.remove('active');
     }
     function escapeHtml(str) {
@@ -461,23 +513,47 @@
         return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
     }
 
-    // Load user & tab credit
-    async function loadUserAndCredit() {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            window.location.href = '../login.html';
-            return false;
+    // Load customer by phone or wallet_id
+    async function loadCustomer() {
+        const identifier = document.getElementById('customerIdentifier').value.trim();
+        if (!identifier) {
+            showToast('Please enter a phone number or wallet ID', true);
+            return;
         }
-        currentUser = session.user;
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
-        if (!profile) {
-            await supabase.from('profiles').insert([{ id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '' }]);
-            currentProfile = { id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '' };
+        let profile = null;
+        const isPhone = /^[\+]?[0-9]{9,15}$/.test(identifier);
+        if (isPhone) {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, name, phone, wallet_id')
+                .eq('phone', identifier)
+                .maybeSingle();
+            if (!error && data) profile = data;
         } else {
-            currentProfile = profile;
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, name, phone, wallet_id')
+                .eq('wallet_id', identifier)
+                .maybeSingle();
+            if (!error && data) profile = data;
         }
+        if (!profile) {
+            showToast('Customer not found. Please check the phone number or wallet ID.', true);
+            return;
+        }
+        currentProfile = profile;
+        document.getElementById('customerName').innerText = profile.name || profile.phone || 'Guest';
+        // Load active tab credit (VVIP booking)
+        await refreshCustomerCredit();
+        // Load packages if not loaded yet
+        if (packages.length === 0) await loadPackages();
+        document.getElementById('creditSection').style.display = 'flex';
+        document.getElementById('packagesSection').style.display = 'block';
+        showToast(`Loaded ${profile.name || profile.phone}`);
+    }
 
-        // Find active VVIP booking (status confirmed/checked_in/seated) with remaining_balance
+    async function refreshCustomerCredit() {
+        if (!currentProfile) return;
         const { data: booking } = await supabase
             .from('vvip_bookings')
             .select('id, remaining_balance, total_amount, packages:vvip_packages(name)')
@@ -485,7 +561,6 @@
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
             .maybeSingle();
-
         if (booking && booking.remaining_balance !== undefined && booking.remaining_balance > 0) {
             currentTabCredit = booking.remaining_balance;
             currentActiveBooking = booking;
@@ -494,10 +569,8 @@
             currentActiveBooking = null;
         }
         document.getElementById('tabCreditAmount').innerHTML = `R${currentTabCredit.toFixed(2)}`;
-        return true;
     }
 
-    // Load active packages
     async function loadPackages() {
         const { data, error } = await supabase
             .from('vvip_packages')
@@ -549,7 +622,6 @@
                 </div>
             `;
         }).join('');
-
         // Attach event listeners
         document.querySelectorAll('.pay-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -560,23 +632,20 @@
         });
     }
 
-    // Package purchase handlers
     async function handlePackagePurchase(pkg, method) {
         if (!currentProfile) {
-            showModal('Login Required', 'Please log in again.');
+            showModal('No Customer', 'Please load a customer first.');
             return;
         }
-
         if (method === 'tab') {
             if (!currentActiveBooking) {
-                showModal('No Tab Credit', 'You don\'t have an active VVIP package with credit. Please purchase a package using Cash or Card first, or top up your credit.');
+                showModal('No Tab Credit', 'Customer has no active VVIP tab credit. Please top up or use Cash/Card.');
                 return;
             }
             if (currentTabCredit < pkg.price) {
-                showModal('Insufficient Credit', `You need R${pkg.price} but have R${currentTabCredit.toFixed(2)}. Please top up.`);
+                showModal('Insufficient Credit', `Need R${pkg.price}, have R${currentTabCredit.toFixed(2)}. Please top up.`);
                 return;
             }
-            // Deduct from current booking
             const newBalance = currentTabCredit - pkg.price;
             const { error: updateError } = await supabase
                 .from('vvip_bookings')
@@ -586,7 +655,6 @@
                 showModal('Payment Failed', updateError.message);
                 return;
             }
-            // Create new booking for the purchased package (full price as credit)
             const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
             const { error: insertError } = await supabase.from('vvip_bookings').insert([{
                 package_id: pkg.id,
@@ -601,12 +669,11 @@
             }]);
             if (insertError) throw insertError;
             await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
-            showToast(`Package purchased! New credit: R${newBalance.toFixed(2)}`, false);
-            await loadUserAndCredit();
+            showToast(`Package purchased! New tab credit: R${newBalance.toFixed(2)}`, false);
+            await refreshCustomerCredit();
             await loadPackages();
         } 
         else if (method === 'cash') {
-            // Create booking without payment (cash will be collected manually)
             const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
             const { error: insertError } = await supabase.from('vvip_bookings').insert([{
                 package_id: pkg.id,
@@ -622,20 +689,21 @@
             if (insertError) throw insertError;
             await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
             showToast(`Package reserved for cash payment. Reference: ${bookingRef}`, false);
-            await loadUserAndCredit();
+            await refreshCustomerCredit();
             await loadPackages();
         }
         else if (method === 'card') {
-            // Real Yoco payment
             if (pkg.price <= 0) {
                 showModal('Invalid Amount', 'Package price must be greater than 0');
                 return;
             }
-            // Store pending purchase in localStorage for callback
             localStorage.setItem('pending_package_purchase', JSON.stringify({
                 package_id: pkg.id,
                 price: pkg.price,
-                name: pkg.name
+                name: pkg.name,
+                customer_id: currentProfile.id,
+                customer_phone: currentProfile.phone || '',
+                customer_name: currentProfile.name || 'Guest'
             }));
             const amountCents = Math.round(pkg.price * 100);
             const transactionId = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -665,7 +733,6 @@
         }
     }
 
-    // Handle Yoco callback for package purchase
     async function handleYocoCallback() {
         const urlParams = new URLSearchParams(window.location.search);
         const paymentStatus = urlParams.get('payment');
@@ -674,13 +741,12 @@
             const pending = localStorage.getItem('pending_package_purchase');
             if (pending) {
                 const pkgData = JSON.parse(pending);
-                // Create booking
                 const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
                 const { error: insertError } = await supabase.from('vvip_bookings').insert([{
                     package_id: pkgData.package_id,
-                    customer_id: currentProfile.id,
-                    customer_phone: currentProfile.phone || '',
-                    customer_name: currentProfile.name || 'Guest',
+                    customer_id: pkgData.customer_id,
+                    customer_phone: pkgData.customer_phone,
+                    customer_name: pkgData.customer_name,
                     booking_reference: bookingRef,
                     quantity: 1,
                     total_amount: pkgData.price,
@@ -690,14 +756,50 @@
                 if (!insertError) {
                     await supabase.from('vvip_packages').update({ sold_count: supabase.rpc('increment', { row_id: pkgData.package_id }) }).eq('id', pkgData.package_id);
                     showToast(`Package "${pkgData.name}" purchased successfully!`, false);
-                    await loadUserAndCredit();
-                    await loadPackages();
+                    // Reload current customer if matches
+                    if (currentProfile && currentProfile.id === pkgData.customer_id) {
+                        await refreshCustomerCredit();
+                        await loadPackages();
+                    }
                 } else {
                     showToast('Payment recorded but booking failed. Please contact support.', true);
                 }
                 localStorage.removeItem('pending_package_purchase');
             }
-            // Remove query params
+            const pendingTopup = localStorage.getItem('pending_topup_amount');
+            if (pendingTopup && currentProfile) {
+                const amount = parseFloat(pendingTopup);
+                if (currentActiveBooking) {
+                    const newBalance = currentTabCredit + amount;
+                    await supabase.from('vvip_bookings').update({ remaining_balance: newBalance }).eq('id', currentActiveBooking.id);
+                } else {
+                    const { data: tabAcc } = await supabase.from('vvip_tab_accounts').select('*').eq('user_id', currentProfile.id).maybeSingle();
+                    if (tabAcc) {
+                        const newBalance = (tabAcc.balance || 0) + amount;
+                        await supabase.from('vvip_tab_accounts').update({ balance: newBalance }).eq('id', tabAcc.id);
+                    } else {
+                        const { data: newAcc } = await supabase.from('vvip_tab_accounts').insert({
+                            user_id: currentProfile.id,
+                            balance: amount,
+                            credit_limit: 0,
+                            status: 'active'
+                        }).select().single();
+                        if (newAcc) {
+                            await supabase.from('vvip_tab_transactions').insert({
+                                account_id: newAcc.id,
+                                amount: amount,
+                                balance_after: amount,
+                                type: 'deposit',
+                                reference: `Yoco top-up ${transactionRef}`,
+                                description: 'Card top-up'
+                            });
+                        }
+                    }
+                }
+                await refreshCustomerCredit();
+                showToast(`Tab credit topped up by R${amount}!`, false);
+                localStorage.removeItem('pending_topup_amount');
+            }
             window.history.replaceState({}, '', window.location.pathname);
         } else if (paymentStatus === 'cancel') {
             showToast('Payment was cancelled', 'info');
@@ -711,16 +813,14 @@
     // Top-up functions
     async function topUpTabCredit(amount, method) {
         if (!currentProfile) {
-            showModal('Login Required', 'Please log in again.');
+            showModal('No Customer', 'Please load a customer first.');
             return false;
         }
         if (amount < 10) {
             showModal('Invalid Amount', 'Minimum top-up is R10');
             return false;
         }
-
         if (method === 'card') {
-            // Yoco payment for top-up
             localStorage.setItem('pending_topup_amount', amount);
             const amountCents = Math.round(amount * 100);
             const transactionId = `TOPUP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -748,10 +848,9 @@
                 showModal('Payment Error', err.message);
                 return false;
             }
-            return true; // will redirect
+            return true;
         } 
         else if (method === 'wallet') {
-            // Deduct from user's wallet (wallets table) and add to tab credit
             const { data: wallet, error: walletError } = await supabase
                 .from('wallets')
                 .select('*')
@@ -762,7 +861,7 @@
                 return false;
             }
             if (wallet.balance < amount) {
-                showModal('Insufficient Wallet Balance', `You have R${wallet.balance.toFixed(2)} in your wallet.`);
+                showModal('Insufficient Wallet Balance', `You have R${wallet.balance.toFixed(2)} in wallet.`);
                 return false;
             }
             const newWalletBalance = wallet.balance - amount;
@@ -774,7 +873,6 @@
                 showModal('Wallet Error', updateWallet.message);
                 return false;
             }
-            // Add to tab credit (active booking remaining_balance)
             if (currentActiveBooking) {
                 const newTabBalance = currentTabCredit + amount;
                 const { error: updateTab } = await supabase
@@ -786,87 +884,46 @@
                     return false;
                 }
             } else {
-                // No active booking – create a dummy booking just to hold credit? Better: create a tab account record? 
-                // Simpler: create a booking with a dummy package? But we don't have a "credit only" package.
-                // Instead, we'll create a new booking with a special "Tab Credit" package? Or we can update vvip_tab_accounts table.
-                // Given the schema has vvip_tab_accounts, let's use that for standalone credit.
-                // Check if vvip_tab_accounts exists for user
                 const { data: tabAcc } = await supabase.from('vvip_tab_accounts').select('*').eq('user_id', currentProfile.id).maybeSingle();
                 if (tabAcc) {
                     const newBalance = (tabAcc.balance || 0) + amount;
                     await supabase.from('vvip_tab_accounts').update({ balance: newBalance }).eq('id', tabAcc.id);
                 } else {
-                    await supabase.from('vvip_tab_accounts').insert({
+                    const { data: newAcc } = await supabase.from('vvip_tab_accounts').insert({
                         user_id: currentProfile.id,
                         balance: amount,
                         credit_limit: 0,
                         status: 'active'
-                    });
-                }
-                // Also create a transaction record
-                await supabase.from('vvip_tab_transactions').insert({
-                    account_id: tabAcc?.id || (await supabase.from('vvip_tab_accounts').select('id').eq('user_id', currentProfile.id).single()).data.id,
-                    amount: amount,
-                    balance_after: (tabAcc?.balance || 0) + amount,
-                    type: 'deposit',
-                    reference: `Wallet top-up ${Date.now()}`,
-                    description: 'Topped up using Rands Wallet'
-                });
-                // Also update currentTabCredit for display (if we fetch again)
-            }
-            await loadUserAndCredit(); // refresh display
-            showToast(`Successfully added R${amount.toFixed(2)} to your tab credit!`, false);
-            return true;
-        }
-        return false;
-    }
-
-    // Handle Yoco callback for top-up
-    async function handleTopupCallback() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const paymentStatus = urlParams.get('payment');
-        const transactionRef = urlParams.get('transaction_id');
-        if (paymentStatus === 'success' && transactionRef) {
-            const amount = localStorage.getItem('pending_topup_amount');
-            if (amount) {
-                // Add to tab credit
-                if (currentActiveBooking) {
-                    const newBalance = currentTabCredit + parseFloat(amount);
-                    await supabase.from('vvip_bookings').update({ remaining_balance: newBalance }).eq('id', currentActiveBooking.id);
-                } else {
-                    // Create or update vvip_tab_accounts
-                    const { data: tabAcc } = await supabase.from('vvip_tab_accounts').select('*').eq('user_id', currentProfile.id).maybeSingle();
-                    if (tabAcc) {
-                        const newBalance = (tabAcc.balance || 0) + parseFloat(amount);
-                        await supabase.from('vvip_tab_accounts').update({ balance: newBalance }).eq('id', tabAcc.id);
-                    } else {
-                        const { data: newAcc } = await supabase.from('vvip_tab_accounts').insert({
-                            user_id: currentProfile.id,
-                            balance: parseFloat(amount),
-                            credit_limit: 0,
-                            status: 'active'
-                        }).select().single();
-                        if (newAcc) {
-                            await supabase.from('vvip_tab_transactions').insert({
-                                account_id: newAcc.id,
-                                amount: parseFloat(amount),
-                                balance_after: parseFloat(amount),
-                                type: 'deposit',
-                                reference: `Yoco top-up ${transactionRef}`,
-                                description: 'Card top-up'
-                            });
-                        }
+                    }).select().single();
+                    if (newAcc) {
+                        await supabase.from('vvip_tab_transactions').insert({
+                            account_id: newAcc.id,
+                            amount: amount,
+                            balance_after: amount,
+                            type: 'deposit',
+                            reference: `Wallet top-up ${Date.now()}`,
+                            description: 'Topped up using Rands Wallet'
+                        });
                     }
                 }
-                await loadUserAndCredit();
-                showToast(`Tab credit topped up by R${amount}!`, false);
-                localStorage.removeItem('pending_topup_amount');
             }
-            window.history.replaceState({}, '', window.location.pathname);
+            await refreshCustomerCredit();
+            showToast(`Successfully added R${amount.toFixed(2)} to tab credit!`, false);
+            return true;
         }
     }
 
-    // Modal logic for top-up
+    // DOM event bindings
+    document.getElementById('loadCustomerBtn').addEventListener('click', loadCustomer);
+    document.getElementById('clearCustomerBtn').addEventListener('click', () => {
+        currentProfile = null;
+        currentActiveBooking = null;
+        currentTabCredit = 0;
+        document.getElementById('creditSection').style.display = 'none';
+        document.getElementById('packagesSection').style.display = 'none';
+        document.getElementById('customerIdentifier').value = '';
+        showToast('Customer cleared');
+    });
     document.getElementById('openTopupBtn').addEventListener('click', () => {
         document.getElementById('topupModal').classList.add('active');
     });
@@ -893,19 +950,12 @@
         await topUpTabCredit(amount, selectedTopupMethod);
     });
 
-    // Init
-    async function init() {
-        const success = await loadUserAndCredit();
-        if (!success) return;
-        await loadPackages();
-        await handleYocoCallback();
-        await handleTopupCallback();
-        // real-time subscription to refresh credit if booking changes elsewhere
-        supabase.channel('vvip-store')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings', filter: `customer_id=eq.${currentProfile?.id}` }, () => loadUserAndCredit())
-            .subscribe();
-    }
-    init();
+    // Initial load (no customer, just show lookup)
+    handleYocoCallback();
+    // Also listen for Yoco redirect return
+    window.addEventListener('load', () => {
+        // If there's a customer already loaded from previous session? Not needed.
+    });
 </script>
 </body>
 </html>
