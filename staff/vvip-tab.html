@@ -41,8 +41,6 @@ body {
     max-width: 1600px;
     margin: 0 auto;
 }
-
-/* Header / Status Bar */
 .status-bar {
     background: var(--white);
     border-radius: 60px;
@@ -104,16 +102,12 @@ body {
     border-color: var(--red);
     color: white;
 }
-
-/* Main Layout */
 .main-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
     gap: 24px;
     margin-bottom: 24px;
 }
-
-/* Left Panel (Menu) */
 .menu-panel {
     background: var(--white);
     border-radius: var(--radius-lg);
@@ -194,8 +188,6 @@ body {
     transition: 0.1s;
 }
 .add-btn:active { transform: scale(0.97); }
-
-/* Shisha Customizer */
 .shisha-customizer {
     background: var(--red-soft);
     border-radius: var(--radius-md);
@@ -228,8 +220,6 @@ body {
     font-weight: 800;
     color: var(--red);
 }
-
-/* Right Panel (Cart) */
 .cart-panel {
     background: var(--white);
     border-radius: var(--radius-lg);
@@ -324,8 +314,6 @@ body {
     font-weight: 600;
     cursor: pointer;
 }
-
-/* Customer Info Card */
 .customer-card {
     background: var(--white);
     border-radius: var(--radius-md);
@@ -353,8 +341,6 @@ body {
     font-size: 0.7rem;
     color: var(--red);
 }
-
-/* Requests Widget */
 .requests-widget {
     background: #FFF9E6;
     border-radius: var(--radius-md);
@@ -379,8 +365,6 @@ body {
     margin-left: 8px;
     cursor: pointer;
 }
-
-/* Modal */
 .modal {
     display: none;
     position: fixed;
@@ -427,7 +411,6 @@ body {
 </head>
 <body>
 <div class="container">
-    <!-- Status Bar -->
     <div class="status-bar">
         <div class="status-dot"></div>
         <div class="status-text"><i class="fas fa-crown"></i> VVIP TERMINAL • ACTIVE</div>
@@ -443,7 +426,6 @@ body {
         </div>
     </div>
 
-    <!-- Pending Requests Widget (real-time) -->
     <div id="requestsWidget" class="requests-widget" style="display: none;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
             <strong><i class="fas fa-crown" style="color: var(--gold);"></i> VVIP Service Requests</strong>
@@ -452,9 +434,7 @@ body {
         <div id="requestsList"></div>
     </div>
 
-    <!-- Main POS Area -->
     <div class="main-grid">
-        <!-- Left: Menu & Vendor -->
         <div class="menu-panel">
             <div class="vendor-tabs" id="vendorTabs">
                 <button class="vendor-tab active" data-vendor="Rands Smart Counter"><i class="fas fa-beer"></i> Drinks</button>
@@ -464,21 +444,18 @@ body {
             <div id="menuContainer"></div>
         </div>
 
-        <!-- Right: Customer + Cart -->
         <div class="cart-panel">
             <div class="cart-header">
                 <span><i class="fas fa-shopping-cart"></i> Current Order</span>
                 <span id="cartItemCount">0</span>
             </div>
 
-            <!-- Customer Load Section -->
             <div style="display: flex; gap: 8px; margin-bottom: 16px;">
                 <input type="text" id="customerSearch" placeholder="Phone number or Wallet ID" style="flex:1; padding: 12px; border-radius: 60px; border: 1px solid var(--gray-border);">
                 <button class="status-btn primary" onclick="loadCustomer()" style="padding: 0 20px;"><i class="fas fa-search"></i> Load</button>
                 <button class="status-btn" onclick="clearCustomer()" style="padding: 0 20px;"><i class="fas fa-times"></i> Clear</button>
             </div>
 
-            <!-- Customer Info Card -->
             <div id="customerCard" style="display: none;" class="customer-card">
                 <div class="customer-row">
                     <span><i class="fas fa-user"></i> <strong id="custName">-</strong></span>
@@ -491,12 +468,10 @@ body {
                 <div id="packageInfo"></div>
             </div>
 
-            <!-- Cart Items -->
             <div id="cartItems" class="cart-items">
                 <div style="text-align: center; color: var(--gray-light); padding: 40px;"><i class="fas fa-cart-plus"></i> Cart empty</div>
             </div>
 
-            <!-- Cart Summary -->
             <div class="cart-summary">
                 <div style="display: flex; justify-content: space-between;">
                     <span>Subtotal</span>
@@ -511,7 +486,6 @@ body {
     </div>
 </div>
 
-<!-- Active Orders Modal -->
 <div id="ordersModal" class="modal">
     <div class="modal-content">
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
@@ -522,7 +496,6 @@ body {
     </div>
 </div>
 
-<!-- Dashboard Modal -->
 <div id="dashboardModal" class="modal">
     <div class="modal-content">
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
@@ -542,8 +515,7 @@ body {
     let currentCustomer = null;
     let currentCart = [];
     let currentTabBalance = 0;
-    let currentPackage = null;
-    let currentActiveBookingId = null;  // <-- FIXED: store booking ID
+    let currentPackageInfo = null;       // { name, remaining, bookingId }
     let allProducts = [];
     let shishaFlavours = [], shishaDevices = [], shishaLocations = [];
     let vendor = "Rands Smart Counter";
@@ -560,7 +532,7 @@ body {
     }
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
-    // ---------- LOAD DATA FROM SUPABASE ----------
+    // ---------- LOAD PRODUCTS ----------
     async function loadProductsAndShisha() {
         const { data: products } = await supabase.from('products').select('*').eq('is_available', true);
         allProducts = products || [];
@@ -736,7 +708,7 @@ body {
     window.removeCartItem = (idx) => { currentCart.splice(idx, 1); updateCartUI(); };
     window.clearCart = () => { currentCart = []; updateCartUI(); };
 
-    // ---------- CUSTOMER LOADING (stores booking ID) ----------
+    // ---------- CUSTOMER LOADING (FIXED: includes vvip_tab_accounts fallback, no table count) ----------
     async function loadCustomer() {
         const identifier = document.getElementById('customerSearch').value.trim();
         if (!identifier) { showToast('Enter phone or wallet ID', true); return; }
@@ -747,29 +719,51 @@ body {
         }
         if (!profile) { showToast('Customer not found', true); return; }
 
-        // Get active VVIP booking
-        const { data: booking } = await supabase
+        // Try to get active VVIP booking (status confirmed, checked_in, seated)
+        let booking = null;
+        let tabBalance = 0;
+        let packageName = null;
+        let bookingId = null;
+
+        const { data: bookingData } = await supabase
             .from('vvip_bookings')
-            .select(`id, remaining_balance, total_amount, packages:vvip_packages(name, capacity)`)
+            .select(`id, remaining_balance, packages:vvip_packages(name)`)
             .eq('customer_id', profile.id)
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
             .maybeSingle();
 
-        if (booking && booking.remaining_balance !== undefined && booking.remaining_balance > 0) {
-            currentTabBalance = booking.remaining_balance;
-            currentPackage = { name: booking.packages?.name, tables: booking.packages?.capacity || 0, remaining: booking.remaining_balance };
-            currentActiveBookingId = booking.id;  // <-- STORE ID
+        if (bookingData && bookingData.remaining_balance !== undefined && bookingData.remaining_balance > 0) {
+            booking = bookingData;
+            tabBalance = bookingData.remaining_balance;
+            packageName = bookingData.packages?.name || 'VVIP Package';
+            bookingId = bookingData.id;
         } else {
-            currentTabBalance = 0;
-            currentPackage = null;
-            currentActiveBookingId = null;
+            // Fallback to vvip_tab_accounts (like the wallet does)
+            const { data: tabAcc } = await supabase
+                .from('vvip_tab_accounts')
+                .select('balance')
+                .eq('user_id', profile.id)
+                .maybeSingle();
+            if (tabAcc && tabAcc.balance > 0) {
+                tabBalance = tabAcc.balance;
+                packageName = 'Tab Credit (Standalone)';
+                bookingId = null; // no booking to deduct from, will treat as credit-only
+            }
         }
+
         currentCustomer = profile;
+        currentTabBalance = tabBalance;
+        currentPackageInfo = {
+            name: packageName || 'No active package',
+            remaining: tabBalance,
+            bookingId: bookingId
+        };
         currentCart = [];
         updateCustomerUI();
         updateCartUI();
-        showToast(`Welcome ${profile.name || profile.phone} | Credit R${currentTabBalance}`);
+        showToast(`Loaded ${profile.name || profile.phone} | Credit R${tabBalance.toFixed(2)}`);
+        console.log('[POS] Customer loaded:', { id: profile.id, name: profile.name, tabBalance, bookingId });
     }
     window.loadCustomer = loadCustomer;
 
@@ -783,43 +777,37 @@ body {
         document.getElementById('custPhone').innerText = currentCustomer.phone || '-';
         document.getElementById('tabBalance').innerHTML = `R${currentTabBalance.toFixed(2)}`;
         const pkgDiv = document.getElementById('packageInfo');
-        if (currentPackage && currentPackage.remaining > 0) {
-            pkgDiv.innerHTML = `<div class="package-badge"><i class="fas fa-crown"></i> ${currentPackage.name} · ${currentPackage.tables} tables · R${currentPackage.remaining} left</div>`;
+        if (currentPackageInfo && currentPackageInfo.remaining > 0) {
+            pkgDiv.innerHTML = `<div class="package-badge"><i class="fas fa-crown"></i> ${escapeHtml(currentPackageInfo.name)} · R${currentPackageInfo.remaining} left</div>`;
         } else {
             pkgDiv.innerHTML = '<div class="package-badge">No active package</div>';
         }
     }
     window.clearCustomer = () => {
-        currentCustomer = null; 
-        currentCart = []; 
-        currentTabBalance = 0; 
-        currentPackage = null;
-        currentActiveBookingId = null;
+        currentCustomer = null;
+        currentCart = [];
+        currentTabBalance = 0;
+        currentPackageInfo = null;
         document.getElementById('customerCard').style.display = 'none';
         document.getElementById('customerSearch').value = '';
         updateCartUI();
         showToast('Customer cleared');
     };
 
-    // ---------- CHECKOUT (FIXED: uses stored booking ID) ----------
+    // ---------- CHECKOUT (uses bookingId or tab account fallback) ----------
     async function checkout() {
         if (!currentCustomer) { showToast('No customer loaded', true); return; }
         const total = currentCart.reduce((s,i) => s + i.price * i.quantity, 0);
         if (total === 0) { showToast('Cart empty', true); return; }
-        if (!currentActiveBookingId) { 
-            showToast('No active VVIP tab credit. Please purchase a package first.', true); 
-            return; 
-        }
-        if (currentTabBalance < total) { 
-            showToast(`Insufficient credit: need R${total}, have R${currentTabBalance}`, true); 
-            return; 
+        if (currentTabBalance < total) {
+            showToast(`Insufficient credit: need R${total}, have R${currentTabBalance}`, true);
+            return;
         }
 
-        // Process shisha sessions BEFORE creating orders
+        // Process shisha sessions first
         const shishaItems = currentCart.filter(i => i.isShisha);
         for (const shItem of shishaItems) {
-            // Ensure customer phone exists
-            const customerPhone = currentCustomer.phone || currentCustomer.phone || '';
+            const customerPhone = currentCustomer.phone || '';
             if (!customerPhone) {
                 showToast('Customer phone number missing for shisha session', true);
                 return;
@@ -844,11 +832,10 @@ body {
                 showToast('Failed to create shisha session: ' + sessionError.message, true);
                 return;
             }
-            // Update hookah device status to 'in_use'
             await supabase.from('hookah_devices').update({ status: 'in_use' }).eq('id', shItem.deviceId);
         }
 
-        // Group by vendor for orders
+        // Group by vendor and create orders
         const vendorGroups = new Map();
         currentCart.forEach(item => {
             if (!vendorGroups.has(item.vendor)) vendorGroups.set(item.vendor, []);
@@ -883,19 +870,40 @@ body {
                 }]);
                 if (error) throw error;
             }
-            // Update booking balance using stored ID
-            const { error: updateError } = await supabase
-                .from('vvip_bookings')
-                .update({ remaining_balance: newBalance })
-                .eq('id', currentActiveBookingId);
-            if (updateError) throw updateError;
-            
+
+            // Deduct from credit source
+            if (currentPackageInfo?.bookingId) {
+                // Deduct from vvip_bookings
+                const { error: updateError } = await supabase
+                    .from('vvip_bookings')
+                    .update({ remaining_balance: newBalance })
+                    .eq('id', currentPackageInfo.bookingId);
+                if (updateError) throw updateError;
+            } else {
+                // Deduct from vvip_tab_accounts
+                const { data: tabAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .select('id, balance')
+                    .eq('user_id', currentCustomer.id)
+                    .single();
+                if (tabAcc) {
+                    const { error: updateTab } = await supabase
+                        .from('vvip_tab_accounts')
+                        .update({ balance: newBalance })
+                        .eq('id', tabAcc.id);
+                    if (updateTab) throw updateTab;
+                } else {
+                    throw new Error('No tab account found to deduct from');
+                }
+            }
+
+            // Update local state
             currentTabBalance = newBalance;
-            if (currentPackage) currentPackage.remaining = newBalance;
+            if (currentPackageInfo) currentPackageInfo.remaining = newBalance;
             updateCustomerUI();
             clearCart();
             showToast(`✅ Charged R${total}. Remaining R${newBalance}`);
-            if (newBalance <= 0) showToast('VVIP package depleted. Please purchase a new package.');
+            if (newBalance <= 0) showToast('Credit depleted. Please top up or buy a new package.');
             loadStats();
         } catch (err) {
             console.error('Checkout error:', err);
@@ -904,7 +912,7 @@ body {
     }
     document.getElementById('checkoutBtn').onclick = checkout;
 
-    // ---------- REAL-TIME & STATS ----------
+    // ---------- STATS & REAL-TIME ----------
     async function loadStats() {
         const { data: orders } = await supabase.from('orders').select('total');
         const totalRevenue = (orders || []).reduce((s,o) => s + (o.total || 0), 0);
@@ -913,7 +921,7 @@ body {
         activeGuests = active || 0;
         document.getElementById('revenueStat').innerHTML = 'R' + revenue.toLocaleString();
         document.getElementById('activeGuestsStat').innerText = activeGuests;
-        // Pending requests
+
         const { data: requests } = await supabase.from('service_requests').select('*').eq('status', 'pending');
         pendingRequests = requests || [];
         document.getElementById('requestCountStat').innerText = pendingRequests.length;
@@ -941,7 +949,21 @@ body {
         if (!req) return;
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', req.customer_id).single();
         if (profile) {
-            await loadCustomerByProfile(profile);
+            // Simulate loading customer by profile
+            currentCustomer = profile;
+            // Reload their credit using the same logic
+            const { data: booking } = await supabase.from('vvip_bookings').select('id, remaining_balance, packages:vvip_packages(name)').eq('customer_id', profile.id).in('status', ['confirmed','checked_in','seated']).maybeSingle();
+            if (booking && booking.remaining_balance > 0) {
+                currentTabBalance = booking.remaining_balance;
+                currentPackageInfo = { name: booking.packages?.name, remaining: booking.remaining_balance, bookingId: booking.id };
+            } else {
+                const { data: tabAcc } = await supabase.from('vvip_tab_accounts').select('balance').eq('user_id', profile.id).maybeSingle();
+                currentTabBalance = tabAcc?.balance || 0;
+                currentPackageInfo = { name: 'Tab Credit', remaining: currentTabBalance, bookingId: null };
+            }
+            updateCustomerUI();
+            updateCartUI();
+            document.getElementById('customerSearch').value = profile.phone || '';
             await supabase.from('service_requests').update({ status: 'accepted', accepted_at: new Date() }).eq('id', id);
             loadStats();
             showToast(`Loaded ${profile.name}`);
@@ -953,26 +975,10 @@ body {
         showToast('Request declined');
     };
 
-    async function loadCustomerByProfile(profile) {
-        const { data: booking } = await supabase.from('vvip_bookings').select('id, remaining_balance, total_amount, packages:vvip_packages(name, capacity)').eq('customer_id', profile.id).in('status', ['confirmed','checked_in','seated']).maybeSingle();
-        if (booking && booking.remaining_balance > 0) {
-            currentTabBalance = booking.remaining_balance;
-            currentPackage = { name: booking.packages?.name, tables: booking.packages?.capacity, remaining: booking.remaining_balance };
-            currentActiveBookingId = booking.id;
-        } else { 
-            currentTabBalance = 0; 
-            currentPackage = null;
-            currentActiveBookingId = null;
-        }
-        currentCustomer = profile;
-        currentCart = [];
-        updateCustomerUI();
-        updateCartUI();
-        document.getElementById('customerSearch').value = profile.phone || '';
-    }
-
     function setupRealtime() {
-        supabase.channel('vvip-pos').on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => { if (currentCustomer) loadCustomer(); loadStats(); })
+        supabase.channel('vvip-pos')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => { if (currentCustomer) loadCustomer(); loadStats(); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_tab_accounts' }, () => { if (currentCustomer) loadCustomer(); })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'service_requests' }, () => loadStats())
             .subscribe();
     }
@@ -1003,7 +1009,7 @@ body {
     window.updateOrderStatus = async (orderId, newStatus) => {
         await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
         showToast(`Order status → ${newStatus}`);
-        showActiveOrders(); // refresh
+        showActiveOrders();
     };
     window.openDashboard = async () => {
         const { data: orders } = await supabase.from('orders').select('total, created_at');
