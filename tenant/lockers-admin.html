@@ -11,21 +11,21 @@
         body {
             font-family: 'Inter', sans-serif;
             background: transparent;
-            padding: 0;
+            padding: 24px;
             margin: 0;
         }
-        .iframe-module {
-            width: 100%;
-            background: #f5f7fb;
-            padding: 20px;
+        .module-container {
+            max-width: 1400px;
+            margin: 0 auto;
         }
-        .kpi-grid {
+        /* ===== RED LINE STATS (matching other panels) ===== */
+        .stats-row {
             display: flex;
             flex-wrap: wrap;
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
-        .kpi-card {
+        .stat-card {
             background: white;
             border-radius: 28px;
             padding: 1.2rem 1.8rem;
@@ -36,7 +36,7 @@
             position: relative;
             overflow: hidden;
         }
-        .kpi-card::before {
+        .stat-card::before {
             content: '';
             position: absolute;
             top: 0;
@@ -45,8 +45,23 @@
             height: 100%;
             background: #E30613;
         }
-        .kpi-card i { font-size: 2rem; color: #E30613; margin-bottom: 0.5rem; }
-        .kpi-number { font-size: 2rem; font-weight: 800; color: #1e293b; }
+        .stat-card i {
+            font-size: 2rem;
+            color: #E30613;
+            margin-bottom: 0.5rem;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #1e293b;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+
         .dashboard-split {
             display: grid;
             grid-template-columns: 1fr 0.9fr;
@@ -72,7 +87,13 @@
             flex-wrap: wrap;
             gap: 1rem;
         }
-        .panel-header h2 { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .panel-header h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
         .panel-header h2 i { color: #E30613; }
         .locker-grid-admin {
             padding: 1.5rem;
@@ -216,21 +237,13 @@
     </style>
 </head>
 <body>
-<div class="iframe-module">
-    <!-- Brand Header with Logo -->
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
-        <img src="../assets/images/rands-logo.png" alt="Rands" style="height: 40px; width: auto;" onerror="this.style.display='none'">
-        <div>
-            <h1 style="font-size: 1.5rem; font-weight: 800; color: #1e293b;"><i class="fas fa-wine-bottle" style="color: #E30613;"></i> Booze Lockers | Vault Admin</h1>
-            <p style="color: #64748b; font-size: 0.8rem;">Secure wine & spirits storage management</p>
-        </div>
-    </div>
-
-    <div class="kpi-grid">
-        <div class="kpi-card"><i class="fas fa-wine-bottle"></i><div class="kpi-number" id="kpiTotalLockers">0</div><div>Total Lockers</div></div>
-        <div class="kpi-card"><i class="fas fa-check-circle"></i><div class="kpi-number" id="kpiAvailable">0</div><div>Available</div></div>
-        <div class="kpi-card"><i class="fas fa-user-lock"></i><div class="kpi-number" id="kpiOccupied">0</div><div>Occupied</div></div>
-        <div class="kpi-card"><i class="fas fa-tag"></i><div class="kpi-number" id="kpiItemsCount">0</div><div>Product SKUs</div></div>
+<div class="module-container">
+    <!-- Stats Row (red line style) -->
+    <div class="stats-row">
+        <div class="stat-card"><i class="fas fa-wine-bottle"></i><div class="stat-number" id="kpiTotalLockers">0</div><div class="stat-label">Total Lockers</div></div>
+        <div class="stat-card"><i class="fas fa-check-circle"></i><div class="stat-number" id="kpiAvailable">0</div><div class="stat-label">Available</div></div>
+        <div class="stat-card"><i class="fas fa-user-lock"></i><div class="stat-number" id="kpiOccupied">0</div><div class="stat-label">Occupied</div></div>
+        <div class="stat-card"><i class="fas fa-tag"></i><div class="stat-number" id="kpiItemsCount">0</div><div class="stat-label">Product SKUs</div></div>
     </div>
 
     <div class="dashboard-split">
@@ -242,7 +255,7 @@
                     <button class="btn-secondary" onclick="refreshLockersAdmin()"><i class="fas fa-sync-alt"></i> Refresh</button>
                 </div>
             </div>
-            <div class="locker-grid-admin" id="lockerAdminGrid"><div class="empty-state">Loading lockers...</div></div>
+            <div class="locker-grid-admin" id="lockerAdminGrid"><div class="empty-state"><i class="fas fa-spinner fa-pulse"></i> Loading lockers...</div></div>
         </div>
 
         <div class="panel">
@@ -328,7 +341,6 @@
     // Global state
     let lockers = [];
     let inventoryItems = [];
-    let pendingDeleteCallback = null;
     let pendingDeleteId = null;
     let deleteType = null;
 
@@ -348,9 +360,7 @@
                 .from('lockers')
                 .select('*')
                 .order('locker_number', { ascending: true });
-            
             if (error) throw error;
-            
             lockers = data || [];
             renderLockersAdmin();
             updateStatsUI();
@@ -377,10 +387,8 @@
                 }])
                 .select()
                 .single();
-            
             if (error) throw error;
-            
-            showToast(`✅ Locker ${lockerData.locker_number} created successfully!`);
+            showToast(`Locker ${lockerData.locker_number} created successfully!`);
             await loadLockersFromSupabase();
             return data;
         } catch (err) {
@@ -396,10 +404,8 @@
                 .from('lockers')
                 .delete()
                 .eq('id', lockerId);
-            
             if (error) throw error;
-            
-            showToast(`✅ Locker ${lockerNumber} deleted successfully!`);
+            showToast(`Locker ${lockerNumber} deleted successfully!`);
             await loadLockersFromSupabase();
             return true;
         } catch (err) {
@@ -415,9 +421,7 @@
                 .from('lockers')
                 .update({ status: status })
                 .eq('id', lockerId);
-            
             if (error) throw error;
-            
             await loadLockersFromSupabase();
             return true;
         } catch (err) {
@@ -434,9 +438,7 @@
                 .from('products')
                 .select('*')
                 .order('name', { ascending: true });
-            
             if (error) throw error;
-            
             inventoryItems = data || [];
             renderItemsAdmin();
             updateStatsUI();
@@ -465,10 +467,8 @@
                 }])
                 .select()
                 .single();
-            
             if (error) throw error;
-            
-            showToast(`✅ "${productData.name}" added to wine & spirits inventory!`);
+            showToast(`"${productData.name}" added to wine & spirits inventory!`);
             await loadInventoryFromSupabase();
             return data;
         } catch (err) {
@@ -484,10 +484,8 @@
                 .from('products')
                 .delete()
                 .eq('id', productId);
-            
             if (error) throw error;
-            
-            showToast(`✅ "${productName}" removed from inventory!`);
+            showToast(`"${productName}" removed from inventory!`);
             await loadInventoryFromSupabase();
             return true;
         } catch (err) {
@@ -501,19 +499,17 @@
     function renderLockersAdmin() {
         const grid = document.getElementById('lockerAdminGrid');
         if (!grid) return;
-        
         if (!lockers || lockers.length === 0) {
             grid.innerHTML = '<div class="empty-state"><i class="fas fa-wine-bottle"></i><p>No lockers yet. Click "Create Locker" to get started.</p></div>';
             return;
         }
-        
         grid.innerHTML = lockers.map(locker => `
             <div class="locker-admin-card">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
                     <div class="locker-number"><i class="fas fa-wine-bottle"></i> ${escapeHtml(locker.locker_number)}</div>
                     <div>
                         <span class="locker-status status-${locker.status === 'available' ? 'available' : (locker.status === 'rented' ? 'occupied' : 'maintenance')}">
-                            ${locker.status === 'available' ? 'AVAILABLE' : (locker.status === 'rented' ? 'OCCUPIED 🍷' : 'MAINTENANCE')}
+                            ${locker.status === 'available' ? 'AVAILABLE' : (locker.status === 'rented' ? 'OCCUPIED' : 'MAINTENANCE')}
                         </span>
                     </div>
                 </div>
@@ -523,16 +519,10 @@
                 </div>
                 <div style="display: flex; gap: 8px; margin-top: 12px;">
                     ${locker.status === 'available' ? 
-                        `<button class="btn-secondary" style="flex:1;" onclick="markLockerOccupied('${locker.id}')">
-                            <i class="fas fa-wine-glass-alt"></i> Mark Occupied
-                        </button>` : 
-                        `<button class="btn-secondary" style="flex:1;" onclick="markLockerAvailable('${locker.id}')">
-                            <i class="fas fa-check-circle"></i> Mark Available
-                        </button>`
+                        `<button class="btn-secondary" style="flex:1;" onclick="markLockerOccupied('${locker.id}')"><i class="fas fa-wine-glass-alt"></i> Mark Occupied</button>` : 
+                        `<button class="btn-secondary" style="flex:1;" onclick="markLockerAvailable('${locker.id}')"><i class="fas fa-check-circle"></i> Mark Available</button>`
                     }
-                    <button class="btn-danger" style="flex:0.5;" onclick="deleteLockerPrompt('${locker.id}', '${escapeHtml(locker.locker_number)}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <button class="btn-danger" style="flex:0.5;" onclick="deleteLockerPrompt('${locker.id}', '${escapeHtml(locker.locker_number)}')"><i class="fas fa-trash-alt"></i></button>
                 </div>
             </div>
         `).join('');
@@ -541,26 +531,20 @@
     function renderItemsAdmin() {
         const container = document.getElementById('itemsListContainer');
         if (!container) return;
-        
         if (!inventoryItems || inventoryItems.length === 0) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-wine-glass-alt"></i><p>No wine & spirits items yet. Click "New Item" to add.</p></div>';
             return;
         }
-        
         container.innerHTML = inventoryItems.map(item => {
             const categoryIcon = item.category === 'wine' ? 'fa-wine-bottle' : (item.category === 'spirits' ? 'fa-whiskey-glass' : 'fa-glass-cheers');
             return `
                 <div class="item-row">
                     <div style="flex:2;">
                         <strong><i class="fas ${categoryIcon}" style="color: #8B0000;"></i> ${escapeHtml(item.name)}</strong><br>
-                        <small style="color:#64748b;">${item.category || 'Wine & Spirits'} ${item.alcohol ? '🍷' : '🧃'}</small>
+                        <small style="color:#64748b;">${item.category || 'Wine & Spirits'} ${item.alcohol ? '<i class="fas fa-wine-bottle"></i>' : '<i class="fas fa-leaf"></i>'}</small>
                     </div>
-                    <div class="item-price" style="flex:1; text-align:right;">
-                        R${(item.price || 0).toFixed(2)}
-                    </div>
-                    <button class="btn-danger" style="margin-left: 12px;" onclick="deleteItemPrompt('${item.id}', '${escapeHtml(item.name)}')">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
+                    <div class="item-price" style="flex:1; text-align:right;">R${(item.price || 0).toFixed(2)}</div>
+                    <button class="btn-danger" style="margin-left: 12px;" onclick="deleteItemPrompt('${item.id}', '${escapeHtml(item.name)}')"><i class="fas fa-trash-alt"></i></button>
                 </div>
             `;
         }).join('');
@@ -571,7 +555,6 @@
         const availableLockers = lockers.filter(l => l.status === 'available').length;
         const occupiedLockers = lockers.filter(l => l.status === 'rented').length;
         const itemsCount = inventoryItems.length;
-        
         document.getElementById('kpiTotalLockers').textContent = totalLockers;
         document.getElementById('kpiAvailable').textContent = availableLockers;
         document.getElementById('kpiOccupied').textContent = occupiedLockers;
@@ -595,50 +578,38 @@
         document.getElementById('lockerSizeInput').value = 'Medium';
         document.getElementById('createLockerModalWin').classList.add('active');
     }
-    
     function closeLockerModal() {
         document.getElementById('createLockerModalWin').classList.remove('active');
     }
-    
     async function createLockerAdmin() {
         const lockerNumber = document.getElementById('lockerNumberInput').value.trim();
         const location = document.getElementById('lockerLocationInput').value.trim();
         const size = document.getElementById('lockerSizeInput').value;
-        
         if (!lockerNumber) {
             showToast('Please enter a locker number (e.g., L-001, WINE-01)', true);
             return;
         }
-        
         const exists = lockers.some(l => l.locker_number === lockerNumber);
         if (exists) {
             showToast(`Locker ${lockerNumber} already exists!`, true);
             return;
         }
-        
         closeLockerModal();
-        
-        await createLockerInSupabase({
-            locker_number: lockerNumber,
-            location: location,
-            size: size
-        });
+        await createLockerInSupabase({ locker_number: lockerNumber, location: location, size: size });
     }
-    
+
     function deleteLockerPrompt(lockerId, lockerNumber) {
         pendingDeleteId = lockerId;
         deleteType = 'locker';
         document.getElementById('deleteConfirmMsg').innerHTML = `<i class="fas fa-wine-bottle"></i> Delete locker "${lockerNumber}"? This action cannot be undone.`;
         document.getElementById('confirmDeleteModal').classList.add('active');
     }
-    
-    async function deleteItemPrompt(itemId, itemName) {
+    function deleteItemPrompt(itemId, itemName) {
         pendingDeleteId = itemId;
         deleteType = 'item';
         document.getElementById('deleteConfirmMsg').innerHTML = `<i class="fas fa-wine-glass-alt"></i> Delete "${itemName}" from wine & spirits inventory? This action cannot be undone.`;
         document.getElementById('confirmDeleteModal').classList.add('active');
     }
-    
     async function confirmDelete() {
         if (deleteType === 'locker' && pendingDeleteId) {
             const locker = lockers.find(l => l.id === pendingDeleteId);
@@ -651,21 +622,19 @@
         pendingDeleteId = null;
         deleteType = null;
     }
-    
     function closeConfirmModal() {
         document.getElementById('confirmDeleteModal').classList.remove('active');
     }
-    
+
     async function markLockerOccupied(lockerId) {
         await updateLockerStatus(lockerId, 'rented');
-        showToast('🍷 Locker marked as occupied - Wine stored safely');
+        showToast('Locker marked as occupied - Wine stored safely');
     }
-    
     async function markLockerAvailable(lockerId) {
         await updateLockerStatus(lockerId, 'available');
         showToast('Locker marked as available');
     }
-    
+
     function openCreateItemModal() {
         document.getElementById('itemNameInput').value = '';
         document.getElementById('itemPriceInput').value = '';
@@ -673,45 +642,32 @@
         document.getElementById('itemAlcoholInput').value = 'true';
         document.getElementById('createItemModalWin').classList.add('active');
     }
-    
     function closeItemModal() {
         document.getElementById('createItemModalWin').classList.remove('active');
     }
-    
     async function addItemToInventory() {
         const name = document.getElementById('itemNameInput').value.trim();
         const price = document.getElementById('itemPriceInput').value;
         const category = document.getElementById('itemCategoryInput').value;
         const alcohol = document.getElementById('itemAlcoholInput').value;
-        
         if (!name) {
             showToast('Please enter a product name', true);
             return;
         }
-        
         if (!price || parseFloat(price) <= 0) {
             showToast('Please enter a valid price', true);
             return;
         }
-        
         closeItemModal();
-        
-        await createProductInSupabase({
-            name: name,
-            price: price,
-            category: category,
-            alcohol: alcohol
-        });
+        await createProductInSupabase({ name, price, category, alcohol });
     }
-    
+
     function refreshLockersAdmin() {
         loadLockersFromSupabase();
         showToast('Refreshing lockers...');
     }
-    
-    // Auto-refresh every 10 seconds
+
     let autoRefreshInterval;
-    
     function startAutoRefresh() {
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
         autoRefreshInterval = setInterval(() => {
@@ -719,18 +675,13 @@
             loadInventoryFromSupabase();
         }, 10000);
     }
-    
-    // Initialize
+
     async function init() {
-        await Promise.all([
-            loadLockersFromSupabase(),
-            loadInventoryFromSupabase()
-        ]);
+        await Promise.all([loadLockersFromSupabase(), loadInventoryFromSupabase()]);
         startAutoRefresh();
     }
-    
     init();
-    
+
     // Expose global functions
     window.openCreateLockerModal = openCreateLockerModal;
     window.closeLockerModal = closeLockerModal;
