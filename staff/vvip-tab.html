@@ -543,6 +543,7 @@ body {
     let currentCart = [];
     let currentTabBalance = 0;
     let currentPackage = null;
+    let currentActiveBookingId = null;  // <-- FIXED: store booking ID
     let allProducts = [];
     let shishaFlavours = [], shishaDevices = [], shishaLocations = [];
     let vendor = "Rands Smart Counter";
@@ -735,7 +736,7 @@ body {
     window.removeCartItem = (idx) => { currentCart.splice(idx, 1); updateCartUI(); };
     window.clearCart = () => { currentCart = []; updateCartUI(); };
 
-    // ---------- CUSTOMER LOADING ----------
+    // ---------- CUSTOMER LOADING (stores booking ID) ----------
     async function loadCustomer() {
         const identifier = document.getElementById('customerSearch').value.trim();
         if (!identifier) { showToast('Enter phone or wallet ID', true); return; }
@@ -758,9 +759,11 @@ body {
         if (booking && booking.remaining_balance !== undefined && booking.remaining_balance > 0) {
             currentTabBalance = booking.remaining_balance;
             currentPackage = { name: booking.packages?.name, tables: booking.packages?.capacity || 0, remaining: booking.remaining_balance };
+            currentActiveBookingId = booking.id;  // <-- STORE ID
         } else {
             currentTabBalance = 0;
             currentPackage = null;
+            currentActiveBookingId = null;
         }
         currentCustomer = profile;
         currentCart = [];
@@ -787,32 +790,48 @@ body {
         }
     }
     window.clearCustomer = () => {
-        currentCustomer = null; currentCart = []; currentTabBalance = 0; currentPackage = null;
+        currentCustomer = null; 
+        currentCart = []; 
+        currentTabBalance = 0; 
+        currentPackage = null;
+        currentActiveBookingId = null;
         document.getElementById('customerCard').style.display = 'none';
         document.getElementById('customerSearch').value = '';
         updateCartUI();
         showToast('Customer cleared');
     };
 
-    // ---------- CHECKOUT (VVIP TAB DEDUCTION + SHISHA SESSION CREATION) ----------
+    // ---------- CHECKOUT (FIXED: uses stored booking ID) ----------
     async function checkout() {
         if (!currentCustomer) { showToast('No customer loaded', true); return; }
         const total = currentCart.reduce((s,i) => s + i.price * i.quantity, 0);
         if (total === 0) { showToast('Cart empty', true); return; }
-        if (currentTabBalance < total) { showToast(`Insufficient credit: need R${total}, have R${currentTabBalance}`, true); return; }
+        if (!currentActiveBookingId) { 
+            showToast('No active VVIP tab credit. Please purchase a package first.', true); 
+            return; 
+        }
+        if (currentTabBalance < total) { 
+            showToast(`Insufficient credit: need R${total}, have R${currentTabBalance}`, true); 
+            return; 
+        }
 
         // Process shisha sessions BEFORE creating orders
         const shishaItems = currentCart.filter(i => i.isShisha);
         for (const shItem of shishaItems) {
-            // Create shisha_session record
+            // Ensure customer phone exists
+            const customerPhone = currentCustomer.phone || currentCustomer.phone || '';
+            if (!customerPhone) {
+                showToast('Customer phone number missing for shisha session', true);
+                return;
+            }
             const { error: sessionError } = await supabase.from('shisha_sessions').insert([{
-                customer_phone: currentCustomer.phone,
+                customer_phone: customerPhone,
                 device_id: shItem.deviceId,
                 product_id: shItem.flavourId,
                 location_id: shItem.locationId || null,
                 start_time: new Date().toISOString(),
                 last_refill_time: new Date().toISOString(),
-                remaining_time_seconds: 3600, // 60 min session
+                remaining_time_seconds: 3600,
                 total_amount: shItem.price,
                 refill_count: 0,
                 status: 'active',
@@ -822,7 +841,7 @@ body {
             }]);
             if (sessionError) {
                 console.error('Shisha session error:', sessionError);
-                showToast('Failed to create shisha session', true);
+                showToast('Failed to create shisha session: ' + sessionError.message, true);
                 return;
             }
             // Update hookah device status to 'in_use'
@@ -837,8 +856,8 @@ body {
         });
         const newBalance = currentTabBalance - total;
         try {
-            for (const [vendor, items] of vendorGroups.entries()) {
-                const orderNumber = `${vendor === 'Rands Smart Counter' ? 'SC' : vendor === 'The Butcher Shop' ? 'BT' : 'SH'}-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+            for (const [vendorName, items] of vendorGroups.entries()) {
+                const orderNumber = `${vendorName === 'Rands Smart Counter' ? 'SC' : vendorName === 'The Butcher Shop' ? 'BT' : 'SH'}-${Date.now()}-${Math.floor(Math.random()*1000)}`;
                 const orderItems = items.map(i => ({
                     product_name: i.name,
                     quantity: i.quantity,
@@ -849,13 +868,13 @@ body {
                 }));
                 const { error } = await supabase.from('orders').insert([{
                     order_number: orderNumber,
-                    customer_phone: currentCustomer.phone,
-                    customer_name: currentCustomer.name,
+                    customer_phone: currentCustomer.phone || '',
+                    customer_name: currentCustomer.name || 'Guest',
                     total: items.reduce((s,i) => s + i.price * i.quantity, 0),
                     payment_method: 'vvip_tab',
                     payment_status: 'paid',
                     status: 'pending',
-                    vendor: vendor,
+                    vendor: vendorName,
                     source: 'vvip_pos',
                     is_vvip: true,
                     customer_id: currentCustomer.id,
@@ -864,11 +883,13 @@ body {
                 }]);
                 if (error) throw error;
             }
-            // Update booking balance
-            const { data: booking } = await supabase.from('vvip_bookings').select('id').eq('customer_id', currentCustomer.id).in('status', ['confirmed','checked_in','seated']).limit(1).single();
-            if (booking) {
-                await supabase.from('vvip_bookings').update({ remaining_balance: newBalance }).eq('id', booking.id);
-            }
+            // Update booking balance using stored ID
+            const { error: updateError } = await supabase
+                .from('vvip_bookings')
+                .update({ remaining_balance: newBalance })
+                .eq('id', currentActiveBookingId);
+            if (updateError) throw updateError;
+            
             currentTabBalance = newBalance;
             if (currentPackage) currentPackage.remaining = newBalance;
             updateCustomerUI();
@@ -877,8 +898,8 @@ body {
             if (newBalance <= 0) showToast('VVIP package depleted. Please purchase a new package.');
             loadStats();
         } catch (err) {
-            console.error(err);
-            showToast('Checkout failed', true);
+            console.error('Checkout error:', err);
+            showToast('Checkout failed: ' + err.message, true);
         }
     }
     document.getElementById('checkoutBtn').onclick = checkout;
@@ -937,7 +958,12 @@ body {
         if (booking && booking.remaining_balance > 0) {
             currentTabBalance = booking.remaining_balance;
             currentPackage = { name: booking.packages?.name, tables: booking.packages?.capacity, remaining: booking.remaining_balance };
-        } else { currentTabBalance = 0; currentPackage = null; }
+            currentActiveBookingId = booking.id;
+        } else { 
+            currentTabBalance = 0; 
+            currentPackage = null;
+            currentActiveBookingId = null;
+        }
         currentCustomer = profile;
         currentCart = [];
         updateCustomerUI();
