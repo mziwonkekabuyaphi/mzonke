@@ -1,5 +1,6 @@
 //
-// RANDS VIBE PASS - MAIN JS (MODIFIED: touch-to-dismiss, no redirect, dynamic content)
+// RANDS VIBE PASS - MAIN JS (SPLASH ONLY – TAP TO GO TO LOGIN)
+// No auto-redirect, no session detection – always login.html on tap.
 //
 
 // --------------------
@@ -81,7 +82,7 @@ const statusElement = document.getElementById('statusMessage');
 const percentageElement = document.getElementById('percentage');
 
 // --------------------
-// Splash Messages (same as before)
+// Splash Messages
 // --------------------
 const messageStages = [
   { threshold: 0, text: "✨ Molo, welcome to Rands" },
@@ -114,100 +115,26 @@ function updateStatus(progress) {
 }
 
 // --------------------
-// Dynamic content loader (no redirect!)
-// --------------------
-function loadAppContent(url, replaceSplash = true) {
-  fetch(url)
-    .then(response => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.text();
-    })
-    .then(html => {
-      // Extract the <body> content (or full page)
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const bodyContent = doc.body.innerHTML;
-
-      // Create a container for the app content
-      let appContainer = document.getElementById('rands-app-container');
-      if (!appContainer) {
-        appContainer = document.createElement('div');
-        appContainer.id = 'rands-app-container';
-        document.body.appendChild(appContainer);
-      }
-      appContainer.innerHTML = bodyContent;
-
-      // Also copy any new <script> tags that might be needed (simple approach: re-execute)
-      const scripts = doc.querySelectorAll('script');
-      scripts.forEach(oldScript => {
-        const newScript = document.createElement('script');
-        if (oldScript.src) {
-          newScript.src = oldScript.src;
-        } else {
-          newScript.textContent = oldScript.textContent;
-        }
-        document.body.appendChild(newScript);
-      });
-
-      // Remove splash completely
-      if (replaceSplash) {
-        const splash = document.querySelector('.splash');
-        if (splash) splash.remove();
-      }
-    })
-    .catch(err => {
-      console.error('Failed to load app content:', err);
-      // Fallback: show a simple message
-      document.body.innerHTML = '<div style="color:white; text-align:center; margin-top:2rem;">Failed to load app. Please refresh.</div>';
-    });
-}
-
-// --------------------
-// Determine which page to load (login or dashboard)
-// --------------------
-function getTargetPage() {
-  // Supabase session key (adjust if you use a different key)
-  const session = localStorage.getItem('sb-session');
-  if (session && session !== 'null' && session !== 'undefined') {
-    try {
-      const parsed = JSON.parse(session);
-      if (parsed && parsed.access_token) return 'dashboard.html';
-    } catch (e) {}
-  }
-  return 'login.html';
-}
-
-// --------------------
-// Touch-to-dismiss splash + load app
+// Redirect to login.html on tap (no auto-redirect)
 // --------------------
 let splashDismissed = false;
 let animationRequestId = null;
 
-function dismissSplashAndLoadApp() {
+function redirectToLogin() {
   if (splashDismissed) return;
   splashDismissed = true;
-
-  // Cancel the ongoing animation to save resources
+  // Cancel animation to save resources
   if (animationRequestId) cancelAnimationFrame(animationRequestId);
-
-  const splash = document.querySelector('.splash');
-  if (!splash) return;
-
-  // Fade out the splash
-  splash.style.transition = 'opacity 0.5s ease';
-  splash.style.opacity = '0';
-  setTimeout(() => {
-    // Load the target page content dynamically
-    loadAppContent(getTargetPage(), true);
-  }, 500);
+  // Simple redirect to login page
+  window.location.href = 'login.html';
 }
 
 // Attach touch/click listeners to the whole page
-document.body.addEventListener('click', dismissSplashAndLoadApp);
-document.body.addEventListener('touchstart', dismissSplashAndLoadApp);
+document.body.addEventListener('click', redirectToLogin);
+document.body.addEventListener('touchstart', redirectToLogin);
 
 // --------------------
-// Optional: Visual progress animation (just for show, no auto-dismiss)
+// Visual progress animation (just for show, no auto-dismiss)
 // --------------------
 let startTime = null;
 function animate(timestamp) {
