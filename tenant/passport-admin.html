@@ -70,15 +70,26 @@
     margin-top: 0.25rem;
   }
 
-  /* Three‑column layout */
-  .dashboard-three-columns {
+  /* Two‑column layout for top section */
+  .dashboard-two-columns {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 1.5rem;
     margin-bottom: 1.5rem;
   }
-  @media (max-width: 1200px) {
-    .dashboard-three-columns { grid-template-columns: 1fr; gap: 1.5rem; }
+  @media (max-width: 1000px) {
+    .dashboard-two-columns { grid-template-columns: 1fr; }
+  }
+
+  /* Two‑column layout for support + wristband */
+  .support-wristband-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 1000px) {
+    .support-wristband-row { grid-template-columns: 1fr; }
   }
 
   .dashboard-card {
@@ -112,12 +123,12 @@
     padding: 24px;
     flex: 1;
     overflow-y: auto;
-    max-height: 600px;
+    max-height: 500px;
   }
 
   /* Lists */
   .account-list, .refund-list, .ticket-list, .wristband-list {
-    max-height: 500px;
+    max-height: 450px;
     overflow-y: auto;
   }
   .account-item, .refund-item, .ticket-item, .wristband-item {
@@ -150,7 +161,6 @@
   .status-open { background: #fee2e2; color: #b91c1c; }
   .status-in_progress { background: #fff3e0; color: #e67e22; }
   .status-resolved { background: #e6f7ec; color: #2b7a3e; }
-  .status-closed { background: #e2e8f0; color: #475569; }
 
   .action-buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
   .action-btn {
@@ -427,15 +437,6 @@
     gap: 6px;
     flex-wrap: wrap;
   }
-  .badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 30px;
-    font-size: 0.6rem;
-    font-weight: 600;
-  }
-  .badge-high { background: #fee2e2; color: #b91c1c; }
-  .badge-normal { background: #fff3e0; color: #e67e22; }
 </style>
 </head>
 <body>
@@ -451,8 +452,8 @@
     <div class="stat-card"><i class="fas fa-coins"></i><div class="stat-value" id="totalRefundAmount">R0</div><div class="stat-label">Refunded</div></div>
   </div>
 
-  <!-- Three‑column layout -->
-  <div class="dashboard-three-columns">
+  <!-- Top row: Accounts | Actions -->
+  <div class="dashboard-two-columns">
     <!-- COLUMN 1: Accounts -->
     <div class="dashboard-card">
       <div class="card-header">
@@ -502,8 +503,11 @@
         <div><div style="color:#E30613; font-weight:700; margin-bottom:16px;"><i class="fas fa-history"></i> Recent Transactions</div><div id="accountTransactions" class="transaction-list"></div></div>
       </div>
     </div>
+  </div>
 
-    <!-- COLUMN 3: Support Queue + Wristband Center -->
+  <!-- Middle row: Support Queue | Wristband Center (side by side) -->
+  <div class="support-wristband-row">
+    <!-- Support Queue -->
     <div class="dashboard-card">
       <div class="card-header">
         <h3><i class="fas fa-headset"></i> Support Queue</h3>
@@ -512,7 +516,11 @@
       <div class="card-body">
         <div id="supportTicketsList" class="ticket-list"><div class="empty-state">Loading tickets...</div></div>
       </div>
-      <div class="card-header" style="border-top: 1px solid #eff3f8;">
+    </div>
+
+    <!-- Wristband Center -->
+    <div class="dashboard-card">
+      <div class="card-header">
         <h3><i class="fas fa-id-card"></i> Wristband Center</h3>
         <button class="action-btn primary small" id="newWristbandBtn"><i class="fas fa-plus"></i> New Wristband</button>
       </div>
@@ -523,7 +531,7 @@
   </div>
 
   <!-- Refund Requests Card (full width) -->
-  <div class="dashboard-card" style="margin-top: 1.5rem;">
+  <div class="dashboard-card">
     <div class="card-header">
       <h3><i class="fas fa-undo-alt"></i> Refund Requests</h3>
       <button class="action-btn info" id="refreshRefundsBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
@@ -701,10 +709,15 @@
     } catch (err) { showToast(`Status update failed: ${err.message}`, 'error'); return false; }
   }
   
-  // ========== SUPPORT TICKETS (with in_progress + auto-email) ==========
+  // ========== SUPPORT TICKETS (with delete on close) ==========
   async function loadSupportTickets() {
     try {
-      const { data, error } = await supabase.from('support_tickets').select('*, profiles:customer_id (name, email)').order('created_at', { ascending: false });
+      // Only fetch tickets that are NOT closed (since closed are deleted)
+      const { data, error } = await supabase
+        .from('support_tickets')
+        .select('*, profiles:customer_id (name, email)')
+        .not('status', 'eq', 'closed')
+        .order('created_at', { ascending: false });
       if (error) throw error;
       supportTickets = (data || []).map(t => ({
         id: t.id,
@@ -729,8 +742,8 @@
         <div><div class="account-id">${escapeHtml(t.customer_name)}</div><div class="account-name">${escapeHtml(t.issue_type.replace('_', ' '))} • ${new Date(t.created_at).toLocaleDateString()}</div></div>
         <div><div class="account-status status-${t.status}">${t.status.toUpperCase()}</div><div class="ticket-actions" style="margin-top:6px;">
           ${t.status === 'open' ? `<button class="action-btn small warning" data-ticket-id="${t.id}" data-action="progress">In Progress</button>` : ''}
-          ${t.status !== 'resolved' && t.status !== 'closed' ? `<button class="action-btn small success" data-ticket-id="${t.id}" data-action="resolve">Resolve</button>` : ''}
-          ${t.status !== 'closed' ? `<button class="action-btn small danger" data-ticket-id="${t.id}" data-action="close">Close</button>` : ''}
+          ${t.status !== 'resolved' ? `<button class="action-btn small success" data-ticket-id="${t.id}" data-action="resolve">Resolve</button>` : ''}
+          <button class="action-btn small danger" data-ticket-id="${t.id}" data-action="close">Close & Delete</button>
         </div></div>
       </div>
     `).join('');
@@ -740,7 +753,7 @@
         const action = btn.dataset.action;
         if (action === 'progress') await markInProgress(ticketId);
         else if (action === 'resolve') await resolveTicket(ticketId);
-        else if (action === 'close') await closeTicket(ticketId);
+        else if (action === 'close') await deleteTicket(ticketId);
       });
     });
   }
@@ -756,10 +769,8 @@
   async function resolveTicket(ticketId) {
     const confirmed = await showConfirm('Resolve this ticket? An email notification will be sent to the customer.');
     if (!confirmed) return;
-    // Fetch ticket details for email
     const ticket = supportTickets.find(t => t.id === ticketId);
-    let customerEmail = null;
-    let customerName = 'Customer';
+    let customerEmail = null, customerName = 'Customer';
     if (ticket && ticket.customer_id) {
       const { data: profile } = await supabase.from('profiles').select('email, name').eq('id', ticket.customer_id).single();
       if (profile) {
@@ -767,20 +778,20 @@
         customerName = profile.name || 'Customer';
       }
     }
-    // Update status
     await supabase.from('support_tickets').update({ status: 'resolved', resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', ticketId);
     showToast('Ticket resolved', 'success');
-    // Simulate email
     if (customerEmail) simulateEmail(customerEmail, customerName, ticketId, ticket?.issue_type || 'support');
     else showToast('No email on file – notification not sent', 'warning');
     await loadSupportTickets();
   }
   
-  async function closeTicket(ticketId) {
-    const confirmed = await showConfirm('Close this ticket?');
+  // Delete ticket (instead of marking closed)
+  async function deleteTicket(ticketId) {
+    const confirmed = await showConfirm('Close and delete this ticket? This action cannot be undone.');
     if (!confirmed) return;
-    await supabase.from('support_tickets').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', ticketId);
-    showToast('Ticket closed', 'success');
+    const { error } = await supabase.from('support_tickets').delete().eq('id', ticketId);
+    if (error) { showToast(`Failed to delete: ${error.message}`, 'error'); return; }
+    showToast('Ticket deleted (closed)', 'success');
     await loadSupportTickets();
   }
   
