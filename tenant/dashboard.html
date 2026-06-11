@@ -339,7 +339,7 @@
             </button>
         </div>
         <div class="nav-menu">
-            <!-- ANALYTICS section: only Rands Overview (no separate Analytics) -->
+            <!-- ANALYTICS section: only Rands Overview -->
             <div class="nav-section-title" :style="{ color: sectionTitleColor }"><i class="fas fa-chart-line"></i><span> ANALYTICS</span></div>
             <div class="nav-item" :class="{ active: currentSection === 'overview' }" @click="currentSection = 'overview'; closeSidebar()">
                 <i class="fas fa-chart-pie"></i>
@@ -347,9 +347,9 @@
             </div>
             <div class="nav-divider" :style="{ background: sidebarBorderColor }"></div>
             <div class="nav-section-title" :style="{ color: sectionTitleColor }"><i class="fas fa-crown"></i><span> CONTROL CENTRE</span></div>
-            <!-- Exactly 8 modules as requested -->
+            <!-- 9 modules exactly as requested (Analytics Hub added at the bottom) -->
             <div v-for="module in allModules" :key="module.id" class="nav-item" :class="{ active: currentSection === 'module_' + module.id }" @click="goToModule(module)">
-                <i :class="getModuleIcon(module)"></i>
+                <i :class="module.icon"></i>
                 <span>{{ module.name }}</span>
             </div>
             <div class="nav-divider" :style="{ background: sidebarBorderColor }"></div>
@@ -376,7 +376,7 @@
 
         <div class="dashboard-container">
             <!-- Rands Overview (executive dashboard) -->
-            <div v-if="currentSection === 'overview'">
+            <div v-if="currentSection === 'overview'" key="overview">
                 <iframe 
                     src="../stats/executive-stat.html" 
                     class="external-iframe" 
@@ -502,7 +502,7 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
     
-    // Hardcoded 8 modules exactly as requested
+    // 9 modules: original 8 + Analytics Hub at the end
     const FIXED_MODULES = [
         { id: 1, name: 'Rands WhatsApp Concierge', icon: 'fab fa-whatsapp', file: 'whatsapp-admin.html' },
         { id: 2, name: 'Event Management', icon: 'fas fa-calendar-alt', file: 'events-admin.html' },
@@ -511,7 +511,8 @@
         { id: 5, name: 'Hubbly Station', icon: 'fas fa-smoking', file: 'shisha-admin.html' },
         { id: 6, name: 'Orders & Sales Engine', icon: 'fas fa-chart-line', file: 'orders-admin.html' },
         { id: 7, name: 'Booze Lockers', icon: 'fas fa-wine-bottle', file: 'lockers-admin.html' },
-        { id: 8, name: 'Staff Management', icon: 'fas fa-users', file: 'staff-admin.html' }
+        { id: 8, name: 'Staff Management', icon: 'fas fa-users', file: 'staff-admin.html' },
+        { id: 9, name: 'Analytics Hub', icon: 'fas fa-chart-line', file: 'analytics-hub.html' }
     ];
 
     new Vue({
@@ -587,10 +588,6 @@
                 this.sidebarCollapsed = !this.sidebarCollapsed;
                 localStorage.setItem('sidebarCollapsed', this.sidebarCollapsed);
             },
-            getModuleIcon(module) {
-                // Directly return the icon from the module object (already full class)
-                return module.icon;
-            },
             getModuleSrc(moduleName) {
                 const fileMap = {
                     'Rands WhatsApp Concierge': 'whatsapp-admin.html',
@@ -600,7 +597,8 @@
                     'Hubbly Station': 'shisha-admin.html',
                     'Orders & Sales Engine': 'orders-admin.html',
                     'Booze Lockers': 'lockers-admin.html',
-                    'Staff Management': 'staff-admin.html'
+                    'Staff Management': 'staff-admin.html',
+                    'Analytics Hub': 'analytics-hub.html'
                 };
                 return fileMap[moduleName] || `${moduleName.toLowerCase().replace(/ /g, '-')}-admin.html`;
             },
@@ -700,7 +698,6 @@
                     }
                     this.showSuccessMessage();
                     this.applyAutoRefresh();
-                    this.applyDefaultModule();
                 } catch (err) {
                     console.error(err);
                 }
@@ -775,13 +772,6 @@
                         });
                     }, parseInt(this.systemPrefs.auto_refresh_interval) * 1000);
                 }
-            },
-            applyDefaultModule() {
-                if (this.systemPrefs.default_module && this.systemPrefs.default_module !== 'overview') {
-                    this.currentSection = this.systemPrefs.default_module;
-                } else {
-                    this.currentSection = 'overview';
-                }
             }
         },
         async mounted() {
@@ -795,9 +785,9 @@
                 this.loadSystemPrefsFromDB()
             ]);
             this.loadingMessage = 'Starting dashboard...';
+            this.currentSection = 'overview';
             setTimeout(() => {
                 this.showLoadingScreen = false;
-                this.applyDefaultModule();
                 this.applyAutoRefresh();
             }, 500);
         }
