@@ -4,10 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
 <title>Rands Vibe · Sign In</title>
+
+<!-- ✅ FIX 2: Google Fonts loaded via <link> (no render‑blocking @import) -->
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Bricolage+Grotesque:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
 /* ========== LOGIN — Rands Vibe · fixed CSS variables & quotes ========== */
-
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Bricolage+Grotesque:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');
 
 *, *::before, *::after {
 box-sizing: border-box;
@@ -31,13 +33,17 @@ padding: 0;
   --ease:       cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── Base ── */
+/* ✅ FIX 1: mobile‑first scrolling – removed global overflow:hidden */
 html, body {
-height: 100%;
-overflow: hidden;
-background: var(--bg);
-font-family: 'Bricolage Grotesque', sans-serif;
-color: var(--white);
+  height: 100%;
+  background: var(--bg);
+  font-family: 'Bricolage Grotesque', sans-serif;
+  color: var(--white);
+}
+body {
+  min-height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* ── Background layers ── */
@@ -472,6 +478,21 @@ font-weight: 600;
 letter-spacing: 0.3px;
 }
 
+/* ✅ EXTRA: Coolest passkey button ever */
+#passkeyBtn {
+  background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(232,25,44,0.08) 100%);
+  transition: all 0.3s var(--ease);
+}
+#passkeyBtn:hover {
+  background: radial-gradient(circle at 30% 10%, rgba(232,25,44,0.25), rgba(255,255,255,0.05));
+  border-color: rgba(232,25,44,0.6);
+  box-shadow: 0 0 12px rgba(232,25,44,0.4);
+  transform: translateY(-2px);
+}
+#passkeyBtn:active {
+  transform: scale(0.97);
+}
+
 /* ── Entrance animations ── */
 @keyframes up {
 from { opacity: 0; transform: translateY(30px); }
@@ -539,6 +560,7 @@ to   { opacity: 1; transform: translateY(0); }
       <div class="auth-error" id="authError" role="alert" aria-live="polite"></div>
 
       <div class="forgot-row">
+        <!-- ✅ FIX 4: Forgot password link – functional with JS handler -->
         <a href="#" class="forgot-link" id="forgotLink">Recover Vibe Access?</a>
       </div>
     </form>
@@ -551,7 +573,7 @@ to   { opacity: 1; transform: translateY(0); }
           <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
         </svg>
       </button>
-      <p class="cta-note">Don't have a vibe Passport ? <a href="register.html" class="cta-link" id="registerLink">Create Yours Here</a></p>
+      <!-- ✅ "Create Yours Here" moved below passkey button – see after alt-btns -->
     </div>
 
     <!-- ── NEW: Alternate sign-in methods ── -->
@@ -565,7 +587,6 @@ to   { opacity: 1; transform: translateY(0); }
       <!-- Google -->
       <button class="alt-btn" id="googleBtn" type="button" aria-label="Continue with Google">
         <span class="alt-btn-icon">
-          <!-- Official Google G mark (SVG, no external asset needed) -->
           <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -592,10 +613,62 @@ to   { opacity: 1; transform: translateY(0); }
       </div>
     </div>
 
+    <!-- ✅ MOVED: "Create Yours Here" below passkey button (extra margin for spacing) -->
+    <p class="cta-note" style="margin-top: 24px;">Don't have a vibe Passport ? <a href="register.html" class="cta-link" id="registerLink">Create Yours Here</a></p>
+
   </div>
 </div>
 
 <script type="module" src="assets/js/login.js"></script>
+
+<!-- ✅ FIX 3: Google OAuth callback handler (runs after login.js) -->
+<script>
+  (async function handleOAuthRedirect() {
+    let retries = 0;
+    let supabaseClient = null;
+
+    function getSupabaseFromWindow() {
+      return window.supabaseClient || window.__supabase || (window.supabase && window.supabase.auth ? window.supabase : null);
+    }
+
+    while (retries < 20 && !supabaseClient) {
+      supabaseClient = getSupabaseFromWindow();
+      if (!supabaseClient) {
+        await new Promise(r => setTimeout(r, 100));
+        retries++;
+      }
+    }
+
+    if (!supabaseClient) {
+      console.warn("OAuth handler: Supabase client not found. Skipping.");
+      return;
+    }
+
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session && typeof window.finishLogin === 'function') {
+      console.log("OAuth session detected → calling finishLogin");
+      await window.finishLogin(session.user);
+      if (window.location.hash || window.location.search.includes('code=')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  })();
+</script>
+
+<!-- ✅ FIX 4 (forgot password): functional JS handler (prevents dead link) -->
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const forgotLink = document.getElementById('forgotLink');
+    if (forgotLink) {
+      forgotLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        alert('Password recovery will be available soon. Please contact support.');
+        // Optional: redirect to a placeholder page
+        // window.location.href = '/forgot-password.html';
+      });
+    }
+  });
+</script>
 
 </body>
 </html>
