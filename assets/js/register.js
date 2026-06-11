@@ -260,7 +260,7 @@ el('s3Cta')?.addEventListener('click', async () => {
 
 // ========== EXPLORE ==========
 el('exploreBtn')?.addEventListener('click', () => {
-  window.location.href = 'home.html';
+  window.location.href = 'passport/home.html';
 });
 
 });
