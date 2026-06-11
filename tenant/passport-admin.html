@@ -70,7 +70,7 @@
     margin-top: 0.25rem;
   }
 
-  /* Three‑column layout for laptops (Accounts | Actions | Support+Wristband) */
+  /* Three‑column layout */
   .dashboard-three-columns {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
@@ -115,7 +115,7 @@
     max-height: 600px;
   }
 
-  /* Account list */
+  /* Lists */
   .account-list, .refund-list, .ticket-list, .wristband-list {
     max-height: 500px;
     overflow-y: auto;
@@ -260,7 +260,7 @@
     font-size: 0.8rem;
   }
 
-  /* Selected account info (enhanced) */
+  /* Selected account info */
   .selected-info {
     background: #f8fafd;
     border-radius: 28px;
@@ -568,7 +568,7 @@
   </div>
 </div>
 
-<!-- Wristband Actions Modal (Assign/Replace/Disable/Reactivate) -->
+<!-- Wristband Actions Modal -->
 <div id="wristbandActionModal" class="simple-modal">
   <div class="simple-modal-content">
     <div class="modal-header"><h3 id="wristbandActionTitle">Wristband Action</h3></div>
@@ -633,7 +633,13 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
   
-  // ========== DATA FETCHING (accounts, transactions, etc.) ==========
+  // Simulate email sending
+  function simulateEmail(customerEmail, customerName, ticketId, issueType) {
+    console.log(`[EMAIL SIMULATION] To: ${customerEmail} | Subject: Your support ticket #${ticketId} (${issueType}) has been resolved | Body: Hello ${customerName}, your issue has been resolved. Thank you.`);
+    showToast(`📧 Email sent to ${customerEmail || 'customer'} (simulated)`, 'info');
+  }
+  
+  // ========== DATA FETCHING (accounts, transactions) ==========
   async function loadWallets() {
     try {
       const { data, error } = await supabase
@@ -695,7 +701,7 @@
     } catch (err) { showToast(`Status update failed: ${err.message}`, 'error'); return false; }
   }
   
-  // ========== SUPPORT TICKETS ==========
+  // ========== SUPPORT TICKETS (with in_progress + auto-email) ==========
   async function loadSupportTickets() {
     try {
       const { data, error } = await supabase.from('support_tickets').select('*, profiles:customer_id (name, email)').order('created_at', { ascending: false });
@@ -704,6 +710,7 @@
         id: t.id,
         customer_id: t.customer_id,
         customer_name: t.profiles?.name || t.customer_name || 'Unknown',
+        customer_email: t.profiles?.email || '',
         issue_type: t.issue_type,
         description: t.description,
         status: t.status,
@@ -720,30 +727,59 @@
     container.innerHTML = supportTickets.map(t => `
       <div class="ticket-item">
         <div><div class="account-id">${escapeHtml(t.customer_name)}</div><div class="account-name">${escapeHtml(t.issue_type.replace('_', ' '))} • ${new Date(t.created_at).toLocaleDateString()}</div></div>
-        <div><div class="account-status status-${t.status}">${t.status.toUpperCase()}</div><div class="ticket-actions" style="margin-top:6px;"><button class="action-btn small info" data-ticket-id="${t.id}" data-action="resolve">Resolve</button><button class="action-btn small danger" data-ticket-id="${t.id}" data-action="close">Close</button></div></div>
+        <div><div class="account-status status-${t.status}">${t.status.toUpperCase()}</div><div class="ticket-actions" style="margin-top:6px;">
+          ${t.status === 'open' ? `<button class="action-btn small warning" data-ticket-id="${t.id}" data-action="progress">In Progress</button>` : ''}
+          ${t.status !== 'resolved' && t.status !== 'closed' ? `<button class="action-btn small success" data-ticket-id="${t.id}" data-action="resolve">Resolve</button>` : ''}
+          ${t.status !== 'closed' ? `<button class="action-btn small danger" data-ticket-id="${t.id}" data-action="close">Close</button>` : ''}
+        </div></div>
       </div>
     `).join('');
     document.querySelectorAll('[data-ticket-id]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const ticketId = btn.dataset.ticketId;
         const action = btn.dataset.action;
-        if (action === 'resolve') await resolveTicket(ticketId);
+        if (action === 'progress') await markInProgress(ticketId);
+        else if (action === 'resolve') await resolveTicket(ticketId);
         else if (action === 'close') await closeTicket(ticketId);
       });
     });
   }
   
-  async function resolveTicket(ticketId) {
-    const confirmed = await showConfirm('Mark this ticket as resolved?');
+  async function markInProgress(ticketId) {
+    const confirmed = await showConfirm('Mark this ticket as In Progress?');
     if (!confirmed) return;
-    await supabase.from('support_tickets').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', ticketId);
-    showToast('Ticket resolved', 'success');
+    await supabase.from('support_tickets').update({ status: 'in_progress', updated_at: new Date().toISOString() }).eq('id', ticketId);
+    showToast('Ticket marked in progress', 'success');
     await loadSupportTickets();
   }
+  
+  async function resolveTicket(ticketId) {
+    const confirmed = await showConfirm('Resolve this ticket? An email notification will be sent to the customer.');
+    if (!confirmed) return;
+    // Fetch ticket details for email
+    const ticket = supportTickets.find(t => t.id === ticketId);
+    let customerEmail = null;
+    let customerName = 'Customer';
+    if (ticket && ticket.customer_id) {
+      const { data: profile } = await supabase.from('profiles').select('email, name').eq('id', ticket.customer_id).single();
+      if (profile) {
+        customerEmail = profile.email;
+        customerName = profile.name || 'Customer';
+      }
+    }
+    // Update status
+    await supabase.from('support_tickets').update({ status: 'resolved', resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', ticketId);
+    showToast('Ticket resolved', 'success');
+    // Simulate email
+    if (customerEmail) simulateEmail(customerEmail, customerName, ticketId, ticket?.issue_type || 'support');
+    else showToast('No email on file – notification not sent', 'warning');
+    await loadSupportTickets();
+  }
+  
   async function closeTicket(ticketId) {
     const confirmed = await showConfirm('Close this ticket?');
     if (!confirmed) return;
-    await supabase.from('support_tickets').update({ status: 'closed' }).eq('id', ticketId);
+    await supabase.from('support_tickets').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', ticketId);
     showToast('Ticket closed', 'success');
     await loadSupportTickets();
   }
@@ -844,7 +880,7 @@
     await loadWristbands();
   }
   
-  // ========== REFUNDS (existing) ==========
+  // ========== REFUNDS ==========
   async function loadRefundRequests() {
     try {
       const { data, error } = await supabase.from('refund_requests').select('*, profiles:customer_id (name)').order('created_at', { ascending: false });
@@ -894,7 +930,6 @@
     const searchTerm = document.getElementById('globalSearch')?.value.toLowerCase() || '';
     let filtered = accounts;
     if (searchTerm) {
-      // Also search by wristband UID (need to fetch wristbands for that wallet)
       const { data: wristbandMatches } = await supabase.from('wristbands').select('wallet_id').ilike('uid', `%${searchTerm}%`);
       const walletIdsFromWristband = wristbandMatches?.map(w => w.wallet_id) || [];
       filtered = accounts.filter(acc =>
