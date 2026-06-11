@@ -173,6 +173,60 @@ export async function requireAuth(allowedRoles = []) {
 }
 
 /* =========================
+   GOOGLE OAUTH
+========================= */
+export async function signInWithGoogle() {
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/login.html',
+      },
+    });
+
+    if (error) {
+      return { error: formatAuthError(error) };
+    }
+
+    // Supabase immediately redirects the browser — nothing to return
+    return { error: null };
+  } catch (err) {
+    console.error('❌ Google OAuth crash:', err);
+    return { error: 'Network error. Please check connection and try again.' };
+  }
+}
+
+/* =========================
+   PASSKEY (WebAuthn)
+========================= */
+export async function isPasskeySupported() {
+  try {
+    return (
+      window.PublicKeyCredential !== undefined &&
+      typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function' &&
+      (await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function signInWithPasskey() {
+  try {
+    const { data, error } = await supabase.auth.signInWithPasskey();
+
+    if (error) {
+      return { user: null, error: formatAuthError(error) };
+    }
+
+    return { user: data?.user || null, error: null };
+  } catch (err) {
+    console.error('❌ Passkey sign-in crash:', err);
+    return { user: null, error: 'Passkey sign-in failed. Please try another method.' };
+  }
+}
+
+/* =========================
    AUTH ERROR FORMATTER
 ========================= */
 function formatAuthError(error) {
