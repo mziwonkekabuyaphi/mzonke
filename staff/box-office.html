@@ -73,7 +73,6 @@
 
     .card-body { padding: 24px; }
 
-    /* Event info block */
     .event-info-block {
       margin-bottom: 24px;
       padding: 16px;
@@ -433,7 +432,6 @@
     .wristband-guest-name { font-size: 12px; font-weight: 700; }
     .wristband-footer { text-align: center; padding-top: 8px; font-size: 6px; color: rgba(0,0,0,0.4); border-top: 1px solid rgba(0,0,0,0.1); margin-top: 8px; }
 
-    /* MOBILE FIX: SCROLLABLE MODAL */
     .wristband-preview-modal {
       display: none;
       position: fixed;
@@ -530,7 +528,7 @@
       <div id="eventInfo" class="event-info-block"></div>
       <div id="ticketContainer" class="ticket-grid"></div>
       <div class="quantity-section">
-        <div>🎟️ Quantity</div>
+        <div><i class="fas fa-ticket-alt"></i> Quantity</div>
         <div class="quantity-controls">
           <button class="quantity-btn" id="decQty">−</button>
           <span class="quantity-display" id="qtyDisplay">1</span>
@@ -564,7 +562,7 @@
         <input type="tel" id="customerPhone" placeholder="e.g. 0712345678">
       </div>
 
-      <button class="btn-primary" id="requestPaymentBtn" disabled>💰 Select payment method</button>
+      <button class="btn-primary" id="requestPaymentBtn" disabled><i class="fas fa-credit-card"></i> Select payment method</button>
       <div id="requestStatus" class="status-panel"></div>
     </div>
   </div>
@@ -596,9 +594,9 @@
   let ticketQuantity = 1;
   let currentRequestId = null;
   let requestSubscription = null;
-  let selectedPaymentMethod = null; // null, 'cash', 'card', 'wallet'
+  let selectedPaymentMethod = null;
   let countdownInterval = null;
-  let lastIssuedTickets = []; // store for wristband actions
+  let lastIssuedTickets = [];
 
   const eventInfoDiv = document.getElementById('eventInfo');
   const ticketContainer = document.getElementById('ticketContainer');
@@ -615,36 +613,12 @@
   const syncBtn = document.getElementById('syncBtn');
   const phoneInputGroup = document.getElementById('phoneInputGroup');
 
-  // Helper function to check if event is upcoming (not past)
   function isUpcomingEvent(eventDate) {
-    if (!eventDate) return true; // If no date, show it
+    if (!eventDate) return true;
     const now = new Date();
     const eventDateTime = new Date(eventDate);
-    // Set to beginning of today for comparison (midnight)
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    // Event is upcoming if it's today or in the future
     return eventDateTime >= today;
-  }
-
-  function updateCheckoutButtonState() {
-    const isEventValid = selectedEvent && selectedTicketType && ticketQuantity > 0;
-    const isPaymentSelected = selectedPaymentMethod !== null;
-    const available = selectedTicketType ? selectedTicketType.available : 0;
-    const quantityValid = ticketQuantity <= available && ticketQuantity > 0;
-    const enabled = isEventValid && isPaymentSelected && quantityValid;
-    requestPaymentBtn.disabled = !enabled;
-    if (!isPaymentSelected && (selectedEvent && selectedTicketType)) {
-      requestPaymentBtn.innerHTML = '⚠️ Select payment method first';
-    } else if (!selectedTicketType) {
-      requestPaymentBtn.innerHTML = '🎟️ Select a ticket type';
-    } else if (!quantityValid && selectedTicketType) {
-      requestPaymentBtn.innerHTML = `⚠️ Max ${selectedTicketType.available} tickets`;
-    } else {
-      if (selectedPaymentMethod === 'cash') requestPaymentBtn.innerHTML = '💰 Process Cash Payment';
-      else if (selectedPaymentMethod === 'card') requestPaymentBtn.innerHTML = '💳 Pay with Card';
-      else if (selectedPaymentMethod === 'wallet') requestPaymentBtn.innerHTML = '📲 Request Wallet Payment';
-      else requestPaymentBtn.innerHTML = '💰 Select payment method';
-    }
   }
 
   function showToast(msg, type = 'info') {
@@ -703,7 +677,7 @@
         window.print();
         showToast('Wristband sent to printer', 'success');
         const autoMsg = document.getElementById('autoResetMsg');
-        autoMsg.innerHTML = '✅ Wristbands printed! Preparing next sale in 5 seconds...';
+        autoMsg.innerHTML = '<i class="fas fa-check-circle"></i> Wristbands printed! Preparing next sale in 5 seconds...';
         setTimeout(() => { resetToNewSale(); autoMsg.innerHTML = ''; }, 5000);
       }, 200);
     } else { showToast('No wristband to print', 'error'); }
@@ -752,51 +726,131 @@
     return tickets;
   }
 
-  async function processCashPayment() { if (!selectedTicketType || ticketQuantity > selectedTicketType.available) { showToast('Invalid ticket/quantity', 'error'); return false; } requestPaymentBtn.disabled = true; requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Processing...'; try { const tickets = await issueTickets('cash_customer', null, 'Cash Customer'); await supabase.from('payment_requests').insert({ customer_phone: 'cash_customer', event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: selectedTicketType.price * ticketQuantity, channel: 'boxoffice', status: 'completed', payment_method: 'cash' }); await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Cash Customer'); showToast(`✅ ${ticketQuantity} ticket(s) issued!`, 'success'); await loadEvents(); return true; } catch (err) { showToast(err.message, 'error'); return false; } finally { requestPaymentBtn.disabled = false; updateCheckoutButtonState(); } }
-  async function processCardPayment() { if (!selectedTicketType || ticketQuantity > selectedTicketType.available) { showToast('Invalid ticket/quantity', 'error'); return false; } requestPaymentBtn.disabled = true; requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Initializing...'; try { const totalAmount = selectedTicketType.price * ticketQuantity; const amountCents = Math.round(totalAmount * 100); const { data: pendingTx, error: insertError } = await supabase.from('wallet_transactions').insert({ amount: totalAmount, type: 'topup', status: 'pending', provider: 'yoco', direction: 'credit', description: `Box office: ${ticketQuantity} x ${selectedTicketType.name}`, created_at: new Date().toISOString(), metadata: { payment_method: 'yoco_card', event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity } }).select('id').single(); if (insertError) throw new Error('Payment init failed'); const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('yoco-create-checkout', { body: { wallet_transaction_id: pendingTx.id, amount_cents: amountCents, currency: 'ZAR', metadata: { box_office: true, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity } } }); if (edgeError) throw new Error(edgeError.message); if (!edgeResponse?.checkout_url) throw new Error('No checkout URL'); sessionStorage.setItem('pendingBoxOfficePayment', JSON.stringify({ event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: totalAmount, transaction_id: pendingTx.id, ticket_name: selectedTicketType.name, event_name: selectedEvent.name })); window.location.href = edgeResponse.checkout_url; } catch (err) { showToast(err.message, 'error'); requestPaymentBtn.disabled = false; updateCheckoutButtonState(); return false; } }
-  async function processWalletPayment() { const phone = customerPhoneInput.value.trim(); if (!phone || !validatePhone(phone)) { showToast('Valid 10-digit phone required', 'error'); return; } requestPaymentBtn.disabled = true; try { const { data: profile } = await supabase.from('profiles').select('id').eq('phone', phone).maybeSingle(); const customerId = profile?.id; const totalAmount = selectedTicketType.price * ticketQuantity; const { data, error } = await supabase.from('payment_requests').insert({ customer_phone: phone, customer_profile_id: customerId, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: totalAmount, channel: 'boxoffice', status: 'pending', requested_at: new Date().toISOString(), expires_at: new Date(Date.now() + 2 * 60000).toISOString(), metadata: { payment_method: 'wallet' } }).select().single(); if (error) throw error; currentRequestId = data.id; requestStatusDiv.style.display = 'block'; requestStatusDiv.className = 'status-panel pending'; requestStatusDiv.innerHTML = `<i class="fas fa-hourglass-half"></i> Waiting for approval...<div class="timer-display" id="requestTimer">02:00</div>`; let seconds = 120; if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { seconds--; const timerEl = document.getElementById('requestTimer'); if (timerEl) timerEl.innerText = `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`; if (seconds <= 0) { clearInterval(countdownInterval); if (currentRequestId) { showToast('Request expired', 'error'); resetRequestFlow(); } } }, 1000); if (requestSubscription) requestSubscription.unsubscribe(); requestSubscription = supabase.channel(`payment-${currentRequestId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `id=eq.${currentRequestId}` }, async (payload) => { if (payload.new.status === 'approved') { clearInterval(countdownInterval); const tickets = await issueTickets(phone, customerId, 'Wallet Customer'); await supabase.from('payment_requests').update({ status: 'completed' }).eq('id', currentRequestId); await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Wallet Customer'); resetRequestFlow(); } else if (payload.new.status === 'rejected') { clearInterval(countdownInterval); showToast('Customer rejected', 'error'); resetRequestFlow(); } }).subscribe(); showToast('Request sent', 'success'); } catch (err) { showToast(err.message, 'error'); requestPaymentBtn.disabled = false; updateCheckoutButtonState(); } }
+  async function processCashPayment() {
+    if (!selectedTicketType || ticketQuantity > selectedTicketType.available) { showToast('Invalid ticket/quantity', 'error'); return false; }
+    requestPaymentBtn.disabled = true;
+    requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
+    try {
+      const tickets = await issueTickets('cash_customer', null, 'Cash Customer');
+      await supabase.from('payment_requests').insert({ customer_phone: 'cash_customer', event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: selectedTicketType.price * ticketQuantity, channel: 'boxoffice', status: 'completed', payment_method: 'cash' });
+      await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Cash Customer');
+      showToast(`Success: ${ticketQuantity} ticket(s) issued`, 'success');
+      await loadEvents();
+      return true;
+    } catch (err) { showToast(err.message, 'error'); return false; }
+    finally { requestPaymentBtn.disabled = false; updateCheckoutButtonState(); }
+  }
+
+  // FIXED CARD PAYMENT - exactly as working in payment.html
+  async function processCardPayment() {
+    if (!selectedTicketType || ticketQuantity > selectedTicketType.available) {
+      showToast('Invalid ticket/quantity', 'error');
+      return false;
+    }
+    requestPaymentBtn.disabled = true;
+    requestPaymentBtn.innerHTML = '<span class="loading-spinner"></span> Initializing secure payment...';
+    try {
+      const totalAmount = selectedTicketType.price * ticketQuantity;
+      const amountCents = Math.round(totalAmount * 100);
+      const transactionId = `BO_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Store payment context in sessionStorage for callback
+      const pendingPayment = {
+        event_id: selectedEvent.id,
+        ticket_type_id: selectedTicketType.id,
+        quantity: ticketQuantity,
+        total_amount: totalAmount,
+        ticket_name: selectedTicketType.name,
+        event_name: selectedEvent.name,
+        transaction_id: transactionId
+      };
+      sessionStorage.setItem('pendingBoxOfficePayment', JSON.stringify(pendingPayment));
+      
+      // Call Yoco edge function (public endpoint)
+      const response = await fetch(
+        'https://odpugxrihfspaucsdqjj.supabase.co/functions/v1/yoco-create-checkout',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount_cents: amountCents,
+            transaction_id: transactionId,
+            currency: 'ZAR',
+            metadata: { box_office: true, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity }
+          }),
+        }
+      );
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Payment initialization failed');
+      if (!data.checkout_url) throw new Error('No checkout URL received');
+      
+      // Redirect to Yoco checkout
+      window.location.href = data.checkout_url;
+    } catch (err) {
+      showToast(err.message, 'error');
+      requestPaymentBtn.disabled = false;
+      updateCheckoutButtonState();
+      return false;
+    }
+  }
+
+  async function processWalletPayment() {
+    const phone = customerPhoneInput.value.trim();
+    if (!phone || !validatePhone(phone)) { showToast('Valid 10-digit phone required', 'error'); return; }
+    requestPaymentBtn.disabled = true;
+    try {
+      const { data: profile } = await supabase.from('profiles').select('id').eq('phone', phone).maybeSingle();
+      const customerId = profile?.id;
+      const totalAmount = selectedTicketType.price * ticketQuantity;
+      const { data, error } = await supabase.from('payment_requests').insert({ customer_phone: phone, customer_profile_id: customerId, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: totalAmount, channel: 'boxoffice', status: 'pending', requested_at: new Date().toISOString(), expires_at: new Date(Date.now() + 2 * 60000).toISOString(), metadata: { payment_method: 'wallet' } }).select().single();
+      if (error) throw error;
+      currentRequestId = data.id;
+      requestStatusDiv.style.display = 'block';
+      requestStatusDiv.className = 'status-panel pending';
+      requestStatusDiv.innerHTML = `<i class="fas fa-hourglass-half"></i> Waiting for approval...<div class="timer-display" id="requestTimer">02:00</div>`;
+      let seconds = 120;
+      if (countdownInterval) clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => { seconds--; const timerEl = document.getElementById('requestTimer'); if (timerEl) timerEl.innerText = `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`; if (seconds <= 0) { clearInterval(countdownInterval); if (currentRequestId) { showToast('Request expired', 'error'); resetRequestFlow(); } } }, 1000);
+      if (requestSubscription) requestSubscription.unsubscribe();
+      requestSubscription = supabase.channel(`payment-${currentRequestId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `id=eq.${currentRequestId}` }, async (payload) => {
+        if (payload.new.status === 'approved') {
+          clearInterval(countdownInterval);
+          const tickets = await issueTickets(phone, customerId, 'Wallet Customer');
+          await supabase.from('payment_requests').update({ status: 'completed' }).eq('id', currentRequestId);
+          await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Wallet Customer');
+          resetRequestFlow();
+        } else if (payload.new.status === 'rejected') {
+          clearInterval(countdownInterval);
+          showToast('Customer rejected', 'error');
+          resetRequestFlow();
+        }
+      }).subscribe();
+      showToast('Request sent', 'success');
+    } catch (err) { showToast(err.message, 'error'); requestPaymentBtn.disabled = false; updateCheckoutButtonState(); }
+  }
   function resetRequestFlow() { if (countdownInterval) clearInterval(countdownInterval); if (requestSubscription) { requestSubscription.unsubscribe(); requestSubscription = null; } currentRequestId = null; requestStatusDiv.style.display = 'none'; updateCheckoutButtonState(); }
 
   async function loadEvents() {
     try {
       const { data: eventsData, error } = await supabase.from('events').select('*').eq('is_active', true).eq('status', 'active').order('start_time', { ascending: true });
       if (error) throw error;
-      
-      // Filter to only show upcoming events (today and future)
-      const upcomingEvents = (eventsData || []).filter(event => {
-        return isUpcomingEvent(event.start_time);
-      });
-      
-      // Load ticket types for upcoming events
+      const upcomingEvents = (eventsData || []).filter(event => isUpcomingEvent(event.start_time));
       for (let ev of upcomingEvents) {
         const { data: types } = await supabase.from('ticket_types').select('*').eq('event_id', ev.id);
         ev.ticketTypes = types || [];
       }
-      
-      // Filter to events that have at least one ticket type
       const eventsWithTickets = upcomingEvents.filter(ev => ev.ticketTypes.length > 0);
-      
       if (eventsWithTickets.length === 0) {
-        eventInfoDiv.innerHTML = '<div class="event-name" style="color: var(--orange);">📅 No upcoming events available</div><div class="event-meta">Check back later for future events</div>';
+        eventInfoDiv.innerHTML = '<div class="event-name" style="color: var(--orange);"><i class="fas fa-calendar-times"></i> No upcoming events available</div><div class="event-meta">Check back later for future events</div>';
         ticketContainer.innerHTML = '<div class="ticket-card disabled">No tickets available for upcoming events</div>';
-        selectedEvent = null;
-        selectedTicketType = null;
-        updateCheckoutButtonState();
-        return;
+        selectedEvent = null; selectedTicketType = null; updateCheckoutButtonState(); return;
       }
-      
       events = eventsWithTickets;
       selectedEvent = eventsWithTickets[0];
-      
-      if (selectedEvent) {
-        renderEvent();
-        renderTickets();
-      }
+      if (selectedEvent) { renderEvent(); renderTickets(); }
       updateCheckoutButtonState();
-    } catch (err) {
-      console.error('Load events error:', err);
-      showToast('Failed to load events: ' + err.message, 'error');
-    }
+    } catch (err) { console.error(err); showToast('Failed to load events: ' + err.message, 'error'); }
   }
   
   function renderEvent() { 
@@ -807,52 +861,52 @@
   }
   
   function renderTickets() { 
-    if (!selectedEvent?.ticketTypes?.length) { 
-      ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types</div>'; 
-      return; 
-    } 
+    if (!selectedEvent?.ticketTypes?.length) { ticketContainer.innerHTML = '<div class="ticket-card disabled">No ticket types</div>'; return; } 
     ticketContainer.innerHTML = selectedEvent.ticketTypes.map(tt => { 
       const available = (tt.capacity || 0) - (tt.sold || 0); 
-      return `<div class="ticket-card ${available <= 0 ? 'disabled' : ''}" data-id="${tt.id}" data-name="${escapeHtml(tt.name)}" data-price="${tt.price}" data-available="${available}"><div style="font-size: 32px;">🎟️</div><div style="font-weight: 700;">${escapeHtml(tt.name)}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div style="font-size: 0.7rem;">${available} left</div></div>`; 
+      return `<div class="ticket-card ${available <= 0 ? 'disabled' : ''}" data-id="${tt.id}" data-name="${escapeHtml(tt.name)}" data-price="${tt.price}" data-available="${available}"><div style="font-size: 32px;"><i class="fas fa-ticket-alt"></i></div><div style="font-weight: 700;">${escapeHtml(tt.name)}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div style="font-size: 0.7rem;">${available} left</div></div>`; 
     }).join(''); 
     document.querySelectorAll('.ticket-card:not(.disabled)').forEach(card => { 
       card.addEventListener('click', () => { 
         document.querySelectorAll('.ticket-card').forEach(c => c.classList.remove('selected')); 
         card.classList.add('selected'); 
         selectedTicketType = { id: card.dataset.id, name: card.dataset.name, price: parseInt(card.dataset.price), available: parseInt(card.dataset.available) }; 
-        updateSummary(); 
-        updateQuantityLimit(); 
-        updateCheckoutButtonState(); 
+        updateSummary(); updateQuantityLimit(); updateCheckoutButtonState(); 
       }); 
     }); 
-    const firstAvail = document.querySelector('.ticket-card:not(.disabled)'); 
-    if (firstAvail) firstAvail.click(); 
+    const firstAvail = document.querySelector('.ticket-card:not(.disabled)'); if (firstAvail) firstAvail.click(); 
   }
   
   function updateQuantityLimit() { 
-    if (!selectedTicketType) { 
-      incQty.disabled = true; 
-      decQty.disabled = true; 
-      return; 
-    } 
-    incQty.disabled = ticketQuantity >= Math.min(selectedTicketType.available, 10); 
-    decQty.disabled = ticketQuantity <= 1; 
-    updateCheckoutButtonState(); 
+    if (!selectedTicketType) { incQty.disabled = true; decQty.disabled = true; return; } 
+    incQty.disabled = ticketQuantity >= Math.min(selectedTicketType.available, 10); decQty.disabled = ticketQuantity <= 1; updateCheckoutButtonState(); 
   }
   
   function updateSummary() { 
-    if (!selectedTicketType) { 
-      summaryType.textContent = '—'; 
-      summaryPrice.textContent = 'R0'; 
-      summaryTotal.textContent = 'R0'; 
-      return; 
-    } 
+    if (!selectedTicketType) { summaryType.textContent = '—'; summaryPrice.textContent = 'R0'; summaryTotal.textContent = 'R0'; return; } 
     const total = selectedTicketType.price * ticketQuantity; 
     summaryType.textContent = selectedTicketType.name; 
     summaryPrice.textContent = `R${selectedTicketType.price.toLocaleString()}`; 
     summaryQty.textContent = ticketQuantity; 
-    summaryTotal.textContent = `R${total.toLocaleString()}`; 
-    updateCheckoutButtonState(); 
+    summaryTotal.textContent = `R${total.toLocaleString()}`; updateCheckoutButtonState(); 
+  }
+  
+  function updateCheckoutButtonState() {
+    const isEventValid = selectedEvent && selectedTicketType && ticketQuantity > 0;
+    const isPaymentSelected = selectedPaymentMethod !== null;
+    const available = selectedTicketType ? selectedTicketType.available : 0;
+    const quantityValid = ticketQuantity <= available && ticketQuantity > 0;
+    const enabled = isEventValid && isPaymentSelected && quantityValid;
+    requestPaymentBtn.disabled = !enabled;
+    if (!isPaymentSelected && (selectedEvent && selectedTicketType)) requestPaymentBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Select payment method first';
+    else if (!selectedTicketType) requestPaymentBtn.innerHTML = '<i class="fas fa-ticket-alt"></i> Select a ticket type';
+    else if (!quantityValid && selectedTicketType) requestPaymentBtn.innerHTML = `<i class="fas fa-ban"></i> Max ${selectedTicketType.available} tickets`;
+    else {
+      if (selectedPaymentMethod === 'cash') requestPaymentBtn.innerHTML = '<i class="fas fa-money-bill-wave"></i> Process Cash Payment';
+      else if (selectedPaymentMethod === 'card') requestPaymentBtn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Card';
+      else if (selectedPaymentMethod === 'wallet') requestPaymentBtn.innerHTML = '<i class="fas fa-wallet"></i> Request Wallet Payment';
+      else requestPaymentBtn.innerHTML = '<i class="fas fa-credit-card"></i> Select payment method';
+    }
   }
   
   decQty.addEventListener('click', () => { if (ticketQuantity > 1) { ticketQuantity--; qtyDisplay.textContent = ticketQuantity; updateSummary(); updateQuantityLimit(); } });
@@ -874,25 +928,39 @@
   
   initPaymentHandlers();
   loadEvents();
-  
-  const pendingPayment = sessionStorage.getItem('pendingBoxOfficePayment');
-  if (pendingPayment) { 
-    sessionStorage.removeItem('pendingBoxOfficePayment'); 
-    const payment = JSON.parse(pendingPayment); 
-    showToast('Payment successful!', 'success'); 
-    setTimeout(async () => { 
-      try { 
-        selectedEvent = events.find(e => e.id === payment.event_id); 
-        if (selectedEvent) { 
-          selectedTicketType = { id: payment.ticket_type_id, price: payment.total_amount / payment.quantity, name: payment.ticket_name || 'Ticket' }; 
-          ticketQuantity = payment.quantity; 
-          const tickets = await issueTickets('card_customer', null, 'Card Customer'); 
-          await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id); 
-          await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Card Customer'); 
-          await loadEvents(); 
-        } 
-      } catch (err) { showToast('Error: ' + err.message, 'error'); } 
-    }, 500); 
+
+  // Handle card payment return callback
+  const urlParams = new URLSearchParams(window.location.search);
+  const paymentStatus = urlParams.get('payment');
+  const transactionId = urlParams.get('transaction_id');
+  if (paymentStatus === 'success' && transactionId) {
+    const pending = sessionStorage.getItem('pendingBoxOfficePayment');
+    if (pending) {
+      sessionStorage.removeItem('pendingBoxOfficePayment');
+      const payment = JSON.parse(pending);
+      showToast('Card payment successful! Issuing tickets...', 'success');
+      setTimeout(async () => {
+        try {
+          selectedEvent = events.find(e => e.id === payment.event_id);
+          if (selectedEvent) {
+            selectedTicketType = { id: payment.ticket_type_id, price: payment.total_amount / payment.quantity, name: payment.ticket_name || 'Ticket', available: 999 };
+            ticketQuantity = payment.quantity;
+            const tickets = await issueTickets('card_customer', null, 'Card Customer');
+            await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Card Customer');
+            await loadEvents();
+          } else {
+            showToast('Event not found after payment', 'error');
+          }
+        } catch (err) { showToast('Error finalizing: ' + err.message, 'error'); }
+      }, 500);
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (paymentStatus === 'cancel') {
+    showToast('Card payment was cancelled', 'info');
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (paymentStatus === 'failed') {
+    showToast('Card payment failed. Please try again.', 'error');
+    window.history.replaceState({}, '', window.location.pathname);
   }
 </script>
 </body>
