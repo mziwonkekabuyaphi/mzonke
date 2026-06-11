@@ -7,7 +7,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+            }
+        }
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -15,14 +21,6 @@
             background: #f5f7fb;
             padding: 0;
             margin: 0;
-        }
-        .demo-banner {
-            background: #fef3c7;
-            color: #b45309;
-            text-align: center;
-            padding: 8px;
-            font-size: 0.75rem;
-            font-weight: 500;
         }
         .staff-module-container {
             max-width: 1400px;
@@ -72,6 +70,9 @@
             cursor: pointer;
             transition: all 0.2s;
             border-radius: 40px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
         .tab-button:hover {
             background: #fff0f0;
@@ -134,33 +135,41 @@
         .fa-toggle-on { color: #10b981; }
         .fa-toggle-off { color: #94a3b8; }
         .fa-trash-alt { color: #dc2626; }
-        .modules-container {
+        .shift-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 16px;
             margin-bottom: 24px;
         }
-        .module-card-item {
+        .shift-card {
             background: white;
             border-radius: 20px;
             padding: 20px;
             border: 1px solid #edf2f7;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .active-staff-card {
-            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
             border-left: 4px solid #10b981;
+            transition: 0.2s;
         }
-        .force-logout-btn {
-            background: #dc2626;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 30px;
-            font-size: 0.7rem;
-            cursor: pointer;
+        .shift-card:hover { transform: translateY(-3px); box-shadow: 0 6px 14px rgba(0,0,0,0.05); }
+        .activity-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .activity-item {
+            background: white;
+            border-radius: 16px;
+            padding: 14px 20px;
+            margin-bottom: 8px;
+            border: 1px solid #edf2f7;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .payroll-period {
+            display: flex;
+            gap: 16px;
+            align-items: flex-end;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
         }
         .btn-primary {
             background: #E30613;
@@ -247,34 +256,6 @@
             font-size: 34px;
             color: #E30613;
         }
-        .modal-container h3 {
-            font-size: 1.6rem;
-            font-weight: 800;
-            margin-bottom: 12px;
-            text-align: center;
-            color: #1e293b;
-        }
-        .modal-container p {
-            color: #475569;
-            line-height: 1.5;
-            margin: 16px 0 24px;
-            text-align: center;
-        }
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-        }
-        .modal-btn {
-            background: #E30613;
-            border: none;
-            padding: 12px 28px;
-            border-radius: 40px;
-            font-weight: 700;
-            cursor: pointer;
-            color: white;
-            width: 100%;
-        }
         .pin-hint {
             font-size: 0.7rem;
             color: #64748b;
@@ -286,63 +267,38 @@
             .stats-grid { gap: 12px; }
             .stat-number { font-size: 1.4rem; }
         }
+        .text-right { text-align: right; }
+        .mt-2 { margin-top: 8px; }
+        .mb-2 { margin-bottom: 8px; }
     </style>
 </head>
 <body>
 <div id="staffApp">
-    <!-- Demo banner (anon mode) -->
-    <div class="demo-banner">
-        <i class="fas fa-flask"></i> Demo Mode – Anonymous Access (no login required). Data operations depend on Supabase RLS policies.
-    </div>
     <div class="staff-module-container">
         <!-- Stats row -->
         <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Total Staff</div>
-                <div class="stat-number">{{ staffList.length }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Active Staff</div>
-                <div class="stat-number">{{ staffList.filter(s => s.status === 'Active').length }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">On Shift Now</div>
-                <div class="stat-number">{{ activeShiftsList.length }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Hours Today</div>
-                <div class="stat-number">{{ totalHoursToday.toFixed(1) }}h</div>
-            </div>
+            <div class="stat-card"><div class="stat-label">Total Staff</div><div class="stat-number">{{ staffList.length }}</div></div>
+            <div class="stat-card"><div class="stat-label">Active Staff</div><div class="stat-number">{{ staffList.filter(s => s.status === 'Active').length }}</div></div>
+            <div class="stat-card"><div class="stat-label">On Shift Now</div><div class="stat-number">{{ activeShifts.length }}</div></div>
+            <div class="stat-card"><div class="stat-label">Today's Hours</div><div class="stat-number">{{ totalHoursToday.toFixed(1) }}h</div></div>
         </div>
 
         <!-- Tabs -->
         <div class="tabs-container">
-            <button class="tab-button" :class="{ active: activeTab === 'accounts' }" @click="activeTab = 'accounts'">
-                <i class="fas fa-id-card"></i> Staff Accounts
-            </button>
-            <button class="tab-button" :class="{ active: activeTab === 'attendance' }" @click="activeTab = 'attendance'">
-                <i class="fas fa-clock"></i> Attendance
-            </button>
-            <button class="tab-button" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'">
-                <i class="fas fa-chart-line"></i> Activity
-            </button>
-            <button class="tab-button" :class="{ active: activeTab === 'reports' }" @click="activeTab = 'reports'">
-                <i class="fas fa-file-alt"></i> Reports
-            </button>
+            <button class="tab-button" :class="{ active: activeTab === 'accounts' }" @click="activeTab = 'accounts'"><i class="fas fa-id-card"></i> Staff Accounts</button>
+            <button class="tab-button" :class="{ active: activeTab === 'attendance' }" @click="activeTab = 'attendance'"><i class="fas fa-clock"></i> Attendance</button>
+            <button class="tab-button" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'"><i class="fas fa-history"></i> Activity Log</button>
+            <button class="tab-button" :class="{ active: activeTab === 'payroll' }" @click="activeTab = 'payroll'"><i class="fas fa-file-invoice-dollar"></i> Payroll</button>
         </div>
 
-        <!-- Staff Accounts Tab -->
+        <!-- STAFF ACCOUNTS TAB -->
         <div v-if="activeTab === 'accounts'">
             <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
-                <button class="btn-primary" @click="openCreateStaffModal">
-                    <i class="fas fa-plus"></i> Add Staff
-                </button>
+                <button class="btn-primary" @click="openCreateStaffModal"><i class="fas fa-plus"></i> Add Staff</button>
             </div>
             <div class="table-wrapper">
                 <table class="data-table">
-                    <thead>
-                        <tr><th>Name</th><th>Role</th><th>Phone</th><th>Hourly Rate</th><th>Clock‑in PIN</th><th>Status</th><th>Created</th><th>Actions</th></tr>
-                    </thead>
+                    <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Hourly Rate</th><th>Clock‑in PIN</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
                     <tbody>
                         <tr v-for="staff in staffList" :key="staff.id">
                             <td><strong>{{ staff.name }} {{ staff.surname }}</strong></td>
@@ -352,11 +308,11 @@
                             <td><span class="status-badge" :class="staff.clock_in_pin ? 'status-active' : 'status-inactive'">{{ staff.clock_in_pin || 'Not set' }}</span></td>
                             <td><span class="status-badge" :class="staff.status === 'Active' ? 'status-active' : 'status-inactive'">{{ staff.status }}</span></td>
                             <td>{{ formatDate(staff.created_at) }}</td>
-                            <td><div class="action-icons">
+                            <td class="action-icons">
                                 <i class="fas fa-edit" @click="editStaff(staff)"></i>
                                 <i class="fas" :class="staff.status === 'Active' ? 'fa-toggle-on' : 'fa-toggle-off'" @click="toggleStaffStatus(staff.id)"></i>
                                 <i class="fas fa-trash-alt" @click="deleteStaff(staff.id)"></i>
-                            </div></td>
+                            </td>
                         </tr>
                         <tr v-if="staffList.length === 0"><td colspan="8" style="text-align:center;">No staff members found</td></tr>
                     </tbody>
@@ -364,41 +320,79 @@
             </div>
         </div>
 
-        <!-- Attendance Tab -->
+        <!-- ATTENDANCE TAB -->
         <div v-if="activeTab === 'attendance'">
-            <div class="stats-grid" style="margin-bottom: 24px;">
-                <div class="stat-card"><div class="stat-number">{{ activeShiftsList.length }}</div><div class="stat-label">On Shift</div></div>
+            <div class="shift-cards" v-if="activeShifts.length">
+                <div v-for="shift in activeShifts" :key="shift.id" class="shift-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div><i class="fas fa-user-circle fa-2x" style="color:#E30613;"></i></div>
+                        <button class="btn-outline" style="background:#dc2626; color:white; border:none;" @click="forceLogout(shift)">Force Logout</button>
+                    </div>
+                    <h3 style="margin: 10px 0 4px;">{{ shift.staff_name }}</h3>
+                    <div class="role-badge" style="background:#f1f5f9;">{{ getRoleDisplay(shift.staff_role) }}</div>
+                    <div style="margin-top: 12px;"><i class="fas fa-clock"></i> Started: {{ formatDateTime(shift.login_time) }}</div>
+                    <div><i class="fas fa-hourglass-half"></i> Duration: {{ calculateDuration(shift.login_time) }}</div>
+                </div>
+            </div>
+            <div v-else class="stat-card" style="text-align:center; padding:40px;">No active shifts</div>
+            <div class="stats-grid" style="margin-top: 28px;">
                 <div class="stat-card"><div class="stat-number">{{ totalHoursToday.toFixed(1) }}h</div><div class="stat-label">Total Hours Today</div></div>
                 <div class="stat-card"><div class="stat-number">{{ avgHoursPerStaff.toFixed(1) }}h</div><div class="stat-label">Avg Hours/Staff</div></div>
             </div>
-            <h3 style="margin-bottom: 16px; font-size: 1rem;">Currently Active Shifts</h3>
-            <div class="modules-container">
-                <div v-for="shift in activeShiftsList" :key="shift.id" class="module-card-item active-staff-card">
-                    <div>
-                        <h4><i class="fas fa-user-circle"></i> {{ shift.staff_name }}</h4>
-                        <p style="font-size:0.75rem;">Started: {{ formatDateTime(shift.login_time) }} | Duration: {{ calculateDuration(shift.login_time) }}</p>
-                        <p style="font-size:0.7rem;">Role: {{ getRoleDisplay(shift.staff_role) }}</p>
+        </div>
+
+        <!-- ACTIVITY LOG TAB -->
+        <div v-if="activeTab === 'activity'">
+            <div class="activity-list" v-if="activityLogs.length">
+                <div v-for="log in activityLogs" :key="log.id" class="activity-item">
+                    <i class="fas fa-user-circle" style="font-size:1.4rem; color:#E30613;"></i>
+                    <div style="flex:1;">
+                        <strong>{{ log.staff_name }}</strong> <span class="role-badge" style="background:#f1f5f9;">{{ getRoleDisplay(log.staff_role) }}</span>
+                        <div style="font-size:0.75rem; color:#475569;">{{ log.action }} · {{ log.module }}</div>
+                        <div style="font-size:0.7rem; color:#94a3b8;">{{ formatDateTime(log.created_at) }}</div>
                     </div>
-                    <button class="force-logout-btn" @click="forceLogout(shift)">Force Logout</button>
+                    <i class="fas fa-circle" style="font-size:0.6rem; color:#10b981;"></i>
                 </div>
-                <div v-if="activeShiftsList.length === 0" class="stat-card" style="text-align:center; padding:32px;">No active shifts</div>
             </div>
+            <div v-else class="stat-card" style="text-align:center; padding:40px;">No activity yet</div>
         </div>
 
-        <!-- Activity Tab (placeholder) -->
-        <div v-if="activeTab === 'activity'" class="stat-card" style="text-align:center; padding: 60px;">
-            <i class="fas fa-chart-line fa-3x" style="color:#E30613;"></i>
-            <h3 style="margin-top:12px;">Real‑time Activity</h3>
-            <p>Staff actions will appear here soon.</p>
-        </div>
-
-        <!-- Reports Tab -->
-        <div v-if="activeTab === 'reports'" class="stat-card" style="text-align:center; padding: 60px;">
-            <button class="btn-primary" @click="exportAttendanceReport"><i class="fas fa-download"></i> Export Attendance Report</button>
+        <!-- PAYROLL TAB -->
+        <div v-if="activeTab === 'payroll'">
+            <div class="payroll-period">
+                <div class="form-group" style="flex:1;">
+                    <label>Period Start</label>
+                    <input type="date" class="form-control" v-model="payrollPeriod.start">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Period End</label>
+                    <input type="date" class="form-control" v-model="payrollPeriod.end">
+                </div>
+                <button class="btn-primary" @click="loadPayrollEntries">Calculate</button>
+                <button class="btn-outline" @click="exportPayroll">Export CSV</button>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead><tr><th>Staff</th><th>Hours Worked</th><th>Hourly Rate</th><th>Gross Pay</th><th>Deductions</th><th>Final Pay</th><th>Status</th><th>Action</th></tr></thead>
+                    <tbody>
+                        <tr v-for="entry in payrollEntries" :key="entry.id">
+                            <td><strong>{{ entry.staff_name }}</strong></td>
+                            <td>{{ entry.hours_worked.toFixed(2) }}h</td>
+                            <td>R{{ entry.hourly_rate.toFixed(2) }}</td>
+                            <td>R{{ entry.gross_pay.toFixed(2) }}</td>
+                            <td><input type="number" class="form-control" style="width:80px;" v-model.number="entry.deductions" @change="updatePayrollEntry(entry)"></td>
+                            <td><strong>R{{ (entry.gross_pay - entry.deductions).toFixed(2) }}</strong></td>
+                            <td><span class="status-badge" :class="entry.payment_status === 'paid' ? 'status-active' : 'status-inactive'">{{ entry.payment_status }}</span></td>
+                            <td><button class="btn-outline" style="padding:4px 12px;" @click="markPayrollPaid(entry)" v-if="entry.payment_status !== 'paid'">Mark Paid</button></td>
+                        </tr>
+                        <tr v-if="!payrollEntries.length"><td colspan="8" style="text-align:center;">Select a period and click Calculate</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <!-- Staff Form Modal (with Clock‑in PIN field) -->
+    <!-- Staff Form Modal -->
     <div class="modal-mask" :class="{ active: showStaffModal }">
         <div class="modal-container">
             <h3>{{ isEditing ? 'Edit Staff' : 'Add Staff' }}</h3>
@@ -420,7 +414,7 @@
             <div class="form-group"><label>Hourly Rate (ZAR) *</label><input class="form-control" v-model.number="staffForm.hourly_rate" type="number" step="0.50"></div>
             <div class="form-group"><label>Clock‑in PIN (4‑6 digits) *</label><input class="form-control" v-model="staffForm.clock_in_pin" type="text" maxlength="6" pattern="[0-9]+" placeholder="e.g., 1234"></div>
             <div class="pin-hint"><i class="fas fa-info-circle"></i> Staff will use this PIN to clock in at the gate kiosk.</div>
-            <div class="modal-buttons">
+            <div class="modal-buttons" style="display: flex; gap:12px; margin-top:16px;">
                 <button class="btn-outline" @click="closeStaffModal" style="flex:1;">Cancel</button>
                 <button class="btn-primary" @click="saveStaff" style="flex:1;" :disabled="saving">Save</button>
             </div>
@@ -433,23 +427,22 @@
             <div class="modal-icon"><i :class="infoIcon"></i></div>
             <h3>{{ infoTitle }}</h3>
             <p>{{ infoMessage }}</p>
-            <button class="modal-btn" @click="showInfoModal = false">Got it</button>
+            <button class="btn-primary" style="width:100%;" @click="showInfoModal = false">Got it</button>
         </div>
     </div>
 </div>
 
-<script>
-    // Supabase config (using anon key – already public)
-    const SUPABASE_URL = 'https://odpugxrihfspaucsdqjj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxYmNpZGNlenZwcnJhbmZ4aHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjY0ODgsImV4cCI6MjA5MzIwMjQ4OH0.eGCEE-lA8yLGjU1nFXv_A1RjbWvRbb5Mfm8FMzVRgHI';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+<script type="module">
+    import { supabase } from '../config/supabase.js';
 
     new Vue({
         el: '#staffApp',
         data: {
             activeTab: 'accounts',
             staffList: [],
-            shifts: [],       // all shifts from Supabase
+            shifts: [],           // all staff_shifts
+            activityLogs: [],     // from staff_activity_logs
+            payrollEntries: [],
             showStaffModal: false,
             showInfoModal: false,
             isEditing: false,
@@ -458,11 +451,11 @@
             saving: false,
             infoTitle: '',
             infoMessage: '',
-            infoIcon: 'fas fa-check-circle'
+            infoIcon: 'fas fa-check-circle',
+            payrollPeriod: { start: new Date(new Date().setDate(1)).toISOString().split('T')[0], end: new Date().toISOString().split('T')[0] }
         },
         computed: {
-            activeShiftsList() {
-                // filter active shifts, join staff names
+            activeShifts() {
                 const active = this.shifts.filter(s => s.status === 'active');
                 return active.map(shift => {
                     const staff = this.staffList.find(st => st.id === shift.staff_id);
@@ -483,9 +476,7 @@
                         else if (s.status === 'active' && s.login_time) {
                             const hours = (new Date() - new Date(s.login_time)) / (1000*60*60);
                             total += hours;
-                        } else if (s.logout_time && s.hours_worked) {
-                            total += s.hours_worked;
-                        }
+                        } else if (s.logout_time && s.hours_worked) total += s.hours_worked;
                     }
                 });
                 return total;
@@ -497,13 +488,8 @@
         methods: {
             getRoleDisplay(role) {
                 const map = {
-                    staff: 'General Worker',
-                    security: 'Security',
-                    cleaner: 'Cleaner',
-                    scanner: 'Scanner',
-                    shisha: 'Shisha Master',
-                    cashier: 'Cashier',
-                    vvip: 'VVIP Concierge'
+                    staff: 'General Worker', security: 'Security', cleaner: 'Cleaner', scanner: 'Scanner',
+                    shisha: 'Shisha Master', cashier: 'Cashier', vvip: 'VVIP Concierge'
                 };
                 return map[role] || role;
             },
@@ -519,63 +505,45 @@
                 this.infoIcon = icon;
                 this.showInfoModal = true;
             },
-
-            // Load all staff (no tenant filter)
             async loadStaff() {
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('id, name, surname, email, role, phone, hourly_rate, status, created_at, clock_in_pin')
                     .in('role', ['staff', 'security', 'cleaner', 'scanner', 'shisha', 'cashier', 'vvip'])
                     .order('created_at', { ascending: false });
-                if (error) {
-                    console.error(error);
-                    this.showAlert('Error', 'Failed to load staff', 'fas fa-exclamation-triangle');
-                    return;
-                }
+                if (error) { this.showAlert('Error', 'Failed to load staff', 'fas fa-exclamation-triangle'); return; }
                 this.staffList = data || [];
             },
-
-            // Load all shifts from Supabase
             async loadShifts() {
-                const { data, error } = await supabase
-                    .from('staff_shifts')
-                    .select('*')
-                    .order('login_time', { ascending: false });
-                if (error) {
-                    console.error('Error loading shifts:', error);
-                    // If table doesn't exist, show warning but don't break
-                    if (error.code === '42P01') {
-                        console.warn('staff_shifts table does not exist yet');
-                        this.shifts = [];
-                    } else {
-                        this.showAlert('Error', 'Failed to load shift data', 'fas fa-exclamation-triangle');
-                    }
-                    return;
-                }
+                const { data, error } = await supabase.from('staff_shifts').select('*').order('login_time', { ascending: false });
+                if (error && error.code !== '42P01') this.showAlert('Error', 'Shift data error', 'fas fa-exclamation-triangle');
                 this.shifts = data || [];
             },
-
-            // Force logout: update shift record in Supabase
+            async loadActivityLogs() {
+                const { data, error } = await supabase
+                    .from('staff_activity_logs')
+                    .select('*, staff_id')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+                if (error && error.code !== '42P01') this.showAlert('Error', 'Activity log error', 'fas fa-exclamation-triangle');
+                if (data) {
+                    this.activityLogs = await Promise.all(data.map(async log => {
+                        const staff = this.staffList.find(s => s.id === log.staff_id);
+                        return { ...log, staff_name: staff ? `${staff.name} ${staff.surname}` : 'Unknown', staff_role: staff?.role };
+                    }));
+                } else this.activityLogs = [];
+            },
             async forceLogout(shift) {
                 if (!confirm(`Force logout ${shift.staff_name}?`)) return;
                 const now = new Date();
                 const hours = (now - new Date(shift.login_time)) / (1000 * 60 * 60);
-                const { error } = await supabase
-                    .from('staff_shifts')
-                    .update({
-                        logout_time: now.toISOString(),
-                        status: 'completed',
-                        hours_worked: hours
-                    })
-                    .eq('id', shift.id);
-                if (error) {
-                    this.showAlert('Error', 'Failed to update shift', 'fas fa-exclamation-triangle');
-                    return;
-                }
+                const { error } = await supabase.from('staff_shifts').update({
+                    logout_time: now.toISOString(), status: 'completed', hours_worked: hours
+                }).eq('id', shift.id);
+                if (error) { this.showAlert('Error', 'Force logout failed', 'fas fa-exclamation-triangle'); return; }
                 await this.loadShifts();
                 this.showAlert('Force Logout', `${shift.staff_name} logged out. Hours: ${hours.toFixed(2)}h`, 'fas fa-sign-out-alt');
             },
-
             openCreateStaffModal() {
                 this.isEditing = false;
                 this.editingStaffId = null;
@@ -586,59 +554,36 @@
                 this.isEditing = true;
                 this.editingStaffId = staff.id;
                 this.staffForm = {
-                    name: staff.name,
-                    surname: staff.surname,
-                    email: staff.email,
-                    password: '',
-                    role: staff.role,
-                    hourly_rate: staff.hourly_rate,
-                    clock_in_pin: staff.clock_in_pin || ''
+                    name: staff.name, surname: staff.surname, email: staff.email, password: '',
+                    role: staff.role, hourly_rate: staff.hourly_rate, clock_in_pin: staff.clock_in_pin || ''
                 };
                 this.showStaffModal = true;
             },
-            closeStaffModal() {
-                this.showStaffModal = false;
-                this.staffForm = { name: '', surname: '', email: '', password: '', role: 'staff', hourly_rate: 0, clock_in_pin: '' };
-                this.saving = false;
-            },
+            closeStaffModal() { this.showStaffModal = false; this.saving = false; },
             async saveStaff() {
-                if (!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email) {
-                    return this.showAlert('Missing', 'Name, surname and email are required', 'fas fa-exclamation-triangle');
-                }
-                if (!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6)) {
+                if (!this.staffForm.name || !this.staffForm.surname || !this.staffForm.email)
+                    return this.showAlert('Missing', 'Name, surname and email required', 'fas fa-exclamation-triangle');
+                if (!this.isEditing && (!this.staffForm.password || this.staffForm.password.length < 6))
                     return this.showAlert('Invalid', 'Password must be at least 6 characters', 'fas fa-lock');
-                }
-                if (!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0) {
+                if (!this.staffForm.hourly_rate || this.staffForm.hourly_rate <= 0)
                     return this.showAlert('Invalid', 'Hourly rate must be > 0', 'fas fa-exclamation-triangle');
-                }
-                if (!this.staffForm.clock_in_pin || !/^\d{4,6}$/.test(this.staffForm.clock_in_pin)) {
+                if (!this.staffForm.clock_in_pin || !/^\d{4,6}$/.test(this.staffForm.clock_in_pin))
                     return this.showAlert('Invalid', 'Clock‑in PIN must be 4‑6 digits', 'fas fa-exclamation-triangle');
-                }
                 this.saving = true;
                 try {
                     if (this.isEditing) {
-                        const { error } = await supabase
-                            .from('profiles')
-                            .update({
-                                name: this.staffForm.name,
-                                surname: this.staffForm.surname,
-                                email: this.staffForm.email,
-                                role: this.staffForm.role,
-                                hourly_rate: parseFloat(this.staffForm.hourly_rate),
-                                clock_in_pin: this.staffForm.clock_in_pin
-                            })
-                            .eq('id', this.editingStaffId);
+                        const { error } = await supabase.from('profiles').update({
+                            name: this.staffForm.name, surname: this.staffForm.surname, email: this.staffForm.email,
+                            role: this.staffForm.role, hourly_rate: parseFloat(this.staffForm.hourly_rate),
+                            clock_in_pin: this.staffForm.clock_in_pin
+                        }).eq('id', this.editingStaffId);
                         if (error) throw new Error(error.message);
-                        this.showAlert('Success', 'Staff updated successfully', 'fas fa-check-circle');
+                        this.showAlert('Success', 'Staff updated', 'fas fa-check-circle');
                     } else {
-                        // Create via edge function
                         const payload = {
-                            email: this.staffForm.email,
-                            password: this.staffForm.password,
-                            name: this.staffForm.name,
-                            surname: this.staffForm.surname,
-                            role: this.staffForm.role,
-                            hourly_rate: parseFloat(this.staffForm.hourly_rate),
+                            email: this.staffForm.email, password: this.staffForm.password,
+                            name: this.staffForm.name, surname: this.staffForm.surname,
+                            role: this.staffForm.role, hourly_rate: parseFloat(this.staffForm.hourly_rate),
                             clock_in_pin: this.staffForm.clock_in_pin
                         };
                         const { data, error } = await supabase.functions.invoke('create-staff', { body: payload });
@@ -648,49 +593,121 @@
                     }
                     this.closeStaffModal();
                     await this.loadStaff();
-                    await this.loadShifts(); // refresh shifts (new staff may have shifts already)
+                    await this.loadShifts();
+                    await this.loadActivityLogs();
                 } catch (err) {
                     console.error(err);
-                    this.showAlert('Creation failed', err.message, 'fas fa-exclamation-triangle');
-                } finally {
-                    this.saving = false;
-                }
+                    this.showAlert('Failed', err.message, 'fas fa-exclamation-triangle');
+                } finally { this.saving = false; }
             },
             async toggleStaffStatus(id) {
                 const staff = this.staffList.find(s => s.id === id);
                 if (!staff) return;
                 const newStatus = staff.status === 'Active' ? 'Inactive' : 'Active';
                 const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', id);
-                if (error) {
-                    this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation-triangle');
-                    return;
-                }
+                if (error) { this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation-triangle'); return; }
                 await this.loadStaff();
                 this.showAlert('Status Updated', `${staff.name} ${staff.surname} is now ${newStatus}`, 'fas fa-toggle-on');
             },
             async deleteStaff(id) {
                 const staff = this.staffList.find(s => s.id === id);
-                if (!staff) return;
-                if (!confirm(`Delete ${staff.name} ${staff.surname} permanently?`)) return;
+                if (!staff || !confirm(`Delete ${staff.name} ${staff.surname} permanently?`)) return;
                 const { error } = await supabase.from('profiles').delete().eq('id', id);
-                if (error) {
-                    this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation-triangle');
-                    return;
-                }
+                if (error) { this.showAlert('Error', 'Failed to delete staff', 'fas fa-exclamation-triangle'); return; }
                 await this.loadStaff();
-                await this.loadShifts(); // shifts remain but will show unknown staff
+                await this.loadShifts();
+                await this.loadActivityLogs();
                 this.showAlert('Deleted', 'Staff profile removed', 'fas fa-trash-alt');
             },
-            exportAttendanceReport() {
-                this.showAlert('Report Ready', 'Attendance data exported (CSV placeholder)', 'fas fa-download');
+            async loadPayrollEntries() {
+                if (!this.payrollPeriod.start || !this.payrollPeriod.end) return this.showAlert('Invalid', 'Select period dates', 'fas fa-exclamation-triangle');
+                const start = new Date(this.payrollPeriod.start);
+                const end = new Date(this.payrollPeriod.end);
+                end.setHours(23,59,59);
+                // Get all shifts in period
+                const { data: shiftsData, error } = await supabase
+                    .from('staff_shifts')
+                    .select('*, staff_id')
+                    .gte('login_time', start.toISOString())
+                    .lte('login_time', end.toISOString())
+                    .eq('status', 'completed');
+                if (error) { this.showAlert('Error', 'Could not fetch shifts', 'fas fa-exclamation-triangle'); return; }
+                // Aggregate hours per staff
+                const hoursMap = new Map();
+                shiftsData.forEach(shift => {
+                    const hrs = shift.hours_worked || 0;
+                    hoursMap.set(shift.staff_id, (hoursMap.get(shift.staff_id) || 0) + hrs);
+                });
+                const entries = [];
+                for (const staff of this.staffList) {
+                    const hours = hoursMap.get(staff.id) || 0;
+                    if (hours === 0) continue;
+                    const hourlyRate = staff.hourly_rate || 0;
+                    const gross = hours * hourlyRate;
+                    // Check if payroll entry already exists
+                    const { data: existing } = await supabase
+                        .from('staff_payroll')
+                        .select('*')
+                        .eq('staff_id', staff.id)
+                        .eq('period_start', this.payrollPeriod.start)
+                        .eq('period_end', this.payrollPeriod.end)
+                        .maybeSingle();
+                    if (existing) {
+                        entries.push({
+                            id: existing.id, staff_id: staff.id, staff_name: `${staff.name} ${staff.surname}`,
+                            hours_worked: hours, hourly_rate: hourlyRate, gross_pay: gross,
+                            deductions: existing.deductions || 0, payment_status: existing.payment_status
+                        });
+                    } else {
+                        entries.push({
+                            id: null, staff_id: staff.id, staff_name: `${staff.name} ${staff.surname}`,
+                            hours_worked: hours, hourly_rate: hourlyRate, gross_pay: gross,
+                            deductions: 0, payment_status: 'pending'
+                        });
+                    }
+                }
+                this.payrollEntries = entries;
+            },
+            async updatePayrollEntry(entry) {
+                const finalPay = entry.gross_pay - entry.deductions;
+                if (entry.id) {
+                    await supabase.from('staff_payroll').update({ deductions: entry.deductions, final_pay: finalPay }).eq('id', entry.id);
+                } else {
+                    const { data } = await supabase.from('staff_payroll').insert({
+                        staff_id: entry.staff_id, hours_worked: entry.hours_worked, hourly_rate: entry.hourly_rate,
+                        gross_pay: entry.gross_pay, deductions: entry.deductions, final_pay: finalPay,
+                        period_start: this.payrollPeriod.start, period_end: this.payrollPeriod.end, payment_status: 'pending'
+                    }).select().single();
+                    if (data) entry.id = data.id;
+                }
+                this.showAlert('Updated', 'Deductions saved', 'fas fa-check-circle');
+            },
+            async markPayrollPaid(entry) {
+                if (!entry.id) await this.updatePayrollEntry(entry);
+                const { error } = await supabase.from('staff_payroll').update({ payment_status: 'paid' }).eq('id', entry.id);
+                if (error) { this.showAlert('Error', 'Failed to update status', 'fas fa-exclamation-triangle'); return; }
+                entry.payment_status = 'paid';
+                this.showAlert('Paid', 'Payroll marked as paid', 'fas fa-check-circle');
+            },
+            exportPayroll() {
+                let csv = "Staff Name,Hours Worked,Rate,Gross Pay,Deductions,Final Pay,Status\n";
+                this.payrollEntries.forEach(e => {
+                    csv += `"${e.staff_name}",${e.hours_worked},${e.hourly_rate},${e.gross_pay},${e.deductions},${e.gross_pay - e.deductions},${e.payment_status}\n`;
+                });
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `payroll_${this.payrollPeriod.start}_to_${this.payrollPeriod.end}.csv`;
+                link.click();
+                URL.revokeObjectURL(link.href);
             }
         },
         async mounted() {
-            // REMOVED AUTH CHECK – direct data loading for anon mode
             await this.loadStaff();
             await this.loadShifts();
-            // Refresh shifts every 10 seconds to keep active status up to date
-            setInterval(() => this.loadShifts(), 10000);
+            await this.loadActivityLogs();
+            setInterval(() => this.loadShifts(), 15000);
+            setInterval(() => this.loadActivityLogs(), 30000);
         }
     });
 </script>
