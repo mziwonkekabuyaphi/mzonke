@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Rands Kiosk | Gate + Wallet + Wristband</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,800;0,900;1,400&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator-1.4.4/qrcode-generator.min.js"></script>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #E30613;
+      --red-hover: #B00510;
+      --red-glow: rgba(227,6,19,0.25);
+      --bg: #0C0C0C;
+      --glass: rgba(255,255,255,0.04);
+      --glass-border: rgba(255,255,255,0.08);
+      --glass-hover: rgba(255,255,255,0.07);
+      --text: #FFFFFF;
+      --muted: #888;
+      --success: #22C55E;
+      --success-bg: rgba(34,197,94,0.1);
+      --warning: #F59E0B;
+      --radius-lg: 28px;
+      --radius-pill: 60px;
+    }
+
+    html { -webkit-font-smoothing: antialiased; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Atmospheric background ── */
+    #bg-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 90% 55% at 50% -5%, rgba(227,6,19,0.16) 0%, transparent 62%),
+        radial-gradient(ellipse 40% 30% at 80% 90%, rgba(227,6,19,0.06) 0%, transparent 50%),
+        var(--bg);
+      pointer-events: none;
+    }
+    #bg-layer::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    /* ── Page header ── */
+    .page-header {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.2rem 2.4rem 0;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    .brand-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-pill .logotype {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-size: 1.6rem;
+      letter-spacing: -1px;
+      color: var(--text);
+    }
+    .brand-pill .logotype span { color: var(--red); }
+    .brand-pill .divider { width: 1px; height: 24px; background: var(--glass-border); }
+    .brand-pill .tagline { font-size: 0.65rem; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); }
+    .header-status { display: flex; align-items: center; gap: 18px; padding-bottom: 1.2rem; }
+    .dot-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-pill);
+      padding: 6px 14px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .dot-badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-badge .dot.green { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse-dot 2s infinite; }
+    .dot-badge .dot.red { background: var(--red); box-shadow: 0 0 8px var(--red); animation: pulse-dot 1.5s infinite; }
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+    /* ── Layout ── */
+    .kiosk-layout {
+      position: relative;
+      z-index: 2;
+      max-width: 1520px;
+      margin: 0 auto;
+      padding: 1.8rem 2rem 2.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1.05fr;
+      gap: 1.8rem;
+      align-items: start;
+    }
+    @media (max-width: 1000px) { .kiosk-layout { grid-template-columns: 1fr; padding: 1rem; } }
+
+    /* ── Glass Card ── */
+    .glass-card {
+      background: var(--glass);
+      backdrop-filter: blur(18px) saturate(1.2);
+      -webkit-backdrop-filter: blur(18px) saturate(1.2);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      padding: 1.8rem;
+      transition: border-color 0.25s;
+    }
+    .glass-card:hover { border-color: rgba(255,255,255,0.12); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 1.4rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    .card-icon { width: 32px; height: 32px; color: var(--red); flex-shrink: 0; }
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.65rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .card-meta { margin-left: auto; font-size: 0.65rem; color: var(--muted); font-weight: 500; }
+
+    /* ── Scanner section ── */
+    .scanner-stage {
+      background: #050509;
+      border-radius: 20px;
+      border: 1px solid rgba(227,6,19,0.2);
+      padding: 1.6rem;
+      margin-bottom: 1.2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .scan-visual {
+      position: relative;
+      background: #000;
+      border-radius: 16px;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      overflow: hidden;
+    }
+    .scan-line {
+      position: absolute;
+      width: 78%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #E30613, #ff7070, #E30613, transparent);
+      left: 11%;
+      border-radius: 2px;
+      animation: scanline 2.2s infinite ease-in-out;
+    }
+    @keyframes scanline {
+      0%   { top: 12%; opacity: 0.3; }
+      45%  { top: 86%; opacity: 1; }
+      55%  { top: 86%; opacity: 1; }
+      100% { top: 12%; opacity: 0.3; }
+    }
+    .scan-corners {
+      position: absolute;
+      inset: 12px;
+      pointer-events: none;
+    }
+    .scan-corners::before,
+    .scan-corners::after {
+      content: '';
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-color: var(--red);
+      border-style: solid;
+    }
+    .scan-corners::before { top: 0; left: 0; border-width: 2px 0 0 2px; border-radius: 3px 0 0 0; }
+    .scan-corners::after  { top: 0; right: 0; border-width: 2px 2px 0 0; border-radius: 0 3px 0 0; }
+    .scan-corners-btm::before,
+    .scan-corners-btm::after {
+      content: '';
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-color: var(--red);
+      border-style: solid;
+    }
+    .scan-corners-btm::before { bottom: 0; left: 0; border-width: 0 0 2px 2px; border-radius: 0 0 0 3px; }
+    .scan-corners-btm::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
+
+    .scan-icon { font-size: 2rem; margin-bottom: 0.4rem; display: block; }
+    .scan-label { font-weight: 700; font-size: 0.85rem; color: var(--red); letter-spacing: 2px; text-transform: uppercase; }
+    .scan-hint { font-size: 0.65rem; color: var(--muted); margin-top: 5px; }
+
+    /* ── Check-in result card ── */
+    .checkin-result {
+      display: none;
+      border-radius: 16px;
+      padding: 1rem 1.2rem;
+      margin-top: 1rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border: 1px solid;
+    }
+    .checkin-result.success { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.3); color: #4ade80; }
+    .checkin-result.error   { background: rgba(227,6,19,0.08); border-color: rgba(227,6,19,0.3); color: #ff7070; }
+    .checkin-result.show    { display: block; }
+    .checkin-result .result-name { font-family: 'Playfair Display', serif; font-size: 1.1rem; margin: 2px 0; }
+
+    /* ── Forms ── */
+    .form-row { margin-bottom: 1rem; }
+    .form-row label {
+      display: block;
+      font-size: 0.63rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2.5px;
+      color: var(--muted);
+      margin-bottom: 7px;
+    }
+    .kiosk-input {
+      width: 100%;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-pill);
+      padding: 0.95rem 1.4rem;
+      font-size: 0.95rem;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .kiosk-input:focus {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px var(--red-glow);
+      background: rgba(255,255,255,0.09);
+    }
+    .kiosk-input::placeholder { color: rgba(255,255,255,0.25); }
+    select.kiosk-input {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888'%3E%3Cpath stroke-width='2' d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1.1rem center;
+      background-size: 16px;
+      padding-right: 2.5rem;
+      cursor: pointer;
+      background-color: rgba(255,255,255,0.07);
+    }
+    select.kiosk-input option { background: #1a1a1a; color: #fff; }
+
+    /* ── Ticket type toggle ── */
+    .type-toggle { display: flex; gap: 10px; }
+    .type-btn {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-pill);
+      padding: 10px 12px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .type-btn.active {
+      background: rgba(227,6,19,0.1);
+      border-color: var(--red);
+      color: var(--text);
+    }
+    .type-btn:hover:not(.active) {
+      background: var(--glass-hover);
+      color: var(--text);
+    }
+
+    /* ── Balance preview ── */
+    .balance-preview {
+      display: none;
+      background: rgba(34,197,94,0.06);
+      border: 1px solid rgba(34,197,94,0.2);
+      border-radius: 16px;
+      padding: 0.75rem 1rem;
+      margin: 0.6rem 0;
+      font-size: 0.78rem;
+      color: #4ade80;
+    }
+    .balance-preview.visible { display: flex; align-items: center; justify-content: space-between; }
+    .balance-preview .bal-amount { font-weight: 800; font-size: 1rem; }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      background: var(--red);
+      border: none;
+      border-radius: var(--radius-pill);
+      padding: 1.05rem 1.6rem;
+      font-weight: 800;
+      font-size: 0.82rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: white;
+      width: 100%;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 8px 22px rgba(227,6,19,0.32);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-primary:hover  { background: var(--red-hover); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(227,6,19,0.45); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius-pill);
+      padding: 0.7rem 1.2rem;
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.15); }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      margin: 0 auto;
+    }
+    .spinner.show { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.2rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--glass-border);
+      padding: 8px 14px;
+      border-radius: var(--radius-pill);
+      color: var(--muted);
+    }
+    .status-bar .status-ok { color: var(--success); }
+    .status-bar .status-active { color: var(--red); }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: rgba(18,18,28,0.95);
+      backdrop-filter: blur(20px);
+      padding: 0.85rem 2rem;
+      border-radius: var(--radius-pill);
+      color: white;
+      z-index: 9000;
+      font-size: 0.85rem;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s, transform 0.22s;
+      border: 1px solid rgba(255,255,255,0.1);
+      white-space: nowrap;
+      max-width: 90vw;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.is-error { border-color: rgba(227,6,19,0.4); color: #ff8888; }
+    .toast.is-success { border-color: rgba(34,197,94,0.4); color: #4ade80; }
+
+    /* ── Wristband Modal ── */
+    .wb-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      backdrop-filter: blur(14px);
+      z-index: 5000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s, visibility 0.25s;
+      padding: 1rem;
+    }
+    .wb-modal.active { opacity: 1; visibility: visible; }
+    .wb-modal-card {
+      background: #141414;
+      border: 1px solid rgba(227,6,19,0.35);
+      border-radius: 2rem;
+      padding: 2rem 2rem 1.6rem;
+      max-width: 800px;
+      width: 100%;
+      overflow: auto;
+      max-height: 90vh;
+    }
+    .wb-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.4rem;
+    }
+    .wb-modal-header h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      color: var(--red);
+    }
+    .wb-modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 1.4rem;
+      justify-content: flex-end;
+    }
+    .auto-print-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 1rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .auto-print-row input[type=checkbox] {
+      width: 16px; height: 16px;
+      accent-color: var(--red);
+      cursor: pointer;
+    }
+
+    /* ── Wristband strip ── */
+    .wristband-wrap {
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .wristband-strip {
+      display: flex;
+      flex-wrap: nowrap;
+      width: 260mm;
+      min-height: 28mm;
+      background: #fff;
+      font-family: 'Inter', sans-serif;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #ddd;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    .wb-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 7px 12px;
+      background: #fff;
+      flex-wrap: nowrap;
+    }
+    .wb-brand-pill {
+      background: var(--red);
+      color: white;
+      border-radius: 40px;
+      padding: 4px 13px;
+      font-weight: 900;
+      font-size: 0.72rem;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+    .wb-info { flex: 1; min-width: 0; }
+    .wb-event-name {
+      font-weight: 800;
+      font-size: 0.82rem;
+      color: #E30613;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .wb-person {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #111;
+      margin-top: 1px;
+    }
+    .wb-meta {
+      font-size: 0.52rem;
+      color: #555;
+      margin-top: 2px;
+    }
+    .wb-vip-badge {
+      background: linear-gradient(135deg, #F59E0B, #ea580c);
+      color: white;
+      border-radius: 20px;
+      padding: 2px 7px;
+      font-size: 0.52rem;
+      font-weight: 800;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .wb-qr-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .wb-qr-block img { display: block; border-radius: 4px; }
+    .wb-qr-label { font-size: 0.48rem; color: #444; font-weight: 700; letter-spacing: 1px; }
+    .wb-fasten {
+      width: 38px;
+      background: #f0ede8;
+      border-left: 2px dashed #bbb;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      writing-mode: vertical-rl;
+      font-size: 0.46rem;
+      font-weight: 700;
+      color: #888;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* ── Print ── */
+    @media print {
+      html, body { background: white !important; color: black; }
+      body > * { visibility: hidden; }
+      .print-target, .print-target * { visibility: visible !important; }
+      .print-target {
+        position: fixed;
+        top: 0; left: 0;
+        width: 260mm;
+        min-height: 28mm;
+        margin: 0; padding: 0;
+        background: white !important;
+      }
+      .no-print { display: none !important; }
+      .wristband-strip { box-shadow: none !important; }
+    }
+
+    /* ── Divider ── */
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--glass-border);
+      margin: 1.2rem 0;
+    }
+  </style>
+</head>
+<body>
+
+<div id="bg-layer"></div>
+
+<!-- ── Page Header ── -->
+<header class="page-header no-print">
+  <div class="brand-pill">
+    <span class="logotype">Rands<span>.</span></span>
+    <span class="divider"></span>
+    <span class="tagline">Gate Kiosk v2</span>
+  </div>
+  <div class="header-status">
+    <div class="dot-badge"><span class="dot green"></span> Printer ready</div>
+    <div class="dot-badge"><span class="dot red"></span> Scanner live</div>
+  </div>
+</header>
+
+<!-- ── Main Layout ── -->
+<div class="kiosk-layout no-print">
+
+  <!-- LEFT: Gate Scanner -->
+  <div class="glass-card">
+    <div class="card-header">
+      <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 9 3 5 7 5"/><polyline points="21 9 21 5 17 5"/>
+        <polyline points="3 15 3 19 7 19"/><polyline points="21 15 21 19 17 19"/>
+        <rect x="9" y="9" width="6" height="6" rx="1"/>
+      </svg>
+      <div class="card-title">Gate Scanner</div>
+      <div class="card-meta">Wristband QR · Manual ID</div>
+    </div>
+
+    <div class="scanner-stage">
+      <div class="scan-visual">
+        <div class="scan-line"></div>
+        <div class="scan-corners"></div>
+        <div class="scan-corners-btm" style="position:absolute; inset:12px; pointer-events:none;"></div>
+        <span class="scan-icon">📷</span>
+        <div class="scan-label">Scan wristband QR</div>
+        <div class="scan-hint">Or enter ticket ID below</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label>Ticket ID</label>
+      <input type="text" id="scanInput" class="kiosk-input" placeholder="Paste or scan ticket UUID…" autocomplete="off" spellcheck="false">
+    </div>
+
+    <button id="checkinBtn" class="btn-primary">
+      <span id="checkinBtnLabel">✓ Verify &amp; Check in</span>
+      <div class="spinner" id="checkinSpinner"></div>
+    </button>
+
+    <div id="checkinResult" class="checkin-result"></div>
+
+    <hr class="section-divider">
+
+    <div class="status-bar">
+      <span>🖨️ Wristband printer <span class="status-ok">ready</span></span>
+      <span>🔴 Gate <span class="status-active">KIOSK</span> active</span>
+    </div>
+  </div>
+
+  <!-- RIGHT: Wallet Purchase -->
+  <div class="glass-card">
+    <div class="card-header">
+      <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="6" width="22" height="14" rx="2"/>
+        <path d="M1 10h22"/>
+        <circle cx="17.5" cy="15" r="1.5" fill="currentColor"/>
+      </svg>
+      <div class="card-title">Wallet Purchase</div>
+      <div class="card-meta">Debit from wallets.balance</div>
+    </div>
+
+    <div class="form-row">
+      <label>📱 Mobile number</label>
+      <input type="tel" id="buyPhone" class="kiosk-input" placeholder="+27 00 000 0000" autocomplete="off">
+    </div>
+
+    <div class="form-row">
+      <label>🔐 Wallet CVV</label>
+      <input type="password" id="buyCvv" class="kiosk-input" placeholder="•••" maxlength="6" autocomplete="off">
+    </div>
+
+    <div id="balancePreview" class="balance-preview">
+      <span>Wallet balance</span>
+      <span class="bal-amount" id="balanceAmount">—</span>
+    </div>
+
+    <div class="form-row">
+      <label>🎟️ Ticket type</label>
+      <div class="type-toggle">
+        <div class="type-btn active" id="typeGeneral" onclick="selectType('general')">🎟 General</div>
+        <div class="type-btn" id="typeVip" onclick="selectType('vip')">⭐ VIP</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label>📅 Event</label>
+      <select id="eventSelect" class="kiosk-input">
+        <option value="">Loading events…</option>
+      </select>
+    </div>
+
+    <div id="priceLine" style="text-align:right; font-size:0.72rem; color:var(--muted); margin: -0.4rem 0 0.8rem;"></div>
+
+    <button id="purchaseBtn" class="btn-primary">
+      <span id="purchaseBtnLabel">💳 Pay &amp; Print Wristband</span>
+      <div class="spinner" id="purchaseSpinner"></div>
+    </button>
+
+    <div class="auto-print-row">
+      <input type="checkbox" id="autoPrint" checked>
+      <label for="autoPrint">Auto-print wristband after purchase</label>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="status-bar">
+      <span>Balance read from <span class="status-ok">wallets.balance</span></span>
+      <span id="lastUpdated">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Wristband Modal ── -->
+<div id="wbModal" class="wb-modal">
+  <div class="wb-modal-card no-print">
+    <div class="wb-modal-header">
+      <h3>🎟️ Wristband ready to print</h3>
+      <button class="btn-secondary" id="closeWbModal">✕ Close</button>
+    </div>
+
+    <div class="wristband-wrap">
+      <div id="wristbandContainer"></div>
+    </div>
+
+    <div class="wb-modal-actions no-print">
+      <button class="btn-secondary" id="closeWbModal2">Close</button>
+      <button class="btn-primary" id="printBtn" style="width:auto; padding: 0.9rem 2rem;">🖨️ Print wristband</button>
+    </div>
+  </div>
+</div>
+
+<!-- Print target (always in DOM, hidden until print) -->
+<div id="printTarget" class="print-target" style="display:none;"></div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+  }
+}
+</script>
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  /* ── State ── */
+  let currentEvent   = null;
+  let selectedType   = 'general';
+  let eventTypes     = { generalId: null, vipId: null };
+  let cachedProfile  = null;
+  let cachedWallet   = null;
+  let toastTimer     = null;
+
+  /* ── DOM refs ── */
+  const scanInput      = document.getElementById('scanInput');
+  const checkinBtn     = document.getElementById('checkinBtn');
+  const checkinLabel   = document.getElementById('checkinBtnLabel');
+  const checkinSpinner = document.getElementById('checkinSpinner');
+  const checkinResult  = document.getElementById('checkinResult');
+
+  const buyPhone       = document.getElementById('buyPhone');
+  const buyCvv         = document.getElementById('buyCvv');
+  const eventSelect    = document.getElementById('eventSelect');
+  const priceLine      = document.getElementById('priceLine');
+  const purchaseBtn    = document.getElementById('purchaseBtn');
+  const purchaseLabel  = document.getElementById('purchaseBtnLabel');
+  const purchaseSpinner= document.getElementById('purchaseSpinner');
+  const balPreview     = document.getElementById('balancePreview');
+  const balAmount      = document.getElementById('balanceAmount');
+  const autoPrint      = document.getElementById('autoPrint');
+  const lastUpdated    = document.getElementById('lastUpdated');
+
+  const wbModal        = document.getElementById('wbModal');
+  const wbContainer    = document.getElementById('wristbandContainer');
+  const printTarget    = document.getElementById('printTarget');
+  const printBtn       = document.getElementById('printBtn');
+
+  /* ── Toast ── */
+  function toast(msg, type = 'info') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `toast show ${type === 'error' ? 'is-error' : type === 'success' ? 'is-success' : ''}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = 'toast'; }, 3400);
+  }
+
+  /* ── Helpers ── */
+  function setCheckinLoading(on) {
+    checkinBtn.disabled = on;
+    checkinLabel.style.display = on ? 'none' : '';
+    checkinSpinner.className   = on ? 'spinner show' : 'spinner';
+  }
+  function setPurchaseLoading(on) {
+    purchaseBtn.disabled = on;
+    purchaseLabel.style.display = on ? 'none' : '';
+    purchaseSpinner.className   = on ? 'spinner show' : 'spinner';
+  }
+  function showResult(msg, ok, details = '') {
+    checkinResult.className = `checkin-result show ${ok ? 'success' : 'error'}`;
+    checkinResult.innerHTML = `${ok ? '✅' : '❌'} ${msg}${details ? `<div class="result-name">${details}</div>` : ''}`;
+    setTimeout(() => { checkinResult.className = 'checkin-result'; }, 6000);
+  }
+  function escHtml(s) {
+    if (!s) return '';
+    return s.replace(/[&<>"']/g, c =>
+      ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+  function fmtRand(n) { return `R${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`; }
+
+  /* ── Load events ── */
+  async function loadEvents() {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      if (!data || !data.length) {
+        eventSelect.innerHTML = '<option value="">No active events</option>';
+        toast('No active events found', 'error');
+        return;
+      }
+      eventSelect.innerHTML = data.map(ev =>
+        `<option value="${ev.id}">${escHtml(ev.name)}</option>`
+      ).join('');
+      currentEvent = data[0];
+      await loadTypesForEvent(currentEvent.id);
+      updatePriceLine();
+    } catch (err) {
+      toast('Failed to load events', 'error');
+    }
+  }
+
+  async function loadTypesForEvent(eventId) {
+    const { data } = await supabase
+      .from('ticket_types')
+      .select('id, name')
+      .eq('event_id', eventId);
+    eventTypes.generalId = null;
+    eventTypes.vipId = null;
+    if (data) {
+      const gen = data.find(t => t.name.toLowerCase().includes('general'));
+      const vip = data.find(t => t.name.toLowerCase().includes('vip'));
+      if (gen) eventTypes.generalId = gen.id;
+      if (vip) eventTypes.vipId = vip.id;
+    }
+  }
+
+  function updatePriceLine() {
+    if (!currentEvent) { priceLine.textContent = ''; return; }
+    const price = selectedType === 'vip'
+      ? (currentEvent.vip_price || currentEvent.base_price * 2 || 0)
+      : (currentEvent.base_price || 0);
+    priceLine.textContent = `Price: ${fmtRand(price)}`;
+  }
+
+  /* ── Type selector ── */
+  window.selectType = function(type) {
+    selectedType = type;
+    document.getElementById('typeGeneral').className = `type-btn${type === 'general' ? ' active' : ''}`;
+    document.getElementById('typeVip').className     = `type-btn${type === 'vip' ? ' active' : ''}`;
+    updatePriceLine();
+  };
+
+  /* ── Event change ── */
+  eventSelect.addEventListener('change', async () => {
+    const id = eventSelect.value;
+    const { data } = await supabase.from('events').select('*').eq('id', id).single();
+    if (data) { currentEvent = data; await loadTypesForEvent(id); updatePriceLine(); }
+  });
+
+  /* ── Phone blur: prefetch profile + wallet ── */
+  buyPhone.addEventListener('blur', async () => {
+    const phone = buyPhone.value.trim();
+    cachedProfile = null;
+    cachedWallet  = null;
+    balPreview.className = 'balance-preview';
+    if (!phone) return;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, card_cvv, name')
+      .eq('phone', phone)
+      .maybeSingle();
+    if (!profile) return;
+    cachedProfile = profile;
+    const { data: wallet } = await supabase
+      .from('wallets')
+      .select('id, balance')
+      .eq('user_id', profile.id)
+      .maybeSingle();
+    if (!wallet) return;
+    cachedWallet = wallet;
+    balAmount.textContent = fmtRand(wallet.balance);
+    balPreview.className = 'balance-preview visible';
+    lastUpdated.textContent = `Balance checked ${new Date().toLocaleTimeString()}`;
+  });
+
+  /* ══════════════════════════════════════════
+     GATE SCANNER
+  ══════════════════════════════════════════ */
+  async function processCheckin(rawId) {
+    const ticketId = rawId.trim();
+    if (!ticketId) { toast('Enter a ticket ID', 'error'); return; }
+
+    setCheckinLoading(true);
+    try {
+      /* Fetch ticket from DB – always fresh, avoids stale cache issues */
+      const { data: ticket, error } = await supabase
+        .from('tickets')
+        .select('id, checked_in, customer_phone, ticket_type, event_id')
+        .eq('id', ticketId)
+        .maybeSingle();
+
+      if (error || !ticket) {
+        toast('Invalid ticket ID – not found', 'error');
+        showResult('Ticket not found', false);
+        return;
+      }
+
+      if (ticket.checked_in === true) {
+        toast('⚠️ Ticket already used – duplicate scan rejected', 'error');
+        showResult('Already checked in', false, ticket.customer_phone || '');
+        return;
+      }
+
+      const now = new Date().toISOString();
+
+      /* Mark checked in */
+      const { error: upErr } = await supabase
+        .from('tickets')
+        .update({ checked_in: true })
+        .eq('id', ticketId);
+      if (upErr) { toast('Check-in update failed', 'error'); return; }
+
+      /* Insert checkins record */
+      await supabase.from('checkins').insert({
+        ticket_id: ticketId,
+        event_id:  ticket.event_id || (currentEvent?.id ?? null),
+        scanned_at: now,
+        gate: 'KIOSK'
+      });
+
+      toast('✅ Entry granted – welcome!', 'success');
+      showResult('Checked in successfully', true, ticket.customer_phone || '');
+      scanInput.value = '';
+
+    } finally {
+      setCheckinLoading(false);
+    }
+  }
+
+  checkinBtn.addEventListener('click', () => processCheckin(scanInput.value));
+  scanInput.addEventListener('keypress', e => { if (e.key === 'Enter') processCheckin(scanInput.value); });
+
+  /* ══════════════════════════════════════════
+     WALLET PURCHASE  (uses wallets.balance)
+  ══════════════════════════════════════════ */
+  async function purchaseWithWallet() {
+    const phone = buyPhone.value.trim();
+    const cvv   = buyCvv.value.trim();
+
+    if (!phone || !cvv)    { toast('Enter phone number and CVV', 'error'); return; }
+    if (!currentEvent)     { toast('Select an event', 'error'); return; }
+
+    setPurchaseLoading(true);
+    try {
+      /* 1. Fetch profile by phone */
+      let profile = cachedProfile;
+      if (!profile || profile.id !== cachedProfile?.id) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, card_cvv, name')
+          .eq('phone', phone)
+          .maybeSingle();
+        if (error || !data) { toast('No account found with this phone number', 'error'); return; }
+        profile = data;
+        cachedProfile = data;
+      }
+
+      /* 2. Verify CVV */
+      if (profile.card_cvv !== cvv) { toast('Incorrect CVV', 'error'); return; }
+
+      /* 3. Fetch wallet balance (source of truth) */
+      let wallet = cachedWallet;
+      if (!wallet) {
+        const { data, error } = await supabase
+          .from('wallets')
+          .select('id, balance')
+          .eq('user_id', profile.id)
+          .maybeSingle();
+        if (error || !data) { toast('No wallet found for this account', 'error'); return; }
+        wallet = data;
+        cachedWallet = data;
+      }
+
+      const currentBal = Number(wallet.balance) || 0;
+      const ticketPrice = selectedType === 'vip'
+        ? (Number(currentEvent.vip_price) || Number(currentEvent.base_price) * 2 || 100)
+        : (Number(currentEvent.base_price) || 50);
+
+      /* 4. Balance check */
+      if (currentBal < ticketPrice) {
+        toast(`Insufficient balance – ${fmtRand(currentBal)} available, need ${fmtRand(ticketPrice)}`, 'error');
+        return;
+      }
+
+      const newBal = currentBal - ticketPrice;
+
+      /* 5. Deduct from wallets.balance */
+      const { error: deductErr } = await supabase
+        .from('wallets')
+        .update({ balance: newBal })
+        .eq('id', wallet.id);
+      if (deductErr) { toast('Payment failed – wallet update error', 'error'); return; }
+
+      /* 6. Create ticket */
+      const ticketId = crypto.randomUUID();
+      const { error: ticketErr } = await supabase
+        .from('tickets')
+        .insert({
+          id:             ticketId,
+          event_id:       currentEvent.id,
+          ticket_type_id: selectedType === 'vip' ? eventTypes.vipId : eventTypes.generalId,
+          customer_phone: phone,
+          issued_by:      profile.id,
+          status:         'issued',
+          issued_at:      new Date().toISOString(),
+          checked_in:     false,
+          ticket_type:    selectedType,
+          qr_token:       ticketId
+        });
+
+      if (ticketErr) {
+        /* Rollback */
+        await supabase.from('wallets').update({ balance: currentBal }).eq('id', wallet.id);
+        toast('Ticket creation failed – balance restored', 'error');
+        return;
+      }
+
+      /* 7. Log wallet transaction */
+      await supabase.from('wallet_transactions').insert({
+        user_id:     profile.id,
+        amount:      ticketPrice,
+        type:        'ticket_purchase',
+        direction:   'debit',
+        status:      'completed',
+        description: `${selectedType.toUpperCase()} ticket – ${currentEvent.name}`,
+        created_at:  new Date().toISOString()
+      });
+
+      /* 8. Update cached balance */
+      cachedWallet = { ...wallet, balance: newBal };
+      balAmount.textContent = fmtRand(newBal);
+      lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+
+      toast(`✅ Payment of ${fmtRand(ticketPrice)} deducted. Balance: ${fmtRand(newBal)}`, 'success');
+
+      /* 9. Generate QR and wristband */
+      const qrDataUrl = generateQRDataUrl(ticketId, 80);
+      const wb = buildWristband({
+        id:          ticketId,
+        name:        profile.name || 'Guest',
+        phone,
+        type:        selectedType,
+        eventName:   currentEvent.name,
+        date:        new Date().toLocaleDateString('en-ZA')
+      }, qrDataUrl);
+
+      wbContainer.innerHTML = wb;
+      printTarget.innerHTML = wb;
+      printTarget.style.display = 'block';
+      wbModal.classList.add('active');
+
+      if (autoPrint.checked) setTimeout(() => window.print(), 500);
+
+      /* Clear sensitive fields */
+      buyCvv.value = '';
+      cachedWallet  = null;
+      cachedProfile = null;
+      balPreview.className = 'balance-preview';
+
+    } finally {
+      setPurchaseLoading(false);
+    }
+  }
+
+  purchaseBtn.addEventListener('click', purchaseWithWallet);
+
+  /* ── Modal controls ── */
+  document.getElementById('closeWbModal').addEventListener('click', closeModal);
+  document.getElementById('closeWbModal2').addEventListener('click', closeModal);
+  printBtn.addEventListener('click', () => window.print());
+  wbModal.addEventListener('click', e => { if (e.target === wbModal) closeModal(); });
+
+  function closeModal() {
+    wbModal.classList.remove('active');
+    printTarget.style.display = 'none';
+  }
+
+  /* ── QR generator ── */
+  function generateQRDataUrl(text, size) {
+    const qr = qrcodeGenerator(0, 'H');
+    qr.addData(text);
+    qr.make();
+    const cellSize = size / qr.getModuleCount();
+    const canvas = document.createElement('canvas');
+    canvas.width  = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    for (let r = 0; r < qr.getModuleCount(); r++) {
+      for (let c = 0; c < qr.getModuleCount(); c++) {
+        ctx.fillStyle = qr.isDark(r, c) ? '#000' : '#fff';
+        ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+      }
+    }
+    return canvas.toDataURL();
+  }
+
+  /* ── Wristband HTML builder ── */
+  function buildWristband(d, qrDataUrl) {
+    const vip = d.type === 'vip' ? '<span class="wb-vip-badge">⭐ VIP</span>' : '';
+    const serial = d.id.slice(-8).toUpperCase();
+    return `
+      <div class="wristband-strip" style="width:260mm; min-height:28mm;">
+        <div class="wb-body">
+          <div class="wb-brand-pill">RANDS</div>
+          <div class="wb-info">
+            <div class="wb-event-name">${escHtml(d.eventName)}${vip}</div>
+            <div class="wb-person">${escHtml(d.name)} &middot; ${escHtml(d.phone)}</div>
+            <div class="wb-meta">${d.type === 'vip' ? 'VIP Pass' : 'General Admission'} &nbsp;|&nbsp; ID: ${serial} &nbsp;|&nbsp; ${d.date} &nbsp;|&nbsp; Rands Cape Town</div>
+          </div>
+          <div class="wb-qr-block">
+            <img src="${qrDataUrl}" width="40" height="40" alt="QR">
+            <span class="wb-qr-label">SCAN · GATE</span>
+          </div>
+        </div>
+        <div class="wb-fasten">✂ FASTEN HERE</div>
+      </div>
+    `;
+  }
+
+  /* ── Init ── */
+  loadEvents().then(() => toast('Rands Kiosk ready', 'success'));
+</script>
+</body>
+</html>
