@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>VVIP Kiosk | Rands Venue Experience</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400;1,700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --red: #E30613;
+            --red-dark: #B00510;
+            --red-deep: #7A0009;
+            --red-glow: rgba(227,6,19,0.22);
+            --red-faint: rgba(227,6,19,0.06);
+            --red-border: rgba(227,6,19,0.18);
+            --coal: #0F0F0F;
+            --ash: #181818;
+            --glass: rgba(255,255,255,0.04);
+            --glass-mid: rgba(255,255,255,0.08);
+            --glass-high: rgba(255,255,255,0.12);
+            --border: rgba(255,255,255,0.07);
+            --border-mid: rgba(255,255,255,0.12);
+            --muted: #888888;
+            --silver: #AAAAAA;
+            --white: #FFFFFF;
+            --green: #22C55E;
+            --gold: #FBBF24;
+            --amber: #F59E0B;
+            --shadow-md: 0 8px 20px -6px rgba(0,0,0,0.5);
+            --radius-lg: 28px;
+            --radius-md: 18px;
+            --radius-full: 9999px;
+            --ease: cubic-bezier(0.22,1,0.36,1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--coal);
+            color: var(--white);
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding: 1.5rem;
+        }
+
+        /* animated background (same as main kiosk) */
+        #bg-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(227,6,19,0.14) 0%, transparent 65%),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(227,6,19,0.08) 0%, transparent 60%),
+                #0F0F0F;
+        }
+        #bg-canvas::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+        }
+
+        .container {
+            position: relative;
+            z-index: 2;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* header with logo and back button */
+        .kiosk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 2rem;
+            padding: 0.8rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .logo-mark {
+            width: 56px;
+            height: 56px;
+            border-radius: var(--radius-md);
+            background: var(--red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 24px var(--red-glow);
+            overflow: hidden;
+        }
+        .logo-mark img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .logo-text {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--white);
+        }
+        .logo-text span { color: var(--red); }
+        .logo-sub {
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+        .back-btn {
+            background: var(--glass-mid);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-full);
+            padding: 10px 24px;
+            font-weight: 700;
+            font-size: 0.7rem;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--silver);
+            cursor: pointer;
+            transition: all 0.28s var(--ease);
+            font-family: 'Inter', sans-serif;
+        }
+        .back-btn:hover {
+            background: var(--red-faint);
+            border-color: var(--red-border);
+            color: var(--red);
+            transform: translateY(-2px);
+        }
+
+        /* glass card */
+        .glass-card {
+            background: var(--glass);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.8rem;
+            margin-bottom: 1.8rem;
+        }
+
+        /* customer lookup */
+        .lookup-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-end;
+        }
+        .lookup-field {
+            flex: 2;
+            min-width: 200px;
+        }
+        .lookup-field label {
+            display: block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+        .kiosk-input {
+            width: 100%;
+            background: var(--glass-mid);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-full);
+            padding: 0.9rem 1.2rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            color: var(--white);
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .kiosk-input:focus {
+            border-color: var(--red);
+            box-shadow: 0 0 0 3px var(--red-glow);
+        }
+        .lookup-btn, .clear-btn {
+            background: var(--red);
+            border: none;
+            border-radius: var(--radius-full);
+            padding: 0.9rem 1.5rem;
+            font-weight: 800;
+            font-size: 0.72rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 8px 20px rgba(227,6,19,0.3);
+        }
+        .lookup-btn:hover {
+            background: var(--red-dark);
+            transform: translateY(-2px);
+        }
+        .clear-btn {
+            background: var(--glass-mid);
+            color: var(--silver);
+            box-shadow: none;
+            border: 1px solid var(--border-mid);
+        }
+        .clear-btn:hover {
+            background: var(--glass-high);
+            color: var(--white);
+            border-color: var(--red-border);
+        }
+
+        /* credit card */
+        .credit-card {
+            background: linear-gradient(135deg, #1a0a0a 0%, #2a0808 50%, var(--red-deep) 100%);
+            border: 1px solid var(--red-border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .credit-info {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+        .credit-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--red);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            box-shadow: 0 0 0 3px var(--red-dim);
+        }
+        .credit-details h3 {
+            font-size: 0.7rem;
+            color: var(--silver);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .credit-amount {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--red);
+        }
+        .topup-btn {
+            background: var(--glass-mid);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-full);
+            padding: 10px 24px;
+            font-weight: 700;
+            font-size: 0.7rem;
+            letter-spacing: 1.5px;
+            color: var(--silver);
+            cursor: pointer;
+            transition: all 0.28s var(--ease);
+        }
+        .topup-btn:hover {
+            background: var(--red-faint);
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        /* section */
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            font-weight: 800;
+            margin-bottom: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--red);
+        }
+
+        /* packages grid */
+        .packages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+        }
+        .package-card {
+            background: var(--glass);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            transition: all 0.3s var(--ease);
+        }
+        .package-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--red-border);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(227,6,19,0.2);
+        }
+        .package-image {
+            height: 150px;
+            background: linear-gradient(135deg, var(--red), var(--red-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .package-image i {
+            font-size: 3rem;
+            color: rgba(255,255,255,0.85);
+        }
+        .package-content {
+            padding: 1.5rem;
+        }
+        .package-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .package-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+        }
+        .package-price {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--red);
+        }
+        .package-meta {
+            display: flex;
+            gap: 16px;
+            margin: 12px 0;
+            font-size: 0.7rem;
+            color: var(--silver);
+        }
+        .benefits-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 16px 0;
+        }
+        .benefit-tag {
+            background: var(--red-faint);
+            padding: 4px 12px;
+            border-radius: var(--radius-full);
+            font-size: 0.65rem;
+            color: var(--red);
+            font-weight: 600;
+        }
+        .payment-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .pay-btn {
+            flex: 1;
+            padding: 10px 6px;
+            border-radius: var(--radius-full);
+            font-weight: 800;
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border: none;
+            transition: 0.2s;
+        }
+        .pay-tab {
+            background: var(--green);
+            color: #111;
+        }
+        .pay-cash {
+            background: var(--glass-mid);
+            border: 1px solid var(--border);
+            color: var(--white);
+        }
+        .pay-card {
+            background: var(--gold);
+            color: #111;
+        }
+        .pay-btn:active { transform: scale(0.96); }
+
+        /* top-up modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            visibility: hidden;
+            opacity: 0;
+            transition: 0.2s;
+        }
+        .modal-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .modal-content {
+            background: var(--ash);
+            border: 2px solid var(--red-border);
+            border-radius: var(--radius-lg);
+            max-width: 450px;
+            width: 90%;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: var(--shadow-md);
+        }
+        .topup-field {
+            margin: 1rem 0;
+        }
+        .topup-field label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            display: block;
+            margin-bottom: 6px;
+        }
+        .topup-method-group {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+        }
+        .topup-method-btn {
+            flex: 1;
+            background: var(--glass-mid);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-full);
+            padding: 10px;
+            font-weight: 700;
+            font-size: 0.7rem;
+            color: var(--silver);
+            cursor: pointer;
+        }
+        .topup-method-btn.active {
+            background: var(--red);
+            border-color: var(--red);
+            color: white;
+        }
+
+        /* toast */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: rgba(20,20,20,0.96);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-mid);
+            color: var(--white);
+            padding: 12px 28px;
+            border-radius: var(--radius-full);
+            font-size: 0.8rem;
+            font-weight: 600;
+            z-index: 1100;
+            display: none;
+            white-space: nowrap;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+        }
+        @media (max-width: 700px) {
+            body { padding: 1rem; }
+            .toast { white-space: normal; text-align: center; width: 90%; font-size: 0.7rem; }
+        }
+    </style>
+</head>
+<body>
+<div id="bg-canvas"></div>
+<div class="container">
+    <!-- Header with logo and back button -->
+    <div class="kiosk-header">
+        <div class="logo-area">
+            <div class="logo-mark">
+                <img src="../assets/images/rands-logo2.png" alt="Rands" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' fill=\'%23E30613\'/%3E%3Ctext x=\'16\' y=\'22\' text-anchor=\'middle\' fill=\'white\' font-size=\'16\' font-weight=\'bold\'%3ER%3C/text%3E%3C/svg%3E'">
+            </div>
+            <div>
+                <div class="logo-text">Rands<em>.</em> <span style="font-size:0.9rem;">VVIP</span></div>
+                <div class="logo-sub">Exclusive Packages · Tab Credit</div>
+            </div>
+        </div>
+        <button class="back-btn" onclick="window.location.href='kiosk-start.html'"><i class="fas fa-arrow-left"></i> Back to Kiosk</button>
+    </div>
+
+    <!-- Customer Lookup Card -->
+    <div class="glass-card">
+        <div class="lookup-grid">
+            <div class="lookup-field">
+                <label><i class="fas fa-mobile-alt"></i> Phone or Wallet ID</label>
+                <input type="text" id="customerIdentifier" class="kiosk-input" placeholder="+27 71 234 5678 or 16-digit Wallet ID">
+            </div>
+            <button class="lookup-btn" id="loadCustomerBtn"><i class="fas fa-search"></i> Load Customer</button>
+            <button class="clear-btn" id="clearCustomerBtn"><i class="fas fa-times"></i> Clear</button>
+        </div>
+    </div>
+
+    <!-- Tab Credit Card (hidden until customer loaded) -->
+    <div id="creditSection" class="glass-card" style="display: none;">
+        <div class="credit-card">
+            <div class="credit-info">
+                <div class="credit-icon"><i class="fas fa-wallet"></i></div>
+                <div class="credit-details">
+                    <h3>Tab Credit for <span id="customerName">-</span></h3>
+                    <div class="credit-amount" id="tabCreditAmount">R0.00</div>
+                </div>
+            </div>
+            <button class="topup-btn" id="openTopupBtn"><i class="fas fa-plus-circle"></i> Top Up</button>
+        </div>
+    </div>
+
+    <!-- Packages Section (hidden until customer loaded) -->
+    <div id="packagesSection" class="glass-card" style="display: none;">
+        <div class="section-title"><i class="fas fa-crown"></i> Exclusive VVIP Tables</div>
+        <div id="packagesContainer" class="packages-grid">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading packages...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Top-up Modal -->
+<div id="topupModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="font-family: 'Playfair Display'; margin-bottom: 1rem;">Top Up Tab Credit</h3>
+        <div class="topup-field">
+            <label>Amount (R)</label>
+            <input type="number" id="topupAmount" class="kiosk-input" min="10" step="10" value="100">
+        </div>
+        <div class="topup-method-group">
+            <button id="topupMethodCard" class="topup-method-btn active">💳 Card (Yoco)</button>
+            <button id="topupMethodWallet" class="topup-method-btn">💰 Rands Wallet</button>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <button class="pay-btn pay-tab" id="confirmTopupBtn" style="flex: 1;">Confirm</button>
+            <button class="pay-btn pay-cash" id="cancelTopupBtn" style="flex: 1;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Info Modal -->
+<div id="infoModal" class="modal-overlay">
+    <div class="modal-content">
+        <i class="fas fa-crown" style="font-size: 48px; color: var(--red); margin-bottom: 16px;"></i>
+        <h3 id="modalTitle" style="margin-bottom: 12px;">Notification</h3>
+        <p id="modalMessage" style="margin-bottom: 24px; color: var(--silver);"></p>
+        <button class="pay-btn pay-tab" onclick="closeModal()" style="width: auto; padding: 12px 24px;">OK</button>
+    </div>
+</div>
+
+<div id="toastMessage" class="toast"></div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    let currentProfile = null;
+    let currentActiveBooking = null;
+    let currentTabCredit = 0;
+    let currentCreditSource = null;
+    let packages = [];
+    let selectedTopupMethod = 'card';
+
+    function showToast(msg, isError = false) {
+        const toast = document.getElementById('toastMessage');
+        toast.innerText = msg;
+        toast.style.borderLeftColor = isError ? 'var(--red)' : 'var(--green)';
+        toast.style.display = 'block';
+        setTimeout(() => toast.style.display = 'none', 3500);
+    }
+    function showModal(title, message) {
+        document.getElementById('modalTitle').innerText = title;
+        document.getElementById('modalMessage').innerHTML = message;
+        document.getElementById('infoModal').classList.add('active');
+    }
+    window.closeModal = function() {
+        document.getElementById('infoModal').classList.remove('active');
+    }
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+    }
+
+    // Load customer by phone or wallet_id
+    async function loadCustomer() {
+        const identifier = document.getElementById('customerIdentifier').value.trim();
+        if (!identifier) {
+            showToast('Please enter a phone number or wallet ID', true);
+            return;
+        }
+        let profile = null;
+        const isPhone = /^[\+]?[0-9]{9,15}$/.test(identifier);
+        if (isPhone) {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, name, phone, wallet_id')
+                .eq('phone', identifier)
+                .maybeSingle();
+            if (!error && data) profile = data;
+        } else {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, name, phone, wallet_id')
+                .eq('wallet_id', identifier)
+                .maybeSingle();
+            if (!error && data) profile = data;
+        }
+        if (!profile) {
+            showToast('Customer not found. Please check the phone number or wallet ID.', true);
+            return;
+        }
+        currentProfile = profile;
+        document.getElementById('customerName').innerText = profile.name || profile.phone || 'Guest';
+
+        // fetch current tab credit
+        const { data: booking } = await supabase
+            .from('vvip_bookings')
+            .select('id, remaining_balance')
+            .eq('customer_id', profile.id)
+            .in('status', ['confirmed', 'checked_in', 'seated'])
+            .order('created_at', { ascending: false })
+            .maybeSingle();
+
+        if (booking && booking.remaining_balance > 0) {
+            currentActiveBooking = { id: booking.id, remaining: booking.remaining_balance };
+            currentTabCredit = booking.remaining_balance;
+            currentCreditSource = 'booking';
+        } else {
+            const { data: tabAcc } = await supabase
+                .from('vvip_tab_accounts')
+                .select('id, balance')
+                .eq('user_id', profile.id)
+                .maybeSingle();
+            if (tabAcc && tabAcc.balance > 0) {
+                currentTabCredit = tabAcc.balance;
+                currentCreditSource = 'tab_account';
+                currentActiveBooking = null;
+            } else {
+                currentTabCredit = 0;
+                currentCreditSource = null;
+                currentActiveBooking = null;
+            }
+        }
+
+        document.getElementById('tabCreditAmount').innerHTML = `R${currentTabCredit.toFixed(2)}`;
+        document.getElementById('creditSection').style.display = 'block';
+        document.getElementById('packagesSection').style.display = 'block';
+        await loadPackages();
+        showToast(`Loaded ${profile.name || profile.phone} | Tab credit: R${currentTabCredit.toFixed(2)}`);
+        setupRealtime();
+    }
+
+    async function loadPackages() {
+        const { data, error } = await supabase
+            .from('vvip_packages')
+            .select('*')
+            .eq('status', 'active')
+            .order('price', { ascending: true });
+        if (error) {
+            showToast('Error loading packages: ' + error.message, true);
+            return;
+        }
+        packages = data || [];
+        renderPackages();
+    }
+
+    function renderPackages() {
+        const container = document.getElementById('packagesContainer');
+        if (!packages.length) {
+            container.innerHTML = '<div class="loading"><i class="fas fa-crown"></i> No packages available.</div>';
+            return;
+        }
+        container.innerHTML = packages.map(pkg => {
+            const tables = pkg.capacity || 0;
+            const tabCredit = pkg.tab_credit || 0;
+            const benefits = pkg.benefits || [];
+            return `
+                <div class="package-card">
+                    <div class="package-image">
+                        ${pkg.image ? `<img src="${pkg.image}" style="width:100%; height:100%; object-fit:cover;">` : '<i class="fas fa-crown"></i>'}
+                    </div>
+                    <div class="package-content">
+                        <div class="package-header">
+                            <span class="package-name">${escapeHtml(pkg.name)}</span>
+                            <span class="package-price">R${pkg.price}</span>
+                        </div>
+                        <div class="package-meta">
+                            <span><i class="fas fa-table"></i> ${tables} tables</span>
+                            <span><i class="fas fa-coins"></i> Tab credit: R${tabCredit}</span>
+                        </div>
+                        <div class="benefits-list">
+                            ${benefits.slice(0, 3).map(b => `<span class="benefit-tag"><i class="fas fa-check"></i> ${escapeHtml(b)}</span>`).join('')}
+                            ${benefits.length > 3 ? `<span class="benefit-tag">+${benefits.length-3} more</span>` : ''}
+                        </div>
+                        <div class="payment-options">
+                            <button class="pay-btn pay-tab" data-package='${JSON.stringify(pkg)}' data-method="tab"><i class="fas fa-wallet"></i> Tab</button>
+                            <button class="pay-btn pay-cash" data-package='${JSON.stringify(pkg)}' data-method="cash"><i class="fas fa-money-bill"></i> Cash</button>
+                            <button class="pay-btn pay-card" data-package='${JSON.stringify(pkg)}' data-method="card"><i class="fas fa-credit-card"></i> Card</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        document.querySelectorAll('.pay-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const packageData = JSON.parse(btn.dataset.package);
+                const method = btn.dataset.method;
+                await handlePackagePurchase(packageData, method);
+            });
+        });
+    }
+
+    async function handlePackagePurchase(pkg, method) {
+        if (!currentProfile) {
+            showModal('No Customer', 'Please load a customer first.');
+            return;
+        }
+        if (method === 'tab') {
+            if (currentTabCredit < pkg.price) {
+                showModal('Insufficient Tab Credit', `You need R${pkg.price} but have only R${currentTabCredit.toFixed(2)}. Please top up or use another payment method.`);
+                return;
+            }
+            let newBalance = currentTabCredit - pkg.price;
+            if (currentCreditSource === 'booking' && currentActiveBooking) {
+                const { error: updateErr } = await supabase
+                    .from('vvip_bookings')
+                    .update({ remaining_balance: newBalance })
+                    .eq('id', currentActiveBooking.id);
+                if (updateErr) throw updateErr;
+            } else if (currentCreditSource === 'tab_account') {
+                const { data: tabAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .select('id')
+                    .eq('user_id', currentProfile.id)
+                    .single();
+                if (tabAcc) {
+                    const { error: updateErr } = await supabase
+                        .from('vvip_tab_accounts')
+                        .update({ balance: newBalance })
+                        .eq('id', tabAcc.id);
+                    if (updateErr) throw updateErr;
+                } else {
+                    showModal('Error', 'Tab account not found', true);
+                    return;
+                }
+            } else {
+                showModal('Error', 'No active credit source', true);
+                return;
+            }
+            const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+            const { error: insertErr } = await supabase.from('vvip_bookings').insert([{
+                package_id: pkg.id,
+                customer_id: currentProfile.id,
+                customer_phone: currentProfile.phone || '',
+                customer_name: currentProfile.name || 'Guest',
+                booking_reference: bookingRef,
+                quantity: 1,
+                total_amount: pkg.price,
+                remaining_balance: pkg.tab_credit || 0,
+                status: 'confirmed',
+                created_at: new Date().toISOString()
+            }]);
+            if (insertErr) throw insertErr;
+            await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+            await loadCustomer();
+            showToast(`Package purchased using Tab Credit! New tab credit: R${newBalance.toFixed(2)}`);
+        }
+        else if (method === 'cash') {
+            const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+            const { error: insertErr } = await supabase.from('vvip_bookings').insert([{
+                package_id: pkg.id,
+                customer_id: currentProfile.id,
+                customer_phone: currentProfile.phone || '',
+                customer_name: currentProfile.name || 'Guest',
+                booking_reference: bookingRef,
+                quantity: 1,
+                total_amount: pkg.price,
+                remaining_balance: pkg.tab_credit || 0,
+                status: 'confirmed',
+                created_at: new Date().toISOString()
+            }]);
+            if (insertErr) throw insertErr;
+            await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+            await loadCustomer();
+            showToast(`Package reserved for cash payment. Booking ref: ${bookingRef}`);
+        }
+        else if (method === 'card') {
+            if (confirm(`Pay R${pkg.price} with Yoco card? (Demo – no actual charge)`)) {
+                const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+                const { error: insertErr } = await supabase.from('vvip_bookings').insert([{
+                    package_id: pkg.id,
+                    customer_id: currentProfile.id,
+                    customer_phone: currentProfile.phone || '',
+                    customer_name: currentProfile.name || 'Guest',
+                    booking_reference: bookingRef,
+                    quantity: 1,
+                    total_amount: pkg.price,
+                    remaining_balance: pkg.tab_credit || 0,
+                    status: 'confirmed',
+                    created_at: new Date().toISOString()
+                }]);
+                if (insertErr) throw insertErr;
+                await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+                await loadCustomer();
+                showToast(`Package purchased with Card! Booking ref: ${bookingRef}`);
+            }
+        }
+    }
+
+    async function topUpTabCredit(amount, method) {
+        if (!currentProfile) {
+            showModal('No Customer', 'Please load a customer first.');
+            return false;
+        }
+        if (amount < 10) {
+            showModal('Invalid Amount', 'Minimum top-up is R10');
+            return false;
+        }
+        if (method === 'card') {
+            if (confirm(`Pay R${amount} with Yoco card? (Demo)`)) {
+                let newBalance;
+                if (currentCreditSource === 'booking' && currentActiveBooking) {
+                    newBalance = currentTabCredit + amount;
+                    const { error: updateErr } = await supabase
+                        .from('vvip_bookings')
+                        .update({ remaining_balance: newBalance })
+                        .eq('id', currentActiveBooking.id);
+                    if (updateErr) throw updateErr;
+                } else if (currentCreditSource === 'tab_account') {
+                    const { data: tabAcc } = await supabase
+                        .from('vvip_tab_accounts')
+                        .select('id')
+                        .eq('user_id', currentProfile.id)
+                        .single();
+                    if (tabAcc) {
+                        newBalance = currentTabCredit + amount;
+                        const { error: updateErr } = await supabase
+                            .from('vvip_tab_accounts')
+                            .update({ balance: newBalance })
+                            .eq('id', tabAcc.id);
+                        if (updateErr) throw updateErr;
+                    } else {
+                        const { data: newAcc } = await supabase
+                            .from('vvip_tab_accounts')
+                            .insert({ user_id: currentProfile.id, balance: amount })
+                            .select()
+                            .single();
+                        if (newAcc) newBalance = amount;
+                        else throw new Error('Failed to create tab account');
+                    }
+                } else {
+                    const { data: newAcc } = await supabase
+                        .from('vvip_tab_accounts')
+                        .insert({ user_id: currentProfile.id, balance: amount })
+                        .select()
+                        .single();
+                    if (newAcc) newBalance = amount;
+                    else throw new Error('Failed to create tab account');
+                }
+                await loadCustomer();
+                showToast(`Topped up R${amount}! New tab credit: R${newBalance.toFixed(2)}`);
+                return true;
+            }
+        } else if (method === 'wallet') {
+            const { data: wallet, error: walletErr } = await supabase
+                .from('wallets')
+                .select('id, balance')
+                .eq('user_id', currentProfile.id)
+                .single();
+            if (walletErr || !wallet) {
+                showModal('Wallet Error', 'No Rands Wallet found for this user.');
+                return false;
+            }
+            if (wallet.balance < amount) {
+                showModal('Insufficient Wallet Balance', `You have R${wallet.balance.toFixed(2)} in your wallet.`);
+                return false;
+            }
+            const newWalletBalance = wallet.balance - amount;
+            const { error: updateWallet } = await supabase
+                .from('wallets')
+                .update({ balance: newWalletBalance, updated_at: new Date().toISOString() })
+                .eq('id', wallet.id);
+            if (updateWallet) throw updateWallet;
+
+            let newTabBalance;
+            if (currentCreditSource === 'booking' && currentActiveBooking) {
+                newTabBalance = currentTabCredit + amount;
+                const { error: updateTab } = await supabase
+                    .from('vvip_bookings')
+                    .update({ remaining_balance: newTabBalance })
+                    .eq('id', currentActiveBooking.id);
+                if (updateTab) throw updateTab;
+            } else if (currentCreditSource === 'tab_account') {
+                const { data: tabAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .select('id')
+                    .eq('user_id', currentProfile.id)
+                    .single();
+                if (tabAcc) {
+                    newTabBalance = currentTabCredit + amount;
+                    const { error: updateTab } = await supabase
+                        .from('vvip_tab_accounts')
+                        .update({ balance: newTabBalance })
+                        .eq('id', tabAcc.id);
+                    if (updateTab) throw updateTab;
+                } else {
+                    const { data: newAcc } = await supabase
+                        .from('vvip_tab_accounts')
+                        .insert({ user_id: currentProfile.id, balance: amount })
+                        .select()
+                        .single();
+                    if (newAcc) newTabBalance = amount;
+                    else throw new Error('Failed to create tab account');
+                }
+            } else {
+                const { data: newAcc } = await supabase
+                    .from('vvip_tab_accounts')
+                    .insert({ user_id: currentProfile.id, balance: amount })
+                    .select()
+                    .single();
+                if (newAcc) newTabBalance = amount;
+                else throw new Error('Failed to create tab account');
+            }
+            await loadCustomer();
+            showToast(`Topped up R${amount} using Rands Wallet! New tab credit: R${newTabBalance.toFixed(2)}`);
+            return true;
+        }
+    }
+
+    function setupRealtime() {
+        if (!currentProfile) return;
+        const channel = supabase.channel('vvip-store');
+        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings', filter: `customer_id=eq.${currentProfile.id}` }, () => loadCustomer())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_tab_accounts', filter: `user_id=eq.${currentProfile.id}` }, () => loadCustomer())
+            .subscribe();
+    }
+
+    // DOM events
+    document.getElementById('loadCustomerBtn').addEventListener('click', loadCustomer);
+    document.getElementById('clearCustomerBtn').addEventListener('click', () => {
+        currentProfile = null;
+        currentActiveBooking = null;
+        currentTabCredit = 0;
+        currentCreditSource = null;
+        document.getElementById('creditSection').style.display = 'none';
+        document.getElementById('packagesSection').style.display = 'none';
+        document.getElementById('customerIdentifier').value = '';
+        showToast('Customer cleared');
+    });
+    document.getElementById('openTopupBtn').addEventListener('click', () => {
+        document.getElementById('topupModal').classList.add('active');
+    });
+    document.getElementById('cancelTopupBtn').addEventListener('click', () => {
+        document.getElementById('topupModal').classList.remove('active');
+    });
+    document.getElementById('topupMethodCard').addEventListener('click', () => {
+        selectedTopupMethod = 'card';
+        document.getElementById('topupMethodCard').classList.add('active');
+        document.getElementById('topupMethodWallet').classList.remove('active');
+    });
+    document.getElementById('topupMethodWallet').addEventListener('click', () => {
+        selectedTopupMethod = 'wallet';
+        document.getElementById('topupMethodWallet').classList.add('active');
+        document.getElementById('topupMethodCard').classList.remove('active');
+    });
+    document.getElementById('confirmTopupBtn').addEventListener('click', async () => {
+        const amount = parseFloat(document.getElementById('topupAmount').value);
+        if (isNaN(amount) || amount < 10) {
+            showModal('Invalid Amount', 'Please enter an amount of at least R10');
+            return;
+        }
+        document.getElementById('topupModal').classList.remove('active');
+        await topUpTabCredit(amount, selectedTopupMethod);
+    });
+
+    // preload packages
+    loadPackages();
+</script>
+</body>
+</html>
