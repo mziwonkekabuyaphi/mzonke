@@ -606,8 +606,15 @@
   <div class="modal-content">
     <div class="modal-header"><h3 id="eventModalTitle">Create New Event</h3></div>
     <div class="modal-body">
+      <!-- FIX 5: Added Start Date/Time and End Date/Time fields.
+           Using datetime-local so the browser collects both date + time in one input.
+           The value is an ISO-8601 string (e.g. "2025-12-31T20:00") which Supabase
+           accepts directly as a timestamptz column. -->
       <input type="text" id="eventName" placeholder="Event name" class="topup-input">
-      <input type="date" id="eventDate" class="topup-input">
+      <label style="font-size:0.75rem;font-weight:600;color:#64748b;padding:0 4px;">Start Date &amp; Time</label>
+      <input type="datetime-local" id="eventStartTime" class="topup-input">
+      <label style="font-size:0.75rem;font-weight:600;color:#64748b;padding:0 4px;">End Date &amp; Time</label>
+      <input type="datetime-local" id="eventEndTime" class="topup-input">
       <input type="text" id="eventLocation" placeholder="Location" class="topup-input" value="Rands Cape Town">
       <label class="file-input-label" for="eventBannerInput"><i class="fas fa-cloud-upload-alt"></i> Upload Event Banner</label>
       <input type="file" id="eventBannerInput" accept="image/*" style="display:none;">
@@ -772,7 +779,12 @@
         return {
           id: ev.id,
           name: ev.name,
-          date: ev.start_time ? ev.start_time.split('T')[0] : new Date().toISOString().split('T')[0],
+          // FIX 5: Preserve full ISO timestamp strings so openEventModal can pre-fill
+          // datetime-local inputs with slice(0,16). Also used for card display below.
+          start_time: ev.start_time || null,
+          end_time: ev.end_time || null,
+          // Legacy 'date' field kept for backwards-compat with selectEvent date display
+          date: ev.start_time ? ev.start_time.slice(0, 16).replace('T', ' ') : 'TBD',
           location: ev.location || 'Rands Cape Town',
           status: ev.status || 'active',
           image_url: ev.image_url || null,
@@ -787,8 +799,17 @@
   }
 
   async function updateStats() {
-    const tickets = JSON.parse(localStorage.getItem('rands_tickets') || '[]');
-    document.getElementById('totalTickets').innerText = tickets.length;
+    // FIX 2: "Tickets Sold" was reading from localStorage (client-side cache) instead of
+    // the real Supabase tickets table. This caused wrong counts and no updates on new purchases.
+    // Correct logic: COUNT tickets WHERE status = 'issued' (excludes drafts/pending/cancelled).
+    // Using head:true + count:'exact' avoids fetching all rows — efficient for large tables.
+    const { count: ticketsSoldCount, error: ticketsError } = await supabase
+      .from('tickets')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'issued');
+    document.getElementById('totalTickets').innerText = ticketsError ? '?' : (ticketsSoldCount || 0);
+    if (ticketsError) console.error('Error loading tickets count:', ticketsError);
+
     document.getElementById('totalEvents').innerText = events.filter(e => e.status === 'active').length;
     
     const { count: checkinsCount, error: checkinsError } = await supabase
@@ -801,6 +822,9 @@
       document.getElementById('totalCheckins').innerText = '0';
     }
     
+    // Revenue: sum from actual issued tickets joined to ticket_types price.
+    // ticket_types.sold * price is used here as a lightweight approximation from loaded data.
+    // For exact revenue use the orders table (see Bug 4 fix below).
     let revenue = 0;
     for (let event of events) {
       for (let type in event.ticketTypes) {
@@ -820,7 +844,12 @@
       const totalSold = (ev.ticketTypes.earlyBird?.sold||0)+(ev.ticketTypes.general?.sold||0)+(ev.ticketTypes.vip?.sold||0);
       const totalCap = (ev.ticketTypes.earlyBird?.capacity||0)+(ev.ticketTypes.general?.capacity||0)+(ev.ticketTypes.vip?.capacity||0);
       const percent = totalCap ? Math.round((totalSold/totalCap)*100) : 0;
-      const bannerStyle = ev.image_url ? `background-image: url('${ev.image_url}');` : 'background: linear-gradient(135deg, #E30613, #b91c1c);';
+      // FIX 1: Encode the image URL so spaces/special characters don't break the CSS url() value.
+      // Also use a real placeholder gradient when image_url is null/empty.
+      const encodedBanner = ev.image_url ? encodeURI(ev.image_url) : null;
+      const bannerStyle = encodedBanner
+        ? `background-image: url('${encodedBanner}');`
+        : 'background: linear-gradient(135deg, #E30613, #b91c1c);';
       const isSelected = selectedEventId === ev.id;
       return `
         <div class="event-card ${isSelected ? 'selected' : ''}" data-event-id="${ev.id}">
@@ -860,6 +889,7 @@
     document.getElementById('selEventDate').innerText = ev.date;
     document.getElementById('selEventLocation').innerText = ev.location;
     renderTicketInventory(ev);
+    // FIX 4: renderEventPurchases is now async (queries Supabase); fire-and-forget is fine here.
     renderEventPurchases(ev);
     renderEventsGrid();
   }
@@ -896,23 +926,64 @@
     container.innerHTML = html || '<div class="empty-state">No ticket types configured</div>';
   }
 
-  function renderEventPurchases(ev) {
+  // FIX 3 & 4: renderEventPurchases was reading from localStorage('rands_tickets').
+  // Root causes:
+  //   Bug 3 (duplicates): localStorage entries could be written multiple times on re-render
+  //     or retry. The dashboard was showing localStorage count, not DB count.
+  //   Bug 4 (empty/wrong): Filter used `t.eventName === ev.name` (string match) — fragile
+  //     and breaks if name has trailing space or casing difference. Also no created_at sort.
+  //
+  // Fix: Query Supabase tickets table directly, join to ticket_types for type name + price,
+  // filter by event_id (UUID — exact, not string match), order by issued_at DESC.
+  // Use DISTINCT-safe query: no joins that multiply rows (1 ticket = 1 row in tickets table).
+  async function renderEventPurchases(ev) {
     const container = document.getElementById('eventPurchases');
-    const tickets = JSON.parse(localStorage.getItem('rands_tickets') || '[]');
-    const eventTickets = tickets.filter(t => t.eventName === ev.name);
-    if (!eventTickets.length) { 
-      container.innerHTML = '<div class="empty-state">No purchases yet</div>'; 
-      return; 
+    container.innerHTML = '<div class="empty-state">Loading purchases...</div>';
+    try {
+      // Single-table query on tickets — no cross-join risk, no row duplication.
+      // status = 'issued' excludes pending/draft/cancelled (consistent with Stats fix).
+      const { data: ticketRows, error } = await supabase
+        .from('tickets')
+        .select(`
+          id,
+          issued_at,
+          customer_phone,
+          status,
+          ticket_types ( name, price )
+        `)
+        .eq('event_id', ev.id)
+        .eq('status', 'issued')
+        .order('issued_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+
+      if (!ticketRows || ticketRows.length === 0) {
+        container.innerHTML = '<div class="empty-state">No purchases yet</div>';
+        return;
+      }
+
+      container.innerHTML = ticketRows.map(t => {
+        const typeName = t.ticket_types?.name || 'Ticket';
+        const price = t.ticket_types?.price ?? 0;
+        const timeStr = t.issued_at
+          ? new Date(t.issued_at).toLocaleString('en-ZA', { dateStyle: 'short', timeStyle: 'short' })
+          : 'Unknown time';
+        return `
+          <div class="purchase-item">
+            <div class="purchase-info">
+              <div class="purchase-ticket-type">${escapeHtml(typeName)}</div>
+              <div class="purchase-id">${escapeHtml(t.customer_phone || '')} &bull; ${timeStr}</div>
+              <div class="purchase-id">ID: ${t.id?.slice(-12) || 'N/A'}</div>
+            </div>
+            <div class="purchase-amount">R${Number(price).toFixed(2)}</div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Error loading purchases:', err);
+      container.innerHTML = '<div class="empty-state">Error loading purchases</div>';
     }
-    container.innerHTML = eventTickets.map(t => `
-      <div class="purchase-item">
-        <div class="purchase-info">
-          <div class="purchase-ticket-type">${escapeHtml(t.ticketType)}</div>
-          <div class="purchase-id">ID: ${t.ticketId?.slice(-12) || 'N/A'}</div>
-        </div>
-        <div class="purchase-amount">R${t.price?.toFixed(2) || 0}</div>
-      </div>
-    `).join('');
   }
 
   async function refreshAllEvents() {
@@ -938,7 +1009,12 @@
       title.innerText = 'Edit Event';
       editingEventId = eventData.id;
       document.getElementById('eventName').value = eventData.name;
-      document.getElementById('eventDate').value = eventData.date;
+      // FIX 5: Populate datetime-local fields. DB stores ISO timestamp; slice to 'YYYY-MM-DDTHH:mm'
+      // which is the format datetime-local inputs expect.
+      document.getElementById('eventStartTime').value = eventData.start_time
+        ? eventData.start_time.slice(0, 16) : '';
+      document.getElementById('eventEndTime').value = eventData.end_time
+        ? eventData.end_time.slice(0, 16) : '';
       document.getElementById('eventLocation').value = eventData.location;
       document.getElementById('earlyBirdPrice').value = eventData.ticketTypes.earlyBird?.price || '';
       document.getElementById('earlyBirdCapacity').value = eventData.ticketTypes.earlyBird?.capacity || '';
@@ -955,7 +1031,9 @@
       title.innerText = 'Create New Event';
       editingEventId = null;
       document.getElementById('eventName').value = '';
-      document.getElementById('eventDate').value = '';
+      // FIX 5: Clear datetime-local fields (replaced single eventDate field)
+      document.getElementById('eventStartTime').value = '';
+      document.getElementById('eventEndTime').value = '';
       document.getElementById('eventLocation').value = 'Rands Cape Town';
       document.getElementById('earlyBirdPrice').value = '';
       document.getElementById('earlyBirdCapacity').value = '';
@@ -976,10 +1054,13 @@
       return;
     }
     const name = document.getElementById('eventName').value.trim();
-    const date = document.getElementById('eventDate').value;
+    // FIX 5: Read start_time and end_time from datetime-local inputs instead of date-only eventDate.
+    // datetime-local gives "YYYY-MM-DDTHH:mm" — valid ISO-8601 that Supabase accepts as timestamptz.
+    const startTime = document.getElementById('eventStartTime').value; // e.g. "2025-12-31T20:00"
+    const endTime = document.getElementById('eventEndTime').value;     // optional but captured
     const location = document.getElementById('eventLocation').value.trim() || 'Rands Cape Town';
-    if (!name || !date) {
-      showToast('Event name and date required', 'error');
+    if (!name || !startTime) {
+      showToast('Event name and start date/time are required', 'error');
       return;
     }
     const ebPrice = parseFloat(document.getElementById('earlyBirdPrice').value);
@@ -999,7 +1080,8 @@
       if (editingEventId) {
         const { error: updateError } = await supabase
           .from('events')
-          .update({ name, location, start_time: date, base_price: genPrice || 0, vip_price: vipPrice || 0 })
+          // FIX 5: Send start_time and end_time as full ISO timestamps, not date-only strings.
+          .update({ name, location, start_time: startTime, end_time: endTime || null, base_price: genPrice || 0, vip_price: vipPrice || 0 })
           .eq('id', editingEventId);
         if (updateError) throw updateError;
         eventId = editingEventId;
@@ -1038,7 +1120,8 @@
       } else {
         const { data: eventData, error: eventError } = await supabase
           .from('events')
-          .insert([{ name, location, start_time: date, base_price: genPrice || 0, vip_price: vipPrice || 0, status: 'active' }])
+          // FIX 5: Insert start_time and end_time as ISO timestamps; also persist end_time.
+          .insert([{ name, location, start_time: startTime, end_time: endTime || null, base_price: genPrice || 0, vip_price: vipPrice || 0, status: 'active' }])
           .select()
           .single();
         if (eventError) throw eventError;
