@@ -722,25 +722,30 @@
         setTimeout(() => toast.classList.remove('show'), 2500);
     }
     
+    const _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playFeedback(success) {
         try { navigator.vibrate?.(success ? 120 : 300); } catch(e) {}
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        const osc = _audioCtx.createOscillator();
+        const gain = _audioCtx.createGain();
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(_audioCtx.destination);
         osc.frequency.value = success ? 660 : 440;
         gain.gain.value = 0.12;
         osc.start();
-        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.00001, _audioCtx.currentTime + 0.4);
         setTimeout(() => osc.stop(), 400);
     }
     
     async function loadStats() {
         if (!currentEvent) return;
-        const { count: checked } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', currentEvent.id).eq('checked_in', true);
-        const { count: total } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('event_id', currentEvent.id);
-        const c = checked || 0, t = total || 0;
+        // Single query: fetch total + checked_in count in one round-trip
+        const { data } = await supabase
+            .from('tickets')
+            .select('checked_in')
+            .eq('event_id', currentEvent.id);
+        if (!data) return;
+        const t = data.length;
+        const c = data.filter(r => r.checked_in).length;
         totalSpan.innerText = c;
         remainingSpan.innerText = t - c;
         percentSpan.innerText = t > 0 ? Math.round((c / t) * 100) + '%' : '0%';
@@ -795,18 +800,12 @@
     
     async function checkinTicket(qrToken, gate) {
         if (!currentEvent) throw new Error('No event selected');
-        
-        console.log('Checking in with:', { qrToken, eventId: currentEvent.id, gate });
-        
         const { data, error } = await supabase.rpc('checkin_ticket_secure', {
             p_qr_token: qrToken,
             p_event_id: currentEvent.id,
             p_gate: gate || 'Main Gate',
             p_scanned_by: null
         });
-        
-        console.log('RPC Response:', { data, error });
-        
         if (error) throw new Error(error.message);
         if (!data.success) throw new Error(data.message);
         return data;
@@ -825,28 +824,26 @@
     
     async function processTicket(scannedData) {
         if (!currentEvent) { 
-            showResult('error', 'No Event', 'Please select an event from dropdown'); 
+            showResult('error', 'No Event', 'Please select an event from dropdown');
+            scanning = true; // re-enable scan
             return false; 
         }
         
-        // Extract the actual qr_token from the scanned data
         const qrToken = extractQrTokenFromScan(scannedData);
-        
-        console.log('Raw scan:', scannedData);
-        console.log('Extracted QR Token:', qrToken);
-        
         const gate = document.getElementById('gateInput').value || 'Main Gate';
         
         try {
             const result = await checkinTicket(qrToken, gate);
             playFeedback(true);
+            closeScanner();
             showResult('success', 'ACCESS GRANTED', result.message);
-            await loadStats();
-            await loadRecentScans();
+            // Update stats in background — don't block the result modal
+            loadStats();
+            loadRecentScans();
             return true;
         } catch(err) {
-            console.error('Checkin error:', err);
             playFeedback(false);
+            closeScanner();
             if (err.message.includes('already') || err.message.includes('already used')) {
                 showResult('used', 'ALREADY USED', err.message);
             } else if (err.message.includes('different event') || err.message.includes('wrong_event')) {
@@ -865,12 +862,22 @@
         document.getElementById('readerContainer').innerHTML = '';
         scanner = new Html5Qrcode("readerContainer");
         try {
-            await scanner.start({ facingMode: camera }, { fps: 10, qrbox: { width: 280, height: 280 } }, (text) => {
-                if (text && scanning) { 
-                    closeScanner(); 
-                    processTicket(text); 
+            await scanner.start(
+                { facingMode: camera },
+                {
+                    fps: 30,                          // 3× more frames decoded per second
+                    qrbox: { width: 250, height: 250 }, // smaller = faster decode
+                    aspectRatio: 1.0,                 // square crop = less wasted pixels
+                    disableFlip: false,
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: true } // use native BarcodeDetector API where available (Chrome/Android = instant)
+                },
+                (text) => {
+                    if (text && scanning) {
+                        scanning = false;             // debounce immediately
+                        processTicket(text);          // process first, close after
+                    }
                 }
-            });
+            );
             scanning = true;
             if (torch) try { await scanner.applyVideoConstraints({ advanced: [{ torch: true }] }); } catch(e) {}
         } catch(err) { showToast('Camera error: ' + err.message, true); closeScanner(); }
