@@ -3,311 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Rands Kiosk | Wallet Check‑in + Wristband</title>
+  <title>Rands Kiosk | Wallet + Wristband</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator-1.4.4/qrcode-generator.min.js"></script>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      font-family: 'Inter', sans-serif;
-      background: #0F0F0F;
-      color: #fff;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    /* Background particles + gradient */
-    #bg-canvas {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(227,6,19,0.14) 0%, transparent 65%), #0F0F0F;
-    }
-    #bg-canvas::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
-      pointer-events: none;
-    }
-    .kiosk-layout {
-      position: relative;
-      z-index: 2;
-      max-width: 1500px;
-      margin: 0 auto;
-      padding: 1.5rem 2rem 2rem;
-      display: grid;
-      grid-template-columns: 1fr 0.95fr;
-      gap: 2rem;
-      align-items: start;
-    }
-    @media (max-width: 1000px) {
-      .kiosk-layout { grid-template-columns: 1fr; padding: 1rem; gap: 1.5rem; }
-    }
-    /* Glass cards */
-    .glass-card {
-      background: rgba(255,255,255,0.04);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 28px;
-      padding: 1.8rem;
-      transition: all 0.2s ease;
-    }
-    .card-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 1.4rem;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
-      padding-bottom: 0.9rem;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #0F0F0F; color: #fff; min-height: 100vh; overflow-x: hidden; }
+    #bg-canvas { position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(227,6,19,0.14) 0%, transparent 65%), #0F0F0F; }
+    #bg-canvas::after { content: ''; position: absolute; inset: 0; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"); pointer-events: none; }
+    .kiosk-layout { position: relative; z-index: 2; max-width: 1500px; margin: 0 auto; padding: 1.5rem 2rem 2rem; display: grid; grid-template-columns: 1fr 0.95fr; gap: 2rem; align-items: start; }
+    @media (max-width: 1000px) { .kiosk-layout { grid-template-columns: 1fr; padding: 1rem; } }
+    .glass-card { background: rgba(255,255,255,0.04); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.07); border-radius: 28px; padding: 1.8rem; }
+    .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.4rem; border-bottom: 1px solid rgba(255,255,255,0.07); padding-bottom: 0.9rem; }
     .card-header svg { width: 28px; height: 28px; fill: #E30613; }
-    .card-title {
-      font-family: 'Playfair Display', serif;
-      font-size: 1.7rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-    }
+    .card-title { font-family: 'Playfair Display', serif; font-size: 1.7rem; font-weight: 800; }
     .card-sub { margin-left: auto; font-size: 0.7rem; color: #888; }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 60px;
-      padding: 0.4rem 1rem;
-      font-size: 0.7rem;
-    }
-    /* Scanner panel */
-    .scanner-lens-redesign {
-      background: #05050F;
-      border-radius: 24px;
-      padding: 1.8rem;
-      border: 1px solid rgba(227,6,19,0.25);
-      margin: 1rem 0;
-    }
-    .scan-animation {
-      position: relative;
-      background: #000;
-      border-radius: 20px;
-      padding: 2rem;
-      text-align: center;
-      overflow: hidden;
-    }
-    .scan-line-anim {
-      position: absolute;
-      width: 80%;
-      height: 3px;
-      background: linear-gradient(90deg, transparent, #E30613, #ff5e6b, #E30613, transparent);
-      animation: sweep 2s infinite ease;
-      border-radius: 4px;
-      left: 10%;
-    }
-    @keyframes sweep {
-      0% { top: 10%; opacity: 0.3; }
-      45% { top: 85%; opacity: 1; }
-      55% { top: 85%; }
-      100% { top: 10%; opacity: 0.3; }
-    }
-    /* inputs & buttons */
-    .kiosk-input {
-      width: 100%;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 60px;
-      padding: 1rem 1.4rem;
-      font-size: 1rem;
-      color: white;
-      outline: none;
-      transition: 0.2s;
-    }
-    .kiosk-input:focus {
-      border-color: #E30613;
-      box-shadow: 0 0 0 3px rgba(227,6,19,0.25);
-    }
-    .btn-primary {
-      background: #E30613;
-      border: none;
-      border-radius: 60px;
-      padding: 1rem 1.5rem;
-      font-weight: 800;
-      font-size: 0.9rem;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: white;
-      width: 100%;
-      cursor: pointer;
-      transition: all 0.2s;
-      box-shadow: 0 8px 20px rgba(227,6,19,0.3);
-    }
+    .status-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.08); border-radius: 60px; padding: 0.4rem 1rem; font-size: 0.7rem; }
+    .scanner-lens-redesign { background: #05050F; border-radius: 24px; padding: 1.8rem; border: 1px solid rgba(227,6,19,0.25); margin: 1rem 0; }
+    .scan-animation { position: relative; background: #000; border-radius: 20px; padding: 2rem; text-align: center; overflow: hidden; }
+    .scan-line-anim { position: absolute; width: 80%; height: 3px; background: linear-gradient(90deg, transparent, #E30613, #ff5e6b, #E30613, transparent); animation: sweep 2s infinite ease; border-radius: 4px; left: 10%; }
+    @keyframes sweep { 0% { top: 10%; opacity: 0.3; } 45% { top: 85%; opacity: 1; } 55% { top: 85%; } 100% { top: 10%; opacity: 0.3; } }
+    .kiosk-input { width: 100%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 60px; padding: 1rem 1.4rem; font-size: 1rem; color: white; outline: none; transition: 0.2s; }
+    .kiosk-input:focus { border-color: #E30613; box-shadow: 0 0 0 3px rgba(227,6,19,0.25); }
+    .btn-primary { background: #E30613; border: none; border-radius: 60px; padding: 1rem 1.5rem; font-weight: 800; font-size: 0.9rem; letter-spacing: 2px; text-transform: uppercase; color: white; width: 100%; cursor: pointer; transition: all 0.2s; box-shadow: 0 8px 20px rgba(227,6,19,0.3); }
     .btn-primary:hover { background: #B00510; transform: translateY(-2px); }
-    .btn-secondary {
-      background: rgba(255,255,255,0.12);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 60px;
-      padding: 0.8rem 1.2rem;
-      font-weight: 600;
-      color: white;
-      cursor: pointer;
-    }
+    .btn-secondary { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.12); border-radius: 60px; padding: 0.8rem 1.2rem; font-weight: 600; color: white; cursor: pointer; }
     .ticket-type-selector { display: flex; gap: 12px; margin: 12px 0; }
-    .type-option {
-      flex: 1;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 50px;
-      padding: 8px;
-      text-align: center;
-      cursor: pointer;
-    }
-    .type-option.selected {
-      background: rgba(227,6,19,0.08);
-      border-color: #E30613;
-      color: #E30613;
-      font-weight: bold;
-    }
+    .type-option { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 50px; padding: 8px; text-align: center; cursor: pointer; }
+    .type-option.selected { background: rgba(227,6,19,0.08); border-color: #E30613; color: #E30613; font-weight: bold; }
     .form-row { margin-bottom: 1rem; }
-    .form-row label {
-      display: block;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      color: #888;
-      margin-bottom: 6px;
-    }
-    .toast {
-      position: fixed;
-      bottom: 2rem;
-      left: 50%;
-      transform: translateX(-50%) translateY(10px);
-      background: #1f1f2f;
-      backdrop-filter: blur(20px);
-      padding: 0.8rem 1.8rem;
-      border-radius: 60px;
-      color: white;
-      z-index: 1000;
-      font-size: 0.85rem;
-      opacity: 0;
-      transition: 0.2s;
-      pointer-events: none;
-      border: 1px solid rgba(227,6,19,0.3);
-    }
+    .form-row label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #888; margin-bottom: 6px; }
+    .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(10px); background: #1f1f2f; backdrop-filter: blur(20px); padding: 0.8rem 1.8rem; border-radius: 60px; color: white; z-index: 1000; font-size: 0.85rem; opacity: 0; transition: 0.2s; pointer-events: none; border: 1px solid rgba(227,6,19,0.3); }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    /* Wristband modal */
-    .wristband-modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.85);
-      backdrop-filter: blur(12px);
-      z-index: 2000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      visibility: hidden;
-      transition: 0.2s;
-    }
+    .wristband-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); z-index: 2000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: 0.2s; }
     .wristband-modal.active { opacity: 1; visibility: visible; }
-    .wristband-modal-content {
-      max-width: 95%;
-      max-height: 90vh;
-      overflow: auto;
-      background: #181818;
-      border-radius: 2rem;
-      padding: 2rem;
-      border: 1px solid rgba(227,6,19,0.4);
-    }
+    .wristband-modal-content { max-width: 95%; max-height: 90vh; overflow: auto; background: #181818; border-radius: 2rem; padding: 2rem; border: 1px solid rgba(227,6,19,0.4); }
     @media print {
       body * { visibility: hidden; }
       .print-wristband-only, .print-wristband-only * { visibility: visible; }
-      .print-wristband-only {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 260mm;
-        min-height: 25mm;
-        margin: 0;
-        padding: 0;
-        background: white;
-      }
+      .print-wristband-only { position: absolute; top: 0; left: 0; width: 260mm; min-height: 25mm; margin: 0; padding: 0; background: white; }
       .no-print { display: none; }
       .wristband-strip { break-inside: avoid; width: 260mm; min-height: 25mm; background: #fff !important; color: #000 !important; }
     }
-    .wristband-strip {
-      display: flex;
-      flex-wrap: nowrap;
-      width: 260mm;
-      min-height: 25mm;
-      background: linear-gradient(145deg, #ffffff 0%, #fef5f5 100%);
-      border-radius: 12px;
-      font-family: 'Inter', monospace;
-      overflow: hidden;
-      border: 1px solid #e0e0e0;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.1);
-    }
-    .wristband-content {
-      flex: 4;
-      padding: 6px 10px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      background: white;
-    }
-    .wristband-brand {
-      background: #E30613;
-      color: white;
-      padding: 4px 12px;
-      border-radius: 40px;
-      font-weight: 800;
-      font-size: 0.7rem;
-    }
+    .wristband-strip { display: flex; flex-wrap: nowrap; width: 260mm; min-height: 25mm; background: linear-gradient(145deg, #ffffff 0%, #fef5f5 100%); border-radius: 12px; font-family: 'Inter', monospace; overflow: hidden; border: 1px solid #e0e0e0; box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
+    .wristband-content { flex: 4; padding: 6px 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: white; }
+    .wristband-brand { background: #E30613; color: white; padding: 4px 12px; border-radius: 40px; font-weight: 800; font-size: 0.7rem; }
     .wristband-name { font-weight: 800; font-size: 0.85rem; color: #E30613; }
     .wristband-qr { width: 36px; height: 36px; background: white; padding: 2px; border-radius: 6px; }
-    .overlap-blank {
-      width: 40px;
-      background: #f4f0ec;
-      border-left: 2px dashed #aaa;
-      flex-shrink: 0;
-      text-align: center;
-      font-size: 6px;
-      writing-mode: vertical-rl;
-      color: #777;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .vip-badge {
-      background: linear-gradient(135deg, #F59E0B, #ea580c);
-      color: white;
-      border-radius: 30px;
-      padding: 2px 8px;
-      font-size: 0.55rem;
-      font-weight: 800;
-      margin-left: 6px;
-    }
-    .printer-status {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 1rem;
-      font-size: 0.7rem;
-      color: #22C55E;
-      background: rgba(34,197,94,0.1);
-      padding: 8px 12px;
-      border-radius: 60px;
-    }
+    .overlap-blank { width: 40px; background: #f4f0ec; border-left: 2px dashed #aaa; flex-shrink: 0; text-align: center; font-size: 6px; writing-mode: vertical-rl; color: #777; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+    .vip-badge { background: linear-gradient(135deg, #F59E0B, #ea580c); color: white; border-radius: 30px; padding: 2px 8px; font-size: 0.55rem; font-weight: 800; margin-left: 6px; }
+    .printer-status { display: flex; justify-content: space-between; margin-top: 1rem; font-size: 0.7rem; color: #22C55E; background: rgba(34,197,94,0.1); padding: 8px 12px; border-radius: 60px; }
     select.kiosk-input { appearance: auto; background: #1a1a1a; }
   </style>
 </head>
 <body>
 <div id="bg-canvas"></div>
 <div class="kiosk-layout">
-  <!-- LEFT COLUMN: Gate Scanner (unchanged logic) -->
+  <!-- LEFT: Gate Scanner -->
   <div class="glass-card">
     <div class="card-header">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3,9 3,5 7,5"/><polyline points="21,9 21,5 17,5"/><polyline points="3,15 3,19 7,19"/><polyline points="21,15 21,19 17,19"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
@@ -332,7 +84,7 @@
     </div>
   </div>
 
-  <!-- RIGHT COLUMN: Wallet payment using phone + CVV -->
+  <!-- RIGHT: Wallet Purchase (using wallets.balance) -->
   <div class="glass-card">
     <div class="card-header">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-4M9 14l3 4 3-4"/></svg>
@@ -371,7 +123,6 @@
   </div>
 </div>
 
-<!-- Wristband Modal Preview & Print -->
 <div id="wristbandModal" class="wristband-modal">
   <div class="wristband-modal-content">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -397,13 +148,11 @@
 <script type="module">
   import { supabase } from '../config/supabase.js';
 
-  // ---------- GLOBALS ----------
   let currentEvent = null;
   let selectedTicketType = 'general';
   let eventTicketTypes = { generalId: null, vipId: null };
   let ticketsCache = [];
 
-  // DOM refs
   const manualTicketInput = document.getElementById('manualTicketId');
   const verifyBtn = document.getElementById('verifyCheckinBtn');
   const purchaseBtn = document.getElementById('purchaseTicketBtn');
@@ -416,7 +165,6 @@
   const printWristbandBtn = document.getElementById('printWristbandBtn');
   const dynamicContainer = document.getElementById('dynamicWristbandContainer');
 
-  // helpers
   function toast(msg, isError = false) {
     const t = document.getElementById('toastMsg');
     t.textContent = msg;
@@ -424,7 +172,6 @@
     setTimeout(() => t.classList.remove('show'), 3200);
   }
 
-  // Load events, ticket types and set currentEvent
   async function loadEventsAndTypes() {
     try {
       const { data: events, error } = await supabase
@@ -440,7 +187,6 @@
       }
       eventSelect.innerHTML = events.map(ev => `<option value="${ev.id}">${ev.name} (${new Date(ev.start_time).toLocaleDateString()})</option>`).join('');
       currentEvent = events[0];
-      // fetch ticket types (global or event-specific)
       const { data: types, error: tErr } = await supabase.from('ticket_types').select('id, name, event_id');
       if (!tErr && types) {
         const general = types.find(t => t.name.toLowerCase().includes('general') && (t.event_id === currentEvent.id || !t.event_id));
@@ -458,9 +204,9 @@
     if (!error && data) ticketsCache = data.map(t => ({ id: t.id, checkedIn: t.checked_in }));
   }
 
-  // ----- GATE SCANNER (unchanged backend logic) -----
+  // Gate scanner (unchanged, works with ticket ID)
   async function processCheckin(ticketId) {
-    if (!ticketId) { toast('Please enter ticket ID', true); return; }
+    if (!ticketId) { toast('Enter ticket ID', true); return; }
     if (!currentEvent) { toast('No active event', true); return; }
     let ticket = ticketsCache.find(t => t.id === ticketId);
     if (!ticket) {
@@ -480,7 +226,6 @@
     refreshTicketsCache();
   }
 
-  // ----- QR code generator (canvas) -----
   function generateQRDataURL(text, size = 80) {
     const qr = qrcodeGenerator(0, 'H');
     qr.addData(text);
@@ -516,50 +261,59 @@
             <div style="font-size:0.6rem; line-height:1.2;"><span style="font-weight:800;">SCAN</span><br>GATE USE</div>
           </div>
         </div>
-        <div class="overlap-blank" style="width:40px; background:#f4f0ec; border-left:2px dashed #bbb; text-align:center; font-size:0.5rem; writing-mode:vertical-rl; color:#777; display:flex; align-items:center; justify-content:center;">✂️ FASTEN HERE</div>
+        <div class="overlap-blank" style="width:40px; background:#f4f0ec; border-left:2px dashed #aaa; text-align:center; font-size:0.5rem; writing-mode:vertical-rl; color:#777; display:flex; align-items:center; justify-content:center;">✂️ FASTEN HERE</div>
       </div>
     `;
   }
 
   function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
-  // ---------- WALLET PAYMENT: phone + CVV, deduct, create ticket, wristband ----------
+  // ----- FIXED WALLET PAYMENT: uses wallets.balance, not profiles.wallet_balance -----
   async function purchaseWithWallet() {
     const phone = walletPhone.value.trim();
     const cvv = walletCvv.value.trim();
     if (!phone || !cvv) { toast('Enter phone number and CVV', true); return; }
     if (!currentEvent) { toast('No event selected', true); return; }
 
-    // 1. fetch profile by phone, verify CVV, get name and balance
+    // 1. Get profile by phone (to get user id and verify CVV)
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('id, wallet_balance, card_cvv, name')
+      .select('id, card_cvv, name')
       .eq('phone', phone)
       .maybeSingle();
-    if (profileErr || !profile) { toast('No wallet found with this phone', true); return; }
+    if (profileErr || !profile) { toast('No wallet account found with this phone', true); return; }
     if (profile.card_cvv !== cvv) { toast('Invalid CVV', true); return; }
 
-    // ticket price based on event and type
-    let ticketPrice = 0;
-    if (selectedTicketType === 'general') ticketPrice = currentEvent.base_price || 0;
-    else ticketPrice = currentEvent.vip_price || (currentEvent.base_price ? currentEvent.base_price * 2 : 100);
-    if (ticketPrice <= 0) ticketPrice = 50; // fallback safe price
+    // 2. Get wallet balance from the wallets table (source of truth)
+    const { data: wallet, error: walletErr } = await supabase
+      .from('wallets')
+      .select('id, balance')
+      .eq('user_id', profile.id)
+      .maybeSingle();
+    if (walletErr || !wallet) { toast('No wallet record found for this user', true); return; }
 
-    const currentBalance = profile.wallet_balance || 0;
+    const currentBalance = Number(wallet.balance) || 0;
+    let ticketPrice = selectedTicketType === 'general' ? (currentEvent.base_price || 0) : (currentEvent.vip_price || (currentEvent.base_price * 2) || 100);
+    if (ticketPrice <= 0) ticketPrice = 50;
+
     if (currentBalance < ticketPrice) {
-      toast(`Insufficient balance. R${currentBalance} available, need R${ticketPrice}`, true);
+      toast(`Insufficient balance. R${currentBalance.toFixed(2)} available, need R${ticketPrice}`, true);
       return;
     }
 
-    // 2. deduct balance
     const newBalance = currentBalance - ticketPrice;
-    const { error: deductErr } = await supabase
-      .from('profiles')
-      .update({ wallet_balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', profile.id);
-    if (deductErr) { toast('Payment failed, please retry', true); return; }
 
-    // 3. create ticket (no customer_name column needed, we use profile.name for wristband)
+    // 3. Deduct from wallets table
+    const { error: deductErr } = await supabase
+      .from('wallets')
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('id', wallet.id);
+    if (deductErr) { toast('Payment failed (wallet update error)', true); return; }
+
+    // 4. (Optional) Sync profiles.wallet_balance if you use it elsewhere
+    await supabase.from('profiles').update({ wallet_balance: newBalance, updated_at: new Date().toISOString() }).eq('id', profile.id).catch(e => console.warn('profile sync warning', e));
+
+    // 5. Create ticket
     const ticketId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
     const ticketTypeId = (selectedTicketType === 'vip') ? eventTicketTypes.vipId : eventTicketTypes.generalId;
     const { error: ticketErr } = await supabase
@@ -577,13 +331,14 @@
         qr_token: ticketId
       });
     if (ticketErr) {
-      // rollback balance
+      // Rollback wallet deduction
+      await supabase.from('wallets').update({ balance: currentBalance }).eq('id', wallet.id);
       await supabase.from('profiles').update({ wallet_balance: currentBalance }).eq('id', profile.id);
       toast('Ticket creation failed, balance restored', true);
       return;
     }
 
-    // record wallet transaction (optional but good for ledger)
+    // 6. Record transaction in wallet_transactions
     await supabase.from('wallet_transactions').insert({
       user_id: profile.id,
       amount: ticketPrice,
@@ -592,12 +347,12 @@
       status: 'completed',
       description: `Ticket: ${selectedTicketType.toUpperCase()} for ${currentEvent.name}`,
       created_at: new Date().toISOString()
-    }).catch(e => console.warn('tx log warning', e));
+    }).catch(e => console.warn('transaction log error', e));
 
-    toast(`✅ Payment successful! R${ticketPrice} deducted. Wristband ready.`);
+    toast(`✅ Payment successful! R${ticketPrice} deducted. New balance: R${newBalance.toFixed(2)}`);
     await refreshTicketsCache();
 
-    // 4. generate wristband using profile.name (from DB)
+    // 7. Generate wristband
     const qrDataUrl = await generateQRDataURL(ticketId, 80);
     const wristbandHtml = buildWristbandHTML({
       id: ticketId,
@@ -609,23 +364,20 @@
     }, qrDataUrl);
     dynamicContainer.innerHTML = wristbandHtml;
     modal.classList.add('active');
+    if (autoPrintToggle.checked) setTimeout(() => window.print(), 500);
 
-    if (autoPrintToggle.checked) {
-      setTimeout(() => window.print(), 500);
-    }
-    // clear sensitive inputs
+    // Clear sensitive inputs
     walletCvv.value = '';
     walletPhone.value = '';
   }
 
-  // UI: ticket type selector (global function for onclick)
+  // UI helpers
   window.selectTicketType = function(type, element) {
     selectedTicketType = type;
     document.querySelectorAll('.type-option').forEach(el => el.classList.remove('selected'));
     element.classList.add('selected');
   };
 
-  // event select change
   eventSelect.addEventListener('change', async (e) => {
     const eventId = e.target.value;
     const { data } = await supabase.from('events').select('*').eq('id', eventId).single();
@@ -633,14 +385,12 @@
     await refreshTicketsCache();
   });
 
-  // button listeners
   verifyBtn.addEventListener('click', () => processCheckin(manualTicketInput.value.trim()));
   manualTicketInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') processCheckin(manualTicketInput.value.trim()); });
   purchaseBtn.addEventListener('click', purchaseWithWallet);
   closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
   printWristbandBtn.addEventListener('click', () => window.print());
 
-  // initial load
   loadEventsAndTypes().then(() => toast('🔴 Rands Kiosk | Wallet + wristband ready', false));
 </script>
 </body>
