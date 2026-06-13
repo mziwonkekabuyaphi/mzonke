@@ -16,7 +16,7 @@ import { supabase } from './supabase.js';
 export const ROLE_ROUTES = {
   admin:    '/admin/dashboard.html',
   staff:    '/staff/dashboard.html',
-  customer: '/app/home.html',
+  customer: '/passport/home.html',
 };
 
 /* =========================
