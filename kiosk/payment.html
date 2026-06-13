@@ -1325,6 +1325,53 @@
       }
       
       window.appVm = this;
+
+      // ── WALLET TOP-UP MODE ──────────────────────────────────────
+      const urlParams2 = new URLSearchParams(window.location.search);
+      if (urlParams2.get('mode') === 'topup') {
+        const topupAmount = parseFloat(urlParams2.get('amount') || '0');
+        if (topupAmount > 0) {
+          // Represent the top-up as a single cart item so payment UI works normally
+          this.cart = [{ id: 'topup', name: `Wallet Top-Up`, price: topupAmount, quantity: 1, itemType: 'topup' }];
+          // Pre-select card payment; wallet payment doesn't make sense for a top-up
+          this.selectedPayMethod = 'card';
+          this.showToast(`Top-up R${topupAmount.toFixed(2)} — complete payment to credit your wallet`, 'info');
+        }
+        // Clean URL so back-button doesn't re-trigger
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
+      // ── RETURN FROM YOCO AFTER WALLET TOP-UP ───────────────────
+      const topupWalletId = sessionStorage.getItem('rands_topup_wallet_id');
+      if (urlParams.get('payment') === 'success' && topupWalletId) {
+        const topupUserId    = sessionStorage.getItem('rands_topup_user_id');
+        const topupAmount    = parseFloat(sessionStorage.getItem('rands_topup_amount') || '0');
+        if (topupAmount > 0) {
+          try {
+            // Credit the wallet
+            const { data: wallet } = await supabase.from('wallets').select('balance').eq('id', topupWalletId).single();
+            const newBalance = (wallet?.balance || 0) + topupAmount;
+            await supabase.from('wallets').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', topupWalletId);
+            await supabase.from('wallet_transactions').insert({
+              wallet_id: topupWalletId,
+              user_id: topupUserId,
+              amount: topupAmount,
+              type: 'topup',
+              direction: 'credit',
+              status: 'completed',
+              description: `Wallet top-up of R${topupAmount}`,
+              created_at: new Date().toISOString()
+            });
+            this.showToast(`Wallet credited R${topupAmount.toFixed(2)}!`, 'success');
+          } catch(e) {
+            console.error('Topup credit error:', e);
+          }
+          // Leave session data intact so kiosk-start can restore the wallet session
+          sessionStorage.setItem('rands_topup_return', '1');
+          // Redirect back to kiosk-start after a short delay
+          setTimeout(() => { window.location.href = 'kiosk-start.html?wallet=resume'; }, 2000);
+        }
+      }
     },
     beforeDestroy() {
       if (this.approvalTimer) clearInterval(this.approvalTimer);

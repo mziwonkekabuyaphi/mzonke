@@ -1353,6 +1353,10 @@ async function renderWalletAuthScreen() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
         <span>Phone Number</span>
       </div>
+      <div class="wallet-auth-method" onclick="showWalletAuthForm('email')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <span>Email Address</span>
+      </div>
       <div class="wallet-auth-method" onclick="showWalletAuthForm('walletId')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/><path d="M15 15h3"/></svg>
         <span>Wallet ID</span>
@@ -1374,6 +1378,11 @@ window.showWalletAuthForm = function(method) {
     container.innerHTML = `
       <div class="field-group"><div class="field-label">Phone Number</div><input class="field-input" id="authPhone" placeholder="+27 00 000 0000"></div>
       <button class="btn-primary" style="width:100%;justify-content:center;padding:14px" onclick="lookupWalletByPhone()">Access Wallet →</button>
+    `;
+  } else if (method === 'email') {
+    container.innerHTML = `
+      <div class="field-group"><div class="field-label">Email Address</div><input class="field-input" type="email" id="authEmail" placeholder="you@example.com"></div>
+      <button class="btn-primary" style="width:100%;justify-content:center;padding:14px" onclick="lookupWalletByEmail()">Access Wallet →</button>
     `;
   } else if (method === 'walletId') {
     container.innerHTML = `
@@ -1401,6 +1410,17 @@ window.lookupWalletByPhone = async function() {
   try {
     const { data: profile, error } = await supabase.from('profiles').select('id, name, phone').eq('phone', phone).single();
     if (error || !profile) { toast('No account found with this phone number'); return; }
+    await loadWalletForUser(profile.id, profile.name, profile.phone);
+  } catch (err) { toast('Error finding account'); }
+};
+
+window.lookupWalletByEmail = async function() {
+  const email = document.getElementById('authEmail')?.value.trim();
+  if (!email) { toast('Please enter email address'); return; }
+  toast('Looking up wallet...');
+  try {
+    const { data: profile, error } = await supabase.from('profiles').select('id, name, phone, email').eq('email', email).single();
+    if (error || !profile) { toast('No account found with this email address'); return; }
     await loadWalletForUser(profile.id, profile.name, profile.phone);
   } catch (err) { toast('Error finding account'); }
 };
@@ -1532,32 +1552,14 @@ window.processTopup = async function() {
     toast('Please select a top-up amount');
     return;
   }
-  toast(`Processing payment of R${selectedTopupAmount}...`);
-  try {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const newBalance = (currentWalletData.balance || 0) + selectedTopupAmount;
-    const { error: updateError } = await supabase
-      .from('wallets')
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', currentWalletData.id);
-    if (updateError) throw updateError;
-    await supabase.from('wallet_transactions').insert({
-      wallet_id: currentWalletData.id,
-      user_id: currentWalletUser.id,
-      amount: selectedTopupAmount,
-      type: 'topup',
-      direction: 'credit',
-      status: 'completed',
-      description: `Wallet top-up of R${selectedTopupAmount}`,
-      created_at: new Date().toISOString()
-    });
-    currentWalletData.balance = newBalance;
-    toast(`✓ Successfully topped up R${selectedTopupAmount}!`);
-    await renderWalletDashboard();
-  } catch (err) {
-    console.error('Top-up error:', err);
-    toast('Payment failed. Please try again.');
-  }
+  // Store wallet session so payment.html can credit after success
+  sessionStorage.setItem('rands_topup_wallet_id', currentWalletData.id);
+  sessionStorage.setItem('rands_topup_user_id', currentWalletUser.id);
+  sessionStorage.setItem('rands_topup_amount', selectedTopupAmount);
+  sessionStorage.setItem('rands_topup_wallet_data', JSON.stringify(currentWalletData));
+  sessionStorage.setItem('rands_topup_user_data', JSON.stringify(currentWalletUser));
+  // Redirect to payment.html with topup mode
+  window.location.href = `payment.html?mode=topup&amount=${selectedTopupAmount}`;
 };
 
 window.showWalletQR = function() {
@@ -1633,10 +1635,36 @@ resetInactivityTimer();
 
 setTimeout(() => { loadEvents(); loadLockers(); updateStats(); }, 100);
 
+// Restore wallet session after returning from top-up payment
+(function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('wallet') === 'resume') {
+    window.history.replaceState({}, '', window.location.pathname);
+    const storedWalletData = sessionStorage.getItem('rands_topup_wallet_data');
+    const storedUserData   = sessionStorage.getItem('rands_topup_user_data');
+    const topupAmount      = parseFloat(sessionStorage.getItem('rands_topup_amount') || '0');
+    if (storedWalletData && storedUserData) {
+      currentWalletData = JSON.parse(storedWalletData);
+      currentWalletUser = JSON.parse(storedUserData);
+      // Optimistically update balance in memory so dashboard shows new amount
+      if (topupAmount > 0) currentWalletData.balance = (currentWalletData.balance || 0) + topupAmount;
+      sessionStorage.removeItem('rands_topup_wallet_data');
+      sessionStorage.removeItem('rands_topup_user_data');
+      sessionStorage.removeItem('rands_topup_wallet_id');
+      sessionStorage.removeItem('rands_topup_user_id');
+      sessionStorage.removeItem('rands_topup_amount');
+      sessionStorage.removeItem('rands_topup_return');
+      // Open wallet screen showing refreshed dashboard
+      setTimeout(() => { openScreen('wallet'); renderWalletDashboard(); }, 200);
+    }
+  }
+})();
+
 window.openScreen = openScreen;
 window.closeScreen = closeScreen;
 window.toast = toast;
 window.lookupWalletByPhone = lookupWalletByPhone;
+window.lookupWalletByEmail = lookupWalletByEmail;
 window.lookupWalletByWalletId = lookupWalletByWalletId;
 window.lookupWalletByUserId = lookupWalletByUserId;
 window.showWalletAuthForm = showWalletAuthForm;
