@@ -20,6 +20,7 @@
         .spinner { border: 3px solid #f3f3f3; border-top: 3px solid var(--rands-red); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .role-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+        .status-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -41,15 +42,16 @@
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-3">
-                        <select id="filter-role" class="px-4 py-2 border border-gray-300 rounded-lg">
-                            <option value="">All Roles</option>
-                            <option value="event_master">Event Master</option>
+                        <select id="filter-role" class="px-4 py-2 border border-gray-300 rounded-lg bg-white">
+                            <option value="">All Job Titles</option>
+                            <option value="event_manager">Event Manager</option>
+                            <option value="event_host">Event Host</option>
                             <option value="shisha_attendant">Shisha Attendant</option>
                             <option value="smart_host">Smart Host</option>
                             <option value="butcher_crew">Butcher Crew</option>
                             <option value="vvip_concierge">VVIP Concierge</option>
                         </select>
-                        <select id="filter-status" class="px-4 py-2 border border-gray-300 rounded-lg">
+                        <select id="filter-status" class="px-4 py-2 border border-gray-300 rounded-lg bg-white">
                             <option value="">All Status</option>
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
@@ -71,7 +73,7 @@
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job Title</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Screens</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
@@ -79,7 +81,7 @@
                             </tr>
                         </thead>
                         <tbody id="staff-table-body" class="bg-white divide-y divide-gray-200">
-                            <tr><td colspan="6" class="px-6 py-12 text-center"><div class="spinner mx-auto"></div><p class="mt-2">Loading...</p></td></tr>
+                            <tr><td colspan="6" class="px-6 py-12 text-center"><div class="spinner mx-auto"></div><p class="mt-2">Loading staff...</p></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -123,9 +125,19 @@
         let totalStaff = 0;
         let currentFilters = { search: '', role: '', status: '' };
         
-        const ROLES = {
-            event_master: {
-                name: 'Event Master',
+        // ======================= JOB TITLES & SCREENS DEFINITION =======================
+        // profiles.staff_role stores these keys. Legacy 'event_master' is mapped to 'event_host'
+        const JOB_TITLES = {
+            event_manager: {
+                name: 'Event Manager',
+                screens: [
+                    { name: 'Box Office', path: 'box-office.html', icon: 'fa-ticket-alt' },
+                    { name: 'Event Check-In', path: 'gate-scanner.html', icon: 'fa-qrcode' },
+                    { name: 'Event Analytics', path: 'event-analytics.html', icon: 'fa-chart-line' }
+                ]
+            },
+            event_host: {
+                name: 'Event Host',
                 screens: [
                     { name: 'Box Office', path: 'box-office.html', icon: 'fa-ticket-alt' },
                     { name: 'Event Check-In', path: 'gate-scanner.html', icon: 'fa-qrcode' }
@@ -165,14 +177,33 @@
             }
         };
         
+        // Legacy role mapping for backward compatibility (old 'event_master' -> 'event_host')
+        function normalizeStaffRole(roleKey) {
+            if (roleKey === 'event_master') return 'event_host';
+            if (JOB_TITLES[roleKey]) return roleKey;
+            return null;
+        }
+        
+        function getJobTitleDisplay(roleKey) {
+            const normalized = normalizeStaffRole(roleKey);
+            if (normalized && JOB_TITLES[normalized]) return JOB_TITLES[normalized].name;
+            return roleKey ? roleKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'N/A';
+        }
+        
+        function getScreensForRole(roleKey) {
+            const normalized = normalizeStaffRole(roleKey);
+            return normalized && JOB_TITLES[normalized] ? JOB_TITLES[normalized].screens : [];
+        }
+        
+        // ======================= AUTH & INIT =======================
         async function initStaffManagement() {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) { window.parent.location.href = '/login.html'; return; }
                 currentUser = session.user;
                 
-                const { data: profile } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single();
-                if (!['super_admin', 'admin'].includes(profile?.role)) {
+                const { data: profile, error: profileError } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single();
+                if (profileError || !['super_admin', 'admin'].includes(profile?.role)) {
                     alert('Access denied. Admin privileges required.');
                     window.parent.location.href = '/dashboard.html';
                     return;
@@ -183,9 +214,11 @@
                 setupEventListeners();
             } catch (error) {
                 console.error('Init error:', error);
+                showNotification('Failed to initialize dashboard', 'error');
             }
         }
         
+        // ======================= DASHBOARD STATS =======================
         async function loadDashboardStats() {
             try {
                 const { count: total } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'staff');
@@ -213,7 +246,7 @@
                     </div>
                     <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-purple-600">
                         <div class="flex items-center justify-between">
-                            <div><p class="text-gray-500 text-sm">Roles Active</p><p class="text-2xl font-bold">${Object.keys(ROLES).length}</p></div>
+                            <div><p class="text-gray-500 text-sm">Active Job Roles</p><p class="text-2xl font-bold">${Object.keys(JOB_TITLES).length}</p></div>
                             <i class="fas fa-tags text-3xl text-purple-600 opacity-50"></i>
                         </div>
                     </div>
@@ -221,12 +254,27 @@
             } catch (error) { console.error(error); }
         }
         
+        // ======================= STAFF LIST WITH LEGACY FILTERING =======================
         async function loadStaffList() {
             try {
                 let query = supabase.from('profiles').select('*', { count: 'exact' }).eq('role', 'staff');
-                if (currentFilters.search) query = query.or(`first_name.ilike.%${currentFilters.search}%,last_name.ilike.%${currentFilters.search}%,email.ilike.%${currentFilters.search}%`);
-                if (currentFilters.role) query = query.eq('staff_role', currentFilters.role);
-                if (currentFilters.status) query = query.eq('status', currentFilters.status);
+                
+                if (currentFilters.search) {
+                    query = query.or(`first_name.ilike.%${currentFilters.search}%,last_name.ilike.%${currentFilters.search}%,email.ilike.%${currentFilters.search}%,phone.ilike.%${currentFilters.search}%`);
+                }
+                
+                if (currentFilters.role) {
+                    // If filtering by 'event_host', also include legacy 'event_master' records
+                    if (currentFilters.role === 'event_host') {
+                        query = query.or(`staff_role.eq.event_host,staff_role.eq.event_master`);
+                    } else {
+                        query = query.eq('staff_role', currentFilters.role);
+                    }
+                }
+                
+                if (currentFilters.status) {
+                    query = query.eq('status', currentFilters.status);
+                }
                 
                 const from = (currentPage - 1) * pageSize;
                 const { data: staff, error, count } = await query.order('created_at', { ascending: false }).range(from, from + pageSize - 1);
@@ -234,7 +282,10 @@
                 totalStaff = count || 0;
                 renderStaffTable(staff || []);
                 renderPagination();
-            } catch (error) { console.error(error); }
+            } catch (error) { 
+                console.error('Load staff error:', error);
+                showNotification('Failed to load staff list', 'error');
+            }
         }
         
         function renderStaffTable(staff) {
@@ -245,28 +296,31 @@
             }
             
             tbody.innerHTML = staff.map(member => {
-                const role = ROLES[member.staff_role];
+                const jobTitleDisplay = getJobTitleDisplay(member.staff_role);
+                const screensCount = getScreensForRole(member.staff_role).length;
+                const statusColor = member.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                const statusIcon = member.status === 'active' ? 'fa-check-circle' : 'fa-circle';
                 return `
-                    <tr class="hover:bg-gray-50">
+                    <tr class="hover:bg-gray-50 transition">
                         <td class="px-6 py-4">
                             <div class="flex items-center">
                                 <div class="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center">
                                     <span class="text-red-600 font-semibold">${getInitials(member.first_name, member.last_name)}</span>
                                 </div>
                                 <div class="ml-4">
-                                    <div class="text-sm font-medium">${escapeHtml(member.first_name || '')} ${escapeHtml(member.last_name || '')}</div>
+                                    <div class="text-sm font-medium text-gray-900">${escapeHtml(member.first_name || '')} ${escapeHtml(member.last_name || '')}</div>
                                     <div class="text-sm text-gray-500">${escapeHtml(member.email || '')}</div>
                                 </div>
                             </div>
                         </td>
-                        <td class="px-6 py-4"><span class="role-badge bg-indigo-100 text-indigo-800">${role?.name || 'N/A'}</span></td>
-                        <td class="px-6 py-4"><span class="text-sm">${role?.screens.length || 0} screens</span></td>
-                        <td class="px-6 py-4"><span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${member.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${member.status || 'active'}</span></td>
+                        <td class="px-6 py-4"><span class="role-badge bg-indigo-100 text-indigo-800"><i class="fas fa-briefcase mr-1 text-xs"></i>${jobTitleDisplay}</span></td>
+                        <td class="px-6 py-4"><span class="text-sm font-medium">${screensCount} screens</span><span class="text-xs text-gray-400 ml-1">accessible</span></td>
+                        <td class="px-6 py-4"><span class="status-badge ${statusColor}"><i class="fas ${statusIcon} mr-1 text-xs"></i>${member.status || 'active'}</span></td>
                         <td class="px-6 py-4 text-sm text-gray-500">${member.last_seen ? formatDate(member.last_seen) : 'Never'}</td>
-                        <td class="px-6 py-4">
-                            <button onclick="window.viewStaffProfile('${member.id}')" class="text-blue-600 hover:text-blue-900 mr-3"><i class="fas fa-eye"></i></button>
-                            <button onclick="window.editStaff('${member.id}')" class="text-green-600 hover:text-green-900 mr-3"><i class="fas fa-edit"></i></button>
-                            <button onclick="window.toggleStaffStatus('${member.id}', '${member.status}')" class="text-yellow-600 hover:text-yellow-900"><i class="fas ${member.status === 'active' ? 'fa-ban' : 'fa-check-circle'}"></i></button>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <button onclick="window.viewStaffProfile('${member.id}')" class="text-blue-600 hover:text-blue-900 mr-3 transition" title="View Profile"><i class="fas fa-eye"></i></button>
+                            <button onclick="window.editStaff('${member.id}')" class="text-green-600 hover:text-green-900 mr-3 transition" title="Edit"><i class="fas fa-edit"></i></button>
+                            <button onclick="window.toggleStaffStatus('${member.id}', '${member.status}')" class="text-yellow-600 hover:text-yellow-900 transition" title="${member.status === 'active' ? 'Deactivate' : 'Activate'}"><i class="fas ${member.status === 'active' ? 'fa-ban' : 'fa-check-circle'}"></i></button>
                         </td>
                     </tr>
                 `;
@@ -278,74 +332,86 @@
             const container = document.getElementById('pagination-container');
             if (totalPages <= 1) { container.innerHTML = ''; return; }
             container.innerHTML = `
-                <div class="flex justify-between items-center">
+                <div class="flex justify-between items-center flex-wrap gap-2">
                     <div class="text-sm text-gray-700">Showing ${((currentPage - 1) * pageSize) + 1} to ${Math.min(currentPage * pageSize, totalStaff)} of ${totalStaff}</div>
                     <div class="flex gap-2">
-                        <button onclick="window.changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3 py-1 border rounded ${currentPage === 1 ? 'opacity-50' : 'hover:bg-gray-50'}">Prev</button>
-                        <span class="px-3 py-1">${currentPage} / ${totalPages}</span>
-                        <button onclick="window.changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3 py-1 border rounded ${currentPage === totalPages ? 'opacity-50' : 'hover:bg-gray-50'}">Next</button>
+                        <button onclick="window.changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} class="px-3 py-1 border rounded ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">Prev</button>
+                        <span class="px-3 py-1 bg-gray-100 rounded">${currentPage} / ${totalPages}</span>
+                        <button onclick="window.changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} class="px-3 py-1 border rounded ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">Next</button>
                     </div>
                 </div>
             `;
         }
         
+        // ======================= STAFF FORM (CREATE / EDIT) =======================
         async function openStaffForm(staffId = null) {
             const modal = document.getElementById('staff-form-modal');
             const container = document.getElementById('staff-form-container');
-            document.getElementById('modal-title').textContent = staffId ? 'Edit Staff' : 'Add Staff';
+            document.getElementById('modal-title').textContent = staffId ? 'Edit Staff Member' : 'Add New Staff';
             
             let staffData = null;
             if (staffId) {
                 const { data } = await supabase.from('profiles').select('*').eq('id', staffId).single();
                 staffData = data;
+                // Normalize legacy role for form dropdown
+                if (staffData && staffData.staff_role === 'event_master') staffData.staff_role = 'event_host';
             }
+            
+            // Build job title options
+            const jobOptions = Object.entries(JOB_TITLES).map(([key, val]) => 
+                `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${val.name}</option>`
+            ).join('');
             
             container.innerHTML = `
                 <form id="staff-form" class="p-6 space-y-6">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><label class="block text-sm font-medium mb-2">First Name *</label><input type="text" name="first_name" required value="${escapeHtml(staffData?.first_name || '')}" class="w-full px-3 py-2 border rounded-lg"></div>
-                        <div><label class="block text-sm font-medium mb-2">Surname *</label><input type="text" name="last_name" required value="${escapeHtml(staffData?.last_name || '')}" class="w-full px-3 py-2 border rounded-lg"></div>
-                        <div><label class="block text-sm font-medium mb-2">Email *</label><input type="email" name="email" required value="${escapeHtml(staffData?.email || '')}" ${staffId ? 'readonly' : ''} class="w-full px-3 py-2 border rounded-lg ${staffId ? 'bg-gray-100' : ''}"></div>
-                        <div><label class="block text-sm font-medium mb-2">Phone</label><input type="tel" name="phone" value="${escapeHtml(staffData?.phone || '')}" class="w-full px-3 py-2 border rounded-lg"></div>
-                        ${!staffId ? `<div><label class="block text-sm font-medium mb-2">Password *</label><input type="password" name="password" required class="w-full px-3 py-2 border rounded-lg"></div>` : ''}
-                        <div><label class="block text-sm font-medium mb-2">Clock PIN (4-6 digits)</label><input type="password" name="clock_in_pin" maxlength="6" value="${escapeHtml(staffData?.clock_in_pin || '')}" class="w-full px-3 py-2 border rounded-lg"></div>
-                        <div><label class="block text-sm font-medium mb-2">Staff Role *</label>
-                            <select name="staff_role" required class="w-full px-3 py-2 border rounded-lg">
-                                <option value="">Select Role</option>
-                                ${Object.entries(ROLES).map(([key, val]) => `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${val.name}</option>`).join('')}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">First Name *</label><input type="text" name="first_name" required value="${escapeHtml(staffData?.first_name || '')}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Surname *</label><input type="text" name="last_name" required value="${escapeHtml(staffData?.last_name || '')}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" name="email" required value="${escapeHtml(staffData?.email || '')}" ${staffId ? 'readonly class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"' : 'class="w-full px-3 py-2 border border-gray-300 rounded-lg"'}</div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Phone</label><input type="tel" name="phone" value="${escapeHtml(staffData?.phone || '')}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                        ${!staffId ? `<div><label class="block text-sm font-medium text-gray-700 mb-1">Password *</label><input type="password" name="password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>` : ''}
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Clock PIN (4-6 digits)</label><input type="password" name="clock_in_pin" maxlength="6" value="${escapeHtml(staffData?.clock_in_pin || '')}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Staff Job Title *</label>
+                            <select name="staff_role" required class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white">
+                                <option value="">Select Job Title</option>
+                                ${jobOptions}
                             </select>
                         </div>
-                        <div><label class="block text-sm font-medium mb-2">Status</label>
-                            <select name="status" class="w-full px-3 py-2 border rounded-lg">
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select name="status" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white">
                                 <option value="active" ${staffData?.status === 'active' ? 'selected' : ''}>Active</option>
                                 <option value="inactive" ${staffData?.status === 'inactive' ? 'selected' : ''}>Inactive</option>
                             </select>
                         </div>
                     </div>
                     
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <h3 class="text-md font-semibold mb-3">Screens Access (Auto-assigned by Role)</h3>
-                        <div id="screens-preview" class="text-sm text-gray-500 italic">Select a role to see available screens</div>
+                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <h3 class="text-md font-semibold text-gray-800 mb-3"><i class="fas fa-desktop text-red-500 mr-2"></i>Screens Access (Auto-assigned by Job Title)</h3>
+                        <div id="screens-preview" class="text-sm text-gray-500 italic">Select a job title to see available screens</div>
                     </div>
                     
-                    <div class="flex justify-end gap-3">
-                        <button type="button" onclick="window.closeStaffForm()" class="px-4 py-2 border rounded-lg">Cancel</button>
-                        <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">${staffId ? 'Update' : 'Create'}</button>
+                    <div class="flex justify-end gap-3 pt-2 border-t border-gray-200">
+                        <button type="button" onclick="window.closeStaffForm()" class="px-5 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">Cancel</button>
+                        <button type="submit" class="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition shadow-sm">${staffId ? 'Update Staff' : 'Create Staff'}</button>
                     </div>
                 </form>
             `;
             
             const roleSelect = container.querySelector('select[name="staff_role"]');
             const preview = container.querySelector('#screens-preview');
-            roleSelect.addEventListener('change', () => {
-                const role = ROLES[roleSelect.value];
-                if (role) {
-                    preview.innerHTML = `<p class="text-sm font-medium mb-2">This staff will access:</p><div class="flex flex-wrap gap-2">${role.screens.map(s => `<span class="px-3 py-1 rounded-full text-xs bg-green-100 text-green-800"><i class="fas ${s.icon} mr-1"></i>${s.name}</span>`).join('')}</div>`;
+            
+            function updateScreensPreview() {
+                const selectedVal = roleSelect.value;
+                if (selectedVal && JOB_TITLES[selectedVal]) {
+                    const screens = JOB_TITLES[selectedVal].screens;
+                    preview.innerHTML = `<p class="text-sm font-medium text-gray-700 mb-2">This staff member will access:</p><div class="flex flex-wrap gap-2">${screens.map(s => `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-green-100 text-green-800 border border-green-200"><i class="fas ${s.icon} mr-1"></i>${s.name}</span>`).join('')}</div>`;
                 } else {
-                    preview.innerHTML = '<p class="text-sm text-gray-500 italic">Select a role to see available screens</p>';
+                    preview.innerHTML = '<p class="text-sm text-gray-500 italic"><i class="fas fa-info-circle mr-1"></i>Select a job title to see available screens</p>';
                 }
-            });
-            if (staffData?.staff_role) roleSelect.dispatchEvent(new Event('change'));
+            }
+            
+            roleSelect.addEventListener('change', updateScreensPreview);
+            if (staffData?.staff_role) updateScreensPreview();
             
             document.getElementById('staff-form').addEventListener('submit', (e) => { e.preventDefault(); saveStaff(staffId); });
             modal.classList.remove('hidden');
@@ -357,7 +423,8 @@
             
             try {
                 if (staffId) {
-                    const { error } = await supabase.from('profiles').update({
+                    // Update existing staff - NEVER change role from staff
+                    const updatePayload = {
                         first_name: formData.get('first_name'),
                         last_name: formData.get('last_name'),
                         phone: formData.get('phone'),
@@ -365,75 +432,97 @@
                         staff_role: formData.get('staff_role'),
                         status: formData.get('status'),
                         updated_at: new Date().toISOString()
-                    }).eq('id', staffId);
+                    };
+                    const { error } = await supabase.from('profiles').update(updatePayload).eq('id', staffId);
                     if (error) throw error;
-                    showNotification('Staff updated', 'success');
+                    showNotification('Staff updated successfully', 'success');
                 } else {
+                    // Create new staff user in Auth
+                    const email = formData.get('email');
+                    const password = formData.get('password');
                     const { data: auth, error: authError } = await supabase.auth.signUp({
-                        email: formData.get('email'),
-                        password: formData.get('password'),
-                        options: { data: { first_name: formData.get('first_name'), last_name: formData.get('last_name'), role: 'staff' } }
+                        email: email,
+                        password: password,
+                        options: { 
+                            data: { 
+                                first_name: formData.get('first_name'), 
+                                last_name: formData.get('last_name'), 
+                                role: 'staff' 
+                            } 
+                        }
                     });
                     if (authError) throw authError;
+                    if (!auth.user) throw new Error('User creation failed');
                     
+                    // Insert profile with role = 'staff' (critical: do NOT set role to job title)
                     const { error: profileError } = await supabase.from('profiles').insert([{
                         id: auth.user.id,
                         first_name: formData.get('first_name'),
                         last_name: formData.get('last_name'),
-                        email: formData.get('email'),
+                        email: email,
                         phone: formData.get('phone'),
-                        role: 'staff',
+                        role: 'staff',          // Only 'staff', 'admin', or 'customer'
                         staff_role: formData.get('staff_role'),
                         clock_in_pin: formData.get('clock_in_pin') || null,
                         status: formData.get('status') || 'active'
                     }]);
                     if (profileError) throw profileError;
-                    showNotification('Staff created', 'success');
+                    showNotification('Staff created successfully. Login credentials sent.', 'success');
                 }
                 closeStaffForm();
                 await loadStaffList();
                 await loadDashboardStats();
             } catch (error) {
-                showNotification(error.message, 'error');
+                console.error('Save error:', error);
+                showNotification(error.message || 'Operation failed', 'error');
             }
         }
         
+        // ======================= PROFILE VIEW =======================
         async function viewStaffProfile(staffId) {
             try {
                 const { data: staff } = await supabase.from('profiles').select('*').eq('id', staffId).single();
-                const role = ROLES[staff.staff_role];
+                if (!staff) throw new Error('Staff not found');
+                const jobDisplay = getJobTitleDisplay(staff.staff_role);
+                const screens = getScreensForRole(staff.staff_role);
                 const { data: shift } = await supabase.from('staff_shifts').select('*').eq('staff_id', staffId).is('clock_out', null).single();
                 
                 const container = document.getElementById('staff-profile-container');
                 container.innerHTML = `
                     <div class="p-6 space-y-6">
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h3 class="font-semibold mb-4"><i class="fas fa-user-circle text-red-600 mr-2"></i>Personal Details</h3>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div><p class="text-sm text-gray-500">Name</p><p class="font-medium">${escapeHtml(staff.first_name)} ${escapeHtml(staff.last_name)}</p></div>
-                                <div><p class="text-sm text-gray-500">Email</p><p class="font-medium">${escapeHtml(staff.email)}</p></div>
-                                <div><p class="text-sm text-gray-500">Phone</p><p class="font-medium">${escapeHtml(staff.phone || 'Not provided')}</p></div>
-                                <div><p class="text-sm text-gray-500">Role</p><p class="font-medium">${role?.name || staff.staff_role}</p></div>
-                                <div><p class="text-sm text-gray-500">Status</p><span class="px-2 py-1 rounded-full text-xs ${staff.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${staff.status}</span></div>
-                                <div><p class="text-sm text-gray-500">Last Seen</p><p class="font-medium">${staff.last_seen ? formatDateTime(staff.last_seen) : 'Never'}</p></div>
+                        <div class="bg-gradient-to-r from-gray-50 to-white rounded-xl p-6 border">
+                            <div class="flex items-center space-x-4 mb-4">
+                                <div class="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center"><span class="text-red-700 text-2xl font-bold">${getInitials(staff.first_name, staff.last_name)}</span></div>
+                                <div><h3 class="text-xl font-bold">${escapeHtml(staff.first_name)} ${escapeHtml(staff.last_name)}</h3><p class="text-gray-500">${escapeHtml(staff.email)}</p></div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <div><p class="text-xs text-gray-500 uppercase">Job Title</p><p class="font-medium"><i class="fas fa-badge mr-1 text-red-500"></i>${jobDisplay}</p></div>
+                                <div><p class="text-xs text-gray-500 uppercase">Status</p><span class="status-badge ${staff.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${staff.status}</span></div>
+                                <div><p class="text-xs text-gray-500 uppercase">Phone</p><p class="font-medium">${escapeHtml(staff.phone || 'Not provided')}</p></div>
+                                <div><p class="text-xs text-gray-500 uppercase">Last Seen</p><p class="font-medium">${staff.last_seen ? formatDateTime(staff.last_seen) : 'Never'}</p></div>
+                                <div><p class="text-xs text-gray-500 uppercase">Clock PIN</p><p class="font-medium">${staff.clock_in_pin ? '●●●●' : 'Not set'}</p></div>
                             </div>
                         </div>
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h3 class="font-semibold mb-4"><i class="fas fa-desktop text-red-600 mr-2"></i>Screens Access</h3>
-                            <div class="grid grid-cols-2 gap-3">
-                                ${role?.screens.map(s => `<div class="flex items-center p-2 bg-white rounded-lg border"><i class="fas ${s.icon} text-red-500 mr-2"></i><div><p class="text-sm font-medium">${s.name}</p><p class="text-xs text-gray-500">${s.path}</p></div></div>`).join('') || '<p>No screens assigned</p>'}
+                        <div class="bg-gray-50 rounded-xl p-5 border">
+                            <h3 class="font-semibold mb-4 flex items-center"><i class="fas fa-tv text-red-500 mr-2"></i>Assigned Screens & Access</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                ${screens.map(s => `<div class="flex items-center p-3 bg-white rounded-lg border border-gray-200 shadow-sm"><i class="fas ${s.icon} text-red-500 w-6"></i><div class="ml-2"><p class="text-sm font-medium">${s.name}</p><p class="text-xs text-gray-400">${s.path}</p></div></div>`).join('')}
+                                ${screens.length === 0 ? '<p class="text-gray-400 italic col-span-2">No specific screens assigned. Contact admin.</p>' : ''}
                             </div>
                         </div>
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h3 class="font-semibold mb-4"><i class="fas fa-clock text-red-600 mr-2"></i>Current Shift</h3>
-                            ${shift ? `<p class="text-green-600">Clocked in since ${formatDateTime(shift.clock_in)}</p>` : '<p class="text-gray-500">Not clocked in</p>'}
+                        <div class="bg-gray-50 rounded-xl p-5 border">
+                            <h3 class="font-semibold mb-3"><i class="fas fa-history text-red-500 mr-2"></i>Current Shift</h3>
+                            ${shift ? `<div class="flex items-center text-green-700"><i class="fas fa-play-circle mr-2"></i><span>Clocked in since ${formatDateTime(shift.clock_in)}</span></div>` : '<p class="text-gray-500"><i class="fas fa-stop-circle mr-2"></i>Not clocked in</p>'}
                         </div>
                     </div>
                 `;
                 document.getElementById('staff-profile-modal').classList.remove('hidden');
-            } catch (error) { showNotification('Error loading profile', 'error'); }
+            } catch (error) { 
+                showNotification('Error loading profile', 'error');
+            }
         }
         
+        // ======================= UTILITIES =======================
         function getInitials(first, last) { return `${(first || 'U')[0]}${(last || '')[0] || ''}`.toUpperCase(); }
         function formatDate(d) { return d ? new Date(d).toLocaleDateString('en-ZA') : 'Never'; }
         function formatDateTime(d) { return d ? new Date(d).toLocaleString('en-ZA') : 'Never'; }
@@ -441,16 +530,17 @@
         
         function showNotification(msg, type) {
             const n = document.createElement('div');
-            n.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white animate-slide-in`;
-            n.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-2"></i>${escapeHtml(msg)}`;
+            n.className = `fixed top-5 right-5 z-50 px-5 py-3 rounded-lg shadow-xl flex items-center gap-2 ${type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white animate-slide-in`;
+            n.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i><span>${escapeHtml(msg)}</span>`;
             document.body.appendChild(n);
-            setTimeout(() => n.remove(), 3000);
+            setTimeout(() => n.remove(), 3500);
         }
         
         async function toggleStaffStatus(id, current) {
             const newStatus = current === 'active' ? 'inactive' : 'active';
-            if (confirm(`Confirm ${newStatus === 'active' ? 'activate' : 'deactivate'}?`)) {
-                await supabase.from('profiles').update({ status: newStatus }).eq('id', id);
+            if (confirm(`Are you sure you want to ${newStatus === 'active' ? 'activate' : 'deactivate'} this staff member?`)) {
+                const { error } = await supabase.from('profiles').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
+                if (error) { showNotification('Status update failed', 'error'); return; }
                 showNotification(`Staff ${newStatus === 'active' ? 'activated' : 'deactivated'}`, 'success');
                 await loadStaffList();
                 await loadDashboardStats();
@@ -459,22 +549,33 @@
         
         async function exportStaffList() {
             const { data: staff } = await supabase.from('profiles').select('first_name, last_name, email, phone, staff_role, status, last_seen').eq('role', 'staff');
-            const csv = [['First Name', 'Last Name', 'Email', 'Phone', 'Role', 'Status', 'Last Seen']];
-            staff.forEach(s => csv.push([s.first_name, s.last_name, s.email, s.phone, ROLES[s.staff_role]?.name || s.staff_role, s.status, s.last_seen ? formatDate(s.last_seen) : '']));
-            const blob = new Blob([csv.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `staff_${new Date().toISOString().split('T')[0]}.csv`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showNotification('Export complete', 'success');
+            if (!staff || staff.length === 0) { showNotification('No staff data to export', 'error'); return; }
+            const csvRows = [['First Name', 'Last Name', 'Email', 'Phone', 'Job Title', 'Status', 'Last Seen']];
+            staff.forEach(s => {
+                csvRows.push([
+                    s.first_name || '', s.last_name || '', s.email || '', s.phone || '',
+                    getJobTitleDisplay(s.staff_role), s.status || 'inactive',
+                    s.last_seen ? formatDate(s.last_seen) : ''
+                ]);
+            });
+            const csvContent = csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.setAttribute('download', `staff_export_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showNotification('Staff list exported successfully', 'success');
         }
         
         function setupEventListeners() {
-            let timeout;
+            let searchTimeout;
             document.getElementById('search-staff').addEventListener('input', (e) => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => { currentFilters.search = e.target.value; currentPage = 1; loadStaffList(); }, 300);
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => { currentFilters.search = e.target.value; currentPage = 1; loadStaffList(); }, 400);
             });
             document.getElementById('filter-role').addEventListener('change', (e) => { currentFilters.role = e.target.value; currentPage = 1; loadStaffList(); });
             document.getElementById('filter-status').addEventListener('change', (e) => { currentFilters.status = e.target.value; currentPage = 1; loadStaffList(); });
@@ -485,6 +586,7 @@
         function closeStaffProfile() { document.getElementById('staff-profile-modal').classList.add('hidden'); }
         function editStaff(id) { openStaffForm(id); }
         
+        // Expose globals for inline handlers
         window.openStaffForm = openStaffForm;
         window.closeStaffForm = closeStaffForm;
         window.closeStaffProfile = closeStaffProfile;
