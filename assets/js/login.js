@@ -1,6 +1,16 @@
 /**
  * assets/js/login.js — Rands Vibe Login Controller
- * v2 — Added: Google OAuth, Passkey sign-in
+ *
+ * Auth flow:
+ *   1. Authenticate with Supabase (email/password, Google, or Passkey)
+ *   2. Fetch profile from `profiles` table via getProfile(user.id)
+ *   3. Validate: profile exists + role is set + status === 'Active'
+ *   4. Redirect to role dashboard
+ *
+ * "Account not fully configured" is shown ONLY when:
+ *   • profile row is NULL, OR
+ *   • profile.role is NULL/empty, OR
+ *   • profile.status !== 'Active'
  */
 
 import {
@@ -8,24 +18,27 @@ import {
   signInWithGoogle,
   signInWithPasskey,
   isPasskeySupported,
-  getUserRole,
+  getProfile,
   getRoleRedirectUrl,
 } from '../../config/auth.js';
 
-// ── Existing elements ──────────────────────────────────────────────────────
-const emailInput    = document.getElementById('email');
+// ── DOM elements ───────────────────────────────────────────────────────────
+const emailInput  = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const loginBtn      = document.getElementById('loginBtn');
 const loginBtnLabel = document.getElementById('loginBtnLabel');
 const authError     = document.getElementById('authError');
 const registerLink  = document.getElementById('registerLink');
 
-// ── New elements (injected by login.html v2) ───────────────────────────────
 const googleBtn   = document.getElementById('googleBtn');
 const passkeyBtn  = document.getElementById('passkeyBtn');
 const passkeyWrap = document.getElementById('passkeyWrap');
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+const togglePw   = document.getElementById('togglePw');
+const eyeIcon    = document.getElementById('eyeIcon');
+const eyeOffIcon = document.getElementById('eyeOffIcon');
+
+// ── Error display helpers ──────────────────────────────────────────────────
 function showAuthError(message) {
   if (!authError) return;
   authError.textContent = message;
@@ -36,6 +49,7 @@ function hideAuthError() {
   authError?.classList.remove('visible');
 }
 
+// ── Button loading state ───────────────────────────────────────────────────
 function setLoading(state, btn, labelEl, loadingText, defaultText) {
   if (!btn || !labelEl) return;
   btn.disabled = state;
@@ -43,23 +57,43 @@ function setLoading(state, btn, labelEl, loadingText, defaultText) {
   labelEl.textContent = state ? loadingText : defaultText;
 }
 
-// ── Role redirect helper ───────────────────────────────────────────────────
+// ── Core post-auth handler ─────────────────────────────────────────────────
+/**
+ * Called after any successful Supabase auth method returns a user.
+ * Fetches the profile, validates it, and redirects to the correct dashboard.
+ * Throws a user-friendly Error on any failure so callers can show authError.
+ */
 async function finishLogin(user) {
-  const { role, error: roleError } = await getUserRole(user.id);
+  const { profile, error } = await getProfile(user.id);
 
-  if (roleError === 'NO_ROLE' || !role) {
+  // Profile row missing entirely
+  if (error === 'NO_PROFILE') {
     throw new Error('Your account is not fully configured. Please contact support.');
   }
-  if (roleError) {
-    throw new Error('Unable to verify account permissions. Please try again.');
+
+  // Profile exists but role column is null/empty
+  if (error === 'NO_ROLE') {
+    throw new Error('Your account has no role assigned. Please contact support.');
   }
 
-  const redirectUrl = getRoleRedirectUrl(role);
+  // Unexpected DB / network error — don't expose internals
+  if (error) {
+    console.error('Profile fetch error during login:', error);
+    throw new Error('Unable to verify your account. Please try again.');
+  }
+
+  // Account inactive
+  if (profile.status !== 'Active') {
+    throw new Error('Your account is inactive. Please contact support.');
+  }
+
+  // Unrecognised role (shouldn't happen, but guard anyway)
+  const redirectUrl = getRoleRedirectUrl(profile.role);
   if (!redirectUrl) {
-    throw new Error(`Unknown role "${role}". Please contact support.`);
+    throw new Error(`Unknown role "${profile.role}". Please contact support.`);
   }
 
-  console.log(`✅ Login successful, redirecting to ${redirectUrl}`);
+  console.log(`✅ Login complete — role: ${profile.role} → ${redirectUrl}`);
   window.location.href = redirectUrl;
 }
 
@@ -71,7 +105,7 @@ async function handleLogin() {
   const password = passwordInput?.value;
 
   if (!email || !password) {
-    showAuthError('Enter email and password');
+    showAuthError('Enter your email and password.');
     return;
   }
 
@@ -79,7 +113,7 @@ async function handleLogin() {
 
   try {
     const { user, error } = await signIn(email, password);
-    if (error || !user) throw new Error(error || 'Login failed');
+    if (error || !user) throw new Error(error || 'Login failed. Please try again.');
     await finishLogin(user);
   } catch (err) {
     console.error('Login error:', err);
@@ -92,8 +126,8 @@ async function handleLogin() {
 // ── GOOGLE ─────────────────────────────────────────────────────────────────
 async function handleGoogleLogin() {
   hideAuthError();
-
   if (!googleBtn) return;
+
   googleBtn.disabled = true;
   googleBtn.querySelector('.alt-btn-label').textContent = 'Opening Google…';
 
@@ -112,14 +146,14 @@ async function handleGoogleLogin() {
 // ── PASSKEY ────────────────────────────────────────────────────────────────
 async function handlePasskeyLogin() {
   hideAuthError();
-
   if (!passkeyBtn) return;
+
   passkeyBtn.disabled = true;
   passkeyBtn.querySelector('.alt-btn-label').textContent = 'Waiting for passkey…';
 
   try {
     const { user, error } = await signInWithPasskey();
-    if (error || !user) throw new Error(error || 'Passkey sign-in failed');
+    if (error || !user) throw new Error(error || 'Passkey sign-in failed.');
     await finishLogin(user);
   } catch (err) {
     console.error('Passkey error:', err);
@@ -141,17 +175,15 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-if (registerLink) {
-  registerLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    window.location.href = 'register.html';
-  });
-}
+registerLink?.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.location.href = 'register.html';
+});
 
 googleBtn?.addEventListener('click', handleGoogleLogin);
 passkeyBtn?.addEventListener('click', handlePasskeyLogin);
 
-// ── Show passkey button only if device supports it ─────────────────────────
+// ── Show passkey button only when device supports it ───────────────────────
 (async () => {
   if (passkeyWrap) {
     const supported = await isPasskeySupported();
@@ -159,14 +191,10 @@ passkeyBtn?.addEventListener('click', handlePasskeyLogin);
   }
 })();
 
-// ── Password visibility toggle (existing behaviour preserved) ─────────────
-const togglePw  = document.getElementById('togglePw');
-const eyeIcon   = document.getElementById('eyeIcon');
-const eyeOffIcon = document.getElementById('eyeOffIcon');
-
+// ── Password visibility toggle ─────────────────────────────────────────────
 togglePw?.addEventListener('click', () => {
   const isHidden = passwordInput?.type === 'password';
-  if (passwordInput) passwordInput.type = isHidden ? 'text' : 'password';
-  if (eyeIcon)    eyeIcon.style.display    = isHidden ? 'none' : '';
-  if (eyeOffIcon) eyeOffIcon.style.display = isHidden ? '' : 'none';
+  if (passwordInput)  passwordInput.type       = isHidden ? 'text' : 'password';
+  if (eyeIcon)        eyeIcon.style.display    = isHidden ? 'none' : '';
+  if (eyeOffIcon)     eyeOffIcon.style.display = isHidden ? '' : 'none';
 });
