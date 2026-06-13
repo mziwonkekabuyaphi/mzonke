@@ -215,6 +215,57 @@
     .cat-rail:hover .cat-count { opacity: 1; }
     .cat-item.active .cat-count { background: var(--red-dim); color: var(--red); }
 
+    /* ── PREMIUM SPIRITS PARENT ITEM ── */
+    .cat-item.cat-parent i.parent-arrow {
+      margin-left: auto; font-size: 9px; color: var(--text3);
+      opacity: 0; transition: opacity 0.15s;
+    }
+    .cat-rail:hover .cat-item.cat-parent i.parent-arrow { opacity: 1; }
+
+    /* ── CONTEXT-SWITCH SIDEBAR: SPIRITS MODE ── */
+    .cat-rail-inner { position: relative; }
+
+    .cat-spirits-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 18px 8px; flex-shrink: 0; overflow: hidden;
+      white-space: nowrap;
+    }
+    .cat-spirits-header i { font-size: 14px; color: var(--red); flex-shrink: 0; }
+    .cat-spirits-title {
+      font-size: 10px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--red);
+      opacity: 0; transition: opacity 0.15s; flex-shrink: 0;
+    }
+    .cat-rail:hover .cat-spirits-title { opacity: 1; }
+
+    .cat-back-btn {
+      display: flex; align-items: center; gap: 12px;
+      height: 46px; padding: 0 18px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap; overflow: hidden;
+      transition: background 0.15s;
+      margin-bottom: 4px;
+    }
+    .cat-back-btn:hover { background: var(--smoke); }
+    .cat-back-btn i { font-size: 12px; color: var(--text3); flex-shrink: 0; }
+    .cat-back-label {
+      font-size: 11px; font-weight: 600; color: var(--text3);
+      opacity: 0; transition: opacity 0.15s; flex-shrink: 0;
+    }
+    .cat-rail:hover .cat-back-label { opacity: 1; }
+    .cat-back-btn:hover i,
+    .cat-back-btn:hover .cat-back-label { color: var(--text); }
+
+    .cat-divider {
+      height: 1px; background: var(--border); margin: 4px 0;
+    }
+
+    /* Slide transition for sidebar panels */
+    .sidebar-slide-enter-active,
+    .sidebar-slide-leave-active { transition: opacity 0.18s var(--ease), transform 0.18s var(--ease); }
+    .sidebar-slide-enter { opacity: 0; transform: translateX(12px); }
+    .sidebar-slide-leave-to { opacity: 0; transform: translateX(-12px); }
+
     /* ── MAIN CONTENT AREA ── */
     .k-main {
       flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
@@ -685,13 +736,48 @@
     <div class="k-body">
       <nav class="cat-rail" :class="{'mobile-open': mobileCatOpen}">
         <div class="cat-rail-inner">
-          <div v-for="cat in mainCategories" :key="cat.id"
-               class="cat-item" :class="{active: activeCategory === cat.id}"
-               @click="selectCategory(cat.id)">
-            <i :class="cat.icon"></i>
-            <span class="cat-label">{{ cat.name }}</span>
-            <span class="cat-count" v-if="cat.id !== 'all' && cat.id !== 'tickets'">{{ productCountByCategory(cat.id) }}</span>
-          </div>
+
+          <!-- HOME SIDEBAR MODE -->
+          <transition name="sidebar-slide">
+            <div v-if="sidebarMode === 'home'" key="home">
+              <div v-for="cat in homeSidebarCategories" :key="cat.id"
+                   class="cat-item"
+                   :class="{active: activeCategory === cat.id, 'cat-parent': cat.isParent}"
+                   @click="cat.isParent ? enterSpiritsMode() : selectCategory(cat.id)">
+                <i :class="cat.icon"></i>
+                <span class="cat-label">{{ cat.name }}</span>
+                <i v-if="cat.isParent" class="fas fa-chevron-right parent-arrow"></i>
+                <span class="cat-count" v-if="!cat.isParent && cat.id !== 'all' && cat.id !== 'tickets'">{{ productCountByCategory(cat.id) }}</span>
+              </div>
+            </div>
+          </transition>
+
+          <!-- PREMIUM SPIRITS MODE -->
+          <transition name="sidebar-slide">
+            <div v-if="sidebarMode === 'spirits'" key="spirits">
+              <!-- Back button -->
+              <div class="cat-back-btn" @click="exitSpiritsMode">
+                <i class="fas fa-arrow-left"></i>
+                <span class="cat-back-label">All Categories</span>
+              </div>
+              <!-- Header -->
+              <div class="cat-spirits-header">
+                <i class="fas fa-glass-whiskey"></i>
+                <span class="cat-spirits-title">Premium Spirits</span>
+              </div>
+              <div class="cat-divider"></div>
+              <!-- Spirit children -->
+              <div v-for="cat in spiritsChildCategories" :key="cat.id"
+                   class="cat-item"
+                   :class="{active: activeCategory === cat.id}"
+                   @click="selectCategory(cat.id)">
+                <i :class="cat.icon"></i>
+                <span class="cat-label">{{ cat.name }}</span>
+                <span class="cat-count">{{ productCountByCategory(cat.id) }}</span>
+              </div>
+            </div>
+          </transition>
+
         </div>
       </nav>
 
@@ -862,6 +948,7 @@
     data: {
       cartOpen: false,
       mobileCatOpen: false,
+      sidebarMode: 'home', /* 'home' | 'spirits' */
       isMobile: window.innerWidth < 768,
       checkingOut: false,
       checkoutMsg: 'Preparing your order...',
@@ -894,23 +981,48 @@
     computed: {
       cartItemCount() { return this.cart.reduce((s, i) => s + i.quantity, 0); },
       cartTotal() { return this.cart.reduce((s, i) => s + i.price * i.quantity, 0); },
-      mainCategories() {
-        // Exact categories as in DB (from the product list)
+      /* ── SPIRITS CHILD CATEGORIES ── */
+      spiritsChildCategories() {
         return [
-          { id: 'all', name: 'All Items', icon: 'fas fa-border-all' },
-          { id: 'beers', name: 'Beers', icon: 'fas fa-beer-mug-empty' },
-          { id: 'champagne', name: 'Champagne', icon: 'fas fa-champagne-glasses' },
-          { id: 'ciders', name: 'Ciders', icon: 'fas fa-apple-alt' },
-          { id: 'cognac', name: 'Cognac', icon: 'fas fa-wine-glass-alt' },
-          { id: 'gin', name: 'Gin', icon: 'fas fa-seedling' },
-          { id: 'liqueur', name: 'Liqueur', icon: 'fas fa-cocktail' },
-          { id: 'soft drinks', name: 'Soft Drinks', icon: 'fas fa-droplet' },
-          { id: 'sparkling wine', name: 'Sparkling Wine', icon: 'fas fa-wine-bottle' },
-          { id: 'tequila', name: 'Tequila', icon: 'fas fa-cactus' },
-          { id: 'vodka', name: 'Vodka', icon: 'fas fa-glass-cheers' },
-          { id: 'whiskey', name: 'Whiskey', icon: 'fas fa-whiskey-glass' },
-          { id: 'butcher', name: 'The Butcher', icon: 'fas fa-utensils' },
-          { id: 'tickets', name: 'Event Tickets', icon: 'fas fa-ticket-alt' }
+          { id: 'cognac',   name: 'Cognac',   icon: 'fas fa-wine-glass-alt' },
+          { id: 'whiskey',  name: 'Whiskey',  icon: 'fas fa-whiskey-glass' },
+          { id: 'vodka',    name: 'Vodka',    icon: 'fas fa-glass-cheers' },
+          { id: 'tequila',  name: 'Tequila',  icon: 'fas fa-cactus' },
+          { id: 'liqueur',  name: 'Liqueur',  icon: 'fas fa-cocktail' },
+          { id: 'gin',      name: 'Gin',      icon: 'fas fa-seedling' },
+        ];
+      },
+      /* ── HOME SIDEBAR TOP-LEVEL ── */
+      homeSidebarCategories() {
+        return [
+          { id: 'all',           name: 'All Items',       icon: 'fas fa-border-all' },
+          { id: 'beers',         name: 'Beers',           icon: 'fas fa-beer-mug-empty' },
+          { id: 'champagne',     name: 'Champagne',       icon: 'fas fa-champagne-glasses' },
+          { id: 'ciders',        name: 'Ciders',          icon: 'fas fa-apple-alt' },
+          { id: 'soft drinks',   name: 'Soft Drinks',     icon: 'fas fa-droplet' },
+          { id: 'sparkling wine',name: 'Sparkling Wine',  icon: 'fas fa-wine-bottle' },
+          { id: 'premium-spirits', name: 'Premium Spirits', icon: 'fas fa-glass-whiskey', isParent: true },
+          { id: 'butcher',       name: 'The Butcher',     icon: 'fas fa-utensils' },
+          { id: 'tickets',       name: 'Event Tickets',   icon: 'fas fa-ticket-alt' },
+        ];
+      },
+      /* Legacy flat list (used by toolbar chips, category name lookups, etc.) */
+      mainCategories() {
+        return [
+          { id: 'all',           name: 'All Items',       icon: 'fas fa-border-all' },
+          { id: 'beers',         name: 'Beers',           icon: 'fas fa-beer-mug-empty' },
+          { id: 'champagne',     name: 'Champagne',       icon: 'fas fa-champagne-glasses' },
+          { id: 'ciders',        name: 'Ciders',          icon: 'fas fa-apple-alt' },
+          { id: 'cognac',        name: 'Cognac',          icon: 'fas fa-wine-glass-alt' },
+          { id: 'gin',           name: 'Gin',             icon: 'fas fa-seedling' },
+          { id: 'liqueur',       name: 'Liqueur',         icon: 'fas fa-cocktail' },
+          { id: 'soft drinks',   name: 'Soft Drinks',     icon: 'fas fa-droplet' },
+          { id: 'sparkling wine',name: 'Sparkling Wine',  icon: 'fas fa-wine-bottle' },
+          { id: 'tequila',       name: 'Tequila',         icon: 'fas fa-cactus' },
+          { id: 'vodka',         name: 'Vodka',           icon: 'fas fa-glass-cheers' },
+          { id: 'whiskey',       name: 'Whiskey',         icon: 'fas fa-whiskey-glass' },
+          { id: 'butcher',       name: 'The Butcher',     icon: 'fas fa-utensils' },
+          { id: 'tickets',       name: 'Event Tickets',   icon: 'fas fa-ticket-alt' },
         ];
       },
       activeCategoryName() { const c = this.mainCategories.find(c => c.id === this.activeCategory); return c ? c.name : 'All Items'; },
@@ -946,8 +1058,22 @@
       startCheckout() { if (this.cartItemCount === 0) return this.showToast('Cart empty', 'error'); localStorage.setItem('rands_kiosk_cart', JSON.stringify(this.cart)); this.checkingOut = true; this.checkoutMsg = 'Preparing order...'; setTimeout(() => { this.checkoutMsg = 'Redirecting to payment...'; }, 900); setTimeout(() => { window.location.href = 'payment.html'; }, 1600); },
       cartQty(id) { const i = this.cart.find(i => i.id === id && i.itemType !== 'ticket'); return i ? i.quantity : 0; },
       productCountByCategory(cid) { return this.products.filter(p => (p.category || '').toLowerCase() === cid.toLowerCase()).length; },
+      enterSpiritsMode() {
+        this.sidebarMode = 'spirits';
+        /* Auto-select cognac as a default if nothing spirit is active */
+        const spiritIds = ['cognac','whiskey','vodka','tequila','liqueur','gin'];
+        if (!spiritIds.includes(this.activeCategory)) {
+          this.activeCategory = 'cognac';
+          this.searchQuery = '';
+        }
+      },
+      exitSpiritsMode() {
+        this.sidebarMode = 'home';
+        this.activeCategory = 'all';
+        this.searchQuery = '';
+      },
       selectCategory(id) { this.activeCategory = id; this.searchQuery = ''; this.mobileCatOpen = false; },
-      resetToHome() { this.activeCategory = 'all'; this.searchQuery = ''; },
+      resetToHome() { this.activeCategory = 'all'; this.searchQuery = ''; this.sidebarMode = 'home'; },
       openProductModal(p) { this.selectedProduct = p; this.modalQty = 1; this.productModalOpen = true; },
       addModalToCart() { if (this.selectedProduct) this.addToCartInternal(this.selectedProduct, this.modalQty); this.productModalOpen = false; this.cartOpen = true; },
       quickAddToCart(p) { this.addToCartInternal(p, 1); },
