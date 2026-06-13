@@ -927,21 +927,36 @@
       white-space: nowrap;
     }
     .logout-btn:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.4); }
-    .role-select {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 11px;
-      font-family: inherit;
-      padding: 0 8px;
-      height: 28px;
-      outline: none;
-      cursor: pointer;
-      transition: border-color 0.12s;
+    /* role-select removed – role is loaded from Supabase */
+    .auth-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 9999;
     }
-    .role-select:hover, .role-select:focus { border-color: var(--border2); }
-    .role-select option { background: #1C2030; }
+    .auth-screen .spinner { width: 36px; height: 36px; }
+    .auth-screen-title { font-size: 14px; font-weight: 600; color: var(--text2); }
+    .access-denied {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 9999;
+      text-align: center;
+      padding: 24px;
+    }
+    .access-denied i { font-size: 40px; color: var(--red); margin-bottom: 8px; }
+    .access-denied h2 { font-size: 18px; font-weight: 700; color: var(--text); }
+    .access-denied p { font-size: 13px; color: var(--text2); max-width: 360px; line-height: 1.6; }
     .prog-bar {
       height: 3px;
       background: var(--surface3);
@@ -1008,6 +1023,22 @@
 </head>
 <body>
 <div id="app" v-cloak>
+  <!-- Auth loading screen -->
+  <div class="auth-screen" v-if="authLoading">
+    <div class="spinner"></div>
+    <span class="auth-screen-title">Verifying session…</span>
+  </div>
+
+  <!-- Access denied screen -->
+  <div class="access-denied" v-else-if="accessDenied">
+    <i class="fas fa-shield-alt"></i>
+    <h2>Access Denied</h2>
+    <p>{{ accessDeniedMsg }}</p>
+    <button class="btn btn-red" @click="doLogout"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+  </div>
+
+  <!-- Main console (only shown when auth passes) -->
+  <template v-else>
   <!-- HEADER (unchanged) -->
   <header class="header">
     <button class="header-btn mobile-menu-btn" @click="sidebarOpen = !sidebarOpen"><i class="fas fa-bars"></i></button>
@@ -1028,20 +1059,13 @@
         <i class="fas fa-bell"></i>
         <span class="notif-dot" v-if="unreadNotifs > 0"></span>
       </button>
-      <select class="role-select" v-model="selectedRole" @change="changeRole">
-        <option value="event_manager">Event Manager</option>
-        <option value="cashier">Cashier</option>
-        <option value="shisha_attendant">Shisha Attendant</option>
-        <option value="smart_host">Smart Host</option>
-        <option value="butcher_crew">Butcher Crew</option>
-        <option value="vvip_concierge">VVIP Concierge</option>
-      </select>
+      <span class="role-tag" v-if="jobTitle">{{ jobTitle }}</span>
       <div class="header-divider"></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="avatar" @click="profileOpen = !profileOpen">{{ staffInitials }}</div>
         <div class="staff-info">
           <div class="staff-name">{{ staffName }}</div>
-          <div class="staff-role">{{ roleDisplayName }}</div>
+          <div class="staff-role">{{ jobTitle || 'Staff' }}</div>
         </div>
       </div>
       <button class="logout-btn" @click="confirmLogout"><i class="fas fa-sign-out-alt"></i> Logout</button>
@@ -1237,6 +1261,7 @@
   <transition name="fade"><div class="modal-backdrop" v-if="modal.open" @click.self="modal.open = false"><div class="modal"><div class="modal-title">{{ modal.title }}</div><div class="modal-body">{{ modal.body }}</div><div class="modal-actions"><button class="btn" @click="modal.open = false">Cancel</button><button class="btn btn-red" @click="modal.confirm(); modal.open = false">{{ modal.confirmLabel }}</button></div></div></div></transition>
   <div v-if="isFullscreen && activeModule !== 'dashboard'" style="position:fixed;inset:0;z-index:5000;background:#0D0F12;display:flex;flex-direction:column;"><div style="height:40px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;"><i :class="activeModuleMeta?.icon" style="color:var(--red);font-size:13px;"></i><span style="font-size:12px;font-weight:600;color:var(--text);">{{ activeModuleLabel }}</span><div class="ml-auto flex items-center gap-2"><span class="clock">{{ currentTime }}</span><button class="btn btn-sm" @click="isFullscreen = false"><i class="fas fa-compress" style="font-size:10px;"></i> Exit Fullscreen</button></div></div><iframe :src="activeModuleSrc" :title="activeModuleLabel" style="flex:1;border:none;" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation" referrerpolicy="no-referrer"></iframe></div>
   <div v-if="sidebarOpen" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:39;display:none;" class="mobile-backdrop" @click="sidebarOpen = false"></div>
+  </template>
 </div>
 
 <script>
@@ -1345,59 +1370,66 @@ const MODULE_META = {
   vvip_tab: { title: 'VVIP Tab', icon: 'fas fa-star', src: UI_PATHS.vvip_tab },
   vvip_staff: { title: 'VVIP Check-in', icon: 'fas fa-id-card', src: UI_PATHS.vvip_staff }
 };
-const ROLE_MODULES = {
-  event_manager: ['box_office','gate_scanner','shisha_pos','shisha_console','booze_vault','register_locker','unlock_vault','booze_collection','booze_counter','pre_order_pos','butcher_orders','butcher_collection','vvip_tab','vvip_staff'],
-  cashier: ['box_office','gate_scanner'], shisha_attendant: ['shisha_pos','shisha_console'],
-  smart_host: ['booze_vault','register_locker','unlock_vault','booze_collection','booze_counter'],
-  butcher_crew: ['pre_order_pos','butcher_orders','butcher_collection'], vvip_concierge: ['vvip_tab','vvip_staff']
-};
-const ROLE_NAMES = {
-  event_manager: 'Event Manager', cashier: 'Cashier', shisha_attendant: 'Shisha Attendant',
-  smart_host: 'Smart Host', butcher_crew: 'Butcher Crew', vvip_concierge: 'VVIP Concierge'
+// ========================
+// JOB TITLE → MODULE PERMISSIONS
+// (Defined server-side in spirit; matched by job_title from profiles table)
+// ========================
+const JOB_TITLE_MODULES = {
+  'Event Manager':    ['box_office','gate_scanner','shisha_pos','shisha_console','booze_vault','register_locker','unlock_vault','booze_collection','booze_counter','pre_order_pos','butcher_orders','butcher_collection','vvip_tab','vvip_staff'],
+  'Event Host':       ['box_office','gate_scanner'],
+  'Shisha Attendant': ['shisha_pos','shisha_console'],
+  'Smart Host':       ['booze_vault','register_locker','unlock_vault','booze_collection','booze_counter'],
+  'Butcher Crew':     ['pre_order_pos','butcher_orders','butcher_collection'],
+  'VVIP Concierge':   ['vvip_tab','vvip_staff'],
 };
 
 createApp({
   setup() {
-    const selectedRole = ref('event_manager');
-    const staffName = ref('Staff User');
-    const activeModule = ref('dashboard');
-    const moduleLoading = ref(false);
+    // ── Auth / permission state ──────────────────────────────────────────────
+    const authLoading    = ref(true);
+    const accessDenied   = ref(false);
+    const accessDeniedMsg= ref('');
+    const jobTitle       = ref('');          // from profiles.job_title
+    const allowedModules = ref([]);          // derived from jobTitle
+
+    // ── Original UI state (unchanged) ───────────────────────────────────────
+    const staffName   = ref('Staff Member');
+    const activeModule= ref('dashboard');
+    const moduleLoading= ref(false);
     const sidebarOpen = ref(false);
-    const notifOpen = ref(false);
-    const cmdOpen = ref(false);
-    const cmdQuery = ref('');
-    const cmdInput = ref(null);
-    const isFullscreen = ref(false);
+    const notifOpen   = ref(false);
+    const cmdOpen     = ref(false);
+    const cmdQuery    = ref('');
+    const cmdInput    = ref(null);
+    const isFullscreen= ref(false);
     const currentTime = ref('');
-    const shiftTimer = ref('00:00:00');
-    const shiftStart = ref('');
-    const customerSearch = ref('');
-    const customerFilter = ref('all');
-    const toasts = ref([]);
-    const modal = ref({ open: false, title: '', body: '', confirmLabel: 'Confirm', confirm: () => {} });
+    const shiftTimer  = ref('00:00:00');
+    const shiftStart  = ref('');
+    const customerSearch= ref('');
+    const customerFilter= ref('all');
+    const toasts      = ref([]);
+    const modal       = ref({ open: false, title: '', body: '', confirmLabel: 'Confirm', confirm: () => {} });
     const profileOpen = ref(false);
 
-    // Real data state
-    const wallets = ref([]);
-    const customers = ref([]);
+    // ── Real data state (unchanged) ─────────────────────────────────────────
+    const wallets          = ref([]);
+    const customers        = ref([]);
     const pendingApprovals = ref([]);
-    const activityFeed = ref([]);
-    const notifications = ref([]);
-    const unreadNotifs = ref(0);
-    const recentTopups = ref([]);
-    const recentTickets = ref([]);
+    const activityFeed     = ref([]);
+    const notifications    = ref([]);
+    const unreadNotifs     = ref(0);
+    const recentTopups     = ref([]);
+    const recentTickets    = ref([]);
 
-    // Global stats (computed from real data)
     const globalStats = computed(() => {
-      const totalAccounts = wallets.value.length;
-      const totalBalance = wallets.value.reduce((s, w) => s + w.balance, 0).toFixed(2);
-      const blockedAccounts = wallets.value.filter(w => w.status === 'Blocked').length;
-      const pendingRefunds = pendingApprovals.value.length;
-      const approvedRefunds = 0; // can be computed from refunds list if needed, but not stored globally
-      const totalRefundAmount = 0;
-      return { totalAccounts, totalBalance, blockedAccounts, pendingRefunds, approvedRefunds, totalRefundAmount, activeOrders: 0, ticketsScanned: 0, scanPct: 0, walletLoads: 0, walletValue: 0, vvipTables: 0, vvipPending: 0 };
+      const totalAccounts    = wallets.value.length;
+      const totalBalance     = wallets.value.reduce((s, w) => s + w.balance, 0).toFixed(2);
+      const blockedAccounts  = wallets.value.filter(w => w.status === 'Blocked').length;
+      const pendingRefunds   = pendingApprovals.value.length;
+      return { totalAccounts, totalBalance, blockedAccounts, pendingRefunds, approvedRefunds: 0, totalRefundAmount: 0, activeOrders: 0, ticketsScanned: 0, scanPct: 0, walletLoads: 0, walletValue: 0, vvipTables: 0, vvipPending: 0 };
     });
 
+    // ── Toast helper ────────────────────────────────────────────────────────
     let toastId = 0;
     const showToast = (message, type = 'info') => {
       const icons = { success:'fas fa-check-circle', error:'fas fa-times-circle', info:'fas fa-info-circle', warn:'fas fa-exclamation-triangle' };
@@ -1406,28 +1438,80 @@ createApp({
       setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 3500);
     };
 
-    // Load all real data
+    // ── Auth: load user → profile → job_title → permissions ─────────────────
+    const loadAuth = async () => {
+      authLoading.value = true;
+      try {
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !user) {
+          accessDenied.value   = true;
+          accessDeniedMsg.value= 'You are not logged in. Please sign in to access the Staff Console.';
+          authLoading.value    = false;
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabaseClient
+          .from('profiles')
+          .select('name, role, job_title')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError || !profile) {
+          accessDenied.value   = true;
+          accessDeniedMsg.value= 'Your staff profile could not be found. Please contact your administrator.';
+          authLoading.value    = false;
+          return;
+        }
+
+        if (profile.role !== 'staff') {
+          accessDenied.value   = true;
+          accessDeniedMsg.value= `This console is for staff members only. Your account role is "${profile.role}". Please use the correct portal.`;
+          authLoading.value    = false;
+          return;
+        }
+
+        const title = profile.job_title || '';
+        const perms = JOB_TITLE_MODULES[title] || [];
+
+        if (!title || perms.length === 0) {
+          accessDenied.value   = true;
+          accessDeniedMsg.value= 'No job title has been assigned to your account. Please contact your administrator to set up your role.';
+          authLoading.value    = false;
+          return;
+        }
+
+        // Auth passed — populate state
+        staffName.value     = profile.name || user.email || 'Staff Member';
+        jobTitle.value      = title;
+        allowedModules.value= perms;
+        authLoading.value   = false;
+
+        // Now load live data
+        fetchAllData();
+      } catch (err) {
+        console.error('Auth error:', err);
+        accessDenied.value   = true;
+        accessDeniedMsg.value= 'An unexpected error occurred during authentication. Please try again.';
+        authLoading.value    = false;
+      }
+    };
+
+    // ── Data fetching (unchanged logic) ──────────────────────────────────────
     const fetchAllData = async () => {
       try {
         wallets.value = await fetchWalletsWithProfiles();
         customers.value = wallets.value.map(w => ({
-          id: w.id,
-          name: w.name,
-          phone: w.phone,
-          wallet: w.balance.toFixed(2),
-          status: w.status,
+          id: w.id, name: w.name, phone: w.phone,
+          wallet: w.balance.toFixed(2), status: w.status,
           statusClass: w.status === 'Active' ? 'badge-green' : 'badge-red',
           checkedIn: w.profile_created_at ? new Date(w.profile_created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—'
         }));
         const refunds = await fetchRefundRequests();
         pendingApprovals.value = refunds.filter(r => r.status === 'pending').map(r => ({
-          id: r.id,
-          label: `Refund R${r.amount.toFixed(2)}`,
-          sub: r.customer_name + (r.reason ? ` – ${r.reason}` : '')
+          id: r.id, label: `Refund R${r.amount.toFixed(2)}`, sub: r.customer_name + (r.reason ? ` – ${r.reason}` : '')
         }));
-        recentTopups.value = await fetchRecentTopups(6);
+        recentTopups.value  = await fetchRecentTopups(6);
         recentTickets.value = await fetchRecentTickets(5);
-        // Build activity feed (topups + ticket creations)
         const feed = [];
         recentTopups.value.slice(0,5).forEach(tx => {
           feed.push({ id: `tx-${tx.id}`, color: '#22C55E', text: `<strong>${tx.customer_name}</strong> top‑up of R${tx.amount.toFixed(2)}`, time: tx.time });
@@ -1439,7 +1523,7 @@ createApp({
         activityFeed.value = feed.slice(0, 10);
         notifications.value = [
           { id:1, icon:'fas fa-wallet', color:'#3B82F6', text:`Loaded ${wallets.value.length} wallets`, time:'now', unread:true },
-          { id:2, icon:'fas fa-clock', color:'#F59E0B', text:`${pendingApprovals.value.length} pending refunds`, time:'now', unread:true }
+          { id:2, icon:'fas fa-clock',  color:'#F59E0B', text:`${pendingApprovals.value.length} pending refunds`, time:'now', unread:true }
         ];
         unreadNotifs.value = notifications.value.filter(n => n.unread).length;
         showToast(`Loaded ${wallets.value.length} wallets`, 'success');
@@ -1451,6 +1535,44 @@ createApp({
 
     const refreshStats = () => fetchAllData();
 
+    // ── Permission guard ─────────────────────────────────────────────────────
+    /**
+     * Returns true only if the current staff member's allowed modules include key.
+     * This is the single source of truth for all sidebar v-if checks and navigation guards.
+     */
+    const hasModule = (key) => allowedModules.value.includes(key);
+
+    // ── Navigation with access guard ─────────────────────────────────────────
+    const navigate = (key) => {
+      if (key === 'dashboard') { activeModule.value = 'dashboard'; sidebarOpen.value = false; notifOpen.value = false; return; }
+      if (!hasModule(key)) {
+        showToast('Access denied: you are not authorised to use this module.', 'error');
+        return;
+      }
+      if (key === activeModule.value) return;
+      activeModule.value  = key;
+      moduleLoading.value = true;
+      sidebarOpen.value   = false;
+      notifOpen.value     = false;
+    };
+
+    // ── Logout ───────────────────────────────────────────────────────────────
+    const doLogout = async () => {
+      await supabaseClient.auth.signOut();
+      showToast('Signed out', 'success');
+      setTimeout(() => { window.location.href = 'login.html'; }, 800);
+    };
+
+    const confirmLogout = () => {
+      modal.value = {
+        open: true, title: 'End session',
+        body: `Sign out as ${staffName.value}?`,
+        confirmLabel: 'Sign out',
+        confirm: () => { modal.value.open = false; doLogout(); }
+      };
+    };
+
+    // ── Refund actions ───────────────────────────────────────────────────────
     const approve = async (item) => {
       const confirmed = await new Promise(resolve => {
         modal.value = { open: true, title: 'Approve Refund', body: `Approve refund for ${item.label}?`, confirmLabel: 'Approve', confirm: () => resolve(true) };
@@ -1471,26 +1593,22 @@ createApp({
     };
     const markAllRead = () => { notifications.value.forEach(n => n.unread = false); unreadNotifs.value = 0; };
 
-    // UI methods (unchanged)
-    const hasModule = (key) => (ROLE_MODULES[selectedRole.value] || []).includes(key);
-    const navigate = (key) => { if (key === activeModule.value) return; activeModule.value = key; moduleLoading.value = key !== 'dashboard'; sidebarOpen.value = false; notifOpen.value = false; };
-    const changeRole = () => { activeModule.value = 'dashboard'; showToast(`Switched to ${ROLE_NAMES[selectedRole.value]}`, 'info'); };
-    const confirmLogout = () => { modal.value = { open: true, title: 'End session', body: `Logout ${staffName.value}?`, confirmLabel: 'Logout', confirm: () => { showToast('Logged out', 'success'); modal.value.open = false; } }; };
-    const onIframeError = () => { moduleLoading.value = false; showToast(`Could not load ${activeModuleLabel.value}`, 'error'); };
-    const enterFullscreen = () => { isFullscreen.value = true; };
-    const openCommand = () => { cmdOpen.value = true; nextTick(() => cmdInput.value?.focus()); };
-    const cmdEnter = () => { if (cmdResults.value.length) showToast(`Opened: ${cmdResults.value[0].label}`, 'info'); cmdOpen.value = false; cmdQuery.value = ''; };
-    const closeOthers = (keep) => { if (keep !== 'notif') notifOpen.value = false; };
+    // ── UI helpers ───────────────────────────────────────────────────────────
+    const onIframeError  = () => { moduleLoading.value = false; showToast(`Could not load ${activeModuleLabel.value}`, 'error'); };
+    const enterFullscreen= () => { isFullscreen.value = true; };
+    const openCommand    = () => { cmdOpen.value = true; nextTick(() => cmdInput.value?.focus()); };
+    const cmdEnter       = () => { if (cmdResults.value.length) showToast(`Opened: ${cmdResults.value[0].label}`, 'info'); cmdOpen.value = false; cmdQuery.value = ''; };
+    const closeOthers    = (keep) => { if (keep !== 'notif') notifOpen.value = false; };
 
-    const roleDisplayName = computed(() => ROLE_NAMES[selectedRole.value]);
-    const staffInitials = computed(() => staffName.value.slice(0,2).toUpperCase());
-    const availableModules = computed(() => (ROLE_MODULES[selectedRole.value] || []).map(k => ({ key: k, ...MODULE_META[k] })));
-    const activeModuleMeta = computed(() => MODULE_META[activeModule.value]);
+    // ── Computed ─────────────────────────────────────────────────────────────
+    const staffInitials     = computed(() => staffName.value.slice(0,2).toUpperCase());
+    const availableModules  = computed(() => allowedModules.value.map(k => ({ key: k, ...MODULE_META[k] })).filter(m => m.title));
+    const activeModuleMeta  = computed(() => MODULE_META[activeModule.value]);
     const activeModuleLabel = computed(() => activeModuleMeta.value?.title || 'Dashboard');
-    const activeModuleSrc = computed(() => activeModuleMeta.value?.src || '');
+    const activeModuleSrc   = computed(() => activeModuleMeta.value?.src || '');
     const filteredCustomers = computed(() => {
       let list = customers.value;
-      if (customerFilter.value === 'active') list = list.filter(c => c.status === 'Active');
+      if (customerFilter.value === 'active')  list = list.filter(c => c.status === 'Active');
       if (customerFilter.value === 'blocked') list = list.filter(c => c.status === 'Blocked');
       if (customerSearch.value.trim()) {
         const q = customerSearch.value.toLowerCase();
@@ -1504,32 +1622,37 @@ createApp({
       return customers.value.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q)).slice(0,5).map(c => ({ id: c.id, icon:'fas fa-user', label: c.name, sub: c.phone + ' · Wallet R' + c.wallet, type:'Customer', badgeClass:'badge-blue' }));
     });
 
-    // Timers
+    // ── Timers ───────────────────────────────────────────────────────────────
     let timeInt, shiftInt, statsInt;
     const shiftStartTs = Date.now();
-    shiftStart.value = new Date(shiftStartTs).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit', hour12:false });
-    const updateTime = () => { currentTime.value = new Date().toLocaleTimeString('en-ZA', { hour12: false }); };
-    const updateShift = () => { const s = Math.floor((Date.now() - shiftStartTs) / 1000); shiftTimer.value = `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
-    const handleKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCommand(); } if (e.key === 'k' && !cmdOpen.value && document.activeElement.tagName !== 'INPUT') openCommand(); if (e.key === 'Escape') { cmdOpen.value = false; notifOpen.value = false; isFullscreen.value = false; } };
+    shiftStart.value   = new Date(shiftStartTs).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit', hour12:false });
+    const updateTime   = () => { currentTime.value = new Date().toLocaleTimeString('en-ZA', { hour12: false }); };
+    const updateShift  = () => { const s = Math.floor((Date.now() - shiftStartTs) / 1000); shiftTimer.value = `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
+    const handleKey    = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCommand(); }
+      if (e.key === 'k' && !cmdOpen.value && document.activeElement.tagName !== 'INPUT') openCommand();
+      if (e.key === 'Escape') { cmdOpen.value = false; notifOpen.value = false; isFullscreen.value = false; }
+    };
 
     onMounted(() => {
       updateTime(); updateShift();
-      timeInt = setInterval(updateTime, 1000);
+      timeInt  = setInterval(updateTime,  1000);
       shiftInt = setInterval(updateShift, 1000);
-      statsInt = setInterval(() => fetchAllData(), 30000);
+      statsInt = setInterval(() => { if (!authLoading.value && !accessDenied.value) fetchAllData(); }, 30000);
       window.addEventListener('keydown', handleKey);
-      fetchAllData().then(() => showToast('System ready — live data loaded', 'success'));
+      loadAuth();   // ← kick off Supabase auth check; data load follows inside loadAuth()
     });
     onUnmounted(() => { clearInterval(timeInt); clearInterval(shiftInt); clearInterval(statsInt); window.removeEventListener('keydown', handleKey); });
 
     return {
-      selectedRole, staffName, staffInitials, roleDisplayName, activeModule, moduleLoading,
+      authLoading, accessDenied, accessDeniedMsg,
+      jobTitle, staffName, staffInitials, activeModule, moduleLoading,
       sidebarOpen, notifOpen, cmdOpen, cmdQuery, cmdInput, isFullscreen, currentTime,
       shiftTimer, shiftStart, globalStats, notifications, unreadNotifs, pendingApprovals,
       activityFeed, customers, customerSearch, customerFilter, filteredCustomers,
       recentTopups, recentTickets, cmdResults, toasts, modal, profileOpen,
       availableModules, activeModuleMeta, activeModuleLabel, activeModuleSrc,
-      hasModule, navigate, changeRole, showToast, confirmLogout, approve, decline,
+      hasModule, navigate, showToast, confirmLogout, doLogout, approve, decline,
       markAllRead, onIframeError, enterFullscreen, refreshStats,
       openCommand, cmdEnter, closeOthers
     };
