@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Kiosk Idle Manager | Rands</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f5f7fb;
+      padding: 24px;
+      color: #1e293b;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    /* Stats row (red left border) */
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 28px;
+      padding: 1.2rem 1.8rem;
+      flex: 1;
+      min-width: 160px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      border: 1px solid #edf2f7;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: #E30613;
+    }
+    .stat-card i {
+      font-size: 2rem;
+      color: #E30613;
+      margin-bottom: 0.5rem;
+    }
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748b;
+      margin-top: 0.25rem;
+    }
+    /* Action bar */
+    .action-bar {
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .btn {
+      padding: 10px 24px;
+      border-radius: 60px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary {
+      background: #E30613;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #B5040F;
+      transform: translateY(-2px);
+    }
+    .btn-secondary {
+      background: #F1F5F9;
+      color: #1e293b;
+      border: 1px solid #e2e8f0;
+    }
+    .btn-danger {
+      background: #dc2626;
+      color: white;
+    }
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 0.75rem;
+    }
+    /* Table design */
+    .slides-table-container {
+      background: white;
+      border-radius: 32px;
+      overflow-x: auto;
+      border: 1px solid #edf2f7;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    }
+    .slides-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }
+    .slides-table th {
+      text-align: left;
+      padding: 16px 20px;
+      background: #fafcff;
+      font-weight: 700;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      border-bottom: 1px solid #edf2f7;
+    }
+    .slides-table td {
+      padding: 14px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: middle;
+    }
+    .slides-table tr:hover {
+      background: #FEF5F5;
+    }
+    .active-toggle {
+      width: 40px;
+      height: 20px;
+      background: #cbd5e1;
+      border-radius: 30px;
+      display: inline-block;
+      position: relative;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .active-toggle.active {
+      background: #E30613;
+    }
+    .active-toggle span {
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: 0.2s;
+    }
+    .active-toggle.active span {
+      left: 22px;
+    }
+    .order-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .order-btn {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 30px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: 0.1s;
+    }
+    .order-btn:hover {
+      background: #E30613;
+      color: white;
+      border-color: #E30613;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 60px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .badge-venue {
+      background: #E30613;
+      color: white;
+    }
+    .badge-sponsor {
+      background: #1e293b;
+      color: white;
+    }
+    .image-thumb {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      object-fit: cover;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+    }
+    .action-icons i {
+      font-size: 1.2rem;
+      margin: 0 6px;
+      cursor: pointer;
+      color: #64748b;
+      transition: 0.1s;
+    }
+    .action-icons i:hover {
+      color: #E30613;
+    }
+    /* Modal styles (same as order-admin) */
+    .custom-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s ease;
+    }
+    .custom-modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+    .custom-modal {
+      background: white;
+      border-radius: 32px;
+      max-width: 600px;
+      width: 90%;
+      padding: 28px 24px;
+      border: 2px solid #E30613;
+      box-shadow: 0 20px 35px -12px rgba(0,0,0,0.2);
+      transform: scale(0.95);
+      transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+    .custom-modal-overlay.active .custom-modal {
+      transform: scale(1);
+    }
+    .custom-modal h3 {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 20px;
+      color: #1e293b;
+      border-left: 4px solid #E30613;
+      padding-left: 16px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #475569;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #e2e8f0;
+      border-radius: 60px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      background: white;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: #E30613;
+      box-shadow: 0 0 0 3px rgba(227,6,19,0.1);
+    }
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .image-preview {
+      width: 100px;
+      height: 100px;
+      border-radius: 20px;
+      object-fit: cover;
+      border: 1px solid #e2e8f0;
+      margin-top: 10px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 28px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: #1e293b;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 60px;
+      font-weight: 500;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      font-size: 0.8rem;
+    }
+    .toast.show { opacity: 1; }
+    .toast.success { background: #059669; }
+    .toast.error { background: #E30613; }
+    .upload-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid white;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty-row td {
+      text-align: center;
+      padding: 40px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- Stats Row -->
+  <div class="stats-row">
+    <div class="stat-card"><i class="fas fa-images"></i><div class="stat-number" id="totalSlides">0</div><div class="stat-label">Total Slides</div></div>
+    <div class="stat-card"><i class="fas fa-check-circle"></i><div class="stat-number" id="activeSlides">0</div><div class="stat-label">Active</div></div>
+    <div class="stat-card"><i class="fas fa-clock"></i><div class="stat-number" id="avgDuration">0</div><div class="stat-label">Avg Duration (sec)</div></div>
+  </div>
+
+  <div class="action-bar">
+    <button class="btn btn-primary" id="addSlideBtn"><i class="fas fa-plus"></i> Add New Slide</button>
+  </div>
+
+  <div class="slides-table-container">
+    <table class="slides-table" id="slidesTable">
+      <thead>
+        <tr><th>Order</th><th>Type</th><th>Headline</th><th>Duration</th><th>Active</th><th>Image</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="slidesList">
+        <tr class="empty-row"><td colspan="7">Loading slides...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal for Add/Edit Slide -->
+<div id="slideModal" class="custom-modal-overlay">
+  <div class="custom-modal">
+    <h3 id="modalTitle">Add New Slide</h3>
+    <input type="hidden" id="slideId">
+    <div class="form-group">
+      <label>Slide Type</label>
+      <select id="slideType">
+        <option value="venue">Venue Promotion</option>
+        <option value="sponsor">Sponsor</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Headline *</label>
+      <input type="text" id="headline" placeholder="e.g., Welcome to Rands" required>
+    </div>
+    <div class="form-group">
+      <label>Tagline</label>
+      <input type="text" id="tagline" placeholder="Short supporting text">
+    </div>
+    <div class="form-group">
+      <label>Duration (seconds)</label>
+      <input type="number" id="duration" value="60" step="5">
+    </div>
+    <div class="form-group">
+      <label>Display Order</label>
+      <input type="number" id="displayOrder" placeholder="Unique number">
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="isActive" checked> <label>Active (visible on kiosk)</label>
+    </div>
+    <div class="form-group">
+      <label>Start Date & Time (optional)</label>
+      <input type="datetime-local" id="startsAt">
+    </div>
+    <div class="form-group">
+      <label>End Date & Time (optional)</label>
+      <input type="datetime-local" id="endsAt">
+    </div>
+    <div class="form-group">
+      <label>Background Image</label>
+      <input type="file" id="imageUpload" accept="image/jpeg,image/png,image/webp">
+      <div id="currentImagePreview" style="margin-top: 10px;"></div>
+    </div>
+    <div class="modal-buttons">
+      <button class="btn btn-secondary" id="closeModalBtn">Cancel</button>
+      <button class="btn btn-primary" id="saveSlideBtn">Save Slide</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirmation modal (custom) -->
+<div id="deleteConfirmModal" class="custom-modal-overlay">
+  <div class="custom-modal">
+    <i class="fas fa-exclamation-triangle" style="font-size: 48px; color:#E30613; margin-bottom: 16px; display: block; text-align: center;"></i>
+    <h3 style="text-align: center;">Delete Slide</h3>
+    <p id="deleteMessage" style="text-align: center; margin-bottom: 24px;">Are you sure?</p>
+    <div class="modal-buttons" style="justify-content: center;">
+      <button class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  // ---------- DOM elements ----------
+  const slidesList = document.getElementById('slidesList');
+  const addSlideBtn = document.getElementById('addSlideBtn');
+  const modal = document.getElementById('slideModal');
+  const modalTitle = document.getElementById('modalTitle');
+  const slideIdInput = document.getElementById('slideId');
+  const slideType = document.getElementById('slideType');
+  const headline = document.getElementById('headline');
+  const tagline = document.getElementById('tagline');
+  const duration = document.getElementById('duration');
+  const displayOrder = document.getElementById('displayOrder');
+  const isActive = document.getElementById('isActive');
+  const startsAt = document.getElementById('startsAt');
+  const endsAt = document.getElementById('endsAt');
+  const imageUpload = document.getElementById('imageUpload');
+  const currentImagePreview = document.getElementById('currentImagePreview');
+  const saveSlideBtn = document.getElementById('saveSlideBtn');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+  // delete modal
+  const deleteModal = document.getElementById('deleteConfirmModal');
+  const deleteMessage = document.getElementById('deleteMessage');
+  const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+  const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+
+  let currentDeleteId = null;
+  let currentEditData = null;
+  let newImageFile = null;
+
+  const STORAGE_BUCKET = 'kiosk-images';
+
+  // Helper: toast
+  function showToast(message, type = 'success') {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = `toast ${type === 'success' ? 'success' : 'error'} show`;
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  // Helper: ensure bucket exists
+  async function ensureBucket() {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const exists = buckets?.some(b => b.name === STORAGE_BUCKET);
+    if (!exists) {
+      await supabase.storage.createBucket(STORAGE_BUCKET, {
+        public: true,
+        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+        fileSizeLimit: 2097152
+      });
+      showToast('Storage bucket created', 'success');
+    }
+  }
+
+  // Upload image to storage
+  async function uploadImage(file, slideHeadline) {
+    const fileExt = file.name.split('.').pop();
+    const safeName = (slideHeadline || 'slide').replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 40);
+    const filePath = `kiosk/${Date.now()}-${safeName}.${fileExt}`;
+    const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(filePath, file);
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+    return publicUrl;
+  }
+
+  // Load slides from DB
+  async function loadSlides() {
+    const { data, error } = await supabase
+      .from('kiosk_idle_ads')
+      .select('*')
+      .order('display_order', { ascending: true });
+    if (error) {
+      showToast('Error loading slides', 'error');
+      return [];
+    }
+    return data || [];
+  }
+
+  // Render table
+  async function renderSlides() {
+    const slides = await loadSlides();
+    if (!slides.length) {
+      slidesList.innerHTML = '<tr class="empty-row"><td colspan="7">No slides. Click "Add New Slide" to create one.</td></tr>';
+      document.getElementById('totalSlides').innerText = '0';
+      document.getElementById('activeSlides').innerText = '0';
+      document.getElementById('avgDuration').innerText = '0';
+      return;
+    }
+    const total = slides.length;
+    const activeCount = slides.filter(s => s.is_active).length;
+    const avgDur = Math.round(slides.reduce((sum, s) => sum + (s.duration_seconds || 60), 0) / total);
+    document.getElementById('totalSlides').innerText = total;
+    document.getElementById('activeSlides').innerText = activeCount;
+    document.getElementById('avgDuration').innerText = avgDur;
+
+    slidesList.innerHTML = slides.map(slide => `
+      <tr data-id="${slide.id}">
+        <td>
+          <div class="order-controls">
+            <button class="order-btn move-up" data-id="${slide.id}" data-order="${slide.display_order}" ${slide.display_order === 1 ? 'disabled' : ''}>↑</button>
+            <span style="min-width: 30px; text-align: center;">${slide.display_order}</span>
+            <button class="order-btn move-down" data-id="${slide.id}" data-order="${slide.display_order}" ${slide.display_order === total ? 'disabled' : ''}>↓</button>
+          </div>
+        </td>
+        <td><span class="badge ${slide.slide_type === 'venue' ? 'badge-venue' : 'badge-sponsor'}">${slide.slide_type === 'venue' ? 'Venue' : 'Sponsor'}</span></td>
+        <td><strong>${escapeHtml(slide.headline)}</strong><br><small style="color:#64748b;">${escapeHtml(slide.tagline || '')}</small></td>
+        <td>${slide.duration_seconds}s</td>
+        <td>
+          <div class="active-toggle ${slide.is_active ? 'active' : ''}" data-id="${slide.id}" data-active="${slide.is_active}">
+            <span></span>
+          </div>
+        </td>
+        <td>${slide.image_url ? `<img src="${slide.image_url}" class="image-thumb" onclick="window.open('${slide.image_url}')">` : '—'}</td>
+        <td class="action-icons">
+          <i class="fas fa-edit edit-slide" data-id="${slide.id}"></i>
+          <i class="fas fa-trash-alt delete-slide" data-id="${slide.id}" data-name="${escapeHtml(slide.headline)}"></i>
+        </td>
+      </tr>
+    `).join('');
+
+    // Attach event listeners after render
+    document.querySelectorAll('.edit-slide').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = btn.dataset.id;
+        await openEditModal(id);
+      });
+    });
+    document.querySelectorAll('.delete-slide').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentDeleteId = btn.dataset.id;
+        deleteMessage.innerText = `Delete "${btn.dataset.name}"? This action cannot be undone.`;
+        deleteModal.classList.add('active');
+      });
+    });
+    document.querySelectorAll('.active-toggle').forEach(toggle => {
+      toggle.addEventListener('click', async () => {
+        const id = toggle.dataset.id;
+        const currentActive = toggle.dataset.active === 'true';
+        const newActive = !currentActive;
+        const { error } = await supabase
+          .from('kiosk_idle_ads')
+          .update({ is_active: newActive, updated_at: new Date() })
+          .eq('id', id);
+        if (error) showToast('Update failed', 'error');
+        else {
+          showToast(`Slide ${newActive ? 'activated' : 'deactivated'}`);
+          renderSlides();
+        }
+      });
+    });
+    document.querySelectorAll('.move-up').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const currentOrder = parseInt(btn.dataset.order);
+        if (currentOrder <= 1) return;
+        await swapOrder(id, currentOrder, currentOrder - 1);
+      });
+    });
+    document.querySelectorAll('.move-down').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const currentOrder = parseInt(btn.dataset.order);
+        await swapOrder(id, currentOrder, currentOrder + 1);
+      });
+    });
+  }
+
+  async function swapOrder(slideId, oldOrder, newOrder) {
+    // find slide with newOrder, swap display_order
+    const { data: targetSlide } = await supabase
+      .from('kiosk_idle_ads')
+      .select('id')
+      .eq('display_order', newOrder)
+      .single();
+    if (!targetSlide) return;
+    const updates = [
+      { id: slideId, display_order: newOrder },
+      { id: targetSlide.id, display_order: oldOrder }
+    ];
+    for (const up of updates) {
+      await supabase.from('kiosk_idle_ads').update({ display_order: up.display_order, updated_at: new Date() }).eq('id', up.id);
+    }
+    showToast('Order updated');
+    renderSlides();
+  }
+
+  async function openEditModal(id) {
+    const { data, error } = await supabase.from('kiosk_idle_ads').select('*').eq('id', id).single();
+    if (error) { showToast('Error loading slide', 'error'); return; }
+    currentEditData = data;
+    slideIdInput.value = data.id;
+    slideType.value = data.slide_type;
+    headline.value = data.headline;
+    tagline.value = data.tagline || '';
+    duration.value = data.duration_seconds;
+    displayOrder.value = data.display_order;
+    isActive.checked = data.is_active;
+    startsAt.value = data.starts_at ? data.starts_at.slice(0, 16) : '';
+    endsAt.value = data.ends_at ? data.ends_at.slice(0, 16) : '';
+    if (data.image_url) {
+      currentImagePreview.innerHTML = `<img src="${data.image_url}" class="image-preview"><br><small>Current image</small>`;
+    } else {
+      currentImagePreview.innerHTML = '';
+    }
+    newImageFile = null;
+    modalTitle.innerText = 'Edit Slide';
+    modal.classList.add('active');
+  }
+
+  function resetForm() {
+    slideIdInput.value = '';
+    slideType.value = 'venue';
+    headline.value = '';
+    tagline.value = '';
+    duration.value = '60';
+    displayOrder.value = '';
+    isActive.checked = true;
+    startsAt.value = '';
+    endsAt.value = '';
+    currentImagePreview.innerHTML = '';
+    newImageFile = null;
+    imageUpload.value = '';
+    modalTitle.innerText = 'Add New Slide';
+    currentEditData = null;
+  }
+
+  imageUpload.addEventListener('change', (e) => {
+    if (e.target.files.length) {
+      newImageFile = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        currentImagePreview.innerHTML = `<img src="${ev.target.result}" class="image-preview"><br><small>New image (will replace)</small>`;
+      };
+      reader.readAsDataURL(newImageFile);
+    } else {
+      newImageFile = null;
+      if (currentEditData?.image_url) {
+        currentImagePreview.innerHTML = `<img src="${currentEditData.image_url}" class="image-preview"><br><small>Current image</small>`;
+      } else {
+        currentImagePreview.innerHTML = '';
+      }
+    }
+  });
+
+  saveSlideBtn.addEventListener('click', async () => {
+    if (!headline.value.trim()) {
+      showToast('Headline is required', 'error');
+      return;
+    }
+    let imageUrl = currentEditData?.image_url || '';
+    if (newImageFile) {
+      try {
+        imageUrl = await uploadImage(newImageFile, headline.value);
+      } catch (err) {
+        showToast('Image upload failed', 'error');
+        return;
+      }
+    }
+    const slideData = {
+      slide_type: slideType.value,
+      headline: headline.value.trim(),
+      tagline: tagline.value.trim() || null,
+      duration_seconds: parseInt(duration.value) || 60,
+      display_order: parseInt(displayOrder.value) || 0,
+      is_active: isActive.checked,
+      starts_at: startsAt.value ? new Date(startsAt.value).toISOString() : null,
+      ends_at: endsAt.value ? new Date(endsAt.value).toISOString() : null,
+      image_url: imageUrl,
+      updated_at: new Date()
+    };
+    let error;
+    if (slideIdInput.value) {
+      // update
+      const { error: updateErr } = await supabase
+        .from('kiosk_idle_ads')
+        .update(slideData)
+        .eq('id', slideIdInput.value);
+      error = updateErr;
+    } else {
+      // insert
+      slideData.created_at = new Date();
+      const { error: insertErr } = await supabase.from('kiosk_idle_ads').insert([slideData]);
+      error = insertErr;
+    }
+    if (error) {
+      showToast('Save failed: ' + error.message, 'error');
+    } else {
+      showToast('Slide saved');
+      modal.classList.remove('active');
+      resetForm();
+      renderSlides();
+    }
+  });
+
+  // Delete logic
+  confirmDeleteBtn.addEventListener('click', async () => {
+    if (!currentDeleteId) return;
+    const { error } = await supabase.from('kiosk_idle_ads').delete().eq('id', currentDeleteId);
+    if (error) {
+      showToast('Delete failed', 'error');
+    } else {
+      showToast('Slide deleted');
+      renderSlides();
+    }
+    deleteModal.classList.remove('active');
+    currentDeleteId = null;
+  });
+
+  cancelDeleteBtn.addEventListener('click', () => {
+    deleteModal.classList.remove('active');
+    currentDeleteId = null;
+  });
+
+  addSlideBtn.addEventListener('click', () => {
+    resetForm();
+    modal.classList.add('active');
+  });
+  closeModalBtn.addEventListener('click', () => {
+    modal.classList.remove('active');
+    resetForm();
+  });
+  // click outside modal close
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.remove('active');
+  });
+  deleteModal.addEventListener('click', (e) => {
+    if (e.target === deleteModal) deleteModal.classList.remove('active');
+  });
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
+  }
+
+  // init
+  async function init() {
+    await ensureBucket();
+    await renderSlides();
+  }
+  init();
+</script>
+</body>
+</html>
