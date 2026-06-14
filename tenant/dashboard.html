@@ -512,7 +512,7 @@
 
             <!-- Module Views -->
             <div v-for="module in allModules" :key="'view_' + module.id" v-if="currentSection === 'module_' + module.id">
-                <iframe :src="getModuleSrc(module.name)" class="external-iframe" :title="module.name" frameborder="0"></iframe>
+                <iframe :src="getModuleSrc(module)" class="external-iframe" :title="module.name" frameborder="0"></iframe>
             </div>
 
             <!-- Settings Panel -->
@@ -556,19 +556,56 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
     
-    // Modules with distinct icons: Analytics Hub uses 'fas fa-chart-simple'
+    // ─── FIXED_MODULES: Fallback if Supabase is unavailable ───────────────────
+    // DO NOT DELETE – used as safe fallback. 'path' is the canonical field;
+    // 'file' kept for legacy references.
     const FIXED_MODULES = [
-        { id: 1, name: 'Rands WhatsApp Concierge', icon: 'fab fa-whatsapp', file: 'whatsapp-admin.html' },
-        { id: 2, name: 'Event Management', icon: 'fas fa-calendar-alt', file: 'events-admin.html' },
-        { id: 3, name: 'Wallet Management', icon: 'fas fa-wallet', file: 'wallet-admin.html' },
-        { id: 4, name: 'VVIP Console', icon: 'fas fa-crown', file: 'vvip-admin.html' },
-        { id: 5, name: 'Hubbly Station', icon: 'fas fa-smoking', file: 'shisha-admin.html' },
-        { id: 6, name: 'Orders & Sales Engine', icon: 'fas fa-chart-line', file: 'orders-admin.html' },
-        { id: 7, name: 'Booze Lockers', icon: 'fas fa-wine-bottle', file: 'lockers-admin.html' },
-        { id: 8, name: 'Staff Management', icon: 'fas fa-users', file: 'staff-admin.html' },
-        { id: 9, name: 'Kiosk Ad Manager', icon: 'fas fa-tv', file: 'kiosk-admin.html' }
-        { id: 10, name: 'Analytics Hub', icon: 'fas fa-chart-simple', file: 'analytics-hub.html' }
+        { id: 'whatsapp-concierge',  name: 'Rands WhatsApp Concierge', icon: 'fab fa-whatsapp',    path: 'whatsapp-admin.html',  file: 'whatsapp-admin.html'  },
+        { id: 'event-management',    name: 'Event Management',          icon: 'fas fa-calendar-alt', path: 'events-admin.html',    file: 'events-admin.html'    },
+        { id: 'wallet-management',   name: 'Wallet Management',         icon: 'fas fa-wallet',       path: 'wallet-admin.html',    file: 'wallet-admin.html'    },
+        { id: 'vvip-console',        name: 'VVIP Console',              icon: 'fas fa-crown',        path: 'vvip-admin.html',      file: 'vvip-admin.html'      },
+        { id: 'hubbly-station',      name: 'Hubbly Station',            icon: 'fas fa-smoking',      path: 'shisha-admin.html',    file: 'shisha-admin.html'    },
+        { id: 'orders-sales-engine', name: 'Orders & Sales Engine',     icon: 'fas fa-chart-line',   path: 'orders-admin.html',    file: 'orders-admin.html'    },
+        { id: 'booze-lockers',       name: 'Booze Lockers',             icon: 'fas fa-wine-bottle',  path: 'lockers-admin.html',   file: 'lockers-admin.html'   },
+        { id: 'staff-management',    name: 'Staff Management',          icon: 'fas fa-users',        path: 'staff-admin.html',     file: 'staff-admin.html'     },
+        { id: 'kiosk-ad-manager',    name: 'Kiosk Ad Manager',          icon: 'fas fa-tv',           path: 'kiosk-admin.html',     file: 'kiosk-admin.html'     },
+        { id: 'analytics-hub',       name: 'Analytics Hub',             icon: 'fas fa-chart-simple', path: 'analytics-hub.html',   file: 'analytics-hub.html'   }
     ];
+
+    // ─── MODULE CACHE ──────────────────────────────────────────────────────────
+    // Modules are loaded ONCE on startup and cached here. Never re-fetched.
+    let _modulesCache = null;
+
+    // ─── SUPABASE MODULE LOADER ────────────────────────────────────────────────
+    // Tries Supabase first. On any failure, silently falls back to FIXED_MODULES.
+    async function loadModules() {
+        if (_modulesCache) return _modulesCache;   // serve from cache
+
+        try {
+            const { data, error } = await supabase
+                .from('modules')
+                .select('id, name, icon, path')
+                .order('created_at', { ascending: true });
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                // Normalise: ensure every module has a 'file' alias for legacy compat
+                _modulesCache = data.map(m => ({
+                    ...m,
+                    file: m.path   // backward-compat alias
+                }));
+                console.info(`[Modules] Loaded ${_modulesCache.length} module(s) from Supabase ✓`);
+            } else {
+                throw new Error('Supabase returned empty modules list');
+            }
+        } catch (err) {
+            console.warn('[Modules] Supabase fetch failed – using FIXED_MODULES fallback.', err.message);
+            _modulesCache = FIXED_MODULES;
+        }
+
+        return _modulesCache;
+    }
 
     new Vue({
         el: '#app',
@@ -578,7 +615,7 @@
             sidebarOpen: false,
             currentSection: 'overview',
             appName: 'Rands',
-            allModules: FIXED_MODULES,
+            allModules: [],          // populated from Supabase (or fallback) on mount
             venueSettings: {
                 venue_name: 'Rands Vibe',
                 venue_location: 'Cape Town, South Africa',
@@ -645,7 +682,19 @@
                     }
                 });
             },
-            getModuleSrc(moduleName) {
+            // ── Module navigation ──────────────────────────────────────────────
+            // Primary: use module.path directly (Supabase-driven).
+            // Legacy fallback: fileMap lookup by name (for any old callers).
+            getModuleSrc(moduleNameOrObj) {
+                // If called with the full module object, use path directly
+                if (typeof moduleNameOrObj === 'object' && moduleNameOrObj !== null) {
+                    return moduleNameOrObj.path;
+                }
+                // Legacy string-based call — look up in cached modules first
+                const cached = (this.allModules || []).find(m => m.name === moduleNameOrObj);
+                if (cached && cached.path) return cached.path;
+
+                // Ultimate fallback: original fileMap (backward compat)
                 const fileMap = {
                     'Rands WhatsApp Concierge': 'whatsapp-admin.html',
                     'Event Management': 'event-admin.html',
@@ -658,7 +707,7 @@
                     'Kiosk Ad Manager': 'kiosk-admin.html',
                     'Analytics Hub': 'analytics-hub.html'
                 };
-                return fileMap[moduleName] || `${moduleName.toLowerCase().replace(/ /g, '-')}-admin.html`;
+                return fileMap[moduleNameOrObj] || `${moduleNameOrObj.toLowerCase().replace(/ /g, '-')}-admin.html`;
             },
             goToModule(module) {
                 this.currentSection = 'module_' + module.id;
@@ -762,8 +811,18 @@
             }
         },
         async mounted() {
+            this.loadingMessage = 'Loading modules...';
+            // ── Step 1: load modules (Supabase first, FIXED_MODULES fallback) ──
+            this.allModules = await loadModules();
+
             this.loadingMessage = 'Loading settings...';
-            await Promise.all([this.loadVenueSettingsFromDB(), this.loadThemeFromDB(), this.loadSystemPrefsFromDB()]);
+            // ── Step 2: load remaining settings in parallel ───────────────────
+            await Promise.all([
+                this.loadVenueSettingsFromDB(),
+                this.loadThemeFromDB(),
+                this.loadSystemPrefsFromDB()
+            ]);
+
             this.loadingMessage = 'Starting dashboard...';
             this.currentSection = 'overview';
             setTimeout(() => { this.showLoadingScreen = false; this.applyAutoRefresh(); }, 500);
