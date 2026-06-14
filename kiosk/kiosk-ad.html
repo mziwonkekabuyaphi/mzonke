@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Kiosk Ad Manager | Rands</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f5f7fb;
+      padding: 24px;
+      color: #1e293b;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    /* Stats row (red left border) */
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 28px;
+      padding: 1.2rem 1.8rem;
+      flex: 1;
+      min-width: 160px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      border: 1px solid #edf2f7;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: #E30613;
+    }
+    .stat-card i { font-size: 2rem; color: #E30613; margin-bottom: 0.5rem; }
+    .stat-number { font-size: 2rem; font-weight: 800; color: #1e293b; }
+    .stat-label { font-size: 0.75rem; font-weight: 600; color: #64748b; margin-top: 0.25rem; }
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      background: white;
+      padding: 6px;
+      border-radius: 60px;
+      margin-bottom: 24px;
+      border: 1px solid #eef2f8;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 60px;
+      border: none;
+      background: transparent;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .tab-btn.active { background: #E30613; color: white; box-shadow: 0 2px 6px rgba(227,6,19,0.2); }
+    .panel { display: none; background: white; border-radius: 28px; padding: 24px; border: 1px solid #eef2f8; margin-bottom: 24px; }
+    .panel.active { display: block; }
+    .section-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; color: #0f172a; }
+    .btn {
+      padding: 10px 24px;
+      border-radius: 60px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary { background: #E30613; color: white; }
+    .btn-primary:hover { background: #B5040F; transform: translateY(-2px); }
+    .btn-secondary { background: #F1F5F9; color: #1e293b; border: 1px solid #e2e8f0; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-sm { padding: 6px 14px; font-size: 0.75rem; }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .ad-card {
+      background: #fefaf9;
+      border: 1px solid #f0e6e6;
+      border-radius: 24px;
+      padding: 16px;
+      transition: 0.2s;
+    }
+    .ad-card:hover { border-color: #E30613; box-shadow: 0 8px 20px rgba(0,0,0,0.05); }
+    .ad-card h4 { font-size: 1.1rem; font-weight: 800; color: #E30613; margin-bottom: 8px; }
+    .media-preview { width: 100%; height: 140px; object-fit: cover; border-radius: 16px; margin: 10px 0; background: #f0f0f0; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 60px; font-size: 0.7rem; font-weight: 700; }
+    .badge-active { background: #dcfce7; color: #166534; }
+    .badge-inactive { background: #fee2e2; color: #991b1b; }
+    .analytics-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+    /* Modal scrollable */
+    .custom-modal-overlay {
+      position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center;
+      z-index: 2000; opacity: 0; visibility: hidden; transition: all 0.2s ease;
+    }
+    .custom-modal-overlay.active { opacity: 1; visibility: visible; }
+    .custom-modal {
+      background: white; border-radius: 32px; max-width: 600px; width: 90%; max-height: 85vh;
+      overflow-y: auto; padding: 28px 24px; border: 2px solid #E30613;
+      transform: scale(0.95); transition: transform 0.2s;
+    }
+    .custom-modal-overlay.active .custom-modal { transform: scale(1); }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-size: 0.75rem; font-weight: 700; margin-bottom: 6px; color: #475569; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 60px;
+      font-family: 'Inter', sans-serif; font-size: 0.85rem;
+    }
+    .toast {
+      position: fixed; bottom: 30px; right: 30px; background: #1e293b; color: white;
+      padding: 12px 24px; border-radius: 60px; z-index: 1000; opacity: 0; transition: 0.3s;
+      pointer-events: none; font-size: 0.8rem;
+    }
+    .toast.show { opacity: 1; }
+    .toast.success { background: #059669; }
+    .toast.error { background: #E30613; }
+    /* Kiosk preview modal (larger) */
+    .preview-modal {
+      max-width: 90vw; width: 1000px; background: black;
+    }
+    .preview-container {
+      position: relative; background: #000; border-radius: 24px; overflow: hidden;
+    }
+    .preview-slide {
+      min-height: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background-size: cover; background-position: center; color: white; text-align: center;
+      position: relative;
+    }
+    .preview-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.4);
+    }
+    .preview-content { position: relative; z-index: 2; padding: 2rem; }
+    .preview-headline { font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem; }
+    .preview-tagline { font-size: 1.2rem; }
+    .fixed-logo {
+      position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+      padding: 8px 20px; border-radius: 60px; color: white; font-weight: 800; z-index: 10;
+    }
+    .close-preview { position: absolute; top: 20px; right: 20px; background: white; border: none; border-radius: 60px; padding: 8px 16px; cursor: pointer; z-index: 20; }
+    .loading-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid white; border-radius: 50%; border-top-color: transparent; animation: spin 0.6s linear infinite; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1 style="margin-bottom: 1rem;"><i class="fas fa-tv" style="color:#E30613;"></i> Kiosk Ad System</h1>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="slides">📺 Idle Slides</button>
+    <button class="tab-btn" data-tab="analytics">📊 Analytics</button>
+    <button class="tab-btn" data-tab="campaigns" id="campaignsTabBtn" style="display:none;">🎯 Campaigns</button>
+    <button class="tab-btn" data-tab="tiers" id="tiersTabBtn" style="display:none;">🏷️ Tiers</button>
+  </div>
+
+  <!-- SLIDES PANEL -->
+  <div id="slidesPanel" class="panel active">
+    <div class="section-title"><i class="fas fa-plus-circle"></i> Manage Idle Ads</div>
+    <button class="btn btn-primary" id="addSlideBtn"><i class="fas fa-plus"></i> Add New Slide</button>
+    <div id="slidesList" class="card-grid">Loading slides...</div>
+  </div>
+
+  <!-- ANALYTICS PANEL -->
+  <div id="analyticsPanel" class="panel">
+    <div class="section-title"><i class="fas fa-chart-line"></i> Live Analytics</div>
+    <div class="stats-row" id="analyticsStats">
+      <div class="stat-card"><i class="fas fa-eye"></i><div class="stat-number" id="totalImpressions">0</div><div class="stat-label">Impressions Today</div></div>
+      <div class="stat-card"><i class="fas fa-chart-simple"></i><div class="stat-number" id="estimatedRevenue">R0</div><div class="stat-label">Est. Revenue</div></div>
+      <div class="stat-card"><i class="fas fa-rocket"></i><div class="stat-number" id="topAdName">-</div><div class="stat-label">Top Performing Ad</div></div>
+    </div>
+    <div id="impressionsDetails" style="margin-top: 20px;"></div>
+  </div>
+
+  <!-- CAMPAIGNS PANEL (if table exists) -->
+  <div id="campaignsPanel" class="panel">
+    <div class="section-title"><i class="fas fa-bullhorn"></i> Ad Campaigns</div>
+    <button class="btn btn-primary" id="addCampaignBtn" style="display:none;">+ New Campaign</button>
+    <div id="campaignsList">Loading...</div>
+  </div>
+
+  <!-- TIERS PANEL (if table exists) -->
+  <div id="tiersPanel" class="panel">
+    <div class="section-title"><i class="fas fa-layer-group"></i> Ad Tiers</div>
+    <div id="tiersList">Loading...</div>
+  </div>
+</div>
+
+<!-- MODAL: Add/Edit Slide -->
+<div id="slideModal" class="custom-modal-overlay">
+  <div class="custom-modal">
+    <h3 id="modalTitle">Add New Slide</h3>
+    <input type="hidden" id="slideId">
+    <div class="form-group"><label>Slide Type</label><select id="slideType"><option value="venue">Venue</option><option value="sponsor">Sponsor</option></select></div>
+    <div class="form-group"><label>Headline *</label><input type="text" id="headline" placeholder="e.g., Welcome to Rands"></div>
+    <div class="form-group"><label>Tagline</label><input type="text" id="tagline" placeholder="Short supporting text"></div>
+    <div class="form-group"><label>Media Type</label><select id="mediaType"><option value="image">Image</option><option value="video">Video</option></select></div>
+    <div class="form-group" id="imageUrlGroup"><label>Image URL</label><input type="text" id="imageUrl" placeholder="https://..."></div>
+    <div class="form-group" id="videoUrlGroup" style="display:none;"><label>Video URL (MP4)</label><input type="text" id="videoUrl" placeholder="https://..."></div>
+    <div class="form-group" id="durationGroup"><label>Duration (seconds) – for images only</label><input type="number" id="durationSeconds" value="60" step="5"></div>
+    <div class="form-group"><label>Display Order</label><input type="number" id="displayOrder" placeholder="unique number"></div>
+    <div class="checkbox-group"><input type="checkbox" id="isActive" checked> <label>Active</label></div>
+    <div class="form-group"><label>Campaign ID (optional)</label><input type="text" id="campaignId" placeholder="If campaigns table exists"></div>
+    <div class="modal-buttons" style="display: flex; gap:12px; justify-content: flex-end; margin-top:20px;">
+      <button class="btn btn-secondary" id="closeSlideModal">Cancel</button>
+      <button class="btn btn-primary" id="saveSlideBtn">Save Slide</button>
+    </div>
+  </div>
+</div>
+
+<!-- KIOSK PREVIEW MODAL -->
+<div id="previewModal" class="custom-modal-overlay">
+  <div class="custom-modal preview-modal">
+    <button class="close-preview" id="closePreviewBtn">✕ Close Preview</button>
+    <div class="preview-container" id="previewContainer">
+      <div class="preview-slide" id="previewSlide">
+        <div class="preview-overlay"></div>
+        <div class="preview-content">
+          <div class="preview-headline" id="previewHeadline">Loading...</div>
+          <div class="preview-tagline" id="previewTagline"></div>
+        </div>
+      </div>
+      <div class="fixed-logo"><i class="fas fa-crown"></i> RANDS · Tap to Start</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  // ---------- Global state ----------
+  let slides = [];
+  let campaignsTableExists = false;
+  let tiersTableExists = false;
+  let campaigns = [];
+  let tiers = [];
+  let previewInterval = null;
+  let previewCurrentIndex = 0;
+  let previewSessionId = null;
+  let previewShownSet = new Set(); // prevent duplicate impressions per loop
+
+  // Helper: toast
+  function showToast(message, type = 'success') {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = `toast ${type === 'success' ? 'success' : 'error'} show`;
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  // Check if tables exist
+  async function checkTablesExist() {
+    try {
+      const { error: campaignsErr } = await supabase.from('kiosk_ad_campaigns').select('id', { count: 'exact', head: true });
+      campaignsTableExists = !campaignsErr;
+      const { error: tiersErr } = await supabase.from('ad_tiers').select('id', { count: 'exact', head: true });
+      tiersTableExists = !tiersErr;
+      if (campaignsTableExists) {
+        document.getElementById('campaignsTabBtn').style.display = 'flex';
+        document.getElementById('addCampaignBtn').style.display = 'inline-flex';
+      }
+      if (tiersTableExists) document.getElementById('tiersTabBtn').style.display = 'flex';
+    } catch (e) { console.warn('Table check failed', e); }
+  }
+
+  // ---------- SLIDES CRUD ----------
+  async function loadSlides() {
+    const { data, error } = await supabase.from('kiosk_idle_ads').select('*').order('display_order', { ascending: true });
+    if (error) { showToast('Error loading slides', 'error'); return []; }
+    slides = data || [];
+    renderSlidesList();
+    return slides;
+  }
+
+  function renderSlidesList() {
+    const container = document.getElementById('slidesList');
+    if (!slides.length) { container.innerHTML = '<div class="empty-state">No slides. Click "Add New Slide".</div>'; return; }
+    container.innerHTML = slides.map(slide => `
+      <div class="ad-card" data-id="${slide.id}">
+        <h4>${escapeHtml(slide.headline)} <span class="badge ${slide.is_active ? 'badge-active' : 'badge-inactive'}">${slide.is_active ? 'Active' : 'Inactive'}</span></h4>
+        <div class="badge" style="background:#f0f0f0;">${slide.slide_type === 'venue' ? '🏟️ Venue' : '🤝 Sponsor'}</div>
+        <div>${slide.media_type === 'video' ? '🎬 Video' : '🖼️ Image'} • Order: ${slide.display_order} • ${slide.duration_seconds || 0}s</div>
+        ${slide.image_url ? `<img src="${slide.image_url}" class="media-preview" onerror="this.style.display='none'">` : ''}
+        ${slide.video_url ? `<video src="${slide.video_url}" style="width:100%; border-radius:16px;" controls></video>` : ''}
+        <div style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn btn-secondary btn-sm edit-slide" data-id="${slide.id}"><i class="fas fa-edit"></i> Edit</button>
+          <button class="btn btn-danger btn-sm delete-slide" data-id="${slide.id}" data-name="${escapeHtml(slide.headline)}"><i class="fas fa-trash"></i> Delete</button>
+          <button class="btn btn-primary btn-sm preview-slide" data-id="${slide.id}"><i class="fas fa-play"></i> Preview</button>
+        </div>
+      </div>
+    `).join('');
+    attachSlideEvents();
+  }
+
+  function attachSlideEvents() {
+    document.querySelectorAll('.edit-slide').forEach(btn => {
+      btn.addEventListener('click', async () => { await openEditSlide(btn.dataset.id); });
+    });
+    document.querySelectorAll('.delete-slide').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (confirm(`Delete "${btn.dataset.name}"?`)) {
+          const { error } = await supabase.from('kiosk_idle_ads').delete().eq('id', btn.dataset.id);
+          if (error) showToast('Delete failed', 'error');
+          else { showToast('Deleted'); await loadSlides(); }
+        }
+      });
+    });
+    document.querySelectorAll('.preview-slide').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const slide = slides.find(s => s.id === btn.dataset.id);
+        if (slide) startSinglePreview(slide);
+      });
+    });
+  }
+
+  async function openEditSlide(id) {
+    const slide = slides.find(s => s.id === id);
+    if (!slide) return;
+    document.getElementById('slideId').value = slide.id;
+    document.getElementById('slideType').value = slide.slide_type;
+    document.getElementById('headline').value = slide.headline;
+    document.getElementById('tagline').value = slide.tagline || '';
+    const mediaType = slide.media_type || (slide.video_url ? 'video' : 'image');
+    document.getElementById('mediaType').value = mediaType;
+    toggleMediaFields(mediaType);
+    document.getElementById('imageUrl').value = slide.image_url || '';
+    document.getElementById('videoUrl').value = slide.video_url || '';
+    document.getElementById('durationSeconds').value = slide.duration_seconds || 60;
+    document.getElementById('displayOrder').value = slide.display_order;
+    document.getElementById('isActive').checked = slide.is_active;
+    document.getElementById('campaignId').value = slide.campaign_id || '';
+    document.getElementById('modalTitle').innerText = 'Edit Slide';
+    document.getElementById('slideModal').classList.add('active');
+  }
+
+  function resetSlideForm() {
+    document.getElementById('slideId').value = '';
+    document.getElementById('slideType').value = 'venue';
+    document.getElementById('headline').value = '';
+    document.getElementById('tagline').value = '';
+    document.getElementById('mediaType').value = 'image';
+    toggleMediaFields('image');
+    document.getElementById('imageUrl').value = '';
+    document.getElementById('videoUrl').value = '';
+    document.getElementById('durationSeconds').value = '60';
+    document.getElementById('displayOrder').value = '';
+    document.getElementById('isActive').checked = true;
+    document.getElementById('campaignId').value = '';
+    document.getElementById('modalTitle').innerText = 'Add New Slide';
+  }
+
+  function toggleMediaFields(type) {
+    const imgGroup = document.getElementById('imageUrlGroup');
+    const vidGroup = document.getElementById('videoUrlGroup');
+    const durGroup = document.getElementById('durationGroup');
+    if (type === 'image') {
+      imgGroup.style.display = 'block';
+      vidGroup.style.display = 'none';
+      durGroup.style.display = 'block';
+    } else {
+      imgGroup.style.display = 'none';
+      vidGroup.style.display = 'block';
+      durGroup.style.display = 'block'; // duration still used for video? we keep for consistency but not required
+    }
+  }
+
+  document.getElementById('mediaType').addEventListener('change', (e) => toggleMediaFields(e.target.value));
+
+  document.getElementById('saveSlideBtn').addEventListener('click', async () => {
+    const id = document.getElementById('slideId').value;
+    const mediaType = document.getElementById('mediaType').value;
+    const imageUrl = document.getElementById('imageUrl').value.trim();
+    const videoUrl = document.getElementById('videoUrl').value.trim();
+    const data = {
+      slide_type: document.getElementById('slideType').value,
+      headline: document.getElementById('headline').value.trim(),
+      tagline: document.getElementById('tagline').value.trim() || null,
+      media_type: mediaType,
+      image_url: mediaType === 'image' ? imageUrl : null,
+      video_url: mediaType === 'video' ? videoUrl : null,
+      duration_seconds: parseInt(document.getElementById('durationSeconds').value) || 60,
+      display_order: parseInt(document.getElementById('displayOrder').value) || 0,
+      is_active: document.getElementById('isActive').checked,
+      campaign_id: document.getElementById('campaignId').value.trim() || null,
+      updated_at: new Date()
+    };
+    if (!data.headline) { showToast('Headline required', 'error'); return; }
+    if (mediaType === 'image' && !imageUrl) { showToast('Image URL required', 'error'); return; }
+    if (mediaType === 'video' && !videoUrl) { showToast('Video URL required', 'error'); return; }
+    let error;
+    if (id) {
+      const { error: updErr } = await supabase.from('kiosk_idle_ads').update(data).eq('id', id);
+      error = updErr;
+    } else {
+      data.created_at = new Date();
+      const { error: insErr } = await supabase.from('kiosk_idle_ads').insert([data]);
+      error = insErr;
+    }
+    if (error) showToast('Save failed: ' + error.message, 'error');
+    else { showToast('Slide saved'); document.getElementById('slideModal').classList.remove('active'); resetSlideForm(); await loadSlides(); }
+  });
+
+  // ---------- ANALYTICS (impressions) ----------
+  async function loadAnalytics() {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: impressions, error } = await supabase
+      .from('kiosk_ad_impressions')
+      .select('*, kiosk_idle_ads(headline, media_type, campaign_id)')
+      .gte('created_at', today);
+    if (error) { console.warn(error); return; }
+    const total = impressions?.length || 0;
+    document.getElementById('totalImpressions').innerText = total;
+    // revenue estimation: if campaigns exist, use CPM; else default R5 CPM
+    let revenue = 0;
+    let topAd = { headline: '-', count: 0 };
+    const perAd = new Map();
+    for (const imp of impressions || []) {
+      const adId = imp.ad_id;
+      const count = (perAd.get(adId) || 0) + 1;
+      perAd.set(adId, count);
+      if (count > topAd.count && imp.kiosk_idle_ads) {
+        topAd = { headline: imp.kiosk_idle_ads.headline, count };
+      }
+      // revenue: simple R5 per 1000 impressions if no campaign tier
+      revenue += 0.005; // R5/1000 = R0.005 per impression
+    }
+    document.getElementById('estimatedRevenue').innerText = `R${revenue.toFixed(2)}`;
+    document.getElementById('topAdName').innerText = topAd.headline;
+    const detailsHtml = `<div class="section-title">Impressions per Ad</div>${Array.from(perAd.entries()).map(([id, cnt]) => {
+      const ad = slides.find(s => s.id === id);
+      return `<div class="analytics-row"><strong>${ad?.headline || id}</strong> <span>${cnt} views</span></div>`;
+    }).join('') || '<p>No impressions today</p>'}`;
+    document.getElementById('impressionsDetails').innerHTML = detailsHtml;
+  }
+
+  // ---------- CAMPAIGNS (optional) ----------
+  async function loadCampaigns() {
+    if (!campaignsTableExists) return;
+    const { data, error } = await supabase.from('kiosk_ad_campaigns').select('*').order('created_at', { ascending: false });
+    if (error) { console.warn(error); return; }
+    campaigns = data || [];
+    const container = document.getElementById('campaignsList');
+    container.innerHTML = campaigns.map(c => `<div class="ad-card"><h4>${escapeHtml(c.name)}</h4><div>Budget: R${c.budget} | CPM: R${c.cpm_rate} | Spent: R${c.spent || 0}</div></div>`).join('');
+  }
+
+  async function loadTiers() {
+    if (!tiersTableExists) return;
+    const { data, error } = await supabase.from('ad_tiers').select('*').order('priority', { ascending: true });
+    if (error) { console.warn(error); return; }
+    tiers = data || [];
+    document.getElementById('tiersList').innerHTML = tiers.map(t => `<div class="ad-card"><h4>${escapeHtml(t.name)}</h4><div>CPM: R${t.cpm_rate} | Priority: ${t.priority}</div></div>`).join('');
+  }
+
+  // ---------- KIOSK PREVIEW MODE (full rotation with impression counting) ----------
+  let currentPreviewSlides = [];
+  let previewVideoElement = null;
+
+  function stopPreview() {
+    if (previewInterval) clearInterval(previewInterval);
+    if (previewVideoElement) { previewVideoElement.pause(); previewVideoElement.remove(); previewVideoElement = null; }
+    previewSessionId = null;
+    previewShownSet.clear();
+  }
+
+  async function logImpression(adId) {
+    if (!adId) return;
+    if (previewShownSet.has(adId)) return; // once per loop
+    previewShownSet.add(adId);
+    const { error } = await supabase.from('kiosk_ad_impressions').insert({
+      ad_id: adId,
+      session_id: previewSessionId,
+      device_id: 'kiosk-preview',
+      created_at: new Date()
+    });
+    if (error) console.warn('Impression log error', error);
+  }
+
+  function renderPreviewSlide(slide) {
+    const container = document.getElementById('previewSlide');
+    if (!container) return;
+    // remove any existing video
+    if (previewVideoElement) {
+      previewVideoElement.pause();
+      previewVideoElement.remove();
+      previewVideoElement = null;
+    }
+    container.style.backgroundImage = 'none';
+    container.innerHTML = `
+      <div class="preview-overlay"></div>
+      <div class="preview-content">
+        <div class="preview-headline" id="previewHeadline">${escapeHtml(slide.headline)}</div>
+        <div class="preview-tagline" id="previewTagline">${escapeHtml(slide.tagline || '')}</div>
+      </div>
+    `;
+    if (slide.media_type === 'video' && slide.video_url) {
+      const video = document.createElement('video');
+      video.src = slide.video_url;
+      video.autoplay = true;
+      video.muted = true;
+      video.loop = false;
+      video.playsInline = true;
+      video.style.position = 'absolute';
+      video.style.top = '0';
+      video.style.left = '0';
+      video.style.width = '100%';
+      video.style.height = '100%';
+      video.style.objectFit = 'cover';
+      video.style.zIndex = '0';
+      video.addEventListener('ended', async () => {
+        await logImpression(slide.id);
+        // move to next slide
+        nextPreviewSlide();
+      });
+      video.addEventListener('canplaythrough', () => video.play().catch(e=>console.warn));
+      container.prepend(video);
+      previewVideoElement = video;
+    } else if (slide.image_url) {
+      container.style.backgroundImage = `url(${slide.image_url})`;
+      container.style.backgroundSize = 'cover';
+      container.style.backgroundPosition = 'center';
+      // schedule next after duration
+      if (previewInterval) clearInterval(previewInterval);
+      previewInterval = setTimeout(async () => {
+        await logImpression(slide.id);
+        nextPreviewSlide();
+      }, (slide.duration_seconds || 60) * 1000);
+    } else {
+      // fallback
+      if (previewInterval) clearInterval(previewInterval);
+      previewInterval = setTimeout(async () => {
+        await logImpression(slide.id);
+        nextPreviewSlide();
+      }, 5000);
+    }
+  }
+
+  async function nextPreviewSlide() {
+    if (!currentPreviewSlides.length) return;
+    previewCurrentIndex = (previewCurrentIndex + 1) % currentPreviewSlides.length;
+    const nextSlide = currentPreviewSlides[previewCurrentIndex];
+    renderPreviewSlide(nextSlide);
+  }
+
+  async function startFullPreview() {
+    // fetch active slides with schedule filter
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('kiosk_idle_ads')
+      .select('*')
+      .eq('is_active', true)
+      .or(`starts_at.is.null,starts_at.lte.${now}`)
+      .or(`ends_at.is.null,ends_at.gte.${now}`)
+      .order('display_order', { ascending: true });
+    if (error) { showToast('Error loading preview', 'error'); return; }
+    currentPreviewSlides = data || [];
+    if (!currentPreviewSlides.length) { showToast('No active slides to preview'); return; }
+    previewSessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+    previewShownSet.clear();
+    previewCurrentIndex = 0;
+    renderPreviewSlide(currentPreviewSlides[0]);
+    document.getElementById('previewModal').classList.add('active');
+  }
+
+  function startSinglePreview(slide) {
+    currentPreviewSlides = [slide];
+    previewSessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+    previewShownSet.clear();
+    previewCurrentIndex = 0;
+    renderPreviewSlide(slide);
+    document.getElementById('previewModal').classList.add('active');
+  }
+
+  // cleanup preview on close
+  document.getElementById('closePreviewBtn').addEventListener('click', () => {
+    stopPreview();
+    document.getElementById('previewModal').classList.remove('active');
+  });
+
+  // ---------- UI TABS ----------
+  function switchTab(tabId) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`${tabId}Panel`).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+    if (tabId === 'analytics') loadAnalytics();
+    if (tabId === 'campaigns' && campaignsTableExists) loadCampaigns();
+    if (tabId === 'tiers' && tiersTableExists) loadTiers();
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // Add slide button
+  document.getElementById('addSlideBtn').addEventListener('click', () => {
+    resetSlideForm();
+    document.getElementById('slideModal').classList.add('active');
+  });
+  document.getElementById('closeSlideModal').addEventListener('click', () => {
+    document.getElementById('slideModal').classList.remove('active');
+    resetSlideForm();
+  });
+  // Add optional campaign button
+  document.getElementById('addCampaignBtn')?.addEventListener('click', () => { showToast('Campaign creation not implemented in this demo', 'error'); });
+
+  // Initialization
+  async function init() {
+    await checkTablesExist();
+    await loadSlides();
+    await loadAnalytics();
+    if (campaignsTableExists) await loadCampaigns();
+    if (tiersTableExists) await loadTiers();
+    // Expose preview globally (for button from preview slide)
+    window.startFullPreview = startFullPreview;
+    // add a "Preview Kiosk" button in analytics tab maybe
+    const analyticsPanel = document.getElementById('analyticsPanel');
+    const previewBtn = document.createElement('button');
+    previewBtn.className = 'btn btn-primary';
+    previewBtn.innerHTML = '<i class="fas fa-play-circle"></i> Launch Kiosk Preview Mode';
+    previewBtn.style.marginTop = '20px';
+    previewBtn.onclick = startFullPreview;
+    analyticsPanel.appendChild(previewBtn);
+  }
+  init();
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
+  }
+</script>
+</body>
+</html>
