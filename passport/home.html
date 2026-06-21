@@ -25,11 +25,12 @@
             --card-w: min(88vw, 380px); --card-h: calc(var(--card-w) * 0.628); --r: 18px;
         }
 
-        html { -webkit-font-smoothing: antialiased; }
+        html { -webkit-font-smoothing: antialiased; height: 100%; }
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: #f0f2f8;
-            display: flex; justify-content: center; min-height: 100vh;
+            display: flex; justify-content: center; align-items: flex-start;
+            width: 100%; min-height: 100vh;
             padding: 16px; margin: 0; overflow-x: hidden; color: var(--ink);
         }
 
@@ -40,8 +41,10 @@
             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15);
             overflow: hidden; position: relative; min-height: 700px;
             display: flex; flex-direction: column;
+            box-sizing: border-box;
         }
         .wallet-container > :last-child { margin-bottom: 0; padding-bottom: 0; }
+        .wallet-container * { box-sizing: border-box; max-width: 100%; }
 
         /* ===== ORIGINAL HEADER — ENHANCED FONTS ===== */
         .stunning-header {
@@ -67,7 +70,7 @@
 
         /* Welcome + Balance — premium fonts from redesign */
         .welcome-section { margin-bottom: 16px; position: relative; z-index: 2; }
-        .greeting { font-size: 0.75rem; font-weight: 700; color: var(--gold); letter-spacing: 2.5px; text-transform: uppercase; }
+        .greeting { font-size: 0.75rem; font-weight: 700; color: #ffffff; letter-spacing: 2.5px; text-transform: none; }
         .user-name {
             font-family: 'Playfair Display', serif;
             font-size: 1.75rem; font-weight: 700; color: #fff;
@@ -117,7 +120,7 @@
         /* ===== ORIGINAL CARD SECTION ===== */
         .card-section { padding: 4px 20px; }
         .card-section-title { font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        .card-stage { width: var(--card-w); height: var(--card-h); perspective: 1200px; cursor: pointer; flex-shrink: 0; animation: dropIn 0.9s cubic-bezier(0.22,1,0.36,1) both, floatCard 4s ease-in-out 1s infinite; transition: filter 0.1s; margin: 0 auto; }
+        .card-stage { width: var(--card-w); height: var(--card-h); perspective: 1200px; cursor: pointer; flex-shrink: 0; animation: dropIn 0.9s cubic-bezier(0.22,1,0.36,1) both, floatCard 4s ease-in-out 1s infinite; transition: filter 0.1s; margin: 0 auto; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
         .card-stage.long-press-active { filter: drop-shadow(0 0 12px rgba(220,60,80,0.7)); }
         @keyframes dropIn { 0% { transform: translateY(-120px) scale(0.9); opacity: 0; } 65% { transform: translateY(12px) scale(1.01); opacity: 1; } 82% { transform: translateY(-6px) scale(0.995); } 100% { transform: translateY(0) scale(1); opacity: 1; } }
         @keyframes floatCard { 0%, 100% { transform: translateY(0px) rotate3d(1,0,0,0deg); } 50% { transform: translateY(-10px) rotate3d(1,0,0,2deg); } }
@@ -276,9 +279,14 @@
         .fee-estimate { background: #f8fafd; border-radius: 20px; padding: 12px; font-size: 0.75rem; color: #64748b; margin-bottom: 20px; display: flex; justify-content: space-between; }
 
         @media (max-width: 480px) {
-            .wallet-container { border-radius: 32px; }
+            body { padding: 0; align-items: stretch; }
+            .wallet-container { border-radius: 0; min-height: 100vh; width: 100%; max-width: 100%; }
             .balance-amount { font-size: 1.9rem; }
-            .card-stage { width: 90vw; height: auto; aspect-ratio: 1 / 0.628; }
+            .card-stage { width: 88vw; max-width: 380px; height: auto; aspect-ratio: 1 / 0.628; touch-action: manipulation; }
+            .quick-actions, .service-bar, .card-section, .vibe-section, .quick-access-section, .activity-section { padding-left: 16px; padding-right: 16px; }
+            .action-row-primary { gap: 12px; }
+            .action-card-primary { padding: 16px 10px; }
+            .service-grid { gap: 10px; }
             .buyhere-modal-content { padding: 20px 16px 28px; }
             .buyhere-modal-content h3 { font-size: 1.1rem; margin-bottom: 16px; }
             .buyhere-grid { gap: 10px; }
@@ -290,6 +298,21 @@
             .qa-card { padding: 14px 6px 12px; min-height: 96px; }
             .qa-icon { width: 40px; height: 40px; }
             .qa-card h4 { font-size: 0.74rem; }
+            .user-name { font-size: 1.5rem; }
+            .header-balance-card { padding: 16px; }
+        }
+
+        @media (min-width: 481px) {
+            body { align-items: center; }
+        }
+
+        @media (max-width: 360px) {
+            .quick-access-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+            .qa-card { min-height: 86px; padding: 10px 4px; }
+            .qa-icon { width: 36px; height: 36px; }
+            .qa-icon i { font-size: 0.95rem; }
+            .qa-card h4 { font-size: 0.68rem; }
+            .qa-card p { font-size: 0.55rem; }
         }
     </style>
 </head>
@@ -1035,13 +1058,16 @@
         // Get profile with correct identity
         const { data: profile, error: pErr } = await supabase
             .from('profiles')
-            .select('id, full_name, phone, card_number, card_cvv')
+            .select('id, name, surname, phone, card_number, card_cvv')
             .eq('id', session.user.id)
             .maybeSingle();
         
         if (pErr) console.error('Profile fetch error:', pErr);
         
-        const fullName = profile?.full_name || session.user.user_metadata?.full_name || 'Member';
+        const metaFullName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || '';
+        const fullName = (profile?.name || profile?.surname)
+            ? `${profile?.name || ''} ${profile?.surname || ''}`.trim()
+            : (metaFullName || 'Member');
         const firstName = fullName.split(' ')[0];
         if (DOM.userName()) DOM.userName().textContent = firstName;
         if (DOM.cardHolder()) DOM.cardHolder().textContent = fullName.toUpperCase();
@@ -1107,8 +1133,6 @@
     });
 </script>
 
-<script src="assets/js/home.js"></script>
-
 <script>
     const cardStage = document.getElementById('cardStage'); let flipped = false;
     if (cardStage) { cardStage.addEventListener('click', (e) => { e.stopPropagation(); flipped = !flipped; cardStage.classList.toggle('flipped', flipped); if (flipped) { cardStage.style.animation = 'none'; } else { setTimeout(() => { cardStage.style.animation = 'floatCard 4s ease-in-out infinite'; }, 300); } }); }
@@ -1121,169 +1145,6 @@
     function startLongPress(e) { if (flipped) return; pressTimer = setTimeout(() => { randomizeCardColors(); if (cardStage) cardStage.classList.add('long-press-active'); setTimeout(() => { if (cardStage) cardStage.classList.remove('long-press-active'); }, 280); }, 380); }
     function cancelLongPress() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } if (cardStage) cardStage.classList.remove('long-press-active'); }
     if (cardStage) { cardStage.addEventListener('mousedown', startLongPress); cardStage.addEventListener('mouseup', cancelLongPress); cardStage.addEventListener('mouseleave', cancelLongPress); cardStage.addEventListener('touchstart', startLongPress, { passive: false }); cardStage.addEventListener('touchend', cancelLongPress); cardStage.addEventListener('touchcancel', cancelLongPress); }
-</script>
-
-<!-- VIBE METER SCRIPT -->
-<script>
-    let currentEventId = null;
-    let vibeUpdateInterval = null;
-    let vibeEventChannel = null;
-
-    async function loadCurrentEvent() {
-        if (!window.supabase) return;
-        try {
-            const { data: event, error } = await window.supabase
-                .from('events')
-                .select('*')
-                .order('event_date', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-            
-            if (error) throw error;
-            
-            if (!event) {
-                document.getElementById('vibeEventName').textContent = 'No upcoming events';
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> No Event';
-                document.getElementById('vibeEventStatus').style.background = '#64748b';
-                document.getElementById('vibeEventStatus').style.color = 'white';
-                return null;
-            }
-            
-            currentEventId = event.id;
-            document.getElementById('vibeEventName').textContent = event.name;
-            const eventDate = new Date(event.event_date);
-            document.getElementById('vibeEventDate').textContent = eventDate.toLocaleDateString('en-ZA', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-            
-            const today = new Date().toISOString().split('T')[0];
-            const isToday = event.event_date === today;
-            const isPast = new Date(event.event_date) < new Date();
-            
-            if (isToday) {
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-day"></i> LIVE NOW';
-                document.getElementById('vibeEventStatus').style.background = '#10b981';
-                document.getElementById('vibeEventStatus').style.color = 'white';
-            } else if (isPast) {
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-check"></i> Past Event';
-                document.getElementById('vibeEventStatus').style.background = '#64748b';
-                document.getElementById('vibeEventStatus').style.color = 'white';
-            } else {
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> Upcoming';
-                document.getElementById('vibeEventStatus').style.background = '#f1f5f9';
-                document.getElementById('vibeEventStatus').style.color = '#E30613';
-            }
-            
-            return event;
-        } catch (err) {
-            console.error('Error loading event:', err);
-            document.getElementById('vibeEventName').textContent = 'Error loading event';
-            return null;
-        }
-    }
-
-    async function updateVibeMeter() {
-        if (!currentEventId || !window.supabase) return;
-        
-        try {
-            const { data: event, error: eventError } = await window.supabase
-                .from('events')
-                .select('total_tickets_sold')
-                .eq('id', currentEventId)
-                .single();
-            
-            if (eventError) throw eventError;
-            
-            const { data: checkedInTickets, error: checkError } = await window.supabase
-                .from('tickets')
-                .select('id', { count: 'exact', head: true })
-                .eq('event_id', currentEventId)
-                .eq('checked_in', true);
-            
-            if (checkError) throw checkError;
-            
-            const totalSold = event?.total_tickets_sold || 0;
-            const checkedIn = checkedInTickets?.length || 0;
-            let vibePercent = 0;
-            
-            if (totalSold > 0) {
-                vibePercent = Math.min(100, Math.round((checkedIn / totalSold) * 100));
-            }
-            
-            document.getElementById('vibeCheckedIn').textContent = checkedIn;
-            document.getElementById('vibePercentage').textContent = `${vibePercent}%`;
-            
-            const vibeBarFill = document.getElementById('vibeBarFill');
-            if (vibeBarFill) {
-                vibeBarFill.style.width = `${vibePercent}%`;
-                if (vibePercent < 30) {
-                    vibeBarFill.style.background = 'linear-gradient(90deg, #E30613, #ff6b6b)';
-                } else if (vibePercent < 70) {
-                    vibeBarFill.style.background = 'linear-gradient(90deg, #ff8c00, #ffd700)';
-                } else {
-                    vibeBarFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
-                }
-            }
-            
-            const statsSpan = document.getElementById('vibeStatsText');
-            if (vibePercent < 30) {
-                statsSpan.innerHTML = '😴 Low Energy • Need more people inside!';
-            } else if (vibePercent < 70) {
-                statsSpan.innerHTML = '🎵 Building Up • Getting lively!';
-            } else if (vibePercent < 90) {
-                statsSpan.innerHTML = '🔥 High Energy • The party is on!';
-            } else {
-                statsSpan.innerHTML = '⚡ MAXIMUM VIBE • ABSOLUTE MADNESS!';
-            }
-            
-        } catch (err) {
-            console.error('Error updating vibe meter:', err);
-        }
-    }
-
-    function setupVibeRealtime() {
-        if (vibeEventChannel && window.supabase) {
-            window.supabase.removeChannel(vibeEventChannel);
-            vibeEventChannel = null;
-        }
-        
-        if (!currentEventId || !window.supabase) return;
-        
-        vibeEventChannel = window.supabase.channel(`vibe-${currentEventId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'tickets',
-                filter: `event_id=eq.${currentEventId}`
-            }, async () => { await updateVibeMeter(); })
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'events',
-                filter: `id=eq.${currentEventId}`
-            }, async () => { await updateVibeMeter(); })
-            .subscribe();
-    }
-
-    async function initVibeMeter() {
-        if (!window.supabase) return;
-        const event = await loadCurrentEvent();
-        if (event) {
-            await updateVibeMeter();
-            setupVibeRealtime();
-            if (vibeUpdateInterval) clearInterval(vibeUpdateInterval);
-            vibeUpdateInterval = setInterval(updateVibeMeter, 15000);
-        }
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => setTimeout(initVibeMeter, 1500));
-    } else {
-        setTimeout(initVibeMeter, 1500);
-    }
 </script>
 
 <script>
@@ -1406,8 +1267,9 @@ let vibeUpdateInterval = null;
 let vibeEventChannel = null;
 
 async function loadCurrentEvent() {
-    if (!window.supabase) return;
+    if (!window.supabase) { console.warn('[VibeMeter] Supabase client not ready yet'); return; }
     try {
+        console.log('[VibeMeter] Fetching active event...');
         const { data: event, error } = await window.supabase
             .from('events')
             .select('id, name, start_time, end_time, status, is_active')
@@ -1417,12 +1279,14 @@ async function loadCurrentEvent() {
             .maybeSingle();
         if (error) throw error;
         if (!event) {
+            console.log('[VibeMeter] No active event found');
             document.getElementById('vibeEventName').textContent = 'No active events';
             document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> No Event';
             document.getElementById('vibeEventStatus').style.background = '#64748b';
             document.getElementById('vibeEventStatus').style.color = 'white';
             return null;
         }
+        console.log('[VibeMeter] Active event loaded:', event.id, event.name);
         currentEventId = event.id;
         document.getElementById('vibeEventName').textContent = event.name;
         const eventDate = new Date(event.start_time);
@@ -1447,7 +1311,7 @@ async function loadCurrentEvent() {
         }
         return event;
     } catch (err) {
-        console.error('Error loading event:', err);
+        console.error('[VibeMeter] Error loading event:', err);
         document.getElementById('vibeEventName').textContent = 'Error loading event';
         return null;
     }
@@ -1458,12 +1322,14 @@ async function getTotalTicketsSold(eventId) {
         .from('ticket_types')
         .select('sold')
         .eq('event_id', eventId);
-    if (error) { console.error('Error getting ticket sales:', error); return 0; }
-    return data.reduce((total, tt) => total + (tt.sold || 0), 0);
+    if (error) { console.error('[VibeMeter] Error getting ticket sales:', error); return 0; }
+    const total = data.reduce((total, tt) => total + (tt.sold || 0), 0);
+    console.log('[VibeMeter] Total tickets sold for event', eventId, '=', total);
+    return total;
 }
 
 async function updateVibeMeter() {
-    if (!currentEventId || !window.supabase) return;
+    if (!currentEventId || !window.supabase) { console.warn('[VibeMeter] Skipping update — no event or supabase client'); return; }
     try {
         const totalSold = await getTotalTicketsSold(currentEventId);
         const { count: checkedIn, error: checkError } = await window.supabase
@@ -1472,18 +1338,19 @@ async function updateVibeMeter() {
             .eq('event_id', currentEventId)
             .eq('status', 'valid');
         if (checkError) {
-            console.warn('Checkins table query failed, falling back to tickets table');
+            console.warn('[VibeMeter] checkins query failed, falling back to tickets.checked_in:', checkError);
             const { count: ticketCheckins, error: ticketError } = await window.supabase
                 .from('tickets')
                 .select('*', { count: 'exact', head: true })
                 .eq('event_id', currentEventId)
                 .eq('checked_in', true);
-            if (!ticketError) { updateVibeDisplay(totalSold, ticketCheckins || 0); }
-            else { console.error('Both checkins and tickets queries failed'); }
+            if (!ticketError) { console.log('[VibeMeter] Fallback checked-in count:', ticketCheckins); updateVibeDisplay(totalSold, ticketCheckins || 0); }
+            else { console.error('[VibeMeter] Both checkins and tickets queries failed:', ticketError); }
         } else {
+            console.log('[VibeMeter] Checked-in count:', checkedIn, '/ Sold:', totalSold);
             updateVibeDisplay(totalSold, checkedIn || 0);
         }
-    } catch (err) { console.error('Error updating vibe meter:', err); }
+    } catch (err) { console.error('[VibeMeter] Error updating vibe meter:', err); }
 }
 
 function updateVibeDisplay(totalSold, checkedIn) {
@@ -1519,13 +1386,17 @@ function setupVibeRealtime() {
 }
 
 async function initVibeMeter() {
-    if (!window.supabase) { setTimeout(initVibeMeter, 2000); return; }
+    if (!window.supabase) { console.warn('[VibeMeter] Supabase not ready, retrying in 2s...'); setTimeout(initVibeMeter, 2000); return; }
+    console.log('[VibeMeter] Initializing...');
     const event = await loadCurrentEvent();
     if (event) {
         await updateVibeMeter();
         setupVibeRealtime();
         if (vibeUpdateInterval) clearInterval(vibeUpdateInterval);
         vibeUpdateInterval = setInterval(updateVibeMeter, 30000);
+        console.log('[VibeMeter] Init complete, polling every 30s');
+    } else {
+        console.log('[VibeMeter] No event to initialize meter for');
     }
 }
 
