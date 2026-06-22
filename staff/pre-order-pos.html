@@ -436,12 +436,13 @@
     await showStunningPopup(isError ? 'Error' : 'Success', message, isError ? 'error' : 'success', 2500);
   }
 
-  // ========== Pre‑Order Logic ==========
+  // ========== Pre‑Order Logic (now using 'orders' table) ==========
   async function loadPendingOrders() {
     const { data, error } = await supabase
-      .from('butcher_preorders')
+      .from('orders')
       .select('*')
-      .eq('status', 'pending')
+      .eq('source', 'butcher_preorder')
+      .eq('status', 'pending')        // awaiting payment
       .order('created_at', { ascending: true });
     if (error) { console.error(error); return []; }
     pendingOrders = data || [];
@@ -459,7 +460,7 @@
       <div class="queue-item ${selectedOrder?.id === order.id ? 'active' : ''}" data-order-id="${order.id}">
         <div class="queue-ticket">
           <span class="ticket-num">🎫 #${escapeHtml(order.order_number || order.id.slice(0,8))}</span>
-          <span class="badge badge-waiting">Pending Collection</span>
+          <span class="badge badge-waiting">Pending Payment</span>
         </div>
         <div><small style="color:var(--text2);">👤 ${escapeHtml(order.customer_name || 'Guest')}</small></div>
         <div><small style="color:var(--text2);">💰 R${order.total_amount?.toFixed(2) || '0.00'}</small></div>
@@ -506,19 +507,20 @@
     if (!selectedOrder) throw new Error('No order selected');
     
     const { error } = await supabase
-      .from('butcher_preorders')
+      .from('orders')
       .update({ 
-        status: 'collected', 
-        paid: true, 
+        status: 'collected',        // order collected
+        payment_status: 'paid',
         payment_method: paymentMethod,
-        payment_transaction_id: transactionRef,
-        collected_at: new Date().toISOString(),
+        payment_source: paymentMethod, // or map to 'cash','card','wallet'
+        kitchen_status: 'completed',  // or keep 'preparing' if you have a separate kitchen flow
         updated_at: new Date().toISOString()
       })
       .eq('id', selectedOrder.id);
     
     if (error) throw error;
     
+    // Optional: log payment request (if you still want to track in payment_requests)
     await supabase.from('payment_requests').insert({
       customer_phone: selectedOrder.customer_phone || 'walkin',
       total_amount: selectedOrder.total_amount,
@@ -792,7 +794,7 @@
       showToast('Payment successful! Processing order...', false);
       setTimeout(async () => {
         try {
-          const { data: order } = await supabase.from('butcher_preorders').select('*').eq('id', payment.order_id).single();
+          const { data: order } = await supabase.from('orders').select('*').eq('id', payment.order_id).single();
           if (order) {
             selectedOrder = order;
             await markOrderAsPaidAndCollected('card', payment.transaction_id);
