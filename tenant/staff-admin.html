@@ -855,7 +855,7 @@
         async function saveStaff(staffId) {
             const form = document.getElementById('staff-form');
             const formData = new FormData(form);
-            const submitBtn = form.querySelector('#staff-form-submit-btn');
+            const submitBtn = form?.querySelector('#staff-form-submit-btn');
             
             try {
                 // Validate required fields
@@ -868,20 +868,42 @@
                 
                 if (!name || !surname || !email || !staffRole || !hourlyRate) {
                     showNotification('Please fill in all required fields', 'error');
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                    }
                     return;
                 }
                 
                 if (!staffId && (!password || password.length < 6)) {
                     showNotification('Password must be at least 6 characters', 'error');
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                    }
                     return;
                 }
                 
                 if (staffId) {
                     // Update existing staff
+                    // Check if email is being changed and already exists
+                    if (email !== staffList.find(s => s.id === staffId)?.email) {
+                        const { data: existing } = await supabase
+                            .from('profiles')
+                            .select('id')
+                            .eq('email', email)
+                            .neq('id', staffId)
+                            .maybeSingle();
+                        if (existing) {
+                            showNotification('Email already in use by another staff member', 'error');
+                            if (submitBtn) {
+                                submitBtn.disabled = false;
+                                submitBtn.innerHTML = `<i class="fas fa-save"></i> Update`;
+                            }
+                            return;
+                        }
+                    }
+                    
                     const updatePayload = {
                         name: name,
                         surname: surname,
@@ -903,7 +925,7 @@
                     
                 } else {
                     // Create new staff
-                    // First check if email already exists
+                    // Check if email already exists in profiles
                     const { data: existing } = await supabase
                         .from('profiles')
                         .select('email')
@@ -912,12 +934,14 @@
                     
                     if (existing) {
                         showNotification('A user with this email already exists', 'error');
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
+                        }
                         return;
                     }
                     
-                    // Create auth user
+                    // Attempt to create auth user
                     const { data: auth, error: authError } = await supabase.auth.signUp({
                         email: email,
                         password: password,
@@ -931,18 +955,39 @@
                     });
                     
                     if (authError) {
+                        // If user already exists in auth but not in profiles, we can try to fetch the user
                         if (authError.message.includes('already registered')) {
+                            // Try to get the user ID by signing in (this will fail if password is wrong)
+                            // Instead, show a helpful message
                             showNotification('This email is already registered. Please use a different email.', 'error');
+                            if (submitBtn) {
+                                submitBtn.disabled = false;
+                                submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
+                            }
+                            return;
                         } else {
                             throw authError;
                         }
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
-                        return;
                     }
                     
                     if (!auth.user) {
                         throw new Error('Failed to create user account');
+                    }
+                    
+                    // Check if profile already exists for this user (to avoid duplicate key)
+                    const { data: existingProfile } = await supabase
+                        .from('profiles')
+                        .select('id')
+                        .eq('id', auth.user.id)
+                        .maybeSingle();
+                    
+                    if (existingProfile) {
+                        // Profile already exists, just show success
+                        showNotification('Staff already exists, but account is active.', 'success');
+                        window.closeStaffForm();
+                        await loadStaffList();
+                        await loadDashboardStats();
+                        return;
                     }
                     
                     // Create profile
@@ -959,7 +1004,11 @@
                         hourly_rate: parseFloat(hourlyRate)
                     }]);
                     
-                    if (profileError) throw profileError;
+                    if (profileError) {
+                        // If profile insert fails, delete the auth user? Not easily possible.
+                        // Just show error and ask user to try again.
+                        throw profileError;
+                    }
                     
                     showNotification('Staff created successfully!', 'success');
                     window.closeStaffForm();
@@ -969,10 +1018,14 @@
                 
             } catch(err) {
                 console.error('Save error:', err);
-                showNotification(err.message || 'An error occurred while saving', 'error');
-            } finally {
-                // Re-enable submit button only if form is still open
-                if (submitBtn && document.getElementById('staff-form')) {
+                // Check for duplicate key error
+                if (err.code === '23505') { // unique violation
+                    showNotification('A duplicate record was detected. The user may already exist.', 'error');
+                } else {
+                    showNotification(err.message || 'An error occurred while saving', 'error');
+                }
+                // Re-enable submit button
+                if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
                 }
