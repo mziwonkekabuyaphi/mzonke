@@ -55,6 +55,81 @@
             border: 1px solid #a5d6a7;
         }
         .screen-chip i { font-size: 0.65rem; }
+        .module-permissions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+        }
+        .module-check-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .module-check-item:hover {
+            background: #f3f4f6;
+            border-color: #d1d5db;
+        }
+        .module-check-item.checked {
+            background: #ecfdf5;
+            border-color: #6ee7b7;
+        }
+        .module-check-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--rands-red);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .module-check-item label {
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: #374151;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .module-check-item label i {
+            color: #6b7280;
+            width: 14px;
+        }
+        .save-permissions-btn {
+            background: var(--rands-red);
+            color: white;
+            padding: 0.5rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .save-permissions-btn:hover {
+            background: var(--rands-red-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(220,38,38,0.3);
+        }
+        .save-permissions-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .permissions-saved-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -71,6 +146,7 @@
                 <button class="tab-btn" data-tab="payroll-tab">Payroll</button>
                 <button class="tab-btn" data-tab="attendance-tab">Live Attendance</button>
                 <button class="tab-btn" data-tab="activity-tab">Activity Log</button>
+                <button class="tab-btn" data-tab="modules-tab">Module Permissions</button>
             </div>
 
             <!-- Staff Tab -->
@@ -117,7 +193,7 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job Title</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hourly Rate</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Screens</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Modules</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -188,6 +264,24 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Module Permissions Tab -->
+            <div id="modules-tab" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <div class="flex flex-wrap items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-lg font-bold">Module Permissions by Job Title</h2>
+                            <p class="text-sm text-gray-500">Select which modules each job title can access in the Staff Console.</p>
+                        </div>
+                        <button onclick="window.saveModulePermissions()" id="save-modules-btn" class="save-permissions-btn">
+                            <i class="fas fa-save mr-2"></i>Save All Changes
+                        </button>
+                    </div>
+                    <div id="module-permissions-container">
+                        <div class="spinner mx-auto my-8"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -220,21 +314,63 @@
     <script type="module">
         import { supabase } from '../config/supabase.js';
         
-        // ======================= JOB TITLES & SCREENS =======================
-        const JOB_TITLES = {
-            event_manager: { name: 'Event Manager', screens: [ /* screens */ ] },
-            event_host: { name: 'Event Host', screens: [ /* screens */ ] },
-            shisha_attendant: { name: 'Shisha Attendant', screens: [ /* screens */ ] },
-            smart_host: { name: 'Smart Host', screens: [ /* screens */ ] },
-            butcher_crew: { name: 'Butcher Crew', screens: [ /* screens */ ] },
-            vvip_concierge: { name: 'VVIP Concierge', screens: [ /* screens */ ] }
+        // ======================= MODULE DEFINITIONS =======================
+        const MODULE_NAMES = {
+            'dashboard': 'Dashboard',
+            'box_office': 'Box Office',
+            'gate_scanner': 'Gate Scanner',
+            'shisha_pos': 'Shisha POS',
+            'shisha_console': 'Shisha Console',
+            'booze_vault': 'Booze Vault',
+            'register_locker': 'Register Locker',
+            'unlock_vault': 'Vault Access',
+            'booze_collection': 'Booze Collection',
+            'booze_counter': 'Smart Counter',
+            'pre_order_pos': 'Order POS',
+            'butcher_orders': 'Kitchen Display',
+            'butcher_collection': 'Order Collection',
+            'vvip_tab': 'VVIP Tab',
+            'vvip_staff': 'VVIP Check-in'
         };
-        // (Full definitions as before – omitted for brevity but must be included)
-        // For complete working file, they are fully defined below.
 
-        function normalizeStaffRole(roleKey) { if (roleKey === 'event_master') return 'event_host'; return JOB_TITLES[roleKey] ? roleKey : null; }
-        function getJobTitleDisplay(roleKey) { const n = normalizeStaffRole(roleKey); return n && JOB_TITLES[n] ? JOB_TITLES[n].name : (roleKey || 'N/A'); }
-        function getScreensForRole(roleKey) { const n = normalizeStaffRole(roleKey); return n && JOB_TITLES[n] ? JOB_TITLES[n].screens : []; }
+        const MODULE_ICONS = {
+            'dashboard': 'fa-th-large',
+            'box_office': 'fa-ticket-alt',
+            'gate_scanner': 'fa-qrcode',
+            'shisha_pos': 'fa-cash-register',
+            'shisha_console': 'fa-gamepad',
+            'booze_vault': 'fa-box-open',
+            'register_locker': 'fa-clipboard-list',
+            'unlock_vault': 'fa-key',
+            'booze_collection': 'fa-wine-bottle',
+            'booze_counter': 'fa-calculator',
+            'pre_order_pos': 'fa-shopping-cart',
+            'butcher_orders': 'fa-utensils',
+            'butcher_collection': 'fa-hand-holding-heart',
+            'vvip_tab': 'fa-star',
+            'vvip_staff': 'fa-id-card'
+        };
+
+        const ALL_MODULES = Object.keys(MODULE_NAMES);
+
+        // ======================= JOB TITLES =======================
+        const JOB_TITLES = {
+            event_manager: { name: 'Event Manager' },
+            event_host: { name: 'Event Host' },
+            shisha_attendant: { name: 'Shisha Attendant' },
+            smart_host: { name: 'Smart Host' },
+            butcher_crew: { name: 'Butcher Crew' },
+            vvip_concierge: { name: 'VVIP Concierge' }
+        };
+
+        function normalizeStaffRole(roleKey) { 
+            if (roleKey === 'event_master') return 'event_host'; 
+            return JOB_TITLES[roleKey] ? roleKey : null; 
+        }
+        function getJobTitleDisplay(roleKey) { 
+            const n = normalizeStaffRole(roleKey); 
+            return n && JOB_TITLES[n] ? JOB_TITLES[n].name : (roleKey || 'N/A'); 
+        }
         
         // Helper functions
         function getInitials(name, surname) { return `${(name?.charAt(0) || 'U')}${(surname?.charAt(0) || '')}`.toUpperCase(); }
@@ -250,7 +386,188 @@
             setTimeout(() => n.remove(), 3500);
         }
 
-        // Global state
+        // ======================= MODULE PERMISSIONS FUNCTIONS =======================
+        let modulePermissions = {};
+
+        async function loadModulePermissions() {
+            try {
+                const { data, error } = await supabase
+                    .from('job_title_modules')
+                    .select('job_title, module_id');
+                
+                if (error) throw error;
+                
+                // Build permissions map
+                modulePermissions = {};
+                data.forEach(item => {
+                    if (!modulePermissions[item.job_title]) {
+                        modulePermissions[item.job_title] = [];
+                    }
+                    modulePermissions[item.job_title].push(item.module_id);
+                });
+                
+                renderModulePermissions();
+            } catch (e) {
+                console.error('Error loading module permissions:', e);
+                document.getElementById('module-permissions-container').innerHTML = 
+                    '<div class="text-red-600 p-4">Error loading permissions. Please refresh and try again.</div>';
+            }
+        }
+
+        function renderModulePermissions() {
+            const container = document.getElementById('module-permissions-container');
+            
+            container.innerHTML = Object.entries(JOB_TITLES).map(([key, title]) => {
+                const assigned = modulePermissions[key] || [];
+                
+                return `
+                    <div class="border-b border-gray-200 py-4 first:pt-0">
+                        <h3 class="font-semibold text-gray-800 mb-3 text-base">${title.name}</h3>
+                        <div class="module-permissions-grid">
+                            ${ALL_MODULES.map(moduleId => {
+                                const isChecked = assigned.includes(moduleId);
+                                const icon = MODULE_ICONS[moduleId] || 'fa-cube';
+                                const name = MODULE_NAMES[moduleId] || moduleId;
+                                return `
+                                    <div class="module-check-item ${isChecked ? 'checked' : ''}" 
+                                         onclick="window.toggleModuleCheck('${key}', '${moduleId}')">
+                                        <input type="checkbox" 
+                                               id="mod_${key}_${moduleId}" 
+                                               data-job-title="${key}" 
+                                               data-module-id="${moduleId}"
+                                               ${isChecked ? 'checked' : ''}
+                                               onchange="window.toggleModuleCheck('${key}', '${moduleId}')">
+                                        <label for="mod_${key}_${moduleId}">
+                                            <i class="fas ${icon}"></i>
+                                            ${name}
+                                        </label>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.toggleModuleCheck = function(jobTitle, moduleId) {
+            const checkbox = document.getElementById(`mod_${jobTitle}_${moduleId}`);
+            const parent = checkbox.closest('.module-check-item');
+            
+            if (checkbox.checked) {
+                parent.classList.add('checked');
+            } else {
+                parent.classList.remove('checked');
+            }
+        };
+
+        window.saveModulePermissions = async function() {
+            const btn = document.getElementById('save-modules-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+            
+            try {
+                // Collect all checkbox states
+                const checkboxes = document.querySelectorAll('#module-permissions-container input[type="checkbox"]');
+                const permissions = {};
+                
+                checkboxes.forEach(cb => {
+                    const jobTitle = cb.dataset.jobTitle;
+                    const moduleId = cb.dataset.moduleId;
+                    if (!permissions[jobTitle]) permissions[jobTitle] = [];
+                    if (cb.checked) permissions[jobTitle].push(moduleId);
+                });
+                
+                // Delete all existing permissions
+                const { error: deleteError } = await supabase
+                    .from('job_title_modules')
+                    .delete()
+                    .neq('id', '00000000-0000-0000-0000-000000000000');
+                
+                if (deleteError) throw deleteError;
+                
+                // Insert new permissions
+                const inserts = [];
+                Object.entries(permissions).forEach(([jobTitle, modules]) => {
+                    modules.forEach(moduleId => {
+                        inserts.push({ job_title: jobTitle, module_id: moduleId });
+                    });
+                });
+                
+                if (inserts.length > 0) {
+                    const { error: insertError } = await supabase
+                        .from('job_title_modules')
+                        .insert(inserts);
+                    
+                    if (insertError) throw insertError;
+                }
+                
+                // Update local cache
+                modulePermissions = permissions;
+                
+                showNotification('Module permissions saved successfully!', 'success');
+                await loadModulePermissions();
+                
+            } catch (e) {
+                console.error('Error saving permissions:', e);
+                showNotification('Error saving permissions: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save mr-2"></i>Save All Changes';
+            }
+        };
+
+        // ======================= STAFF FORM WITH MODULE PREVIEW =======================
+        async function getStaffModules(jobTitle) {
+            if (!jobTitle) return [];
+            try {
+                const { data, error } = await supabase
+                    .from('job_title_modules')
+                    .select('module_id')
+                    .eq('job_title', jobTitle);
+                
+                if (error) throw error;
+                return (data || []).map(d => d.module_id);
+            } catch (e) {
+                console.error('Error fetching modules for preview:', e);
+                return [];
+            }
+        }
+
+        async function updateModulePreview(jobTitle) {
+            const previewDiv = document.getElementById('screens-preview');
+            if (!previewDiv) return;
+            
+            if (!jobTitle || !JOB_TITLES[jobTitle]) {
+                previewDiv.innerHTML = '<i class="fas fa-info-circle text-gray-400 mr-1"></i> Select a job title to see which modules they will access.';
+                return;
+            }
+            
+            const modules = await getStaffModules(jobTitle);
+            
+            if (modules.length === 0) {
+                previewDiv.innerHTML = `
+                    <div class="flex items-center gap-2 text-amber-600">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>No modules assigned to "${JOB_TITLES[jobTitle].name}". Go to the "Module Permissions" tab to assign modules.</span>
+                    </div>
+                `;
+                return;
+            }
+            
+            previewDiv.innerHTML = `
+                <div class="flex flex-wrap gap-2">
+                    ${modules.map(m => {
+                        const icon = MODULE_ICONS[m] || 'fa-cube';
+                        const name = MODULE_NAMES[m] || m;
+                        return `<span class="screen-chip"><i class="fas ${icon}"></i> ${name}</span>`;
+                    }).join('')}
+                </div>
+                <div class="text-xs text-gray-400 mt-2">${modules.length} module(s) assigned</div>
+            `;
+        }
+
+        // ======================= EXISTING FUNCTIONS (Updated) =======================
         let currentUser = null;
         let currentPage = 1;
         let pageSize = 10;
@@ -259,7 +576,6 @@
         let staffList = [];
         let payrollData = [];
 
-        // Dashboard stats
         async function loadDashboardStats() {
             try {
                 const { count: total } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'staff');
@@ -274,7 +590,6 @@
             } catch(e) { console.error(e); }
         }
 
-        // Load staff list (using name, surname)
         async function loadStaffList() {
             try {
                 let query = supabase.from('profiles').select('*', { count: 'exact' }).eq('role', 'staff');
@@ -294,12 +609,22 @@
             } catch(e) { showNotification('Failed to load staff', 'error'); }
         }
 
-        function renderStaffTable(staff) {
+        async function renderStaffTable(staff) {
             const tbody = document.getElementById('staff-table-body');
-            if (!staff.length) { tbody.innerHTML = `<td><td colspan="7" class="px-6 py-12 text-center text-gray-500">No staff found</td></tr>`; return; }
+            if (!staff.length) { tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-gray-500">No staff found</td></tr>`; return; }
+            
+            // Get module counts for each job title
+            const moduleCounts = {};
+            for (const s of staff) {
+                if (s.staff_role && !moduleCounts[s.staff_role]) {
+                    const modules = await getStaffModules(s.staff_role);
+                    moduleCounts[s.staff_role] = modules.length;
+                }
+            }
+            
             tbody.innerHTML = staff.map(m => {
                 const jobTitle = getJobTitleDisplay(m.staff_role);
-                const screensCount = getScreensForRole(m.staff_role).length;
+                const moduleCount = moduleCounts[m.staff_role] || 0;
                 const statusColor = m.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
                 const hourly = m.hourly_rate ? `R${parseFloat(m.hourly_rate).toFixed(2)}` : '—';
                 return `
@@ -307,7 +632,7 @@
                         <td class="px-6 py-4"><div class="flex items-center"><div class="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center"><span class="text-red-600 font-semibold">${getInitials(m.name, m.surname)}</span></div><div class="ml-4"><div class="text-sm font-medium">${escapeHtml(m.name || '')} ${escapeHtml(m.surname || '')}</div><div class="text-sm text-gray-500">${escapeHtml(m.email || '')}</div></div></div></td>
                         <td class="px-6 py-4"><span class="role-badge bg-indigo-100 text-indigo-800">${jobTitle}</span></td>
                         <td class="px-6 py-4 text-sm font-medium">${hourly}</td>
-                        <td class="px-6 py-4"><span class="text-sm">${screensCount} screens</span></td>
+                        <td class="px-6 py-4"><span class="text-sm font-medium">${moduleCount} modules</span></td>
                         <td class="px-6 py-4"><span class="status-badge ${statusColor}">${m.status || 'active'}</span></td>
                         <td class="px-6 py-4 text-sm text-gray-500">${m.last_seen ? formatDate(m.last_seen) : 'Never'}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -321,9 +646,23 @@
             }).join('');
         }
 
-        function renderPagination() { /* same as before */ }
+        function renderPagination() {
+            const container = document.getElementById('pagination-container');
+            const totalPages = Math.ceil(totalStaff / pageSize);
+            if (totalPages <= 1) { container.innerHTML = ''; return; }
+            let html = `<div class="flex items-center justify-between"><span class="text-sm text-gray-600">Showing ${((currentPage-1)*pageSize)+1} to ${Math.min(currentPage*pageSize, totalStaff)} of ${totalStaff}</span><div class="flex gap-2">`;
+            if (currentPage > 1) html += `<button onclick="window.changePage(${currentPage-1})" class="px-3 py-1 border rounded hover:bg-gray-50">Previous</button>`;
+            for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+                html += `<button onclick="window.changePage(${i})" class="px-3 py-1 border rounded ${i === currentPage ? 'bg-red-600 text-white' : 'hover:bg-gray-50'}">${i}</button>`;
+            }
+            if (currentPage < totalPages) html += `<button onclick="window.changePage(${currentPage+1})" class="px-3 py-1 border rounded hover:bg-gray-50">Next</button>`;
+            html += `</div></div>`;
+            container.innerHTML = html;
+        }
 
-        // Delete staff
+        window.changePage = (p) => { currentPage = p; loadStaffList(); };
+
+        // ======================= STAFF CRUD =======================
         window.deleteStaff = async (staffId) => {
             const staff = staffList.find(s => s.id === staffId);
             if (!staff) return;
@@ -340,7 +679,6 @@
             } catch(err) { showNotification(err.message, 'error'); }
         };
 
-        // Open staff form (using name and surname)
         window.openStaffForm = async (staffId = null) => {
             const modal = document.getElementById('staff-form-modal');
             const container = document.getElementById('staff-form-container');
@@ -366,25 +704,25 @@
                         <div><label class="block text-sm font-medium text-gray-700 mb-1">Status</label><select name="status" class="w-full px-3 py-2 border rounded-lg"><option value="active" ${staffData?.status === 'active' ? 'selected' : ''}>Active</option><option value="inactive" ${staffData?.status === 'inactive' ? 'selected' : ''}>Inactive</option></select></div>
                     </div>
                     <div class="bg-gray-50 rounded-lg p-4 border">
-                        <h3 class="text-md font-semibold text-gray-800 mb-3"><i class="fas fa-desktop text-red-500 mr-2"></i>Screens Access (auto-assigned)</h3>
-                        <div id="screens-preview" class="text-sm text-gray-500 italic">Select a job title to see available screens</div>
+                        <h3 class="text-md font-semibold text-gray-800 mb-3"><i class="fas fa-desktop text-red-500 mr-2"></i>Module Access (auto-assigned based on job title)</h3>
+                        <div id="screens-preview" class="text-sm text-gray-500 italic">Select a job title to see available modules</div>
                     </div>
                     <div class="flex justify-end gap-3"><button type="button" onclick="window.closeStaffForm()" class="px-4 py-2 border rounded-lg">Cancel</button><button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg">${staffId ? 'Update' : 'Create'}</button></div>
                 </form>
             `;
             const roleSelect = container.querySelector('select[name="staff_role"]');
             const previewDiv = container.querySelector('#screens-preview');
-            const updatePreview = () => {
-                const val = roleSelect.value;
-                if (val && JOB_TITLES[val]) {
-                    const screens = JOB_TITLES[val].screens;
-                    previewDiv.innerHTML = `<div class="flex flex-wrap gap-2">${screens.map(s => `<span class="screen-chip"><i class="fas ${s.icon}"></i> ${s.name}</span>`).join('')}</div>`;
-                } else {
-                    previewDiv.innerHTML = '<i class="fas fa-info-circle text-gray-400 mr-1"></i> Select a job title to see which screens they will access.';
-                }
-            };
-            roleSelect.addEventListener('change', updatePreview);
-            if (staffData?.staff_role) updatePreview();
+            
+            // Update preview when role changes
+            roleSelect.addEventListener('change', () => {
+                updateModulePreview(roleSelect.value);
+            });
+            
+            // Initial preview if editing
+            if (staffData?.staff_role) {
+                await updateModulePreview(staffData.staff_role);
+            }
+            
             document.getElementById('staff-form').addEventListener('submit', (e) => { e.preventDefault(); saveStaff(staffId); });
             modal.classList.remove('hidden');
         };
@@ -435,21 +773,86 @@
             } catch(err) { showNotification(err.message, 'error'); }
         }
 
-        // Payroll, attendance, activity log functions (same logic, using name/surname)
-        window.calculatePayroll = async () => { /* same as before but using staff.name and staff.surname */ };
-        window.markPayrollPaid = async (staffId) => { /* same */ };
-        window.markAllPayrollPaid = async () => { /* same */ };
-        window.exportPayrollCSV = () => { /* same */ };
-        window.forceLogout = async (shiftId) => { /* same */ };
-        window.viewStaffProfile = async (id) => { /* same but using name/surname */ };
-        window.toggleStaffStatus = async (id, current) => { /* same */ };
-        window.exportStaffList = async () => { /* same */ };
-        window.changePage = (p) => { /* same */ };
+        // ======================= OTHER FUNCTIONS (stubs) =======================
+        window.calculatePayroll = async () => { showNotification('Payroll calculation coming soon', 'info'); };
+        window.markPayrollPaid = async (staffId) => { showNotification('Mark paid coming soon', 'info'); };
+        window.markAllPayrollPaid = async () => { showNotification('Mark all paid coming soon', 'info'); };
+        window.exportPayrollCSV = () => { showNotification('Export CSV coming soon', 'info'); };
+        window.forceLogout = async (shiftId) => { showNotification('Force logout coming soon', 'info'); };
+        window.viewStaffProfile = async (id) => { 
+            const staff = staffList.find(s => s.id === id);
+            if (!staff) return;
+            const modules = await getStaffModules(staff.staff_role);
+            const container = document.getElementById('staff-profile-container');
+            container.innerHTML = `
+                <div class="p-6 space-y-4">
+                    <div class="flex items-center gap-4">
+                        <div class="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center"><span class="text-red-600 text-2xl font-semibold">${getInitials(staff.name, staff.surname)}</span></div>
+                        <div><div class="text-xl font-bold">${escapeHtml(staff.name || '')} ${escapeHtml(staff.surname || '')}</div><div class="text-gray-500">${escapeHtml(staff.email || '')}</div></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><span class="text-sm text-gray-500">Job Title</span><div class="font-medium">${getJobTitleDisplay(staff.staff_role)}</div></div>
+                        <div><span class="text-sm text-gray-500">Hourly Rate</span><div class="font-medium">R${staff.hourly_rate || '0'}</div></div>
+                        <div><span class="text-sm text-gray-500">Status</span><div><span class="status-badge ${staff.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${staff.status || 'active'}</span></div></div>
+                        <div><span class="text-sm text-gray-500">Last Seen</span><div class="font-medium">${staff.last_seen ? formatDateTime(staff.last_seen) : 'Never'}</div></div>
+                    </div>
+                    <div><span class="text-sm text-gray-500">Assigned Modules (${modules.length})</span><div class="flex flex-wrap gap-2 mt-2">${modules.length > 0 ? modules.map(m => `<span class="screen-chip"><i class="fas ${MODULE_ICONS[m] || 'fa-cube'}"></i> ${MODULE_NAMES[m] || m}</span>`).join('') : '<span class="text-gray-400 text-sm">No modules assigned</span>'}</div></div>
+                </div>
+            `;
+            document.getElementById('staff-profile-modal').classList.remove('hidden');
+        };
+        window.toggleStaffStatus = async (id, current) => {
+            const newStatus = current === 'active' ? 'inactive' : 'active';
+            if (!confirm(`Change staff status to ${newStatus}?`)) return;
+            try {
+                const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', id);
+                if (error) throw error;
+                showNotification(`Staff status updated to ${newStatus}`, 'success');
+                await loadStaffList();
+                await loadDashboardStats();
+            } catch(err) { showNotification(err.message, 'error'); }
+        };
+        window.exportStaffList = async () => { showNotification('Export coming soon', 'info'); };
         window.closeStaffForm = () => document.getElementById('staff-form-modal').classList.add('hidden');
         window.closeStaffProfile = () => document.getElementById('staff-profile-modal').classList.add('hidden');
         window.editStaff = (id) => window.openStaffForm(id);
 
-        // Init
+        // ======================= TAB SYSTEM =======================
+        function initTabs() {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+                    document.getElementById(btn.dataset.tab).classList.remove('hidden');
+                    
+                    // Load module permissions when switching to modules tab
+                    if (btn.dataset.tab === 'modules-tab') {
+                        loadModulePermissions();
+                    }
+                });
+            });
+        }
+
+        function setupEventListeners() {
+            document.getElementById('search-staff').addEventListener('input', (e) => {
+                currentFilters.search = e.target.value;
+                currentPage = 1;
+                loadStaffList();
+            });
+            document.getElementById('filter-role').addEventListener('change', (e) => {
+                currentFilters.role = e.target.value;
+                currentPage = 1;
+                loadStaffList();
+            });
+            document.getElementById('filter-status').addEventListener('change', (e) => {
+                currentFilters.status = e.target.value;
+                currentPage = 1;
+                loadStaffList();
+            });
+        }
+
+        // ======================= INIT =======================
         async function init() {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -465,6 +868,9 @@
                 const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
                 document.getElementById('payroll-start').value = firstDay;
                 document.getElementById('payroll-end').value = today;
+                
+                // Pre-load module permissions so they're ready
+                await loadModulePermissions();
             } catch(e) { console.error(e); }
         }
         document.addEventListener('DOMContentLoaded', init);
