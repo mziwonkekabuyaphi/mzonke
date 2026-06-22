@@ -118,17 +118,77 @@
             cursor: not-allowed;
             transform: none;
         }
-        .permissions-saved-toast {
+        /* Custom Modal Styles */
+        .custom-modal-overlay {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: modalFadeIn 0.2s ease-out;
+        }
+        .custom-modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 420px;
+            width: 90%;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .custom-modal-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+        .custom-modal-body {
+            font-size: 0.95rem;
+            color: #6b7280;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .custom-modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .custom-modal-btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .custom-modal-btn-primary {
+            background: var(--rands-red);
+            color: white;
+        }
+        .custom-modal-btn-primary:hover {
+            background: var(--rands-red-dark);
+        }
+        .custom-modal-btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .custom-modal-btn-secondary:hover {
+            background: #e5e7eb;
+        }
+        .custom-modal-btn-success {
             background: #10b981;
             color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 9999;
-            animation: slideIn 0.3s ease-out;
+        }
+        .custom-modal-btn-success:hover {
+            background: #059669;
+        }
+        .custom-modal-btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .custom-modal-btn-danger:hover {
+            background: #dc2626;
         }
     </style>
 </head>
@@ -311,6 +371,18 @@
         </div>
     </div>
 
+    <!-- Custom Modal for confirmations -->
+    <div id="custom-modal" class="custom-modal-overlay hidden">
+        <div class="custom-modal">
+            <div class="custom-modal-title" id="custom-modal-title">Confirm</div>
+            <div class="custom-modal-body" id="custom-modal-body">Are you sure?</div>
+            <div class="custom-modal-actions" id="custom-modal-actions">
+                <button class="custom-modal-btn custom-modal-btn-secondary" onclick="window.closeCustomModal()">Cancel</button>
+                <button class="custom-modal-btn custom-modal-btn-primary" id="custom-modal-confirm-btn" onclick="window.confirmCustomModal()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { supabase } from '../config/supabase.js';
         
@@ -353,7 +425,7 @@
 
         const ALL_MODULES = Object.keys(MODULE_NAMES);
 
-        // ======================= JOB TITLES (FIXED - Keys match database values exactly) =======================
+        // ======================= JOB TITLES (Keys match database values exactly) =======================
         const JOB_TITLES = {
             'Event Manager': { name: 'Event Manager' },
             'Event Host': { name: 'Event Host' },
@@ -363,7 +435,6 @@
             'VVIP Concierge': { name: 'VVIP Concierge' }
         };
 
-        // Simple helper - keys ARE the display names
         function getJobTitleDisplay(roleKey) { 
             return roleKey || 'N/A'; 
         }
@@ -382,6 +453,40 @@
             setTimeout(() => n.remove(), 3500);
         }
 
+        // ======================= CUSTOM MODAL =======================
+        let customModalResolve = null;
+
+        window.showCustomModal = function(title, body, confirmText = 'Confirm', confirmType = 'primary') {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('custom-modal');
+                document.getElementById('custom-modal-title').textContent = title;
+                document.getElementById('custom-modal-body').textContent = body;
+                
+                const confirmBtn = document.getElementById('custom-modal-confirm-btn');
+                confirmBtn.textContent = confirmText;
+                confirmBtn.className = `custom-modal-btn custom-modal-btn-${confirmType}`;
+                
+                customModalResolve = resolve;
+                modal.classList.remove('hidden');
+            });
+        };
+
+        window.closeCustomModal = function() {
+            document.getElementById('custom-modal').classList.add('hidden');
+            if (customModalResolve) {
+                customModalResolve(false);
+                customModalResolve = null;
+            }
+        };
+
+        window.confirmCustomModal = function() {
+            document.getElementById('custom-modal').classList.add('hidden');
+            if (customModalResolve) {
+                customModalResolve(true);
+                customModalResolve = null;
+            }
+        };
+
         // ======================= MODULE PERMISSIONS FUNCTIONS =======================
         let modulePermissions = {};
 
@@ -393,7 +498,6 @@
                 
                 if (error) throw error;
                 
-                // Build permissions map
                 modulePermissions = {};
                 data.forEach(item => {
                     if (!modulePermissions[item.job_title]) {
@@ -465,7 +569,6 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
             
             try {
-                // Collect all checkbox states
                 const checkboxes = document.querySelectorAll('#module-permissions-container input[type="checkbox"]');
                 const permissions = {};
                 
@@ -476,7 +579,6 @@
                     if (cb.checked) permissions[jobTitle].push(moduleId);
                 });
                 
-                // Delete all existing permissions
                 const { error: deleteError } = await supabase
                     .from('job_title_modules')
                     .delete()
@@ -484,7 +586,6 @@
                 
                 if (deleteError) throw deleteError;
                 
-                // Insert new permissions
                 const inserts = [];
                 Object.entries(permissions).forEach(([jobTitle, modules]) => {
                     modules.forEach(moduleId => {
@@ -500,9 +601,7 @@
                     if (insertError) throw insertError;
                 }
                 
-                // Update local cache
                 modulePermissions = permissions;
-                
                 showNotification('Module permissions saved successfully!', 'success');
                 await loadModulePermissions();
                 
@@ -572,7 +671,6 @@
         let totalStaff = 0;
         let currentFilters = { search: '', role: '', status: '' };
         let staffList = [];
-        let payrollData = [];
 
         async function loadDashboardStats() {
             try {
@@ -610,7 +708,6 @@
             const tbody = document.getElementById('staff-table-body');
             if (!staff.length) { tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-gray-500">No staff found</td></tr>`; return; }
             
-            // Get module counts for each job title
             const moduleCounts = {};
             for (const s of staff) {
                 if (s.staff_role && !moduleCounts[s.staff_role]) {
@@ -663,7 +760,16 @@
         window.deleteStaff = async (staffId) => {
             const staff = staffList.find(s => s.id === staffId);
             if (!staff) return;
-            if (!confirm(`Permanently delete ${staff.name} ${staff.surname}? This will remove all shifts, payroll, and activity logs.`)) return;
+            
+            const confirmed = await window.showCustomModal(
+                'Delete Staff',
+                `Permanently delete ${staff.name} ${staff.surname}? This will remove all shifts, payroll, and activity logs.`,
+                'Delete',
+                'danger'
+            );
+            
+            if (!confirmed) return;
+            
             try {
                 await supabase.from('staff_shifts').delete().eq('staff_id', staffId);
                 await supabase.from('staff_payroll').delete().eq('staff_id', staffId);
@@ -680,13 +786,13 @@
             const modal = document.getElementById('staff-form-modal');
             const container = document.getElementById('staff-form-container');
             document.getElementById('modal-title').textContent = staffId ? 'Edit Staff Member' : 'Add New Staff';
+            
             let staffData = null;
             if (staffId) {
                 const { data } = await supabase.from('profiles').select('*').eq('id', staffId).single();
                 staffData = data;
             }
             
-            // Generate dropdown options - keys are now display values
             const jobOptions = Object.keys(JOB_TITLES).map(key => 
                 `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${key}</option>`
             ).join('');
@@ -708,78 +814,178 @@
                         <h3 class="text-md font-semibold text-gray-800 mb-3"><i class="fas fa-desktop text-red-500 mr-2"></i>Module Access (auto-assigned based on job title)</h3>
                         <div id="screens-preview" class="text-sm text-gray-500 italic">Select a job title to see available modules</div>
                     </div>
-                    <div class="flex justify-end gap-3"><button type="button" onclick="window.closeStaffForm()" class="px-4 py-2 border rounded-lg">Cancel</button><button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg">${staffId ? 'Update' : 'Create'}</button></div>
+                    <div class="flex justify-end gap-3">
+                        <button type="button" onclick="window.closeStaffForm()" class="px-4 py-2 border rounded-lg hover:bg-gray-50 transition">Cancel</button>
+                        <button type="submit" id="staff-form-submit-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2">
+                            <i class="fas fa-save"></i>
+                            ${staffId ? 'Update' : 'Create'}
+                        </button>
+                    </div>
                 </form>
             `;
-            const roleSelect = container.querySelector('select[name="staff_role"]');
-            const previewDiv = container.querySelector('#screens-preview');
             
-            // Update preview when role changes
+            const roleSelect = container.querySelector('select[name="staff_role"]');
+            
             roleSelect.addEventListener('change', () => {
                 updateModulePreview(roleSelect.value);
             });
             
-            // Initial preview if editing
             if (staffData?.staff_role) {
                 await updateModulePreview(staffData.staff_role);
             }
             
-            document.getElementById('staff-form').addEventListener('submit', (e) => { e.preventDefault(); saveStaff(staffId); });
+            // Remove any existing submit listeners and add new one
+            const form = document.getElementById('staff-form');
+            const newForm = form.cloneNode(true);
+            form.parentNode.replaceChild(newForm, form);
+            
+            newForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                // Disable submit button to prevent double submission
+                const submitBtn = newForm.querySelector('#staff-form-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                await saveStaff(staffId);
+                // Re-enable will be done in saveStaff
+            });
+            
             modal.classList.remove('hidden');
         };
 
         async function saveStaff(staffId) {
             const form = document.getElementById('staff-form');
             const formData = new FormData(form);
+            const submitBtn = form.querySelector('#staff-form-submit-btn');
+            
             try {
+                // Validate required fields
+                const name = formData.get('name')?.trim();
+                const surname = formData.get('surname')?.trim();
+                const email = formData.get('email')?.trim();
+                const staffRole = formData.get('staff_role');
+                const hourlyRate = formData.get('hourly_rate');
+                const password = formData.get('password');
+                
+                if (!name || !surname || !email || !staffRole || !hourlyRate) {
+                    showNotification('Please fill in all required fields', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                    return;
+                }
+                
+                if (!staffId && (!password || password.length < 6)) {
+                    showNotification('Password must be at least 6 characters', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                    return;
+                }
+                
                 if (staffId) {
+                    // Update existing staff
                     const updatePayload = {
-                        name: formData.get('name'),
-                        surname: formData.get('surname'),
-                        phone: formData.get('phone'),
+                        name: name,
+                        surname: surname,
+                        phone: formData.get('phone') || null,
                         clock_in_pin: formData.get('clock_in_pin') || null,
-                        staff_role: formData.get('staff_role'),
-                        status: formData.get('status'),
-                        hourly_rate: parseFloat(formData.get('hourly_rate')),
+                        staff_role: staffRole,
+                        status: formData.get('status') || 'active',
+                        hourly_rate: parseFloat(hourlyRate),
                         updated_at: new Date().toISOString()
                     };
+                    
                     const { error } = await supabase.from('profiles').update(updatePayload).eq('id', staffId);
                     if (error) throw error;
-                    showNotification('Staff updated', 'success');
+                    
+                    showNotification('Staff updated successfully!', 'success');
+                    window.closeStaffForm();
+                    await loadStaffList();
+                    await loadDashboardStats();
+                    
                 } else {
-                    const email = formData.get('email'), password = formData.get('password');
+                    // Create new staff
+                    // First check if email already exists
+                    const { data: existing } = await supabase
+                        .from('profiles')
+                        .select('email')
+                        .eq('email', email)
+                        .maybeSingle();
+                    
+                    if (existing) {
+                        showNotification('A user with this email already exists', 'error');
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
+                        return;
+                    }
+                    
+                    // Create auth user
                     const { data: auth, error: authError } = await supabase.auth.signUp({
-                        email, password,
-                        options: { data: { name: formData.get('name'), surname: formData.get('surname'), role: 'staff' } }
+                        email: email,
+                        password: password,
+                        options: { 
+                            data: { 
+                                name: name, 
+                                surname: surname, 
+                                role: 'staff' 
+                            } 
+                        }
                     });
-                    if (authError) throw authError;
+                    
+                    if (authError) {
+                        if (authError.message.includes('already registered')) {
+                            showNotification('This email is already registered. Please use a different email.', 'error');
+                        } else {
+                            throw authError;
+                        }
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
+                        return;
+                    }
+                    
+                    if (!auth.user) {
+                        throw new Error('Failed to create user account');
+                    }
+                    
+                    // Create profile
                     const { error: profileError } = await supabase.from('profiles').insert([{
                         id: auth.user.id,
-                        name: formData.get('name'),
-                        surname: formData.get('surname'),
-                        email,
-                        phone: formData.get('phone'),
+                        name: name,
+                        surname: surname,
+                        email: email,
+                        phone: formData.get('phone') || null,
                         role: 'staff',
-                        staff_role: formData.get('staff_role'),
+                        staff_role: staffRole,
                         clock_in_pin: formData.get('clock_in_pin') || null,
                         status: formData.get('status') || 'active',
-                        hourly_rate: parseFloat(formData.get('hourly_rate'))
+                        hourly_rate: parseFloat(hourlyRate)
                     }]);
+                    
                     if (profileError) throw profileError;
-                    showNotification('Staff created', 'success');
+                    
+                    showNotification('Staff created successfully!', 'success');
+                    window.closeStaffForm();
+                    await loadStaffList();
+                    await loadDashboardStats();
                 }
-                window.closeStaffForm();
-                await loadStaffList();
-                await loadDashboardStats();
-            } catch(err) { showNotification(err.message, 'error'); }
+                
+            } catch(err) {
+                console.error('Save error:', err);
+                showNotification(err.message || 'An error occurred while saving', 'error');
+            } finally {
+                // Re-enable submit button only if form is still open
+                if (submitBtn && document.getElementById('staff-form')) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = `<i class="fas fa-save"></i> ${staffId ? 'Update' : 'Create'}`;
+                }
+            }
         }
 
-        // ======================= OTHER FUNCTIONS (stubs) =======================
+        // ======================= OTHER FUNCTIONS =======================
         window.calculatePayroll = async () => { showNotification('Payroll calculation coming soon', 'info'); };
         window.markPayrollPaid = async (staffId) => { showNotification('Mark paid coming soon', 'info'); };
         window.markAllPayrollPaid = async () => { showNotification('Mark all paid coming soon', 'info'); };
         window.exportPayrollCSV = () => { showNotification('Export CSV coming soon', 'info'); };
         window.forceLogout = async (shiftId) => { showNotification('Force logout coming soon', 'info'); };
+        
         window.viewStaffProfile = async (id) => { 
             const staff = staffList.find(s => s.id === id);
             if (!staff) return;
@@ -802,9 +1008,18 @@
             `;
             document.getElementById('staff-profile-modal').classList.remove('hidden');
         };
+        
         window.toggleStaffStatus = async (id, current) => {
             const newStatus = current === 'active' ? 'inactive' : 'active';
-            if (!confirm(`Change staff status to ${newStatus}?`)) return;
+            const confirmed = await window.showCustomModal(
+                'Change Status',
+                `Change staff status to ${newStatus}?`,
+                'Confirm',
+                'primary'
+            );
+            
+            if (!confirmed) return;
+            
             try {
                 const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', id);
                 if (error) throw error;
@@ -813,8 +1028,17 @@
                 await loadDashboardStats();
             } catch(err) { showNotification(err.message, 'error'); }
         };
+        
         window.exportStaffList = async () => { showNotification('Export coming soon', 'info'); };
-        window.closeStaffForm = () => document.getElementById('staff-form-modal').classList.add('hidden');
+        window.closeStaffForm = () => {
+            document.getElementById('staff-form-modal').classList.add('hidden');
+            // Clean up any loading states
+            const submitBtn = document.querySelector('#staff-form-submit-btn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<i class="fas fa-save"></i> Create`;
+            }
+        };
         window.closeStaffProfile = () => document.getElementById('staff-profile-modal').classList.add('hidden');
         window.editStaff = (id) => window.openStaffForm(id);
 
@@ -827,7 +1051,6 @@
                     document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
                     document.getElementById(btn.dataset.tab).classList.remove('hidden');
                     
-                    // Load module permissions when switching to modules tab
                     if (btn.dataset.tab === 'modules-tab') {
                         loadModulePermissions();
                     }
@@ -860,7 +1083,11 @@
                 if (!session) { window.parent.location.href = '/login.html'; return; }
                 currentUser = session.user;
                 const { data: profile } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single();
-                if (!['super_admin', 'admin'].includes(profile?.role)) { alert('Admin access required'); window.parent.location.href = '/dashboard.html'; return; }
+                if (!['super_admin', 'admin'].includes(profile?.role)) { 
+                    showNotification('Admin access required', 'error');
+                    window.parent.location.href = '/dashboard.html'; 
+                    return; 
+                }
                 await loadDashboardStats();
                 await loadStaffList();
                 setupEventListeners();
@@ -869,8 +1096,6 @@
                 const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
                 document.getElementById('payroll-start').value = firstDay;
                 document.getElementById('payroll-end').value = today;
-                
-                // Pre-load module permissions so they're ready
                 await loadModulePermissions();
             } catch(e) { console.error(e); }
         }
