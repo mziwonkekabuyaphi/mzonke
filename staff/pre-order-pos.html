@@ -503,24 +503,26 @@
     await renderQueueList();
   }
 
+  // ========== 🆕 FIX: After payment, send order to kitchen (status = 'placed') ==========
   async function markOrderAsPaidAndCollected(paymentMethod, transactionRef = null) {
     if (!selectedOrder) throw new Error('No order selected');
     
     const { error } = await supabase
       .from('orders')
       .update({ 
-        status: 'collected',        // order collected
+        status: 'placed',           // ← now goes to kitchen (not collected)
         payment_status: 'paid',
         payment_method: paymentMethod,
-        payment_source: paymentMethod, // or map to 'cash','card','wallet'
-        kitchen_status: 'completed',  // or keep 'preparing' if you have a separate kitchen flow
+        payment_source: paymentMethod,
+        kitchen_status: 'new',      // ensures kitchen sees it
+        vendor: 'The Butcher Shop', // explicitly set for kitchen filter
         updated_at: new Date().toISOString()
       })
       .eq('id', selectedOrder.id);
     
     if (error) throw error;
     
-    // Optional: log payment request (if you still want to track in payment_requests)
+    // Optional: log payment request
     await supabase.from('payment_requests').insert({
       customer_phone: selectedOrder.customer_phone || 'walkin',
       total_amount: selectedOrder.total_amount,
@@ -576,10 +578,10 @@
     document.getElementById('customerPhoneWallet').value = '';
     await loadPendingOrders();
     updateCheckoutButtonState();
-    await showStunningPopup('Success!', 'Order marked as collected. Ready for next customer.', 'success', 3000);
+    await showStunningPopup('Success!', 'Order paid and sent to kitchen.', 'success', 3000);
   }
 
-  // ========== Payment Methods (preserved logic) ==========
+  // ========== Payment Methods (unchanged) ==========
   async function getOrCreateCustomerProfile(phone) {
     try {
       let { data: profile, error } = await supabase.from('profiles').select('id, name').eq('phone', phone).maybeSingle();
@@ -607,7 +609,7 @@
     statusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing cash payment...';
     try {
       await markOrderAsPaidAndCollected('cash', null);
-      statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Order collected.';
+      statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Order sent to kitchen.';
       statusDiv.className = 'status-panel success';
       showToast('Payment confirmed!');
       return true;
@@ -696,7 +698,7 @@
     try {
       await markOrderAsPaidAndCollected('wallet', request.id);
       await supabase.from('payment_requests').update({ status: 'completed', approved_at: new Date().toISOString() }).eq('id', request.id);
-      statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Order collected.';
+      statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Order sent to kitchen.';
       statusDiv.className = 'status-panel success';
       showToast('Payment confirmed!');
       resetWalletRequestFlow();
@@ -799,7 +801,7 @@
             selectedOrder = order;
             await markOrderAsPaidAndCollected('card', payment.transaction_id);
             await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', payment.transaction_id);
-            showToast('Order collected successfully!');
+            showToast('Order sent to kitchen!');
             await resetAfterPayment();
           }
         } catch (err) { showToast('Failed: ' + err.message, true); }
