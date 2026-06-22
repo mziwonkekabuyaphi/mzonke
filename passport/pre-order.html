@@ -8,11 +8,10 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
 <style>
-  /* ========== YOUR EXACT ORIGINAL CSS – unchanged except bottom gap fix ========== */
+  /* ========== YOUR EXACT ORIGINAL CSS – unchanged ========== */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root { --red: #E30613; --red-dark: #a0010e; --red-deep: #8A0009; --red-glow: rgba(227,6,19,0.18); --red-subtle: rgba(227,6,19,0.06); --ink: #1e293b; --ink-muted: #334155; --slate: #475569; --mist: #94a3b8; --bone: #f8fafd; --white: #ffffff; --card-bg: #ffffff; --border: rgba(0,0,0,0.07); --border-strong: #eef2f8; --shadow-soft: 0 8px 20px -6px rgba(0,0,0,0.12); --shadow-card: 0 4px 16px rgba(0,0,0,0.06); --shadow-float: 0 16px 48px rgba(0,0,0,0.14); --radius-sm: 12px; --radius-md: 18px; --radius-lg: 24px; --radius-xl: 28px; --radius-full: 9999px; --transition: all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
   body { background: var(--bone); min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Inter', sans-serif; color: var(--ink); padding-bottom: 0; position: relative; }
-  /* ^^^ bottom gap removed: padding-bottom changed from 80px to 0 ^^^ */
   body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; }
   .site-header { background: linear-gradient(145deg, var(--red) 0%, var(--red-dark) 100%); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; border-radius: 0 0 28px 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); width: 100%; }
   .brand { display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -51,7 +50,6 @@
   .serving-number { font-size: 52px; font-weight: 900; letter-spacing: -2px; line-height: 1; margin-bottom: 4px; }
   .serving-sub { font-size: 0.7rem; opacity: 0.8; font-weight: 500; }
   .footer { text-align: center; padding: 20px; color: var(--mist); font-size: 0.65rem; font-weight: 500; }
-  /* bottomNav removed from layout – no more empty spacer */
   .preorder-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: flex-end; justify-content: center; }
   .preorder-container { background: var(--white); border-radius: 32px 32px 0 0; width: 100%; max-width: 100%; height: 92vh; max-height: 92vh; overflow-y: auto; padding: 20px 20px 28px; position: relative; animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
   @media (min-width: 768px) { .preorder-container { max-width: 560px; height: auto; max-height: 90vh; border-radius: 32px 32px 0 0; } .preorder-modal { align-items: flex-end; } }
@@ -123,7 +121,6 @@
 
 <header class="site-header">
   <div class="brand" onclick="window.location.href='home.html'">
-    <!-- logo path updated to rands-logo3.png -->
     <img src="../assets/images/rands-logo3.png" alt="Rands Wallet" class="brand-logo" style="width:40px; height:40px; object-fit:contain; background:rgba(255,255,255,0.2); border-radius:var(--radius-md); padding:8px;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23E30613\'/%3E%3Ctext x=\'50\' y=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'%3ER%3C/text%3E%3C/svg%3E'">
     <div class="brand-text">
       <h1>Butcher Q</h1>
@@ -131,7 +128,6 @@
     </div>
   </div>
   <div class="header-right">
-    <!-- replaced arrow with X icon, redirects to home.html -->
     <div class="header-icon" id="logoutHeaderBtn"><i class="fas fa-times"></i></div>
   </div>
 </header>
@@ -167,7 +163,6 @@
 </div>
 
 <div class="footer">Created by Mziwonke KaBuyaphi</div>
-<!-- removed #bottomNav to eliminate any leftover empty container -->
 
 <script type="module">
   import { supabase } from '../config/supabase.js';
@@ -195,29 +190,47 @@
     await showPopup({ message, title });
   }
 
-  // ========== SUPABASE QUEUE & ORDERS ==========
-  async function getQueue() {
-    const { data, error } = await supabase.from('butcher_queue').select('*').order('created_at', { ascending: true });
-    if (error) console.error(error);
-    return data || [];
+  // ========== SUPABASE – ORDERS (NOW USING 'orders' TABLE) ==========
+  async function createOrder(cartItems, customerPhone, instructions) {
+    const total = cartItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+    const { data, error } = await supabase
+      .from('orders')
+      .insert([{
+        customer_phone: customerPhone,
+        customer_name: `Customer ${customerPhone}`,
+        total_amount: total,
+        total: total,
+        source: 'butcher_preorder',
+        status: 'pending',          // awaiting payment
+        payment_status: 'pending',
+        kitchen_status: 'new',      // triggers kitchen display
+        items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, notes: instructions })),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select('order_number')
+      .single();
+    if (error) throw error;
+    return data.order_number;
   }
-  async function addToQueue(ticket) {
-    const { error } = await supabase.from('butcher_queue').insert([ticket]);
-    if (error) console.error(error);
-  }
-  async function getOrders() {
-    const { data, error } = await supabase.from('butcher_orders').select('*');
-    if (error) console.error(error);
-    return data || [];
-  }
-  async function addOrder(order) {
-    const { error } = await supabase.from('butcher_orders').insert([order]);
-    if (error) console.error(error);
+
+  async function getNowServing() {
+    // Show the first order that is not collected/cancelled (e.g., placed, preparing, ready)
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_number')
+      .eq('source', 'butcher_preorder')
+      .not('status', 'in', ('collected','cancelled'))
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single();
+    if (error && error.code !== 'PGRST116') console.error(error);
+    return data?.order_number || '—';
   }
 
   async function updateNowServing() {
-    const queue = await getQueue();
-    document.getElementById('butcherTicket').textContent = queue.length > 0 ? queue[0].ticket_number : '—';
+    const ticket = await getNowServing();
+    document.getElementById('butcherTicket').textContent = ticket;
   }
 
   function validatePhoneNumber(phone) {
@@ -345,6 +358,7 @@
         }));
         console.log(`Loaded ${butcherMenuItems.length} butcher items from products table.`);
       } else {
+        // Fallback hardcoded menu
         butcherMenuItems = [
           { id: "ribeye", name: "🥩 Ribeye Steak", price: 159 },
           { id: "beef_sausage", name: "🌭 Beef Sausage", price: 89 },
@@ -450,37 +464,18 @@
           const whatsapp = document.getElementById('whatsappNumber').value.trim();
           if (!validatePhoneNumber(whatsapp)) { await showAlert('Please enter a valid 10-digit WhatsApp number', 'Invalid Number'); return; }
           
-          const queue = await getQueue();
-          let nextNum = queue.length + 1;
-          let ticketNumber = `B-${String(nextNum).padStart(3, '0')}`;
-          while (queue.some(t => t.ticket_number === ticketNumber)) {
-            nextNum++;
-            ticketNumber = `B-${String(nextNum).padStart(3, '0')}`;
-          }
-          const total = cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);
           const instructions = document.getElementById('specialInstructions')?.value || '';
-
-          await addToQueue({
-            ticket_number: ticketNumber,
-            customer_name: `Customer ${ticketNumber}`,
-            whatsapp: whatsapp,
-            called: false,
-            created_at: new Date().toISOString()
-          });
-          await addOrder({
-            ticket_number: ticketNumber,
-            customer_name: `Customer ${ticketNumber}`,
-            whatsapp: whatsapp,
-            items: cart.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, notes: instructions })),
-            total: total,
-            paid: false,
-            kitchen_status: 'new',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+          let ticketNumber;
+          try {
+            ticketNumber = await createOrder(cart, whatsapp, instructions);
+          } catch (err) {
+            console.error(err);
+            await showAlert('Failed to place order. Please try again.', 'Error');
+            return;
+          }
 
           modal.remove();
-          showTicketConfirmation(ticketNumber, total);
+          showTicketConfirmation(ticketNumber, cart.reduce((sum, i) => sum + (i.price * i.quantity), 0));
           document.getElementById('whatsappNumber').value = '';
           updateJoinButtonState();
           await updateNowServing();
