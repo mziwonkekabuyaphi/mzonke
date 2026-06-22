@@ -163,12 +163,12 @@
                         <div class="flex flex-wrap gap-3">
                             <select id="filter-role" class="px-4 py-2 border border-gray-300 rounded-lg bg-white">
                                 <option value="">All Job Titles</option>
-                                <option value="event_manager">Event Manager</option>
-                                <option value="event_host">Event Host</option>
-                                <option value="shisha_attendant">Shisha Attendant</option>
-                                <option value="smart_host">Smart Host</option>
-                                <option value="butcher_crew">Butcher Crew</option>
-                                <option value="vvip_concierge">VVIP Concierge</option>
+                                <option value="Event Manager">Event Manager</option>
+                                <option value="Event Host">Event Host</option>
+                                <option value="Shisha Attendant">Shisha Attendant</option>
+                                <option value="Smart Host">Smart Host</option>
+                                <option value="Butcher Crew">Butcher Crew</option>
+                                <option value="VVIP Concierge">VVIP Concierge</option>
                             </select>
                             <select id="filter-status" class="px-4 py-2 border border-gray-300 rounded-lg bg-white">
                                 <option value="">All Status</option>
@@ -353,23 +353,19 @@
 
         const ALL_MODULES = Object.keys(MODULE_NAMES);
 
-        // ======================= JOB TITLES =======================
+        // ======================= JOB TITLES (FIXED - Keys match database values exactly) =======================
         const JOB_TITLES = {
-            event_manager: { name: 'Event Manager' },
-            event_host: { name: 'Event Host' },
-            shisha_attendant: { name: 'Shisha Attendant' },
-            smart_host: { name: 'Smart Host' },
-            butcher_crew: { name: 'Butcher Crew' },
-            vvip_concierge: { name: 'VVIP Concierge' }
+            'Event Manager': { name: 'Event Manager' },
+            'Event Host': { name: 'Event Host' },
+            'Shisha Attendant': { name: 'Shisha Attendant' },
+            'Butcher Crew': { name: 'Butcher Crew' },
+            'Smart Host': { name: 'Smart Host' },
+            'VVIP Concierge': { name: 'VVIP Concierge' }
         };
 
-        function normalizeStaffRole(roleKey) { 
-            if (roleKey === 'event_master') return 'event_host'; 
-            return JOB_TITLES[roleKey] ? roleKey : null; 
-        }
+        // Simple helper - keys ARE the display names
         function getJobTitleDisplay(roleKey) { 
-            const n = normalizeStaffRole(roleKey); 
-            return n && JOB_TITLES[n] ? JOB_TITLES[n].name : (roleKey || 'N/A'); 
+            return roleKey || 'N/A'; 
         }
         
         // Helper functions
@@ -417,7 +413,8 @@
         function renderModulePermissions() {
             const container = document.getElementById('module-permissions-container');
             
-            container.innerHTML = Object.entries(JOB_TITLES).map(([key, title]) => {
+            container.innerHTML = Object.keys(JOB_TITLES).map(key => {
+                const title = JOB_TITLES[key];
                 const assigned = modulePermissions[key] || [];
                 
                 return `
@@ -432,12 +429,12 @@
                                     <div class="module-check-item ${isChecked ? 'checked' : ''}" 
                                          onclick="window.toggleModuleCheck('${key}', '${moduleId}')">
                                         <input type="checkbox" 
-                                               id="mod_${key}_${moduleId}" 
+                                               id="mod_${key.replace(/\s/g, '_')}_${moduleId}" 
                                                data-job-title="${key}" 
                                                data-module-id="${moduleId}"
                                                ${isChecked ? 'checked' : ''}
                                                onchange="window.toggleModuleCheck('${key}', '${moduleId}')">
-                                        <label for="mod_${key}_${moduleId}">
+                                        <label for="mod_${key.replace(/\s/g, '_')}_${moduleId}">
                                             <i class="fas ${icon}"></i>
                                             ${name}
                                         </label>
@@ -451,7 +448,8 @@
         }
 
         window.toggleModuleCheck = function(jobTitle, moduleId) {
-            const checkbox = document.getElementById(`mod_${jobTitle}_${moduleId}`);
+            const checkbox = document.getElementById(`mod_${jobTitle.replace(/\s/g, '_')}_${moduleId}`);
+            if (!checkbox) return;
             const parent = checkbox.closest('.module-check-item');
             
             if (checkbox.checked) {
@@ -595,8 +593,7 @@
                 let query = supabase.from('profiles').select('*', { count: 'exact' }).eq('role', 'staff');
                 if (currentFilters.search) query = query.or(`name.ilike.%${currentFilters.search}%,surname.ilike.%${currentFilters.search}%,email.ilike.%${currentFilters.search}%,phone.ilike.%${currentFilters.search}%`);
                 if (currentFilters.role) {
-                    if (currentFilters.role === 'event_host') query = query.or(`staff_role.eq.event_host,staff_role.eq.event_master`);
-                    else query = query.eq('staff_role', currentFilters.role);
+                    query = query.eq('staff_role', currentFilters.role);
                 }
                 if (currentFilters.status) query = query.eq('status', currentFilters.status);
                 const from = (currentPage - 1) * pageSize;
@@ -687,9 +684,13 @@
             if (staffId) {
                 const { data } = await supabase.from('profiles').select('*').eq('id', staffId).single();
                 staffData = data;
-                if (staffData?.staff_role === 'event_master') staffData.staff_role = 'event_host';
             }
-            const jobOptions = Object.entries(JOB_TITLES).map(([k,v]) => `<option value="${k}" ${staffData?.staff_role === k ? 'selected' : ''}>${v.name}</option>`).join('');
+            
+            // Generate dropdown options - keys are now display values
+            const jobOptions = Object.keys(JOB_TITLES).map(key => 
+                `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${key}</option>`
+            ).join('');
+            
             container.innerHTML = `
                 <form id="staff-form" class="p-6 space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
