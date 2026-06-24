@@ -198,7 +198,6 @@
             .kpi-grid { gap: 12px; }
         }
 
-        /* Spinner */
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner {
             width: 24px; height: 24px;
@@ -212,17 +211,16 @@
 </head>
 <body>
 <div class="dashboard-container">
-    <!-- HERO KPI SECTION - Master Revenue & Volume -->
+    <!-- HERO KPI SECTION (locker revenue removed) -->
     <div class="kpi-grid" id="heroKpiGrid">
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-chart-line"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Total Revenue</div></div>
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Active Orders</div></div>
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-crown"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">VVIP Revenue</div></div>
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-smoking"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Shisha Revenue</div></div>
-        <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-wine-bottle"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Locker Revenue</div></div>
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-utensils"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Rands Smart Counter</div></div>
     </div>
 
-    <!-- REVENUE BREAKDOWN BY DEPARTMENT -->
+    <!-- REVENUE BREAKDOWN BY DEPARTMENT (locker bar removed) -->
     <div class="chart-row">
         <div class="section">
             <div class="section-header">
@@ -240,7 +238,7 @@
         </div>
     </div>
 
-    <!-- OPERATIONAL METRICS + ACTIVE SESSIONS -->
+    <!-- OPERATIONAL METRICS + ACTIVE SESSIONS (lockers still shown as occupancy) -->
     <div class="chart-row">
         <div class="section">
             <div class="section-header">
@@ -266,7 +264,7 @@
         </div>
     </div>
 
-    <!-- TOP PERFORMING PRODUCTS + RECENT TRANSACTIONS -->
+    <!-- TOP PERFORMING PRODUCTS (locker rentals removed) + RECENT TRANSACTIONS -->
     <div class="chart-row">
         <div class="section">
             <div class="section-header">
@@ -321,7 +319,7 @@
     const fmtR = (val) => `R${(val || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
     const fmtNumber = (val) => (val || 0).toLocaleString();
 
-    // ─── DATA STATE (initialised to zeros – no hardcode) ───
+    // ─── DATA STATE (locker revenue still tracked but not shown in revenue contexts) ───
     let revenueData = {
         events: 0, vvip: 0, shisha: 0, lockers: 0, orders: 0, butcher: 0, smartCounter: 0
     };
@@ -332,7 +330,7 @@
     let revenueTrend = Array(30).fill(0);
     let dataLoaded = false;
 
-    // ─── LOAD DATA FROM SUPABASE (no fallback, no hardcode) ───
+    // ─── LOAD DATA FROM SUPABASE ───
     async function loadExecutiveData() {
         let hasData = false;
 
@@ -390,12 +388,13 @@
                 activeSessions.shisha = shishaSessions.filter(s => s.status === 'active' || s.status === 'refill').length;
             }
 
-            // ── LOCKERS ──
+            // ── LOCKERS (still track value for occupancy, but not used in revenue) ──
             const { data: lockers, error: lockerErr } = await supabase
                 .from('lockers')
                 .select('total_value, status');
             if (!lockerErr && lockers && lockers.length) {
                 hasData = true;
+                // Keep revenueData.lockers for possible internal use, but we won't display it
                 revenueData.lockers = lockers
                     .filter(l => l.status === 'rented')
                     .reduce((s, l) => s + (l.total_value || 0), 0);
@@ -483,15 +482,16 @@
     }
 
     // ─── RENDER FUNCTIONS ───
+
+    // Hero KPI: total revenue does NOT include lockers
     function renderHeroKPI() {
-        const totalRevenue = revenueData.events + revenueData.vvip + revenueData.shisha + revenueData.lockers + revenueData.orders;
+        const totalRevenue = revenueData.events + revenueData.vvip + revenueData.shisha + revenueData.orders;
         
         const heroItems = [
             { icon: "fa-chart-line", label: "Total Revenue (All Time)", value: fmtR(totalRevenue) },
             { icon: "fa-shopping-cart", label: "Active Orders", value: operationalMetrics.pendingOrders + operationalMetrics.readyPickup, sub: `${operationalMetrics.readyPickup} ready` },
             { icon: "fa-crown", label: "VVIP Revenue", value: fmtR(revenueData.vvip) },
             { icon: "fa-smoking", label: "Shisha Revenue", value: fmtR(revenueData.shisha), sub: `${activeSessions.shisha} active sessions` },
-            { icon: "fa-wine-bottle", label: "Locker Revenue", value: fmtR(revenueData.lockers), sub: `${activeSessions.lockers} occupied` },
             { icon: "fa-utensils", label: "Rands Smart Counter", value: fmtR(revenueData.orders) }
         ];
         document.getElementById('heroKpiGrid').innerHTML = heroItems.map(k => `
@@ -506,9 +506,10 @@
         `).join('');
     }
 
+    // Department revenue: remove "Lockers"
     function renderDepartmentRevenue() {
-        const departments = ['Events', 'VVIP', 'Shisha', 'Lockers', 'Smart Counter', 'Butcher'];
-        const revenues = [revenueData.events, revenueData.vvip, revenueData.shisha, revenueData.lockers, revenueData.smartCounter, revenueData.butcher];
+        const departments = ['Events', 'VVIP', 'Shisha', 'Smart Counter', 'Butcher'];
+        const revenues = [revenueData.events, revenueData.vvip, revenueData.shisha, revenueData.smartCounter, revenueData.butcher];
         
         const ctx = document.getElementById('departmentRevenueChart').getContext('2d');
         if (charts.department) charts.department.destroy();
@@ -558,12 +559,12 @@
         `;
     }
 
+    // Top Revenue Streams: remove "Locker Rentals"
     function renderTopRevenueStreams() {
         const streams = [
             { name: 'Event Tickets', revenue: revenueData.events, icon: 'fa-ticket-alt' },
             { name: 'VVIP Packages', revenue: revenueData.vvip, icon: 'fa-crown' },
             { name: 'Shisha Sessions', revenue: revenueData.shisha, icon: 'fa-smoking' },
-            { name: 'Locker Rentals', revenue: revenueData.lockers, icon: 'fa-wine-bottle' },
             { name: 'Smart Counter', revenue: revenueData.smartCounter, icon: 'fa-beer-mug-empty' },
             { name: 'Butcher Shop', revenue: revenueData.butcher, icon: 'fa-drumstick-bite' }
         ].sort((a, b) => b.revenue - a.revenue);
@@ -594,7 +595,7 @@
             activities.push({ type: 'shisha', title: 'Active Shisha Sessions', detail: `${activeSessions.shisha} hookahs in use`, time: 'now', amount: 0 });
         }
         if (activeSessions.lockers > 0) {
-            activities.push({ type: 'locker', title: 'Occupied Lockers', detail: `${activeSessions.lockers} lockers rented`, time: 'now', amount: 0 });
+            activities.push({ type: 'locker', title: 'Occupied Lockers', detail: `${activeSessions.lockers} lockers occupied`, time: 'now', amount: 0 });
         }
         if (workforceMetrics.onShift > 0) {
             activities.push({ type: 'staff', title: 'Staff On Shift', detail: `${workforceMetrics.onShift} staff currently working`, time: 'now', amount: 0 });
