@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -43,7 +42,6 @@
       margin: 0 auto;
       position: relative;
     }
-    /* Header with toggle button */
     .main-header {
       display: flex;
       align-items: center;
@@ -83,7 +81,6 @@
     .icon-btn:hover { background: var(--s2); border-color: var(--border-b); color: var(--text); }
     .icon-btn.active-toggle { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
 
-    /* Main content: product table */
     .main-content {
       flex: 1;
       overflow: auto;
@@ -183,7 +180,6 @@
     }
     .action-buttons { display: flex; gap: 4px; }
 
-    /* Add product panel (collapsible) */
     .add-panel {
       background: var(--s2);
       border-radius: 12px;
@@ -235,7 +231,6 @@
     .checkbox-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
     .checkbox-row label { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
 
-    /* Toast */
     .toast {
       position: fixed;
       bottom: 20px;
@@ -257,7 +252,6 @@
     .toast.success { border-color: var(--green); }
     .toast.error { border-color: var(--red); }
 
-    /* ─── DASHBOARD OVERLAY ─── */
     .dashboard-overlay {
       position: fixed;
       top: 0;
@@ -371,7 +365,6 @@
       text-transform: uppercase;
     }
 
-    /* Scrollbar */
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 99px; }
 
@@ -385,12 +378,14 @@
   </style>
 </head>
 <body>
-<div class="app" id="adminApp">
+<div id="app" class="app" v-cloak>
   <!-- Header -->
   <div class="main-header">
     <h2><i class="fas fa-cubes"></i> Product Manager</h2>
     <div class="header-actions">
-      <button class="icon-btn" onclick="toggleDashboard()" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
+      <button class="icon-btn" @click="toggleDashboard" :class="{ 'active-toggle': dashboardOpen }" title="Analytics">
+        <i class="fas fa-chart-pie"></i>
+      </button>
       <button class="icon-btn" @click="refreshData" title="Refresh"><i class="fas fa-sync-alt"></i></button>
     </div>
   </div>
@@ -401,24 +396,28 @@
     <div class="add-panel">
       <h3><i class="fas fa-plus-circle"></i> Add New Product</h3>
       <div class="form-grid">
-        <input type="text" v-model="newProduct.name" placeholder="Name">
-        <input type="text" v-model="newProduct.description" placeholder="Description">
-        <input type="number" v-model="newProduct.price" placeholder="Price (R)">
+        <input type="text" v-model="newProduct.name" placeholder="Name" />
+        <input type="text" v-model="newProduct.description" placeholder="Description" />
+        <input type="number" v-model.number="newProduct.price" placeholder="Price (R)" />
         <select v-model="newProduct.category">
-          <option v-for="cat in categories" :value="cat">{{ cat }}</option>
+          <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
         </select>
       </div>
       <div class="image-upload-row">
         <label class="btn btn-secondary" style="margin:0;cursor:pointer;">
           <i class="fas fa-cloud-upload-alt"></i> Upload Image
-          <input type="file" accept="image/*" @change="handleNewProductImage" style="display:none;">
+          <input type="file" accept="image/*" @change="handleNewProductImage" style="display:none;" />
         </label>
-        <img v-if="newProduct.imagePreview" :src="newProduct.imagePreview" class="image-preview" alt="preview">
-        <button v-if="newProduct.imagePreview" class="btn btn-danger btn-sm" @click="clearNewProductImage"><i class="fas fa-times"></i></button>
-        <span v-else style="color:var(--muted);font-size:0.65rem;"><i class="fas fa-info-circle"></i> JPEG/PNG, max 2MB</span>
+        <img v-if="newProduct.imagePreview" :src="newProduct.imagePreview" class="image-preview" alt="preview" />
+        <button v-if="newProduct.imagePreview" class="btn btn-danger btn-sm" @click="clearNewProductImage">
+          <i class="fas fa-times"></i>
+        </button>
+        <span v-else style="color:var(--muted);font-size:0.65rem;">
+          <i class="fas fa-info-circle"></i> JPEG/PNG, max 2MB
+        </span>
       </div>
       <div class="checkbox-row">
-        <label><input type="checkbox" v-model="newProduct.alcohol"> <i class="fas fa-wine-bottle"></i> Contains Alcohol</label>
+        <label><input type="checkbox" v-model="newProduct.alcohol" /> <i class="fas fa-wine-bottle"></i> Contains Alcohol</label>
       </div>
       <button class="btn btn-primary" @click="addProduct" :disabled="uploadingNewProduct">
         <span v-if="uploadingNewProduct" class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid white;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;"></span>
@@ -429,7 +428,7 @@
 
     <!-- Search & Table -->
     <div class="search-bar">
-      <input type="text" v-model="searchQuery" placeholder="Search products…">
+      <input type="text" v-model="searchQuery" placeholder="Search products…" />
       <button class="btn btn-secondary" @click="refreshData"><i class="fas fa-sync-alt"></i> Refresh</button>
     </div>
 
@@ -439,58 +438,57 @@
       </div>
       <div v-for="product in filteredProducts" :key="product.id" class="product-row">
         <span style="color:var(--muted);font-size:0.6rem;">{{ product.id }}</span>
-        <input type="text" v-model="product.name" @change="saveProduct(product)">
-        <input type="text" v-model="product.description" @change="saveProduct(product)">
-        <input type="number" v-model="product.price" @change="saveProduct(product)" step="1">
+        <input type="text" v-model="product.name" @change="saveProduct(product)" />
+        <input type="text" v-model="product.description" @change="saveProduct(product)" />
+        <input type="number" v-model.number="product.price" @change="saveProduct(product)" step="1" />
         <select v-model="product.category" @change="saveProduct(product)">
-          <option v-for="cat in categories" :value="cat">{{ cat }}</option>
+          <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
         </select>
-        <label style="display:flex;justify-content:center;"><input type="checkbox" v-model="product.alcohol" @change="saveProduct(product)"></label>
+        <label style="display:flex;justify-content:center;">
+          <input type="checkbox" v-model="product.alcohol" @change="saveProduct(product)" />
+        </label>
         <div style="display:flex;gap:4px;align-items:center;">
-          <img :src="getValidImageUrl(product.image)" class="image-thumb" @click="triggerImageUpload(product)" title="Change image">
-          <input type="file" accept="image/*" :ref="'fileInput'+product.id" style="display:none;" @change="handleProductImageChange($event, product)">
+          <img :src="getValidImageUrl(product.image)" class="image-thumb" @click="triggerImageUpload(product)" title="Change image" />
+          <input type="file" accept="image/*" :ref="'fileInput'+product.id" style="display:none;" @change="handleProductImageChange($event, product)" />
         </div>
         <div class="action-buttons">
           <button class="btn btn-danger btn-sm" @click="confirmDelete(product.id, product.name)"><i class="fas fa-trash-alt"></i></button>
         </div>
       </div>
-      <div v-if="!products.length" style="text-align:center;color:var(--muted);padding:40px 0;">No products found</div>
+      <div v-if="!products.length && !loading" style="text-align:center;color:var(--muted);padding:40px 0;">No products found</div>
+      <div v-if="loading" style="text-align:center;color:var(--muted);padding:40px 0;">Loading...</div>
     </div>
   </div>
 
-  <!-- ─── DASHBOARD OVERLAY ─── -->
-  <div class="dashboard-overlay" id="dashboardOverlay">
+  <!-- Dashboard Overlay -->
+  <div class="dashboard-overlay" :class="{ open: dashboardOpen }">
     <div class="dash-header">
       <h2><i class="fas fa-chart-pie"></i> Product Analytics</h2>
-      <button class="dash-close" onclick="toggleDashboard()">&times;</button>
+      <button class="dash-close" @click="dashboardOpen = false">&times;</button>
     </div>
-    <!-- KPIs -->
-    <div class="dash-kpi-grid" id="dashKpiGrid">
+    <div class="dash-kpi-grid">
       <div class="dash-kpi"><div class="val">{{ products.length }}</div><div class="label">Total Products</div></div>
       <div class="dash-kpi"><div class="val">{{ alcoholCount }}</div><div class="label">Alcohol Items</div></div>
       <div class="dash-kpi"><div class="val">{{ nonAlcoholCount }}</div><div class="label">Non-Alcohol</div></div>
       <div class="dash-kpi"><div class="val">{{ butcherCount }}</div><div class="label">Butcher Items</div></div>
     </div>
 
-    <!-- Category Distribution -->
     <div class="dash-section">
       <h3>Category Distribution</h3>
       <div class="dash-chart-wrap"><canvas id="categoryChart"></canvas></div>
     </div>
 
-    <!-- Alcohol vs Non-Alcohol -->
     <div class="dash-section">
       <h3>Alcohol vs Non-Alcohol</h3>
       <div class="dash-chart-wrap"><canvas id="alcoholChart"></canvas></div>
     </div>
 
-    <!-- Inventory Health (simulated) -->
     <div class="dash-section">
       <h3>Inventory Health</h3>
       <div class="dash-stats-mini">
         <div class="dash-stat-mini"><div class="num">{{ products.length }}</div><div class="lbl">Total SKUs</div></div>
-        <div class="dash-stat-mini"><div class="num">{{ Math.round(products.filter(p=>p.price>100).length/products.length*100) || 0 }}%</div><div class="lbl">Premium (>R100)</div></div>
-        <div class="dash-stat-mini"><div class="num">{{ Math.round(products.filter(p=>p.alcohol).length/products.length*100) || 0 }}%</div><div class="lbl">Alcohol %</div></div>
+        <div class="dash-stat-mini"><div class="num">{{ premiumPercent }}%</div><div class="lbl">Premium (>R100)</div></div>
+        <div class="dash-stat-mini"><div class="num">{{ alcoholPercent }}%</div><div class="lbl">Alcohol %</div></div>
       </div>
     </div>
   </div>
@@ -501,228 +499,437 @@
   </div>
 </div>
 
-<script>
-  const { createApp, ref, computed, watch, onMounted } = Vue;
-  let supabaseClient = null;
-  const STORAGE_BUCKET = 'product-images';
+<script type="module">
+import { createApp, ref, computed, onMounted, watch, nextTick } from 'https://unpkg.com/vue@2/dist/vue.esm.browser.js';
+// Import your Supabase client – adjust the path as needed
+import { supabase } from '../config/supabase.js';
 
-  async function initSupabase() {
-    try {
-      const module = await import('../config/supabase.js');
-      supabaseClient = module.default || module.supabase;
-      if (!supabaseClient) throw new Error('No client');
-    } catch (e) {
-      console.error('Supabase config missing', e);
-    }
-  }
+// ---------- Constants ----------
+const STORAGE_BUCKET = 'product-images';
+const VALID_CATEGORIES = [
+  'beers', 'champagne', 'ciders', 'cognac', 'gin', 'liqueur',
+  'soft drinks', 'sparkling wine', 'tequila', 'vodka', 'whiskey',
+  'butcher', 'shisha', 'other'
+];
 
-  function normalizeCategory(cat) {
-    if (!cat) return 'other';
-    const valid = ['beers','champagne','ciders','cognac','gin','liqueur','soft drinks','sparkling wine','tequila','vodka','whiskey','butcher','shisha','other'];
-    return valid.includes(cat) ? cat : 'other';
-  }
+// ---------- Helper Functions ----------
+function normalizeCategory(cat) {
+  if (!cat) return 'other';
+  return VALID_CATEGORIES.includes(cat) ? cat : 'other';
+}
 
-  function generateSafeFileName(name, ext) {
-    const ts = Date.now();
-    const rand = Math.random().toString(36).substring(2,8);
-    const safe = (name || 'product').replace(/[^a-z0-9]/gi,'-').toLowerCase().slice(0,50);
-    return `products/${ts}-${rand}-${safe}.${ext}`;
-  }
+function generateSafeFileName(name, ext) {
+  const ts = Date.now();
+  const rand = Math.random().toString(36).substring(2, 8);
+  const safe = (name || 'product').replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 50);
+  return `products/${ts}-${rand}-${safe}.${ext}`;
+}
 
-  const app = createApp({
-    data() {
-      return {
-        products: [],
-        searchQuery: '',
-        newProduct: { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null },
-        toast: { visible: false, text: '', type: '', icon: '' },
-        toastTimer: null,
-        uploadingNewProduct: false,
-        uploadingProducts: new Set(),
-        categories: ['beers','champagne','ciders','cognac','gin','liqueur','soft drinks','sparkling wine','tequila','vodka','whiskey','butcher','shisha','other'],
-        charts: {}
-      };
-    },
-    computed: {
-      filteredProducts() {
-        if (!this.searchQuery) return this.products;
-        const q = this.searchQuery.toLowerCase();
-        return this.products.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
+// ---------- Vue App ----------
+const app = createApp({
+  data() {
+    return {
+      products: [],
+      searchQuery: '',
+      newProduct: {
+        name: '',
+        description: '',
+        price: 0,
+        category: 'beers',
+        alcohol: false,
+        image: '',
+        imagePreview: null,
       },
-      alcoholCount() { return this.products.filter(p => p.alcohol).length; },
-      nonAlcoholCount() { return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length; },
-      butcherCount() { return this.products.filter(p => p.category === 'butcher').length; }
+      toast: { visible: false, text: '', type: '', icon: '' },
+      toastTimer: null,
+      uploadingNewProduct: false,
+      uploadingProducts: new Set(),
+      categories: VALID_CATEGORIES,
+      charts: {},
+      dashboardOpen: false,
+      loading: false,
+      supabaseReady: false,
+    };
+  },
+  computed: {
+    filteredProducts() {
+      if (!this.searchQuery) return this.products;
+      const q = this.searchQuery.toLowerCase();
+      return this.products.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q))
+      );
     },
-    mounted() {
-      initSupabase().then(() => {
-        if (supabaseClient) {
-          this.ensureBucket();
-          this.loadProducts();
-        }
-      });
-      // Watch for overlay open to render charts
-      const overlay = document.getElementById('dashboardOverlay');
+    alcoholCount() {
+      return this.products.filter(p => p.alcohol).length;
+    },
+    nonAlcoholCount() {
+      return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length;
+    },
+    butcherCount() {
+      return this.products.filter(p => p.category === 'butcher').length;
+    },
+    premiumPercent() {
+      if (!this.products.length) return 0;
+      const count = this.products.filter(p => p.price > 100).length;
+      return Math.round((count / this.products.length) * 100);
+    },
+    alcoholPercent() {
+      if (!this.products.length) return 0;
+      return Math.round((this.alcoholCount / this.products.length) * 100);
+    },
+  },
+  watch: {
+    dashboardOpen(val) {
+      if (val) {
+        nextTick(() => this.renderCharts());
+      }
+    },
+  },
+  async mounted() {
+    // Ensure Supabase client is available
+    if (!supabase) {
+      this.showToast('Supabase client not found. Check your config.', 'error');
+      return;
+    }
+    this.supabaseReady = true;
+
+    // Ensure the storage bucket exists
+    await this.ensureBucket();
+
+    // Load products
+    await this.loadProducts();
+
+    // Set up a MutationObserver to re-render charts when the overlay opens
+    const overlay = document.getElementById('app').querySelector('.dashboard-overlay');
+    if (overlay) {
       const observer = new MutationObserver(() => {
         if (overlay.classList.contains('open')) {
           this.renderCharts();
         }
       });
       observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    }
+  },
+  methods: {
+    // ----- Toast -----
+    showToast(text, type = 'info') {
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+      const icons = {
+        success: 'fas fa-check-circle',
+        error: 'fas fa-exclamation-circle',
+        info: 'fas fa-info-circle',
+      };
+      this.toast = {
+        visible: true,
+        text,
+        type,
+        icon: icons[type] || icons.info,
+      };
+      this.toastTimer = setTimeout(() => {
+        this.toast.visible = false;
+      }, 3000);
     },
-    methods: {
-      showToast(text, type='info') {
-        if (this.toastTimer) clearTimeout(this.toastTimer);
-        const icons = { success: 'fas fa-check-circle', error: 'fas fa-exclamation-circle', info: 'fas fa-info-circle' };
-        this.toast = { visible: true, text, type, icon: icons[type] || icons.info };
-        this.toastTimer = setTimeout(() => { this.toast.visible = false; }, 3000);
-      },
-      getValidImageUrl(img) {
-        if (!img) return 'https://placehold.co/400x400?text=No+Image';
-        if (img.startsWith('http://') || img.startsWith('https://')) return img;
-        if (img.startsWith('data:image')) return img;
-        return 'https://placehold.co/400x400?text=Invalid+URL';
-      },
-      async ensureBucket() {
-        if (!supabaseClient) return;
-        try {
-          const { data: buckets } = await supabaseClient.storage.listBuckets();
-          if (!buckets.some(b => b.name === STORAGE_BUCKET)) {
-            await supabaseClient.storage.createBucket(STORAGE_BUCKET, { public: true, allowedMimeTypes: ['image/png','image/jpeg','image/gif','image/webp'], fileSizeLimit: 2097152 });
-          }
-        } catch(e) { console.warn('Bucket check failed', e); }
-      },
-      async uploadToStorage(file, productName) {
-        if (!supabaseClient) throw new Error('No client');
-        if (!file.type.startsWith('image/')) throw new Error('Image required');
-        if (file.size > 2*1024*1024) throw new Error('Max 2MB');
-        const ext = file.name.split('.').pop();
-        const path = generateSafeFileName(productName, ext);
-        const { error } = await supabaseClient.storage.from(STORAGE_BUCKET).upload(path, file, { cacheControl: '3600', upsert: true });
+
+    // ----- Image Helpers -----
+    getValidImageUrl(img) {
+      if (!img) return 'https://placehold.co/400x400?text=No+Image';
+      if (img.startsWith('http://') || img.startsWith('https://')) return img;
+      if (img.startsWith('data:image')) return img;
+      return 'https://placehold.co/400x400?text=Invalid+URL';
+    },
+
+    // ----- Supabase Storage -----
+    async ensureBucket() {
+      if (!supabase) return;
+      try {
+        const { data: buckets, error } = await supabase.storage.listBuckets();
         if (error) throw error;
-        const { data: { publicUrl } } = supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-        return publicUrl;
-      },
-      async handleNewProductImage(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        this.uploadingNewProduct = true;
-        try {
-          const url = await this.uploadToStorage(file, this.newProduct.name || 'product');
-          this.newProduct.image = url;
-          this.newProduct.imagePreview = url;
-          this.showToast('Image uploaded', 'success');
-        } catch (err) { this.showToast(err.message, 'error'); }
-        finally { this.uploadingNewProduct = false; e.target.value = ''; }
-      },
-      clearNewProductImage() {
-        this.newProduct.image = '';
-        this.newProduct.imagePreview = null;
-      },
-      triggerImageUpload(product) {
-        const ref = this.$refs['fileInput'+product.id];
-        if (ref && ref[0]) ref[0].click();
-      },
-      async handleProductImageChange(e, product) {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (this.uploadingProducts.has(product.id)) { this.showToast('Upload in progress', 'error'); return; }
-        this.uploadingProducts.add(product.id);
-        try {
-          const url = await this.uploadToStorage(file, product.name);
-          product.image = url;
-          await this.saveProduct(product);
-          this.showToast('Image updated', 'success');
-        } catch (err) { this.showToast(err.message, 'error'); }
-        finally { this.uploadingProducts.delete(product.id); e.target.value = ''; }
-      },
-      async loadProducts() {
-        if (!supabaseClient) return;
-        const { data, error } = await supabaseClient.from('products').select('*').order('id', { ascending: true });
-        if (error) { this.showToast('Load error', 'error'); return; }
-        this.products = (data||[]).map(p => ({ ...p, category: normalizeCategory(p.category) }));
+        const exists = buckets.some(b => b.name === STORAGE_BUCKET);
+        if (!exists) {
+          const { error: createError } = await supabase.storage.createBucket(STORAGE_BUCKET, {
+            public: true,
+            allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+            fileSizeLimit: 2097152,
+          });
+          if (createError) throw createError;
+        }
+      } catch (err) {
+        console.warn('Bucket check failed:', err);
+        // Non-critical, continue
+      }
+    },
+
+    async uploadToStorage(file, productName) {
+      if (!supabase) throw new Error('Supabase client not available');
+      if (!file.type.startsWith('image/')) throw new Error('File must be an image');
+      if (file.size > 2 * 1024 * 1024) throw new Error('Max file size is 2MB');
+
+      const ext = file.name.split('.').pop();
+      const path = generateSafeFileName(productName, ext);
+      const { error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, file, { cacheControl: '3600', upsert: true });
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      return publicUrl;
+    },
+
+    // ----- Product CRUD -----
+    async loadProducts() {
+      if (!supabase) return;
+      this.loading = true;
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .order('id', { ascending: true });
+        if (error) throw error;
+        this.products = (data || []).map(p => ({
+          ...p,
+          category: normalizeCategory(p.category),
+        }));
         this.showToast('Products loaded', 'success');
-        // Re-render charts if overlay open
-        if (document.getElementById('dashboardOverlay').classList.contains('open')) this.renderCharts();
-      },
-      async saveProduct(product) {
-        if (!supabaseClient) return;
-        product.category = normalizeCategory(product.category);
-        const { error } = await supabaseClient.from('products').update({
-          name: product.name, description: product.description, price: product.price,
-          category: product.category, alcohol: product.alcohol, image: product.image
-        }).eq('id', product.id);
-        if (error) this.showToast('Update failed: '+error.message, 'error');
-        else this.showToast('Updated', 'success');
-      },
-      async addProduct() {
-        if (!supabaseClient) return;
-        if (!this.newProduct.name.trim()) { this.showToast('Name required', 'error'); return; }
-        const item = {
-          name: this.newProduct.name,
-          description: this.newProduct.description,
-          price: parseFloat(this.newProduct.price) || 0,
-          category: normalizeCategory(this.newProduct.category),
-          alcohol: this.newProduct.alcohol,
-          image: this.newProduct.image || ''
-        };
-        const { data, error } = await supabaseClient.from('products').insert([item]).select();
-        if (error) { this.showToast('Add failed: '+error.message, 'error'); return; }
-        this.products.push({ ...data[0], category: normalizeCategory(data[0].category) });
-        this.newProduct = { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null };
+      } catch (err) {
+        this.showToast('Failed to load products: ' + err.message, 'error');
+        console.error(err);
+      } finally {
+        this.loading = false;
+        // Re-render charts if dashboard is open
+        if (this.dashboardOpen) this.renderCharts();
+      }
+    },
+
+    async saveProduct(product) {
+      if (!supabase) return;
+      product.category = normalizeCategory(product.category);
+      try {
+        const { error } = await supabase
+          .from('products')
+          .update({
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            category: product.category,
+            alcohol: product.alcohol,
+            image: product.image,
+          })
+          .eq('id', product.id);
+        if (error) throw error;
+        this.showToast('Product updated', 'success');
+        if (this.dashboardOpen) this.renderCharts();
+      } catch (err) {
+        this.showToast('Update failed: ' + err.message, 'error');
+      }
+    },
+
+    async addProduct() {
+      if (!supabase) return;
+      if (!this.newProduct.name.trim()) {
+        this.showToast('Product name is required', 'error');
+        return;
+      }
+      const item = {
+        name: this.newProduct.name.trim(),
+        description: this.newProduct.description.trim(),
+        price: parseFloat(this.newProduct.price) || 0,
+        category: normalizeCategory(this.newProduct.category),
+        alcohol: this.newProduct.alcohol,
+        image: this.newProduct.image || '',
+      };
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .insert([item])
+          .select();
+        if (error) throw error;
+        const newProduct = { ...data[0], category: normalizeCategory(data[0].category) };
+        this.products.push(newProduct);
+        this.resetNewProductForm();
         this.showToast('Product added', 'success');
-      },
-      confirmDelete(id, name) {
-        if (confirm(`Delete "${name}"?`)) this.deleteProduct(id);
-      },
-      async deleteProduct(id) {
-        if (!supabaseClient) return;
-        const { error } = await supabaseClient.from('products').delete().eq('id', id);
-        if (error) this.showToast('Delete failed', 'error');
-        else { this.products = this.products.filter(p => p.id !== id); this.showToast('Deleted', 'success'); }
-      },
-      refreshData() { this.loadProducts(); },
-      renderCharts() {
-        // Category distribution
-        const catMap = {};
-        this.products.forEach(p => { catMap[p.category] = (catMap[p.category]||0)+1; });
-        const labels = Object.keys(catMap);
-        const data = Object.values(catMap);
-        const ctx1 = document.getElementById('categoryChart');
-        if (!ctx1) return;
+        if (this.dashboardOpen) this.renderCharts();
+      } catch (err) {
+        this.showToast('Add failed: ' + err.message, 'error');
+      }
+    },
+
+    resetNewProductForm() {
+      this.newProduct = {
+        name: '',
+        description: '',
+        price: 0,
+        category: 'beers',
+        alcohol: false,
+        image: '',
+        imagePreview: null,
+      };
+    },
+
+    confirmDelete(id, name) {
+      if (confirm(`Delete "${name}"? This action cannot be undone.`)) {
+        this.deleteProduct(id);
+      }
+    },
+
+    async deleteProduct(id) {
+      if (!supabase) return;
+      try {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+        this.products = this.products.filter(p => p.id !== id);
+        this.showToast('Product deleted', 'success');
+        if (this.dashboardOpen) this.renderCharts();
+      } catch (err) {
+        this.showToast('Delete failed: ' + err.message, 'error');
+      }
+    },
+
+    refreshData() {
+      this.loadProducts();
+    },
+
+    // ----- Image Upload Handlers -----
+    async handleNewProductImage(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      this.uploadingNewProduct = true;
+      try {
+        const url = await this.uploadToStorage(file, this.newProduct.name || 'product');
+        this.newProduct.image = url;
+        this.newProduct.imagePreview = url;
+        this.showToast('Image uploaded', 'success');
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      } finally {
+        this.uploadingNewProduct = false;
+        e.target.value = '';
+      }
+    },
+
+    clearNewProductImage() {
+      this.newProduct.image = '';
+      this.newProduct.imagePreview = null;
+    },
+
+    triggerImageUpload(product) {
+      const ref = this.$refs['fileInput' + product.id];
+      if (ref && ref[0]) ref[0].click();
+    },
+
+    async handleProductImageChange(e, product) {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (this.uploadingProducts.has(product.id)) {
+        this.showToast('Upload already in progress', 'error');
+        return;
+      }
+      this.uploadingProducts.add(product.id);
+      try {
+        const url = await this.uploadToStorage(file, product.name);
+        product.image = url;
+        await this.saveProduct(product);
+        this.showToast('Image updated', 'success');
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      } finally {
+        this.uploadingProducts.delete(product.id);
+        e.target.value = '';
+      }
+    },
+
+    // ----- Charts -----
+    renderCharts() {
+      // Category distribution
+      const catMap = {};
+      this.products.forEach(p => {
+        catMap[p.category] = (catMap[p.category] || 0) + 1;
+      });
+      const labels = Object.keys(catMap);
+      const data = Object.values(catMap);
+      const colors = [
+        '#E30613', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4',
+        '#f97316', '#ec4899', '#14b8a6', '#6366f1', '#84cc16',
+        '#f43f5e', '#0ea5e9', '#d946ef', '#facc15'
+      ];
+
+      const ctx1 = document.getElementById('categoryChart');
+      if (ctx1) {
         if (this.charts.category) this.charts.category.destroy();
         this.charts.category = new Chart(ctx1, {
           type: 'doughnut',
-          data: { labels, datasets: [{ data, backgroundColor: ['#E30613','#f59e0b','#10b981','#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6','#6366f1','#84cc16','#f43f5e','#0ea5e9','#d946ef','#facc15'] }] },
-          options: { responsive: true, plugins: { legend: { labels: { color: '#71717a', boxWidth: 8, font: { size: 9 } } } } }
+          data: {
+            labels,
+            datasets: [{
+              data,
+              backgroundColor: colors.slice(0, labels.length),
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                labels: { color: '#71717a', boxWidth: 8, font: { size: 9 } },
+              },
+            },
+          },
         });
-        // Alcohol vs Non
-        const alco = this.products.filter(p => p.alcohol).length;
-        const non = this.products.length - alco;
-        const ctx2 = document.getElementById('alcoholChart');
-        if (!ctx2) return;
+      }
+
+      // Alcohol vs Non-Alcohol
+      const alco = this.products.filter(p => p.alcohol).length;
+      const non = this.products.length - alco;
+      const ctx2 = document.getElementById('alcoholChart');
+      if (ctx2) {
         if (this.charts.alcohol) this.charts.alcohol.destroy();
         this.charts.alcohol = new Chart(ctx2, {
           type: 'bar',
-          data: { labels: ['Alcohol', 'Non-Alcohol'], datasets: [{ label: 'Count', data: [alco, non], backgroundColor: ['#E30613', '#22c55e'] }] },
-          options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#71717a', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' } }, x: { ticks: { color: '#71717a' } } } }
+          data: {
+            labels: ['Alcohol', 'Non-Alcohol'],
+            datasets: [{
+              label: 'Count',
+              data: [alco, non],
+              backgroundColor: ['#E30613', '#22c55e'],
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                ticks: { color: '#71717a', stepSize: 1 },
+                grid: { color: 'rgba(255,255,255,0.04)' },
+              },
+              x: { ticks: { color: '#71717a' } },
+            },
+          },
         });
       }
-    }
-  });
-  app.mount('#adminApp');
+    },
 
-  // ─── DASHBOARD TOGGLE ───
-  function toggleDashboard() {
-    const overlay = document.getElementById('dashboardOverlay');
-    overlay.classList.toggle('open');
-    document.getElementById('toggleDashBtn').classList.toggle('active-toggle', overlay.classList.contains('open'));
-    if (overlay.classList.contains('open')) {
-      // Call renderCharts from Vue instance
-      const vm = document.querySelector('#adminApp').__vue__;
-      if (vm) vm.renderCharts();
-    }
+    // ----- Dashboard Toggle -----
+    toggleDashboard() {
+      this.dashboardOpen = !this.dashboardOpen;
+      if (this.dashboardOpen) {
+        nextTick(() => this.renderCharts());
+      }
+    },
+  },
+});
+
+app.mount('#app');
+
+// Add a global spin animation (used in the template)
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
-  window.toggleDashboard = toggleDashboard;
+  [v-cloak] { display: none; }
+`;
+document.head.appendChild(style);
+
+console.log('✅ Product Manager ready. Supabase client:', supabase ? 'connected' : 'missing');
 </script>
 </body>
 </html>
