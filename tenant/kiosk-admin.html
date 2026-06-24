@@ -926,6 +926,7 @@
         <div class="stat-card"><i class="fas fa-film"></i><div class="stat-number" id="statVideo">—</div><div class="stat-label">Video Ads</div></div>
         <div class="stat-card"><i class="fas fa-image"></i><div class="stat-number" id="statImage">—</div><div class="stat-label">Image Ads</div></div>
         <div class="stat-card"><i class="fas fa-clock"></i><div class="stat-number" id="statAvgDur">—</div><div class="stat-label">Avg Duration (s)</div></div>
+        <div class="stat-card"><i class="fas fa-coins"></i><div class="stat-number" id="statRevenue">R0</div><div class="stat-label">Total Revenue</div></div>
       </div>
 
       <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
@@ -943,8 +944,8 @@
         </div>
         <div class="table-wrap">
           <table id="slidesTable">
-            <thead><tr><th>Order</th><th>Type</th><th>Headline</th><th>Media</th><th>Duration</th><th>Campaign</th><th>Active</th><th>Actions</th></tr></thead>
-            <tbody id="slidesTbody"><tr class="loading-row"><td colspan="8"><i class="fas fa-circle-notch fa-spin"></i> Loading slides…</td></tr></tbody>
+            <thead><tr><th>Order</th><th>Type</th><th>Headline</th><th>Media</th><th>Duration</th><th>CPM Rate</th><th>Campaign</th><th>Active</th><th>Actions</th></tr></thead>
+            <tbody id="slidesTbody"><tr class="loading-row"><td colspan="9"><i class="fas fa-circle-notch fa-spin"></i> Loading slides…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1005,8 +1006,8 @@
         <div class="card-header"><h2><i class="fas fa-bullhorn"></i> All Campaigns</h2></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Advertiser</th><th>CPM Rate</th><th>Budget</th><th>Linked Ads</th><th>Actions</th></tr></thead>
-            <tbody id="campaignsTbody"><tr class="loading-row"><td colspan="6"><i class="fas fa-circle-notch fa-spin"></i> Checking table…</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Advertiser</th><th>CPM Rate</th><th>Budget</th><th>Revenue</th><th>Linked Ads</th><th>Actions</th></tr></thead>
+            <tbody id="campaignsTbody"><tr class="loading-row"><td colspan="7"><i class="fas fa-circle-notch fa-spin"></i> Checking table…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1106,6 +1107,11 @@
       <div class="form-group" id="durationGroup">
         <label>Duration (seconds) <span class="text-muted" style="font-weight:400;">— images only</span></label>
         <input type="number" id="duration" value="60" step="5" min="5">
+      </div>
+      <div class="form-group">
+        <label>CPM Rate (R) <span class="text-muted" style="font-weight:400;">— optional</span></label>
+        <input type="number" id="slideCpm" placeholder="e.g. 50" step="0.01" min="0">
+        <div class="hint">Cost Per Mille (per 1000 impressions). Leave empty to inherit from campaign.</div>
       </div>
       <div class="form-group">
         <label>Campaign</label>
@@ -1339,8 +1345,28 @@
     document.getElementById('statAvgDur').textContent = imgs.length ? Math.round(imgs.reduce((a, s) => a + (s.duration_seconds || 60), 0) / imgs.length) : '—';
     document.getElementById('slideCount').textContent = `${allSlides.length} slides`;
 
+    // Load impressions and calculate revenue
+    let impCounts = {};
+    const hasImps = await checkTable('kiosk_ad_impressions');
+    if (hasImps) {
+      const { data: impData } = await supabase.from('kiosk_ad_impressions').select('ad_id');
+      (impData || []).forEach(i => { impCounts[i.ad_id] = (impCounts[i.ad_id] || 0) + 1; });
+    }
+
+    let totalRevenue = 0;
+    allSlides.forEach(s => {
+      let cpm = s.cpm_rate || 0;
+      if (cpm === 0 && s.campaign_id) {
+        const camp = campaigns.find(c => c.id === s.campaign_id);
+        cpm = camp?.cpm_rate || 0;
+      }
+      const cnt = impCounts[s.id] || 0;
+      totalRevenue += (cnt / 1000) * cpm;
+    });
+    document.getElementById('statRevenue').textContent = fmtR(totalRevenue);
+
     if (!slides.length) {
-      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><i class="fas fa-images"></i><p>${filter ? 'No slides match your search.' : 'No slides yet. Add your first slide!'}</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><i class="fas fa-images"></i><p>${filter ? 'No slides match your search.' : 'No slides yet. Add your first slide!'}</p></div></td></tr>`;
       return;
     }
 
@@ -1350,6 +1376,16 @@
         ? `<div class="thumb-video" title="${esc(s.video_url)}"><i class="fas fa-play"></i></div>`
         : (s.image_url ? `<img class="thumb" src="${esc(s.image_url)}" onclick="window.open('${esc(s.image_url)}')">` : '—');
       const isActive = !!s.is_active;
+
+      // CPM display with effective rate fallback
+      let cpmDisplay = '—';
+      if (s.cpm_rate && s.cpm_rate > 0) {
+        cpmDisplay = `<span style="color:var(--green);font-weight:600;">${fmtR(s.cpm_rate)}</span>`;
+      } else if (s.campaign_id) {
+        const camp = campaigns.find(c => c.id === s.campaign_id);
+        if (camp?.cpm_rate) cpmDisplay = `<span style="color:var(--muted);font-size:0.68rem;">${fmtR(camp.cpm_rate)} <span style="opacity:0.6;">(campaign)</span></span>`;
+      }
+
       return `<tr data-id="${s.id}">
         <td>
           <div class="order-ctrl">
@@ -1362,6 +1398,7 @@
         <td><strong>${esc(s.headline)}</strong>${s.tagline ? `<br><span class="text-muted" style="font-size:0.65rem;">${esc(s.tagline)}</span>` : ''}</td>
         <td>${mediaThumb} <span class="badge ${isVid ? 'badge-video' : 'badge-image'}" style="margin-left:4px;">${isVid ? '▶ Video' : '🖼 Image'}</span></td>
         <td>${isVid ? '<span class="text-muted">Auto</span>' : `${s.duration_seconds || 60}s`}</td>
+        <td>${cpmDisplay}</td>
         <td><span class="text-muted" style="font-size:0.65rem;">${s.campaign_id ? `#${String(s.campaign_id).substring(0,6)}…` : '—'}</span></td>
         <td><div class="toggle ${isActive ? 'on' : ''}" data-id="${s.id}" data-active="${isActive}"></div></td>
         <td>
@@ -1419,6 +1456,7 @@
     document.getElementById('imagePreview').style.display = 'none';
     document.getElementById('videoPreview').style.display = 'none';
     document.getElementById('duration').value = '60';
+    document.getElementById('slideCpm').value = '';
     document.getElementById('displayOrder').value = '';
     document.getElementById('isActive').checked = true;
     document.getElementById('startsAt').value = '';
@@ -1444,6 +1482,7 @@
       document.getElementById('headline').value = data.headline || '';
       document.getElementById('tagline').value = data.tagline || '';
       document.getElementById('duration').value = data.duration_seconds || 60;
+      document.getElementById('slideCpm').value = data.cpm_rate != null ? data.cpm_rate : '';
       document.getElementById('displayOrder').value = data.display_order || '';
       document.getElementById('isActive').checked = !!data.is_active;
       document.getElementById('startsAt').value = data.starts_at ? data.starts_at.slice(0,16) : '';
@@ -1532,6 +1571,7 @@
       starts_at: document.getElementById('startsAt').value ? new Date(document.getElementById('startsAt').value).toISOString() : null,
       ends_at: document.getElementById('endsAt').value ? new Date(document.getElementById('endsAt').value).toISOString() : null,
       campaign_id: document.getElementById('campaignId').value || null,
+      cpm_rate: parseFloat(document.getElementById('slideCpm').value) || null,
       updated_at: new Date()
     };
 
@@ -1587,22 +1627,24 @@
     document.getElementById('addCampaignBtn').style.display = hasCamp ? '' : 'none';
     const tbody = document.getElementById('campaignsTbody');
     if (!hasCamp) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><i class="fas fa-bullhorn"></i><p>Table <code>kiosk_ad_campaigns</code> not found.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-bullhorn"></i><p>Table <code>kiosk_ad_campaigns</code> not found.</p></div></td></tr>`;
       return;
     }
     const { data, error } = await supabase.from('kiosk_ad_campaigns').select('*').order('created_at', { ascending: false });
     campaigns = data || [];
     if (error || !campaigns.length) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><i class="fas fa-bullhorn"></i><p>No campaigns yet.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-bullhorn"></i><p>No campaigns yet.</p></div></td></tr>`;
       return;
     }
     tbody.innerHTML = campaigns.map(c => {
       const linked = allSlides.filter(s => s.campaign_id === c.id).length;
+      const revenue = c.total_revenue != null ? c.total_revenue : 0;
       return `<tr>
         <td><strong>${esc(c.name || c.campaign_name)}</strong></td>
         <td>${esc(c.advertiser_name || c.advertiser || '—')}</td>
         <td>${c.cpm_rate != null ? fmtR(c.cpm_rate) : '—'}</td>
         <td>${c.budget != null ? fmtR(c.budget) : '—'}</td>
+        <td style="color:var(--green);font-weight:700;">${fmtR(revenue)}</td>
         <td><span class="badge badge-sponsor">${linked}</span></td>
         <td>
           <div class="actions">
@@ -1962,8 +2004,17 @@
     }
 
     const slides = allSlides.length ? allSlides : await loadSlides();
+
+    // Build slide map with effective CPM (slide CPM → campaign CPM fallback)
     const slideMap = {};
-    slides.forEach(s => slideMap[s.id] = s);
+    slides.forEach(s => {
+      let cpm = s.cpm_rate || 0;
+      if (cpm === 0 && s.campaign_id) {
+        const campaign = campaigns.find(c => c.id === s.campaign_id);
+        cpm = campaign?.cpm_rate || 0;
+      }
+      slideMap[s.id] = { ...s, effective_cpm: cpm };
+    });
 
     const countByAd = {};
     todayImps.forEach(imp => { countByAd[imp.ad_id] = (countByAd[imp.ad_id] || 0) + 1; });
@@ -1972,7 +2023,7 @@
     const activeSlides = slides.filter(s => s.is_active).length;
     let totalRev = 0;
     Object.entries(countByAd).forEach(([adId, cnt]) => {
-      const cpm = slideMap[adId]?.cpm_rate || 0;
+      const cpm = slideMap[adId]?.effective_cpm || 0;
       totalRev += (cnt / 1000) * cpm;
     });
 
@@ -2017,15 +2068,15 @@
     // Revenue list
     const revContainer = document.getElementById('dashRevenueList');
     const revSorted = Object.entries(countByAd).sort((a,b) => {
-      const cpmA = slideMap[a[0]]?.cpm_rate || 0;
-      const cpmB = slideMap[b[0]]?.cpm_rate || 0;
+      const cpmA = slideMap[a[0]]?.effective_cpm || 0;
+      const cpmB = slideMap[b[0]]?.effective_cpm || 0;
       return (b[1]/1000*cpmB) - (a[1]/1000*cpmA);
     }).slice(0,5);
     if (revSorted.length) {
       revContainer.innerHTML = revSorted.map(([adId, cnt]) => {
         const s = slideMap[adId];
         const name = s ? esc(s.headline) : esc(adId).substring(0,8);
-        const cpm = s?.cpm_rate || 0;
+        const cpm = s?.effective_cpm || 0;
         const rev = (cnt/1000) * cpm;
         return `<div class="dash-activity-item" style="display:flex;justify-content:space-between;">
           <div class="details"><strong>${name}</strong><br><span style="font-size:0.6rem;color:var(--muted);">${fmt(cnt)} imps</span></div>
