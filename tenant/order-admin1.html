@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Menu Manager | Product Images</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+    }
+    .iframe-module {
+      width: 100%;
+      background: #f5f7fb;
+      padding: 24px;
+    }
+
+    /* ===== RED LINE STATS (matching lockers/shisha/event manager) ===== */
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 28px;
+      padding: 1.2rem 1.8rem;
+      flex: 1;
+      min-width: 160px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      border: 1px solid #edf2f7;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: #E30613;
+    }
+    .stat-card i {
+      font-size: 2rem;
+      color: #E30613;
+      margin-bottom: 0.5rem;
+    }
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748b;
+      margin-top: 0.25rem;
+    }
+
+    /* Add product panel */
+    .add-product-panel {
+      background: white;
+      border-radius: 32px;
+      padding: 28px;
+      margin-bottom: 32px;
+      border: 1px solid #edf2f7;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    }
+    .add-product-panel h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #1e293b;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .form-grid input, .form-grid select {
+      padding: 12px 16px;
+      border: 1px solid #e2e8f0;
+      border-radius: 60px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      outline: none;
+      background: white;
+      transition: 0.2s;
+    }
+    .form-grid input:focus, .form-grid select:focus {
+      border-color: #E30613;
+      box-shadow: 0 0 0 3px rgba(227,6,19,0.1);
+    }
+    .image-upload-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      background: #FAFAFA;
+      padding: 16px;
+      border-radius: 24px;
+    }
+    .image-preview {
+      width: 60px;
+      height: 60px;
+      border-radius: 16px;
+      object-fit: cover;
+      background: #e0e0e0;
+      border: 1px solid #e2e8f0;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      padding: 12px 24px;
+      border-radius: 60px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+    }
+    .btn-primary {
+      background: #E30613;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #B5040F;
+      transform: translateY(-2px);
+    }
+    .btn-danger {
+      background: #dc2626;
+      color: white;
+    }
+    .btn-secondary {
+      background: #F1F5F9;
+      color: #1e293b;
+      border: 1px solid #e2e8f0;
+    }
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 0.75rem;
+    }
+
+    /* Products Table – professional redesign */
+    .products-table {
+      background: white;
+      border-radius: 32px;
+      overflow-x: auto;
+      border: 1px solid #edf2f7;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    }
+    .products-table-header {
+      display: grid;
+      grid-template-columns: 50px 1.5fr 2fr 100px 120px 70px 80px 70px;
+      background: #fafcff;
+      padding: 16px 20px;
+      font-weight: 700;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      border-bottom: 1px solid #edf2f7;
+      gap: 8px;
+    }
+    .product-row {
+      display: grid;
+      grid-template-columns: 50px 1.5fr 2fr 100px 120px 70px 80px 70px;
+      padding: 12px 20px;
+      align-items: center;
+      border-bottom: 1px solid #f0f0f0;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .product-row:hover {
+      background: #FEF5F5;
+    }
+    .product-row input, .product-row select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 40px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      background: white;
+    }
+    .product-row input:focus, .product-row select:focus {
+      border-color: #E30613;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(227,6,19,0.1);
+    }
+    .image-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      object-fit: cover;
+      cursor: pointer;
+      border: 1px solid #e2e8f0;
+      transition: transform 0.1s;
+    }
+    .image-thumb:hover {
+      transform: scale(1.05);
+      border-color: #E30613;
+    }
+    .search-bar {
+      margin-bottom: 24px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .search-bar input {
+      flex: 1;
+      padding: 14px 20px;
+      border: 1px solid #e2e8f0;
+      border-radius: 60px;
+      background: white;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+    }
+    .search-bar input:focus {
+      border-color: #E30613;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(227,6,19,0.1);
+    }
+
+    /* Custom Modal (replaces confirm) */
+    .custom-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s ease;
+    }
+    .custom-modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+    .custom-modal {
+      background: white;
+      border-radius: 32px;
+      max-width: 400px;
+      width: 90%;
+      padding: 28px 24px;
+      text-align: center;
+      border: 2px solid #E30613;
+      box-shadow: 0 20px 35px -12px rgba(0,0,0,0.2);
+      transform: scale(0.95);
+      transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    }
+    .custom-modal-overlay.active .custom-modal {
+      transform: scale(1);
+    }
+    .custom-modal i {
+      font-size: 48px;
+      color: #E30613;
+      margin-bottom: 16px;
+    }
+    .custom-modal h3 {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      color: #1e293b;
+    }
+    .custom-modal p {
+      font-size: 0.9rem;
+      color: #475569;
+      margin-bottom: 24px;
+      line-height: 1.4;
+    }
+    .custom-modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .custom-modal-btn {
+      padding: 10px 24px;
+      border-radius: 60px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: 0.2s;
+      font-size: 0.85rem;
+    }
+    .custom-modal-btn.confirm {
+      background: #E30613;
+      color: white;
+    }
+    .custom-modal-btn.cancel {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+    .custom-modal-btn.confirm:active, .custom-modal-btn.cancel:active {
+      transform: scale(0.96);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: #1e293b;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 60px;
+      font-weight: 500;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      font-size: 0.8rem;
+    }
+    .toast.show { opacity: 1; }
+    .toast.success { background: #059669; }
+    .toast.error { background: #E30613; }
+
+    .upload-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid white;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .image-upload-inline { display: flex; gap: 8px; align-items: center; }
+  </style>
+</head>
+<body>
+<div class="iframe-module">
+  <div id="adminApp">
+    <!-- Updated Stats Row (red line style) -->
+    <div class="stats-row">
+      <div class="stat-card"><i class="fas fa-utensils"></i><div class="stat-number">{{ products.length }}</div><div class="stat-label">Total Products</div></div>
+      <div class="stat-card"><i class="fas fa-wine-bottle"></i><div class="stat-number">{{ alcoholCount }}</div><div class="stat-label">Alcohol Items</div></div>
+      <div class="stat-card"><i class="fas fa-droplet"></i><div class="stat-number">{{ nonAlcoholCount }}</div><div class="stat-label">Non-Alcohol</div></div>
+      <div class="stat-card"><i class="fas fa-drumstick-bite"></i><div class="stat-number">{{ butcherCount }}</div><div class="stat-label">Butcher Items</div></div>
+    </div>
+
+    <div class="add-product-panel">
+      <h2><i class="fas fa-plus-circle"></i> Add New Product</h2>
+      <div class="form-grid">
+        <input type="text" v-model="newProduct.name" placeholder="Product name">
+        <input type="text" v-model="newProduct.description" placeholder="Description">
+        <input type="number" v-model="newProduct.price" placeholder="Price (R)">
+        <select v-model="newProduct.category">
+          <option value="beers">Beers</option>
+          <option value="champagne">Champagne</option>
+          <option value="ciders">Ciders</option>
+          <option value="cognac">Cognac</option>
+          <option value="gin">Gin</option>
+          <option value="liqueur">Liqueur</option>
+          <option value="soft drinks">Soft Drinks</option>
+          <option value="sparkling wine">Sparkling Wine</option>
+          <option value="tequila">Tequila</option>
+          <option value="vodka">Vodka</option>
+          <option value="whiskey">Whiskey</option>
+          <option value="butcher">Butcher</option>
+          <option value="shisha">Shisha</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="image-upload-row">
+        <label class="btn-secondary" style="margin:0; cursor:pointer;">
+          <i class="fas fa-cloud-upload-alt"></i> Upload Image
+          <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" @change="handleNewProductImage" style="display:none;">
+        </label>
+        <div v-if="newProduct.imagePreview" style="display:flex; align-items:center; gap:10px;">
+          <img :src="newProduct.imagePreview" class="image-preview" alt="preview">
+          <button class="btn-danger btn-sm" @click="clearNewProductImage" style="padding:4px 12px;"><i class="fas fa-times"></i> Remove</button>
+        </div>
+        <span v-else style="color:#aaa; font-size:12px;"><i class="fas fa-info-circle"></i> Upload product image (JPEG, PNG, max 2MB)</span>
+      </div>
+      <div class="checkbox-row"><label><input type="checkbox" v-model="newProduct.alcohol"> <i class="fas fa-wine-bottle"></i> Contains Alcohol</label></div>
+      <button class="btn btn-primary" @click="addProduct" :disabled="uploadingNewProduct">
+        <span v-if="uploadingNewProduct" class="upload-spinner"></span>
+        <i v-else class="fas fa-plus"></i>
+        {{ uploadingNewProduct ? 'Uploading...' : 'Add Product' }}
+      </button>
+    </div>
+
+    <div class="search-bar">
+      <i class="fas fa-search" style="color:#8A8A9A;"></i>
+      <input type="text" v-model="searchQuery" placeholder="Search products...">
+      <button class="btn btn-secondary" @click="refreshData"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+
+    <div class="products-table">
+      <div class="products-table-header">
+        <span>ID</span><span>Name</span><span>Description</span><span>Price</span><span>Category</span><span><i class="fas fa-wine-bottle"></i></span><span>Image</span><span>Actions</span>
+      </div>
+      <div v-for="product in filteredProducts" :key="product.id" class="product-row">
+        <span style="font-size:0.7rem; color:#64748b;">{{ product.id }}</span>
+        <input type="text" v-model="product.name" @change="saveProduct(product)">
+        <input type="text" v-model="product.description" @change="saveProduct(product)">
+        <input type="number" v-model="product.price" @change="saveProduct(product)" step="1">
+        <select v-model="product.category" @change="saveProduct(product)">
+          <option value="beers">Beers</option>
+          <option value="champagne">Champagne</option>
+          <option value="ciders">Ciders</option>
+          <option value="cognac">Cognac</option>
+          <option value="gin">Gin</option>
+          <option value="liqueur">Liqueur</option>
+          <option value="soft drinks">Soft Drinks</option>
+          <option value="sparkling wine">Sparkling Wine</option>
+          <option value="tequila">Tequila</option>
+          <option value="vodka">Vodka</option>
+          <option value="whiskey">Whiskey</option>
+          <option value="butcher">Butcher</option>
+          <option value="shisha">Shisha</option>
+          <option value="other">Other</option>
+        </select>
+        <label style="display:flex;align-items:center; justify-content:center;"><input type="checkbox" v-model="product.alcohol" @change="saveProduct(product)"></label>
+        <div class="image-upload-inline">
+          <img :src="getValidImageUrl(product.image)" class="image-thumb" @click="triggerImageUploadForProduct(product)" title="Click to change image">
+          <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" :ref="'fileInput'+product.id" style="display:none;" @change="handleProductImageChange($event, product)">
+        </div>
+        <div class="action-buttons">
+          <button class="btn btn-danger" style="padding:6px 12px; font-size:0.75rem;" @click="confirmDelete(product.id, product.name)"><i class="fas fa-trash-alt"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Modal -->
+    <div id="confirmModal" class="custom-modal-overlay">
+      <div class="custom-modal">
+        <i class="fas fa-exclamation-triangle"></i>
+        <h3>Delete Product</h3>
+        <p id="modalMessage">Are you sure?</p>
+        <div class="custom-modal-buttons">
+          <button class="custom-modal-btn cancel" id="modalCancelBtn">Cancel</button>
+          <button class="custom-modal-btn confirm" id="modalConfirmBtn">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" :class="[toast.type, { show: toast.visible }]"><i :class="toast.icon"></i> {{ toast.text }}</div>
+  </div>
+</div>
+
+<script>
+  let supabaseClient = null;
+  const STORAGE_BUCKET = 'product-images';
+
+  // Modal management (replaces confirm)
+  let modalResolver = null;
+  const modalOverlay = document.getElementById('confirmModal');
+  const modalMessage = document.getElementById('modalMessage');
+  const confirmBtn = document.getElementById('modalConfirmBtn');
+  const cancelBtn = document.getElementById('modalCancelBtn');
+
+  function showConfirm(message) {
+    return new Promise((resolve) => {
+      modalMessage.innerText = message;
+      modalOverlay.classList.add('active');
+      modalResolver = resolve;
+    });
+  }
+
+  function closeModal(confirmed) {
+    modalOverlay.classList.remove('active');
+    if (modalResolver) {
+      modalResolver(confirmed);
+      modalResolver = null;
+    }
+  }
+
+  confirmBtn.onclick = () => closeModal(true);
+  cancelBtn.onclick = () => closeModal(false);
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closeModal(false);
+  });
+
+  async function initSupabase() {
+    try {
+      const module = await import('../config/supabase.js');
+      supabaseClient = module.default || module.supabase;
+      if (!supabaseClient) throw new Error('No supabase client exported');
+    } catch (err) {
+      console.error('Failed to load supabase config:', err);
+      alert('Could not connect to Supabase. Please check that ../config/supabase.js exists');
+    }
+  }
+
+  function normalizeCategory(cat) {
+    if (!cat) return 'other';
+    const lower = cat.toLowerCase();
+    // Only categories that exist in DB (from your list)
+    const validCategories = new Set([
+      'beers', 'champagne', 'ciders', 'cognac', 'gin', 'liqueur',
+      'soft drinks', 'sparkling wine', 'tequila', 'vodka', 'whiskey',
+      'butcher', 'shisha', 'other'
+    ]);
+    if (validCategories.has(lower)) return lower;
+    // Fallback for any legacy data that might still exist
+    return 'other';
+  }
+
+  function generateSafeFileName(productName, fileExt) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const safeName = (productName || 'product').replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+    return `products/${timestamp}-${random}-${safeName}.${fileExt}`;
+  }
+
+  new Vue({
+    el: '#adminApp',
+    data() {
+      return {
+        products: [],
+        searchQuery: '',
+        newProduct: { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null },
+        toast: { visible: false, text: '', type: '', icon: '' },
+        toastTimer: null,
+        uploadingNewProduct: false,
+        uploadingProducts: new Set(),
+        pendingDeleteId: null,
+        pendingDeleteName: ''
+      };
+    },
+    computed: {
+      filteredProducts() {
+        if (!this.searchQuery) return this.products;
+        const q = this.searchQuery.toLowerCase();
+        return this.products.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
+      },
+      alcoholCount() { return this.products.filter(p => p.alcohol).length; },
+      nonAlcoholCount() { return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length; },
+      butcherCount() { return this.products.filter(p => p.category === 'butcher').length; }
+    },
+    async mounted() {
+      await initSupabase();
+      if (supabaseClient) {
+        await this.ensureStorageBucket();
+        await this.loadProducts();
+      }
+    },
+    methods: {
+      showToast(text, type = 'info') {
+        if (this.toastTimer) clearTimeout(this.toastTimer);
+        const icons = { success: 'fas fa-check-circle', error: 'fas fa-exclamation-circle', info: 'fas fa-info-circle' };
+        this.toast = { visible: true, text, type, icon: icons[type] || icons.info };
+        this.toastTimer = setTimeout(() => { this.toast.visible = false; }, 3000);
+      },
+
+      getValidImageUrl(img) {
+        if (!img) return 'https://placehold.co/400x400?text=No+Image';
+        if (img.startsWith('http://') || img.startsWith('https://')) return img;
+        if (img.startsWith('data:image')) return img;
+        return 'https://placehold.co/400x400?text=Invalid+URL';
+      },
+
+      async ensureStorageBucket() {
+        try {
+          const { data: buckets } = await supabaseClient.storage.listBuckets();
+          const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET);
+          if (!bucketExists) {
+            await supabaseClient.storage.createBucket(STORAGE_BUCKET, {
+              public: true,
+              allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+              fileSizeLimit: 2097152
+            });
+            this.showToast('Storage bucket created', 'success');
+          }
+        } catch (err) {
+          console.warn('Bucket check failed:', err);
+        }
+      },
+
+      async uploadToStorage(file, productName) {
+        if (!supabaseClient) throw new Error('Supabase not connected');
+        if (!file.type.startsWith('image/')) throw new Error('Please upload an image file');
+        if (file.size > 2 * 1024 * 1024) throw new Error('Image must be less than 2MB');
+
+        const fileExt = file.name.split('.').pop();
+        const filePath = generateSafeFileName(productName, fileExt);
+        
+        const { error } = await supabaseClient.storage.from(STORAGE_BUCKET).upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+        if (error) throw error;
+        
+        const { data: { publicUrl } } = supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+        return publicUrl;
+      },
+
+      async handleNewProductImage(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        this.uploadingNewProduct = true;
+        try {
+          const publicUrl = await this.uploadToStorage(file, this.newProduct.name || 'product');
+          this.newProduct.image = publicUrl;
+          this.newProduct.imagePreview = publicUrl;
+          this.showToast('Image uploaded!', 'success');
+        } catch (err) {
+          this.showToast(err.message || 'Upload failed', 'error');
+        } finally {
+          this.uploadingNewProduct = false;
+          e.target.value = '';
+        }
+      },
+
+      clearNewProductImage() {
+        this.newProduct.image = '';
+        this.newProduct.imagePreview = null;
+      },
+
+      triggerImageUploadForProduct(product) {
+        const input = this.$refs['fileInput' + product.id];
+        if (input && input[0]) input[0].click();
+      },
+
+      async handleProductImageChange(e, product) {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (this.uploadingProducts.has(product.id)) {
+          this.showToast('Upload in progress', 'error');
+          return;
+        }
+        this.uploadingProducts.add(product.id);
+        try {
+          const publicUrl = await this.uploadToStorage(file, product.name);
+          product.image = publicUrl;
+          await this.saveProduct(product);
+          this.showToast('Image updated!', 'success');
+        } catch (err) {
+          this.showToast(err.message || 'Update failed', 'error');
+        } finally {
+          this.uploadingProducts.delete(product.id);
+          e.target.value = '';
+        }
+      },
+
+      async loadProducts() {
+        if (!supabaseClient) return;
+        const { data, error } = await supabaseClient.from('products').select('*').order('id', { ascending: true });
+        if (error) {
+          this.showToast('Error loading products', 'error');
+          return;
+        }
+        this.products = (data || []).map(p => ({
+          ...p,
+          category: normalizeCategory(p.category)
+        }));
+        this.showToast('Products loaded', 'success');
+      },
+
+      async saveProduct(product) {
+        if (!supabaseClient) return;
+        const normalizedCat = normalizeCategory(product.category);
+        if (normalizedCat !== product.category) product.category = normalizedCat;
+        
+        const { error } = await supabaseClient.from('products').update({
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          category: product.category,
+          alcohol: product.alcohol,
+          image: product.image
+        }).eq('id', product.id);
+        
+        if (error) {
+          this.showToast(`Update failed: ${error.message}`, 'error');
+        } else {
+          this.showToast('Product updated', 'success');
+        }
+      },
+
+      async addProduct() {
+        if (!supabaseClient) return;
+        if (!this.newProduct.name.trim()) {
+          this.showToast('Product name required', 'error');
+          return;
+        }
+        const newItem = {
+          name: this.newProduct.name,
+          description: this.newProduct.description,
+          price: parseFloat(this.newProduct.price) || 0,
+          category: normalizeCategory(this.newProduct.category),
+          alcohol: this.newProduct.alcohol,
+          image: this.newProduct.image || ''
+        };
+        const { data, error } = await supabaseClient.from('products').insert([newItem]).select();
+        if (error) {
+          this.showToast('Add failed: ' + error.message, 'error');
+          return;
+        }
+        this.products.push({ ...data[0], category: normalizeCategory(data[0].category) });
+        this.newProduct = { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null };
+        this.showToast('Product added successfully', 'success');
+      },
+
+      async confirmDelete(id, name) {
+        const confirmed = await showConfirm(`Delete "${name}"? This action cannot be undone.`);
+        if (confirmed) {
+          await this.deleteProduct(id);
+        }
+      },
+
+      async deleteProduct(id) {
+        if (!supabaseClient) return;
+        const { error } = await supabaseClient.from('products').delete().eq('id', id);
+        if (error) {
+          this.showToast('Delete failed: ' + error.message, 'error');
+        } else {
+          this.products = this.products.filter(p => p.id !== id);
+          this.showToast('Product deleted', 'success');
+        }
+      },
+
+      refreshData() {
+        this.loadProducts();
+      }
+    }
+  });
+</script>
+</body>
+</html>
