@@ -2,268 +2,478 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Product Manager · Admin</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
     :root {
       --red: #E30613;
-      --red-glow: rgba(227,6,19,0.35);
-      --red-dim: rgba(227,6,19,0.1);
-      --red-border: rgba(227,6,19,0.22);
+      --red-glow: rgba(227,6,19,0.3);
+      --red-dim: rgba(227,6,19,0.08);
+      --red-border: rgba(227,6,19,0.3);
       --bg: #09090b;
       --s1: #111114;
       --s2: #18181c;
       --s3: #1e1e24;
+      --s4: #26262e;
       --border: rgba(255,255,255,0.07);
-      --border-b: rgba(255,255,255,0.12);
+      --border-b: rgba(255,255,255,0.14);
       --text: #f4f4f5;
+      --text-2: #a1a1aa;
       --muted: #71717a;
       --dim: #3f3f46;
       --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.1);
+      --amber: #f59e0b;
     }
+
     body {
       background: var(--bg);
       color: var(--text);
       font-family: 'Inter', sans-serif;
-      padding: 16px;
-      height: 100vh;
-      overflow: hidden;
+      min-height: 100vh;
+      overflow-x: hidden;
     }
-    .app {
+
+    [v-cloak] { display: none; }
+
+    /* ── Layout ── */
+    .layout {
       display: flex;
       flex-direction: column;
-      height: 100%;
-      max-width: 1600px;
+      height: 100vh;
+      max-width: 1440px;
       margin: 0 auto;
-      position: relative;
+      padding: 0;
     }
-    .main-header {
+
+    /* ── Topbar ── */
+    .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 16px;
+      padding: 0 24px;
+      height: 58px;
       background: var(--s1);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
-      border-radius: 12px 12px 0 0;
-      margin-bottom: 12px;
+      gap: 16px;
     }
-    .main-header h2 {
-      font-family: 'Space Grotesk', sans-serif;
-      font-weight: 600;
-      font-size: 1rem;
-      color: var(--text);
+    .topbar-brand {
       display: flex;
       align-items: center;
       gap: 10px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text);
+      letter-spacing: -0.01em;
     }
-    .main-header h2 i { color: var(--red); }
-    .header-actions { display: flex; gap: 8px; }
-    .icon-btn {
+    .topbar-brand .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red-glow);
+    }
+    .topbar-center {
+      flex: 1;
+      max-width: 380px;
+    }
+    .search-wrap {
+      position: relative;
+    }
+    .search-wrap i {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.75rem;
+      pointer-events: none;
+    }
+    .search-wrap input {
+      width: 100%;
+      padding: 8px 14px 8px 36px;
       background: var(--s3);
       border: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 0.9rem;
-      cursor: pointer;
       border-radius: 8px;
-      width: 36px;
-      height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s;
-    }
-    .icon-btn:hover { background: var(--s2); border-color: var(--border-b); color: var(--text); }
-    .icon-btn.active-toggle { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
-
-    .main-content {
-      flex: 1;
-      overflow: auto;
-      background: var(--s1);
-      border-radius: 12px;
-      padding: 16px;
-      border: 1px solid var(--border);
-    }
-    .search-bar {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-    .search-bar input {
-      flex: 1;
-      padding: 10px 16px;
-      border-radius: 40px;
-      border: 1px solid var(--border);
-      background: var(--s2);
       color: var(--text);
       font-family: 'Inter', sans-serif;
       font-size: 0.8rem;
       outline: none;
       transition: border-color 0.15s;
-      min-width: 150px;
     }
-    .search-bar input:focus { border-color: var(--red-border); }
-    .search-bar input::placeholder { color: var(--muted); }
+    .search-wrap input:focus { border-color: var(--red-border); }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Buttons ── */
     .btn {
-      padding: 8px 18px;
-      border-radius: 40px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 7px;
       font-weight: 600;
-      font-size: 0.75rem;
+      font-size: 0.76rem;
       border: none;
       cursor: pointer;
-      transition: 0.15s;
+      transition: all 0.15s;
       font-family: 'Inter', sans-serif;
+      white-space: nowrap;
     }
-    .btn-primary { background: var(--red); color: white; box-shadow: 0 0 12px var(--red-glow); }
-    .btn-primary:hover { background: #c8050f; }
-    .btn-secondary { background: var(--s3); color: var(--muted); border: 1px solid var(--border); }
-    .btn-secondary:hover { background: var(--s2); color: var(--text); }
-    .btn-danger { background: #dc2626; color: white; }
-    .btn-danger:hover { background: #b91c1c; }
-    .btn-sm { padding: 4px 12px; font-size: 0.65rem; }
-
-    .products-table {
-      width: 100%;
-      overflow-x: auto;
-    }
-    .products-table-header {
-      display: grid;
-      grid-template-columns: 40px 1.5fr 2fr 80px 120px 50px 70px 70px;
-      gap: 6px;
-      padding: 8px 12px;
-      background: var(--s2);
-      border-radius: 8px;
-      font-size: 0.6rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--red); color: #fff; box-shadow: 0 0 14px var(--red-glow); }
+    .btn-primary:hover:not(:disabled) { background: #c8050f; box-shadow: 0 0 20px var(--red-glow); }
+    .btn-ghost {
+      background: transparent;
       color: var(--muted);
-      font-weight: 700;
-      margin-bottom: 4px;
-      align-items: center;
-    }
-    .product-row {
-      display: grid;
-      grid-template-columns: 40px 1.5fr 2fr 80px 120px 50px 70px 70px;
-      gap: 6px;
-      padding: 6px 12px;
-      align-items: center;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.75rem;
-    }
-    .product-row:hover { background: var(--s2); }
-    .product-row input, .product-row select {
-      background: var(--s2);
       border: 1px solid var(--border);
-      border-radius: 30px;
-      padding: 6px 10px;
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.7rem;
-      outline: none;
-      width: 100%;
     }
-    .product-row input:focus, .product-row select:focus { border-color: var(--red-border); }
-    .product-row input[type="checkbox"] { width: auto; margin: 0 auto; }
-    .image-thumb {
-      width: 32px; height: 32px;
-      border-radius: 8px;
-      object-fit: cover;
-      cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--s2);
+    .btn-ghost:hover { background: var(--s3); color: var(--text); border-color: var(--border-b); }
+    .btn-ghost.active { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-icon {
+      width: 34px; height: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 7px;
+      font-size: 0.85rem;
     }
-    .action-buttons { display: flex; gap: 4px; }
+    .btn-sm { padding: 5px 10px; font-size: 0.7rem; }
 
+    /* ── Main body split ── */
+    .main-body {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+    }
+
+    /* ── Content area ── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Stats bar ── */
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      flex: 1;
+      min-width: 110px;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat-card .stat-val {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .stat-card .stat-label {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+    .stat-card.accent { border-left: 2px solid var(--red); }
+    .stat-card.accent-green { border-left: 2px solid var(--green); }
+
+    /* ── Add product panel ── */
     .add-panel {
       background: var(--s2);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 16px;
       border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
     }
-    .add-panel h3 {
-      font-size: 0.85rem;
+    .add-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .add-panel-head:hover { background: var(--s3); }
+    .add-panel-title {
+      font-size: 0.82rem;
       font-weight: 600;
-      margin-bottom: 12px;
       color: var(--text);
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    .add-panel h3 i { color: var(--red); }
+    .add-panel-title i { color: var(--red); }
+    .add-panel-body {
+      padding: 18px;
+    }
     .form-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 12px;
+      gap: 10px;
       margin-bottom: 12px;
     }
-    .form-grid input, .form-grid select {
-      padding: 8px 14px;
-      border-radius: 40px;
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .form-field label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .form-field input,
+    .form-field select,
+    .form-field textarea {
+      padding: 8px 12px;
+      border-radius: 7px;
       border: 1px solid var(--border);
       background: var(--s1);
       color: var(--text);
       font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-field input:focus,
+    .form-field select:focus,
+    .form-field textarea:focus { border-color: var(--red-border); }
+    .form-field input::placeholder { color: var(--muted); }
+    .form-field select option { background: var(--s2); }
+
+    .form-footer {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .img-preview-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+    .img-preview {
+      width: 44px; height: 44px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+    }
+    .img-clear {
+      position: absolute;
+      top: -6px; right: -6px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #dc2626;
+      color: #fff;
+      font-size: 0.55rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      border: none;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--text-2);
+      cursor: pointer;
+    }
+    .toggle-row input[type="checkbox"] { accent-color: var(--red); width: 14px; height: 14px; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      flex: 1;
+    }
+    .table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .table-toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .table-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      background: var(--s4);
+      color: var(--muted);
+    }
+    .filter-select {
+      padding: 6px 10px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--s3);
+      color: var(--text-2);
+      font-family: 'Inter', sans-serif;
       font-size: 0.75rem;
       outline: none;
     }
-    .form-grid input:focus, .form-grid select:focus { border-color: var(--red-border); }
-    .image-upload-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
+    .filter-select:focus { border-color: var(--red-border); }
+    .filter-select option { background: var(--s2); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
     }
-    .image-preview {
-      width: 50px; height: 50px;
-      border-radius: 12px;
+    thead tr {
+      background: var(--s3);
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    th:first-child { width: 50px; }
+    td {
+      padding: 8px 14px;
+      font-size: 0.78rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background 0.1s; }
+    tbody tr:hover { background: var(--s3); }
+    tbody tr.editing { background: rgba(227,6,19,0.04); }
+
+    .td-img {
+      width: 36px; height: 36px;
+      border-radius: 7px;
       object-fit: cover;
       border: 1px solid var(--border);
+      background: var(--s3);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .td-img:hover { opacity: 0.75; }
+
+    .inline-input {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      outline: none;
+      width: 100%;
+      transition: all 0.15s;
+    }
+    .inline-input:focus, .inline-input:hover {
+      border-color: var(--border-b);
       background: var(--s1);
     }
-    .checkbox-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .checkbox-row label { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
-
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--s2);
-      border: 1px solid var(--border);
+    .inline-select {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
       color: var(--text);
-      padding: 10px 24px;
-      border-radius: 60px;
-      font-size: 0.75rem;
-      font-weight: 500;
-      z-index: 3000;
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      outline: none;
+      width: 100%;
+      transition: all 0.15s;
+      cursor: pointer;
     }
-    .toast.show { opacity: 1; }
-    .toast.success { border-color: var(--green); }
-    .toast.error { border-color: var(--red); }
+    .inline-select:focus, .inline-select:hover {
+      border-color: var(--border-b);
+      background: var(--s1);
+    }
+    .inline-select option { background: var(--s2); }
 
+    .category-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      background: var(--s4);
+      color: var(--text-2);
+      white-space: nowrap;
+    }
+    .alc-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 0.65rem;
+      font-weight: 600;
+    }
+    .alc-yes { background: rgba(227,6,19,0.1); color: var(--red); }
+    .alc-no { background: var(--green-dim); color: var(--green); }
+
+    .row-actions { display: flex; gap: 4px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+    .empty-state i { font-size: 2rem; margin-bottom: 10px; display: block; opacity: 0.4; }
+    .empty-state p { font-size: 0.82rem; }
+
+    /* ── Dashboard Overlay (unchanged as requested) ── */
     .dashboard-overlay {
       position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; right: 0; bottom: 0;
       width: 520px;
       max-width: 93vw;
       background: var(--s1);
       border-left: 1px solid var(--border);
       z-index: 2000;
       transform: translateX(100%);
-      transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      transition: transform 0.3s cubic-bezier(0.2,0.9,0.3,1);
       overflow-y: auto;
       padding: 20px 22px 30px;
       box-shadow: -12px 0 60px rgba(0,0,0,0.6);
@@ -281,7 +491,6 @@
       font-family: 'Space Grotesk', sans-serif;
       font-size: 1rem;
       font-weight: 600;
-      color: var(--text);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -305,15 +514,14 @@
     .dash-kpi {
       background: var(--s2);
       border: 1px solid var(--border);
+      border-left: 2px solid var(--red);
       border-radius: 12px;
       padding: 14px 16px;
-      border-left: 2px solid var(--red);
     }
     .dash-kpi .val {
       font-family: 'Space Grotesk', sans-serif;
       font-size: 1.6rem;
       font-weight: 700;
-      color: var(--text);
     }
     .dash-kpi .label {
       font-size: 0.58rem;
@@ -322,9 +530,7 @@
       letter-spacing: 0.05em;
       margin-top: 2px;
     }
-    .dash-section {
-      margin-top: 18px;
-    }
+    .dash-section { margin-top: 18px; }
     .dash-section h3 {
       font-size: 0.68rem;
       font-weight: 600;
@@ -357,7 +563,6 @@
       font-family: 'Space Grotesk', sans-serif;
       font-weight: 700;
       font-size: 1.2rem;
-      color: var(--text);
     }
     .dash-stat-mini .lbl {
       font-size: 0.55rem;
@@ -365,102 +570,374 @@
       text-transform: uppercase;
     }
 
-    ::-webkit-scrollbar { width: 3px; }
-    ::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 99px; }
+    /* ── Config modal ── */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal {
+      background: var(--s2);
+      border: 1px solid var(--border-b);
+      border-radius: 14px;
+      padding: 28px 28px 24px;
+      width: 100%;
+      max-width: 440px;
+    }
+    .modal h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal h2 i { color: var(--red); }
+    .modal p { font-size: 0.78rem; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+    .modal-fields { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+    .modal-fields label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .modal-fields input {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--s1);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      outline: none;
+      margin-top: 4px;
+      transition: border-color 0.15s;
+    }
+    .modal-fields input:focus { border-color: var(--red-border); }
+    .modal-hint {
+      font-size: 0.68rem;
+      color: var(--dim);
+      margin-top: 12px;
+      text-align: center;
+    }
+    .modal-hint a { color: var(--red); text-decoration: none; }
 
-    @media (max-width: 600px) {
-      .products-table-header, .product-row {
-        grid-template-columns: 30px 1fr 1.5fr 70px 90px 40px 50px 60px;
-        font-size: 0.65rem;
-      }
-      .dashboard-overlay { width: 100vw; max-width: 100vw; }
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: var(--s2);
+      border: 1px solid var(--border-b);
+      color: var(--text);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.76rem;
+      font-weight: 500;
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.success { border-color: var(--green); }
+    .toast.success i { color: var(--green); }
+    .toast.error { border-color: var(--red); }
+    .toast.error i { color: var(--red); }
+
+    /* ── Loading ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    .loading-row td {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 99px; }
+
+    @media (max-width: 720px) {
+      .stats-row .stat-card:nth-child(n+3) { display: none; }
+      .topbar-center { display: none; }
+      th.hide-sm, td.hide-sm { display: none; }
     }
   </style>
 </head>
 <body>
-<div id="app" class="app" v-cloak>
-  <!-- Header -->
-  <div class="main-header">
-    <h2><i class="fas fa-cubes"></i> Product Manager</h2>
-    <div class="header-actions">
-      <button class="icon-btn" @click="toggleDashboard" :class="{ 'active-toggle': dashboardOpen }" title="Analytics">
-        <i class="fas fa-chart-pie"></i>
+<div id="app" v-cloak>
+
+  <!-- ── Config Modal ── -->
+  <div class="modal-bg" v-if="showConfig">
+    <div class="modal">
+      <h2><i class="fas fa-plug"></i> Connect to Supabase</h2>
+      <p>Enter your Supabase project URL and anon key. These are saved to localStorage and never sent anywhere else.</p>
+      <div class="modal-fields">
+        <div>
+          <label>Project URL</label>
+          <input type="text" v-model="configUrl" placeholder="https://xxxx.supabase.co" autocomplete="off" />
+        </div>
+        <div>
+          <label>Anon Key</label>
+          <input type="text" v-model="configKey" placeholder="eyJhbGciOiJIUzI1NiI..." autocomplete="off" />
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" @click="connectSupabase" :disabled="!configUrl || !configKey">
+        <i class="fas fa-plug"></i> Connect & Load Products
       </button>
-      <button class="icon-btn" @click="refreshData" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+      <p class="modal-hint">Find these in your Supabase dashboard under <a href="https://app.supabase.com" target="_blank">Settings → API</a></p>
     </div>
   </div>
 
-  <!-- Main Content -->
-  <div class="main-content">
-    <!-- Add Product Panel -->
-    <div class="add-panel">
-      <h3><i class="fas fa-plus-circle"></i> Add New Product</h3>
-      <div class="form-grid">
-        <input type="text" v-model="newProduct.name" placeholder="Name" />
-        <input type="text" v-model="newProduct.description" placeholder="Description" />
-        <input type="number" v-model.number="newProduct.price" placeholder="Price (R)" />
-        <select v-model="newProduct.category">
+  <div class="layout">
+    <!-- ── Topbar ── -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="dot"></span>
+        Product Manager
+      </div>
+      <div class="topbar-center">
+        <div class="search-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" v-model="searchQuery" placeholder="Search products…" />
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <select class="filter-select" v-model="filterCategory">
+          <option value="">All categories</option>
           <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
         </select>
-      </div>
-      <div class="image-upload-row">
-        <label class="btn btn-secondary" style="margin:0;cursor:pointer;">
-          <i class="fas fa-cloud-upload-alt"></i> Upload Image
-          <input type="file" accept="image/*" @change="handleNewProductImage" style="display:none;" />
-        </label>
-        <img v-if="newProduct.imagePreview" :src="newProduct.imagePreview" class="image-preview" alt="preview" />
-        <button v-if="newProduct.imagePreview" class="btn btn-danger btn-sm" @click="clearNewProductImage">
-          <i class="fas fa-times"></i>
+        <button class="btn btn-ghost btn-icon" :class="{ active: dashboardOpen }" @click="toggleDashboard" title="Analytics">
+          <i class="fas fa-chart-pie"></i>
         </button>
-        <span v-else style="color:var(--muted);font-size:0.65rem;">
-          <i class="fas fa-info-circle"></i> JPEG/PNG, max 2MB
-        </span>
+        <button class="btn btn-ghost btn-icon" @click="loadProducts" :disabled="loading" title="Refresh">
+          <span v-if="loading" class="spinner" style="border-color:rgba(255,255,255,0.2);border-top-color:var(--muted);"></span>
+          <i v-else class="fas fa-sync-alt"></i>
+        </button>
+        <button class="btn btn-ghost btn-icon" @click="showConfig = true" title="Settings">
+          <i class="fas fa-cog"></i>
+        </button>
       </div>
-      <div class="checkbox-row">
-        <label><input type="checkbox" v-model="newProduct.alcohol" /> <i class="fas fa-wine-bottle"></i> Contains Alcohol</label>
-      </div>
-      <button class="btn btn-primary" @click="addProduct" :disabled="uploadingNewProduct">
-        <span v-if="uploadingNewProduct" class="spinner" style="display:inline-block;width:14px;height:14px;border:2px solid white;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;"></span>
-        <i v-else class="fas fa-plus"></i>
-        {{ uploadingNewProduct ? 'Uploading...' : 'Add Product' }}
-      </button>
-    </div>
+    </header>
 
-    <!-- Search & Table -->
-    <div class="search-bar">
-      <input type="text" v-model="searchQuery" placeholder="Search products…" />
-      <button class="btn btn-secondary" @click="refreshData"><i class="fas fa-sync-alt"></i> Refresh</button>
-    </div>
+    <!-- ── Body ── -->
+    <div class="main-body">
+      <div class="content">
 
-    <div class="products-table">
-      <div class="products-table-header">
-        <span>ID</span><span>Name</span><span>Description</span><span>Price</span><span>Category</span><span>Alc</span><span>Image</span><span>Actions</span>
-      </div>
-      <div v-for="product in filteredProducts" :key="product.id" class="product-row">
-        <span style="color:var(--muted);font-size:0.6rem;">{{ product.id }}</span>
-        <input type="text" v-model="product.name" @change="saveProduct(product)" />
-        <input type="text" v-model="product.description" @change="saveProduct(product)" />
-        <input type="number" v-model.number="product.price" @change="saveProduct(product)" step="1" />
-        <select v-model="product.category" @change="saveProduct(product)">
-          <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
-        </select>
-        <label style="display:flex;justify-content:center;">
-          <input type="checkbox" v-model="product.alcohol" @change="saveProduct(product)" />
-        </label>
-        <div style="display:flex;gap:4px;align-items:center;">
-          <img :src="getValidImageUrl(product.image)" class="image-thumb" @click="triggerImageUpload(product)" title="Change image" />
-          <input type="file" accept="image/*" :ref="'fileInput'+product.id" style="display:none;" @change="handleProductImageChange($event, product)" />
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card accent">
+            <div class="stat-val">{{ products.length }}</div>
+            <div class="stat-label">Total Products</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val">{{ alcoholCount }}</div>
+            <div class="stat-label">Alcohol Items</div>
+          </div>
+          <div class="stat-card accent-green">
+            <div class="stat-val">{{ nonAlcoholCount }}</div>
+            <div class="stat-label">Non-Alcohol</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val">{{ categories.length }}</div>
+            <div class="stat-label">Categories</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val">{{ avgPrice }}</div>
+            <div class="stat-label">Avg Price (R)</div>
+          </div>
         </div>
-        <div class="action-buttons">
-          <button class="btn btn-danger btn-sm" @click="confirmDelete(product.id, product.name)"><i class="fas fa-trash-alt"></i></button>
+
+        <!-- Add Panel -->
+        <div class="add-panel">
+          <div class="add-panel-head" @click="addPanelOpen = !addPanelOpen">
+            <span class="add-panel-title">
+              <i class="fas fa-plus-circle"></i>
+              Add New Product
+            </span>
+            <i :class="addPanelOpen ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.75rem;"></i>
+          </div>
+          <div class="add-panel-body" v-show="addPanelOpen">
+            <div class="form-grid">
+              <div class="form-field">
+                <label>Name *</label>
+                <input type="text" v-model="newProduct.name" placeholder="Product name" />
+              </div>
+              <div class="form-field">
+                <label>Description</label>
+                <input type="text" v-model="newProduct.description" placeholder="Short description" />
+              </div>
+              <div class="form-field">
+                <label>Price (R)</label>
+                <input type="number" v-model.number="newProduct.price" placeholder="0" step="1" min="0" />
+              </div>
+              <div class="form-field">
+                <label>Category</label>
+                <select v-model="newProduct.category">
+                  <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-footer">
+              <label class="btn btn-ghost" style="cursor:pointer;margin:0;">
+                <i class="fas fa-cloud-upload-alt"></i>
+                Upload Image
+                <input type="file" accept="image/*" @change="handleNewProductImage" style="display:none;" />
+              </label>
+              <div class="img-preview-wrap" v-if="newProduct.imagePreview">
+                <img :src="newProduct.imagePreview" class="img-preview" />
+                <button class="img-clear" @click="clearNewProductImage"><i class="fas fa-times"></i></button>
+              </div>
+              <label class="toggle-row">
+                <input type="checkbox" v-model="newProduct.alcohol" />
+                <i class="fas fa-wine-bottle" style="color:var(--red);font-size:0.8rem;"></i>
+                Contains Alcohol
+              </label>
+              <button class="btn btn-primary" @click="addProduct" :disabled="uploadingNewProduct || !supabase">
+                <span v-if="uploadingNewProduct" class="spinner"></span>
+                <i v-else class="fas fa-plus"></i>
+                {{ uploadingNewProduct ? 'Saving…' : 'Add Product' }}
+              </button>
+            </div>
+          </div>
         </div>
+
+        <!-- Table -->
+        <div class="table-wrap">
+          <div class="table-toolbar">
+            <div class="table-toolbar-left">
+              <span class="table-title">Products</span>
+              <span class="badge">{{ filteredProducts.length }}</span>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th style="width:44px;">Img</th>
+                  <th>Name</th>
+                  <th class="hide-sm">Description</th>
+                  <th style="width:90px;">Price</th>
+                  <th style="width:130px;">Category</th>
+                  <th style="width:80px;">Alcohol</th>
+                  <th style="width:90px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="loading">
+                  <td colspan="8" style="text-align:center;padding:40px;color:var(--muted);">
+                    <span class="spinner" style="border-color:rgba(255,255,255,0.1);border-top-color:var(--muted);width:20px;height:20px;border-width:3px;"></span>
+                    <span style="margin-left:10px;">Loading products…</span>
+                  </td>
+                </tr>
+                <tr v-else-if="!filteredProducts.length && !loading">
+                  <td colspan="8">
+                    <div class="empty-state">
+                      <i class="fas fa-box-open"></i>
+                      <p>No products found{{ searchQuery || filterCategory ? ' matching your filters' : '' }}.</p>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-for="product in filteredProducts" :key="product.id" :class="{ editing: editingId === product.id }">
+                  <td style="color:var(--muted);font-size:0.65rem;">{{ product.id }}</td>
+                  <td>
+                    <img
+                      :src="getValidImageUrl(product.image)"
+                      class="td-img"
+                      @click="triggerImageUpload(product)"
+                      title="Click to change image"
+                      @error="$event.target.src='https://placehold.co/80x80/18181c/71717a?text=?'"
+                    />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      :ref="'img_'+product.id"
+                      style="display:none;"
+                      @change="handleProductImageChange($event, product)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="inline-input"
+                      type="text"
+                      v-model="product.name"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                    />
+                  </td>
+                  <td class="hide-sm">
+                    <input
+                      class="inline-input"
+                      type="text"
+                      v-model="product.description"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                      placeholder="—"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="inline-input"
+                      type="number"
+                      v-model.number="product.price"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                      step="1"
+                      style="max-width:80px;"
+                    />
+                  </td>
+                  <td>
+                    <select
+                      class="inline-select"
+                      v-model="product.category"
+                      @change="saveProduct(product)"
+                    >
+                      <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
+                    </select>
+                  </td>
+                  <td>
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:6px;" @change="saveProduct(product)">
+                      <input type="checkbox" v-model="product.alcohol" style="accent-color:var(--red);" />
+                      <span class="alc-pill" :class="product.alcohol ? 'alc-yes' : 'alc-no'">
+                        {{ product.alcohol ? 'Yes' : 'No' }}
+                      </span>
+                    </label>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn btn-danger btn-icon btn-sm" @click="confirmDelete(product.id, product.name)" title="Delete">
+                        <i class="fas fa-trash-alt"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
-      <div v-if="!products.length && !loading" style="text-align:center;color:var(--muted);padding:40px 0;">No products found</div>
-      <div v-if="loading" style="text-align:center;color:var(--muted);padding:40px 0;">Loading...</div>
     </div>
   </div>
 
-  <!-- Dashboard Overlay -->
+  <!-- ── Dashboard Overlay ── -->
   <div class="dashboard-overlay" :class="{ open: dashboardOpen }">
     <div class="dash-header">
       <h2><i class="fas fa-chart-pie"></i> Product Analytics</h2>
@@ -472,17 +949,14 @@
       <div class="dash-kpi"><div class="val">{{ nonAlcoholCount }}</div><div class="label">Non-Alcohol</div></div>
       <div class="dash-kpi"><div class="val">{{ butcherCount }}</div><div class="label">Butcher Items</div></div>
     </div>
-
     <div class="dash-section">
       <h3>Category Distribution</h3>
       <div class="dash-chart-wrap"><canvas id="categoryChart"></canvas></div>
     </div>
-
     <div class="dash-section">
       <h3>Alcohol vs Non-Alcohol</h3>
       <div class="dash-chart-wrap"><canvas id="alcoholChart"></canvas></div>
     </div>
-
     <div class="dash-section">
       <h3>Inventory Health</h3>
       <div class="dash-stats-mini">
@@ -493,18 +967,15 @@
     </div>
   </div>
 
-  <!-- Toast -->
-  <div class="toast" :class="{ show: toast.visible, success: toast.type==='success', error: toast.type==='error' }">
+  <!-- ── Toast ── -->
+  <div class="toast" :class="[{ show: toast.visible }, toast.type]">
     <i :class="toast.icon"></i> {{ toast.text }}
   </div>
+
 </div>
 
-<script type="module">
-import { createApp, ref, computed, onMounted, watch, nextTick } from 'https://unpkg.com/vue@2/dist/vue.esm.browser.js';
-// Import your Supabase client – adjust the path as needed
-import { supabase } from '../config/supabase.js';
-
-// ---------- Constants ----------
+<script>
+// ── Config ──────────────────────────────────────────────────────────
 const STORAGE_BUCKET = 'product-images';
 const VALID_CATEGORIES = [
   'beers', 'champagne', 'ciders', 'cognac', 'gin', 'liqueur',
@@ -512,7 +983,6 @@ const VALID_CATEGORIES = [
   'butcher', 'shisha', 'other'
 ];
 
-// ---------- Helper Functions ----------
 function normalizeCategory(cat) {
   if (!cat) return 'other';
   return VALID_CATEGORIES.includes(cat) ? cat : 'other';
@@ -525,21 +995,23 @@ function generateSafeFileName(name, ext) {
   return `products/${ts}-${rand}-${safe}.${ext}`;
 }
 
-// ---------- Vue App ----------
-const app = createApp({
+// ── Vue App ──────────────────────────────────────────────────────────
+const { createApp, nextTick } = Vue;
+
+createApp({
   data() {
+    const savedUrl = localStorage.getItem('sb_url') || '';
+    const savedKey = localStorage.getItem('sb_key') || '';
     return {
+      supabase: null,
+      showConfig: !savedUrl || !savedKey,
+      configUrl: savedUrl,
+      configKey: savedKey,
+
       products: [],
       searchQuery: '',
-      newProduct: {
-        name: '',
-        description: '',
-        price: 0,
-        category: 'beers',
-        alcohol: false,
-        image: '',
-        imagePreview: null,
-      },
+      filterCategory: '',
+      newProduct: { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null },
       toast: { visible: false, text: '', type: '', icon: '' },
       toastTimer: null,
       uploadingNewProduct: false,
@@ -548,188 +1020,146 @@ const app = createApp({
       charts: {},
       dashboardOpen: false,
       loading: false,
-      supabaseReady: false,
+      editingId: null,
+      addPanelOpen: true,
     };
   },
+
   computed: {
     filteredProducts() {
-      if (!this.searchQuery) return this.products;
-      const q = this.searchQuery.toLowerCase();
-      return this.products.filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q))
-      );
+      let list = this.products;
+      if (this.filterCategory) list = list.filter(p => p.category === this.filterCategory);
+      if (this.searchQuery) {
+        const q = this.searchQuery.toLowerCase();
+        list = list.filter(p =>
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.description || '').toLowerCase().includes(q) ||
+          (p.category || '').toLowerCase().includes(q)
+        );
+      }
+      return list;
     },
-    alcoholCount() {
-      return this.products.filter(p => p.alcohol).length;
-    },
-    nonAlcoholCount() {
-      return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length;
-    },
-    butcherCount() {
-      return this.products.filter(p => p.category === 'butcher').length;
-    },
+    alcoholCount() { return this.products.filter(p => p.alcohol).length; },
+    nonAlcoholCount() { return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length; },
+    butcherCount() { return this.products.filter(p => p.category === 'butcher').length; },
     premiumPercent() {
       if (!this.products.length) return 0;
-      const count = this.products.filter(p => p.price > 100).length;
-      return Math.round((count / this.products.length) * 100);
+      return Math.round((this.products.filter(p => p.price > 100).length / this.products.length) * 100);
     },
     alcoholPercent() {
       if (!this.products.length) return 0;
       return Math.round((this.alcoholCount / this.products.length) * 100);
     },
+    avgPrice() {
+      if (!this.products.length) return '0';
+      const avg = this.products.reduce((s, p) => s + (p.price || 0), 0) / this.products.length;
+      return avg.toFixed(0);
+    },
   },
+
   watch: {
     dashboardOpen(val) {
-      if (val) {
-        nextTick(() => this.renderCharts());
-      }
+      if (val) nextTick(() => this.renderCharts());
     },
   },
+
   async mounted() {
-    // Ensure Supabase client is available
-    if (!supabase) {
-      this.showToast('Supabase client not found. Check your config.', 'error');
-      return;
-    }
-    this.supabaseReady = true;
-
-    // Ensure the storage bucket exists
-    await this.ensureBucket();
-
-    // Load products
-    await this.loadProducts();
-
-    // Set up a MutationObserver to re-render charts when the overlay opens
-    const overlay = document.getElementById('app').querySelector('.dashboard-overlay');
-    if (overlay) {
-      const observer = new MutationObserver(() => {
-        if (overlay.classList.contains('open')) {
-          this.renderCharts();
-        }
-      });
-      observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    if (this.configUrl && this.configKey) {
+      this.initSupabase(this.configUrl, this.configKey);
     }
   },
+
   methods: {
-    // ----- Toast -----
+    // ── Supabase Init ──
+    initSupabase(url, key) {
+      try {
+        this.supabase = supabase.createClient(url, key);
+        return true;
+      } catch (e) {
+        this.showToast('Invalid Supabase credentials', 'error');
+        return false;
+      }
+    },
+
+    async connectSupabase() {
+      if (!this.configUrl || !this.configKey) return;
+      if (this.initSupabase(this.configUrl, this.configKey)) {
+        localStorage.setItem('sb_url', this.configUrl);
+        localStorage.setItem('sb_key', this.configKey);
+        this.showConfig = false;
+        await this.loadProducts();
+      }
+    },
+
+    // ── Toast ──
     showToast(text, type = 'info') {
       if (this.toastTimer) clearTimeout(this.toastTimer);
-      const icons = {
-        success: 'fas fa-check-circle',
-        error: 'fas fa-exclamation-circle',
-        info: 'fas fa-info-circle',
-      };
-      this.toast = {
-        visible: true,
-        text,
-        type,
-        icon: icons[type] || icons.info,
-      };
-      this.toastTimer = setTimeout(() => {
-        this.toast.visible = false;
-      }, 3000);
+      const icons = { success: 'fas fa-check-circle', error: 'fas fa-times-circle', info: 'fas fa-info-circle' };
+      this.toast = { visible: true, text, type, icon: icons[type] || icons.info };
+      this.toastTimer = setTimeout(() => { this.toast.visible = false; }, 3000);
     },
 
-    // ----- Image Helpers -----
+    // ── Image helpers ──
     getValidImageUrl(img) {
-      if (!img) return 'https://placehold.co/400x400?text=No+Image';
-      if (img.startsWith('http://') || img.startsWith('https://')) return img;
-      if (img.startsWith('data:image')) return img;
-      return 'https://placehold.co/400x400?text=Invalid+URL';
+      if (!img) return 'https://placehold.co/80x80/18181c/71717a?text=?';
+      if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) return img;
+      return 'https://placehold.co/80x80/18181c/71717a?text=?';
     },
 
-    // ----- Supabase Storage -----
-    async ensureBucket() {
-      if (!supabase) return;
-      try {
-        const { data: buckets, error } = await supabase.storage.listBuckets();
-        if (error) throw error;
-        const exists = buckets.some(b => b.name === STORAGE_BUCKET);
-        if (!exists) {
-          const { error: createError } = await supabase.storage.createBucket(STORAGE_BUCKET, {
-            public: true,
-            allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
-            fileSizeLimit: 2097152,
-          });
-          if (createError) throw createError;
-        }
-      } catch (err) {
-        console.warn('Bucket check failed:', err);
-        // Non-critical, continue
-      }
-    },
-
+    // ── Storage ──
     async uploadToStorage(file, productName) {
-      if (!supabase) throw new Error('Supabase client not available');
+      if (!this.supabase) throw new Error('Not connected');
       if (!file.type.startsWith('image/')) throw new Error('File must be an image');
       if (file.size > 2 * 1024 * 1024) throw new Error('Max file size is 2MB');
-
       const ext = file.name.split('.').pop();
       const path = generateSafeFileName(productName, ext);
-      const { error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path, file, { cacheControl: '3600', upsert: true });
+      const { error } = await this.supabase.storage.from(STORAGE_BUCKET).upload(path, file, { cacheControl: '3600', upsert: true });
       if (error) throw error;
-
-      const { data: { publicUrl } } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      const { data: { publicUrl } } = this.supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
       return publicUrl;
     },
 
-    // ----- Product CRUD -----
+    // ── Load ──
     async loadProducts() {
-      if (!supabase) return;
+      if (!this.supabase) { this.showToast('Connect to Supabase first', 'error'); return; }
       this.loading = true;
       try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .order('id', { ascending: true });
+        const { data, error } = await this.supabase.from('products').select('*').order('id', { ascending: true });
         if (error) throw error;
-        this.products = (data || []).map(p => ({
-          ...p,
-          category: normalizeCategory(p.category),
-        }));
-        this.showToast('Products loaded', 'success');
+        this.products = (data || []).map(p => ({ ...p, category: normalizeCategory(p.category) }));
+        this.showToast(`${this.products.length} products loaded`, 'success');
+        if (this.dashboardOpen) nextTick(() => this.renderCharts());
       } catch (err) {
-        this.showToast('Failed to load products: ' + err.message, 'error');
-        console.error(err);
+        this.showToast('Load failed: ' + err.message, 'error');
       } finally {
         this.loading = false;
-        // Re-render charts if dashboard is open
-        if (this.dashboardOpen) this.renderCharts();
       }
     },
 
+    // ── Save (update) ──
     async saveProduct(product) {
-      if (!supabase) return;
+      if (!this.supabase) return;
       product.category = normalizeCategory(product.category);
       try {
-        const { error } = await supabase
-          .from('products')
-          .update({
-            name: product.name,
-            description: product.description,
-            price: product.price,
-            category: product.category,
-            alcohol: product.alcohol,
-            image: product.image,
-          })
-          .eq('id', product.id);
+        const { error } = await this.supabase.from('products').update({
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          category: product.category,
+          alcohol: product.alcohol,
+          image: product.image,
+        }).eq('id', product.id);
         if (error) throw error;
-        this.showToast('Product updated', 'success');
-        if (this.dashboardOpen) this.renderCharts();
+        this.showToast('Saved', 'success');
       } catch (err) {
-        this.showToast('Update failed: ' + err.message, 'error');
+        this.showToast('Save failed: ' + err.message, 'error');
       }
     },
 
+    // ── Add ──
     async addProduct() {
-      if (!supabase) return;
-      if (!this.newProduct.name.trim()) {
-        this.showToast('Product name is required', 'error');
-        return;
-      }
+      if (!this.supabase) { this.showToast('Connect to Supabase first', 'error'); return; }
+      if (!this.newProduct.name.trim()) { this.showToast('Product name is required', 'error'); return; }
       const item = {
         name: this.newProduct.name.trim(),
         description: this.newProduct.description.trim(),
@@ -739,57 +1169,35 @@ const app = createApp({
         image: this.newProduct.image || '',
       };
       try {
-        const { data, error } = await supabase
-          .from('products')
-          .insert([item])
-          .select();
+        const { data, error } = await this.supabase.from('products').insert([item]).select();
         if (error) throw error;
-        const newProduct = { ...data[0], category: normalizeCategory(data[0].category) };
-        this.products.push(newProduct);
-        this.resetNewProductForm();
+        this.products.push({ ...data[0], category: normalizeCategory(data[0].category) });
+        this.newProduct = { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null };
         this.showToast('Product added', 'success');
-        if (this.dashboardOpen) this.renderCharts();
+        if (this.dashboardOpen) nextTick(() => this.renderCharts());
       } catch (err) {
         this.showToast('Add failed: ' + err.message, 'error');
       }
     },
 
-    resetNewProductForm() {
-      this.newProduct = {
-        name: '',
-        description: '',
-        price: 0,
-        category: 'beers',
-        alcohol: false,
-        image: '',
-        imagePreview: null,
-      };
-    },
-
+    // ── Delete ──
     confirmDelete(id, name) {
-      if (confirm(`Delete "${name}"? This action cannot be undone.`)) {
-        this.deleteProduct(id);
-      }
+      if (confirm(`Delete "${name}"?\nThis cannot be undone.`)) this.deleteProduct(id);
     },
-
     async deleteProduct(id) {
-      if (!supabase) return;
+      if (!this.supabase) return;
       try {
-        const { error } = await supabase.from('products').delete().eq('id', id);
+        const { error } = await this.supabase.from('products').delete().eq('id', id);
         if (error) throw error;
         this.products = this.products.filter(p => p.id !== id);
         this.showToast('Product deleted', 'success');
-        if (this.dashboardOpen) this.renderCharts();
+        if (this.dashboardOpen) nextTick(() => this.renderCharts());
       } catch (err) {
         this.showToast('Delete failed: ' + err.message, 'error');
       }
     },
 
-    refreshData() {
-      this.loadProducts();
-    },
-
-    // ----- Image Upload Handlers -----
+    // ── Image upload ──
     async handleNewProductImage(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -806,25 +1214,17 @@ const app = createApp({
         e.target.value = '';
       }
     },
-
-    clearNewProductImage() {
-      this.newProduct.image = '';
-      this.newProduct.imagePreview = null;
-    },
+    clearNewProductImage() { this.newProduct.image = ''; this.newProduct.imagePreview = null; },
 
     triggerImageUpload(product) {
-      const ref = this.$refs['fileInput' + product.id];
-      if (ref && ref[0]) ref[0].click();
+      const key = 'img_' + product.id;
+      const refs = this.$refs[key];
+      const el = Array.isArray(refs) ? refs[0] : refs;
+      if (el) el.click();
     },
-
     async handleProductImageChange(e, product) {
       const file = e.target.files[0];
       if (!file) return;
-      if (this.uploadingProducts.has(product.id)) {
-        this.showToast('Upload already in progress', 'error');
-        return;
-      }
-      this.uploadingProducts.add(product.id);
       try {
         const url = await this.uploadToStorage(file, product.name);
         product.image = url;
@@ -833,50 +1233,31 @@ const app = createApp({
       } catch (err) {
         this.showToast(err.message, 'error');
       } finally {
-        this.uploadingProducts.delete(product.id);
         e.target.value = '';
       }
     },
 
-    // ----- Charts -----
+    // ── Charts ──
+    toggleDashboard() {
+      this.dashboardOpen = !this.dashboardOpen;
+    },
     renderCharts() {
-      // Category distribution
       const catMap = {};
-      this.products.forEach(p => {
-        catMap[p.category] = (catMap[p.category] || 0) + 1;
-      });
+      this.products.forEach(p => { catMap[p.category] = (catMap[p.category] || 0) + 1; });
       const labels = Object.keys(catMap);
       const data = Object.values(catMap);
-      const colors = [
-        '#E30613', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4',
-        '#f97316', '#ec4899', '#14b8a6', '#6366f1', '#84cc16',
-        '#f43f5e', '#0ea5e9', '#d946ef', '#facc15'
-      ];
+      const colors = ['#E30613','#f59e0b','#10b981','#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6','#6366f1','#84cc16','#f43f5e','#0ea5e9','#d946ef','#facc15'];
 
       const ctx1 = document.getElementById('categoryChart');
       if (ctx1) {
         if (this.charts.category) this.charts.category.destroy();
         this.charts.category = new Chart(ctx1, {
           type: 'doughnut',
-          data: {
-            labels,
-            datasets: [{
-              data,
-              backgroundColor: colors.slice(0, labels.length),
-            }],
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: {
-                labels: { color: '#71717a', boxWidth: 8, font: { size: 9 } },
-              },
-            },
-          },
+          data: { labels, datasets: [{ data, backgroundColor: colors.slice(0, labels.length) }] },
+          options: { responsive: true, plugins: { legend: { labels: { color: '#71717a', boxWidth: 8, font: { size: 9 } } } } },
         });
       }
 
-      // Alcohol vs Non-Alcohol
       const alco = this.products.filter(p => p.alcohol).length;
       const non = this.products.length - alco;
       const ctx2 = document.getElementById('alcoholChart');
@@ -884,52 +1265,20 @@ const app = createApp({
         if (this.charts.alcohol) this.charts.alcohol.destroy();
         this.charts.alcohol = new Chart(ctx2, {
           type: 'bar',
-          data: {
-            labels: ['Alcohol', 'Non-Alcohol'],
-            datasets: [{
-              label: 'Count',
-              data: [alco, non],
-              backgroundColor: ['#E30613', '#22c55e'],
-            }],
-          },
+          data: { labels: ['Alcohol', 'Non-Alcohol'], datasets: [{ label: 'Count', data: [alco, non], backgroundColor: ['#E30613','#22c55e'] }] },
           options: {
             responsive: true,
             plugins: { legend: { display: false } },
             scales: {
-              y: {
-                ticks: { color: '#71717a', stepSize: 1 },
-                grid: { color: 'rgba(255,255,255,0.04)' },
-              },
+              y: { ticks: { color: '#71717a', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' } },
               x: { ticks: { color: '#71717a' } },
             },
           },
         });
       }
     },
-
-    // ----- Dashboard Toggle -----
-    toggleDashboard() {
-      this.dashboardOpen = !this.dashboardOpen;
-      if (this.dashboardOpen) {
-        nextTick(() => this.renderCharts());
-      }
-    },
   },
-});
-
-app.mount('#app');
-
-// Add a global spin animation (used in the template)
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-  [v-cloak] { display: none; }
-`;
-document.head.appendChild(style);
-
-console.log('✅ Product Manager ready. Supabase client:', supabase ? 'connected' : 'missing');
+}).mount('#app');
 </script>
 </body>
 </html>
