@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product Manager · Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #E30613;
+      --red-glow: rgba(227,6,19,0.3);
+      --red-dim: rgba(227,6,19,0.08);
+      --red-border: rgba(227,6,19,0.3);
+      --bg: #09090b;
+      --s1: #111114;
+      --s2: #18181c;
+      --s3: #1e1e24;
+      --s4: #26262e;
+      --border: rgba(255,255,255,0.07);
+      --border-b: rgba(255,255,255,0.14);
+      --text: #f4f4f5;
+      --text-2: #a1a1aa;
+      --muted: #71717a;
+      --dim: #3f3f46;
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.1);
+      --amber: #f59e0b;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    [v-cloak] { display: none; }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 58px;
+      background: var(--s1);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 16px;
+    }
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .topbar-brand .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red-glow);
+    }
+    .topbar-center {
+      flex: 1;
+      max-width: 380px;
+    }
+    .search-wrap {
+      position: relative;
+    }
+    .search-wrap i {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.75rem;
+      pointer-events: none;
+    }
+    .search-wrap input {
+      width: 100%;
+      padding: 8px 14px 8px 36px;
+      background: var(--s3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-wrap input:focus { border-color: var(--red-border); }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 7px;
+      font-weight: 600;
+      font-size: 0.76rem;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--red); color: #fff; box-shadow: 0 0 14px var(--red-glow); }
+    .btn-primary:hover:not(:disabled) { background: #c8050f; box-shadow: 0 0 20px var(--red-glow); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--s3); color: var(--text); border-color: var(--border-b); }
+    .btn-ghost.active { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-icon {
+      width: 34px; height: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 7px;
+      font-size: 0.85rem;
+    }
+    .btn-sm { padding: 5px 10px; font-size: 0.7rem; }
+
+    /* ── Main body split ── */
+    .main-body {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+    }
+
+    /* ── Content area ── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Stats bar ── */
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      flex: 1;
+      min-width: 110px;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat-card .stat-val {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .stat-card .stat-label {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+    .stat-card.accent { border-left: 2px solid var(--red); }
+    .stat-card.accent-green { border-left: 2px solid var(--green); }
+
+    /* ── Add product panel ── */
+    .add-panel {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .add-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .add-panel-head:hover { background: var(--s3); }
+    .add-panel-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .add-panel-title i { color: var(--red); }
+    .add-panel-body {
+      padding: 18px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .form-field label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .form-field input,
+    .form-field select,
+    .form-field textarea {
+      padding: 8px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--s1);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-field input:focus,
+    .form-field select:focus,
+    .form-field textarea:focus { border-color: var(--red-border); }
+    .form-field input::placeholder { color: var(--muted); }
+    .form-field select option { background: var(--s2); }
+
+    .form-footer {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .img-preview-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+    .img-preview {
+      width: 44px; height: 44px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+    }
+    .img-clear {
+      position: absolute;
+      top: -6px; right: -6px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #dc2626;
+      color: #fff;
+      font-size: 0.55rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      border: none;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--text-2);
+      cursor: pointer;
+    }
+    .toggle-row input[type="checkbox"] { accent-color: var(--red); width: 14px; height: 14px; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      flex: 1;
+    }
+    .table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .table-toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .table-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      background: var(--s4);
+      color: var(--muted);
+    }
+    .filter-select {
+      padding: 6px 10px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--s3);
+      color: var(--text-2);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      outline: none;
+    }
+    .filter-select:focus { border-color: var(--red-border); }
+    .filter-select option { background: var(--s2); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead tr {
+      background: var(--s3);
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    th:first-child { width: 50px; }
+    td {
+      padding: 8px 14px;
+      font-size: 0.78rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background 0.1s; }
+    tbody tr:hover { background: var(--s3); }
+    tbody tr.editing { background: rgba(227,6,19,0.04); }
+
+    .td-img {
+      width: 36px; height: 36px;
+      border-radius: 7px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: var(--s3);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .td-img:hover { opacity: 0.75; }
+
+    .inline-input {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      outline: none;
+      width: 100%;
+      transition: all 0.15s;
+    }
+    .inline-input:focus, .inline-input:hover {
+      border-color: var(--border-b);
+      background: var(--s1);
+    }
+    .inline-select {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      outline: none;
+      width: 100%;
+      transition: all 0.15s;
+      cursor: pointer;
+    }
+    .inline-select:focus, .inline-select:hover {
+      border-color: var(--border-b);
+      background: var(--s1);
+    }
+    .inline-select option { background: var(--s2); }
+
+    .category-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      background: var(--s4);
+      color: var(--text-2);
+      white-space: nowrap;
+    }
+    .alc-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 0.65rem;
+      font-weight: 600;
+    }
+    .alc-yes { background: rgba(227,6,19,0.1); color: var(--red); }
+    .alc-no { background: var(--green-dim); color: var(--green); }
+
+    .row-actions { display: flex; gap: 4px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+    .empty-state i { font-size: 2rem; margin-bottom: 10px; display: block; opacity: 0.4; }
+    .empty-state p { font-size: 0.82rem; }
+
+    /* ── Dashboard Overlay (unchanged as requested) ── */
+    .dashboard-overlay {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 520px;
+      max-width: 93vw;
+      background: var(--s1);
+      border-left: 1px solid var(--border);
+      z-index: 2000;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.2,0.9,0.3,1);
+      overflow-y: auto;
+      padding: 20px 22px 30px;
+      box-shadow: -12px 0 60px rgba(0,0,0,0.6);
+    }
+    .dashboard-overlay.open { transform: translateX(0); }
+    .dash-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dash-header h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dash-header h2 i { color: var(--red); }
+    .dash-close {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 1.5rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .dash-close:hover { color: var(--text); }
+    .dash-kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .dash-kpi {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--red);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .dash-kpi .val {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+    .dash-kpi .label {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      margin-top: 2px;
+    }
+    .dash-section { margin-top: 18px; }
+    .dash-section h3 {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+    .dash-chart-wrap {
+      background: var(--s2);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+    }
+    .dash-chart-wrap canvas { max-height: 140px; width: 100% !important; }
+    .dash-stats-mini {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .dash-stat-mini {
+      background: var(--s2);
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+    .dash-stat-mini .num {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+    .dash-stat-mini .lbl {
+      font-size: 0.55rem;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* ── Config modal ── */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal {
+      background: var(--s2);
+      border: 1px solid var(--border-b);
+      border-radius: 14px;
+      padding: 28px 28px 24px;
+      width: 100%;
+      max-width: 440px;
+    }
+    .modal h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal h2 i { color: var(--red); }
+    .modal p { font-size: 0.78rem; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+    .modal-fields { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+    .modal-fields label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .modal-fields input {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--s1);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      outline: none;
+      margin-top: 4px;
+      transition: border-color 0.15s;
+    }
+    .modal-fields input:focus { border-color: var(--red-border); }
+    .modal-hint {
+      font-size: 0.68rem;
+      color: var(--dim);
+      margin-top: 12px;
+      text-align: center;
+    }
+    .modal-hint a { color: var(--red); text-decoration: none; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: var(--s2);
+      border: 1px solid var(--border-b);
+      color: var(--text);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.76rem;
+      font-weight: 500;
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.success { border-color: var(--green); }
+    .toast.success i { color: var(--green); }
+    .toast.error { border-color: var(--red); }
+    .toast.error i { color: var(--red); }
+
+    /* ── Loading ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    .loading-row td {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 99px; }
+
+    @media (max-width: 720px) {
+      .stats-row .stat-card:nth-child(n+3) { display: none; }
+      .topbar-center { display: none; }
+      th.hide-sm, td.hide-sm { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="app" v-cloak>
+
+  <!-- ── Config Modal ── -->
+  <div class="modal-bg" v-if="showConfig">
+    <div class="modal">
+      <h2><i class="fas fa-plug"></i> Connect to Supabase</h2>
+      <p>Enter your Supabase project URL and anon key. These are saved to localStorage and never sent anywhere else.</p>
+      <div class="modal-fields">
+        <div>
+          <label>Project URL</label>
+          <input type="text" v-model="configUrl" placeholder="https://xxxx.supabase.co" autocomplete="off" />
+        </div>
+        <div>
+          <label>Anon Key</label>
+          <input type="text" v-model="configKey" placeholder="eyJhbGciOiJIUzI1NiI..." autocomplete="off" />
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" @click="connectSupabase" :disabled="!configUrl || !configKey">
+        <i class="fas fa-plug"></i> Connect & Load Products
+      </button>
+      <p class="modal-hint">Find these in your Supabase dashboard under <a href="https://app.supabase.com" target="_blank">Settings → API</a></p>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- ── Topbar ── -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="dot"></span>
+        Product Manager
+      </div>
+      <div class="topbar-center">
+        <div class="search-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" v-model="searchQuery" placeholder="Search products…" />
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <select class="filter-select" v-model="filterCategory">
+          <option value="">All categories</option>
+          <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
+        </select>
+        <button class="btn btn-ghost btn-icon" :class="{ active: dashboardOpen }" @click="toggleDashboard" title="Analytics">
+          <i class="fas fa-chart-pie"></i>
+        </button>
+        <button class="btn btn-ghost btn-icon" @click="loadProducts" :disabled="loading" title="Refresh">
+          <span v-if="loading" class="spinner" style="border-color:rgba(255,255,255,0.2);border-top-color:var(--muted);"></span>
+          <i v-else class="fas fa-sync-alt"></i>
+        </button>
+        <button class="btn btn-ghost btn-icon" @click="showConfig = true" title="Settings">
+          <i class="fas fa-cog"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Body ── -->
+    <div class="main-body">
+      <div class="content">
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card accent">
+            <div class="stat-val">{{ products.length }}</div>
+            <div class="stat-label">Total Products</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val">{{ alcoholCount }}</div>
+            <div class="stat-label">Alcohol Items</div>
+          </div>
+          <div class="stat-card accent-green">
+            <div class="stat-val">{{ nonAlcoholCount }}</div>
+            <div class="stat-label">Non-Alcohol</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val">{{ categories.length }}</div>
+            <div class="stat-label">Categories</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val">{{ avgPrice }}</div>
+            <div class="stat-label">Avg Price (R)</div>
+          </div>
+        </div>
+
+        <!-- Add Panel -->
+        <div class="add-panel">
+          <div class="add-panel-head" @click="addPanelOpen = !addPanelOpen">
+            <span class="add-panel-title">
+              <i class="fas fa-plus-circle"></i>
+              Add New Product
+            </span>
+            <i :class="addPanelOpen ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.75rem;"></i>
+          </div>
+          <div class="add-panel-body" v-show="addPanelOpen">
+            <div class="form-grid">
+              <div class="form-field">
+                <label>Name *</label>
+                <input type="text" v-model="newProduct.name" placeholder="Product name" />
+              </div>
+              <div class="form-field">
+                <label>Description</label>
+                <input type="text" v-model="newProduct.description" placeholder="Short description" />
+              </div>
+              <div class="form-field">
+                <label>Price (R)</label>
+                <input type="number" v-model.number="newProduct.price" placeholder="0" step="1" min="0" />
+              </div>
+              <div class="form-field">
+                <label>Category</label>
+                <select v-model="newProduct.category">
+                  <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-footer">
+              <label class="btn btn-ghost" style="cursor:pointer;margin:0;">
+                <i class="fas fa-cloud-upload-alt"></i>
+                Upload Image
+                <input type="file" accept="image/*" @change="handleNewProductImage" style="display:none;" />
+              </label>
+              <div class="img-preview-wrap" v-if="newProduct.imagePreview">
+                <img :src="newProduct.imagePreview" class="img-preview" />
+                <button class="img-clear" @click="clearNewProductImage"><i class="fas fa-times"></i></button>
+              </div>
+              <label class="toggle-row">
+                <input type="checkbox" v-model="newProduct.alcohol" />
+                <i class="fas fa-wine-bottle" style="color:var(--red);font-size:0.8rem;"></i>
+                Contains Alcohol
+              </label>
+              <button class="btn btn-primary" @click="addProduct" :disabled="uploadingNewProduct || !supabase">
+                <span v-if="uploadingNewProduct" class="spinner"></span>
+                <i v-else class="fas fa-plus"></i>
+                {{ uploadingNewProduct ? 'Saving…' : 'Add Product' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap">
+          <div class="table-toolbar">
+            <div class="table-toolbar-left">
+              <span class="table-title">Products</span>
+              <span class="badge">{{ filteredProducts.length }}</span>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th style="width:44px;">Img</th>
+                  <th>Name</th>
+                  <th class="hide-sm">Description</th>
+                  <th style="width:90px;">Price</th>
+                  <th style="width:130px;">Category</th>
+                  <th style="width:80px;">Alcohol</th>
+                  <th style="width:90px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="loading">
+                  <td colspan="8" style="text-align:center;padding:40px;color:var(--muted);">
+                    <span class="spinner" style="border-color:rgba(255,255,255,0.1);border-top-color:var(--muted);width:20px;height:20px;border-width:3px;"></span>
+                    <span style="margin-left:10px;">Loading products…</span>
+                  </td>
+                </tr>
+                <tr v-else-if="!filteredProducts.length && !loading">
+                  <td colspan="8">
+                    <div class="empty-state">
+                      <i class="fas fa-box-open"></i>
+                      <p>No products found{{ searchQuery || filterCategory ? ' matching your filters' : '' }}.</p>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-for="product in filteredProducts" :key="product.id" :class="{ editing: editingId === product.id }">
+                  <td style="color:var(--muted);font-size:0.65rem;">{{ product.id }}</td>
+                  <td>
+                    <img
+                      :src="getValidImageUrl(product.image)"
+                      class="td-img"
+                      @click="triggerImageUpload(product)"
+                      title="Click to change image"
+                      @error="$event.target.src='https://placehold.co/80x80/18181c/71717a?text=?'"
+                    />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      :ref="'img_'+product.id"
+                      style="display:none;"
+                      @change="handleProductImageChange($event, product)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="inline-input"
+                      type="text"
+                      v-model="product.name"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                    />
+                  </td>
+                  <td class="hide-sm">
+                    <input
+                      class="inline-input"
+                      type="text"
+                      v-model="product.description"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                      placeholder="—"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="inline-input"
+                      type="number"
+                      v-model.number="product.price"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                      step="1"
+                      style="max-width:80px;"
+                    />
+                  </td>
+                  <td>
+                    <select
+                      class="inline-select"
+                      v-model="product.category"
+                      @change="saveProduct(product)"
+                    >
+                      <option v-for="cat in categories" :value="cat" :key="cat">{{ cat }}</option>
+                    </select>
+                  </td>
+                  <td>
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:6px;" @change="saveProduct(product)">
+                      <input type="checkbox" v-model="product.alcohol" style="accent-color:var(--red);" />
+                      <span class="alc-pill" :class="product.alcohol ? 'alc-yes' : 'alc-no'">
+                        {{ product.alcohol ? 'Yes' : 'No' }}
+                      </span>
+                    </label>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn btn-danger btn-icon btn-sm" @click="confirmDelete(product.id, product.name)" title="Delete">
+                        <i class="fas fa-trash-alt"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Dashboard Overlay ── -->
+  <div class="dashboard-overlay" :class="{ open: dashboardOpen }">
+    <div class="dash-header">
+      <h2><i class="fas fa-chart-pie"></i> Product Analytics</h2>
+      <button class="dash-close" @click="dashboardOpen = false">&times;</button>
+    </div>
+    <div class="dash-kpi-grid">
+      <div class="dash-kpi"><div class="val">{{ products.length }}</div><div class="label">Total Products</div></div>
+      <div class="dash-kpi"><div class="val">{{ alcoholCount }}</div><div class="label">Alcohol Items</div></div>
+      <div class="dash-kpi"><div class="val">{{ nonAlcoholCount }}</div><div class="label">Non-Alcohol</div></div>
+      <div class="dash-kpi"><div class="val">{{ butcherCount }}</div><div class="label">Butcher Items</div></div>
+    </div>
+    <div class="dash-section">
+      <h3>Category Distribution</h3>
+      <div class="dash-chart-wrap"><canvas id="categoryChart"></canvas></div>
+    </div>
+    <div class="dash-section">
+      <h3>Alcohol vs Non-Alcohol</h3>
+      <div class="dash-chart-wrap"><canvas id="alcoholChart"></canvas></div>
+    </div>
+    <div class="dash-section">
+      <h3>Inventory Health</h3>
+      <div class="dash-stats-mini">
+        <div class="dash-stat-mini"><div class="num">{{ products.length }}</div><div class="lbl">Total SKUs</div></div>
+        <div class="dash-stat-mini"><div class="num">{{ premiumPercent }}%</div><div class="lbl">Premium (>R100)</div></div>
+        <div class="dash-stat-mini"><div class="num">{{ alcoholPercent }}%</div><div class="lbl">Alcohol %</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast ── -->
+  <div class="toast" :class="[{ show: toast.visible }, toast.type]">
+    <i :class="toast.icon"></i> {{ toast.text }}
+  </div>
+
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────
+const STORAGE_BUCKET = 'product-images';
+const VALID_CATEGORIES = [
+  'beers', 'champagne', 'ciders', 'cognac', 'gin', 'liqueur',
+  'soft drinks', 'sparkling wine', 'tequila', 'vodka', 'whiskey',
+  'butcher', 'shisha', 'other'
+];
+
+function normalizeCategory(cat) {
+  if (!cat) return 'other';
+  return VALID_CATEGORIES.includes(cat) ? cat : 'other';
+}
+
+function generateSafeFileName(name, ext) {
+  const ts = Date.now();
+  const rand = Math.random().toString(36).substring(2, 8);
+  const safe = (name || 'product').replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 50);
+  return `products/${ts}-${rand}-${safe}.${ext}`;
+}
+
+// ── Vue App ──────────────────────────────────────────────────────────
+const { createApp, nextTick } = Vue;
+
+createApp({
+  data() {
+    const savedUrl = localStorage.getItem('sb_url') || '';
+    const savedKey = localStorage.getItem('sb_key') || '';
+    return {
+      supabase: null,
+      showConfig: !savedUrl || !savedKey,
+      configUrl: savedUrl,
+      configKey: savedKey,
+
+      products: [],
+      searchQuery: '',
+      filterCategory: '',
+      newProduct: { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null },
+      toast: { visible: false, text: '', type: '', icon: '' },
+      toastTimer: null,
+      uploadingNewProduct: false,
+      uploadingProducts: new Set(),
+      categories: VALID_CATEGORIES,
+      charts: {},
+      dashboardOpen: false,
+      loading: false,
+      editingId: null,
+      addPanelOpen: true,
+    };
+  },
+
+  computed: {
+    filteredProducts() {
+      let list = this.products;
+      if (this.filterCategory) list = list.filter(p => p.category === this.filterCategory);
+      if (this.searchQuery) {
+        const q = this.searchQuery.toLowerCase();
+        list = list.filter(p =>
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.description || '').toLowerCase().includes(q) ||
+          (p.category || '').toLowerCase().includes(q)
+        );
+      }
+      return list;
+    },
+    alcoholCount() { return this.products.filter(p => p.alcohol).length; },
+    nonAlcoholCount() { return this.products.filter(p => !p.alcohol && p.category !== 'butcher').length; },
+    butcherCount() { return this.products.filter(p => p.category === 'butcher').length; },
+    premiumPercent() {
+      if (!this.products.length) return 0;
+      return Math.round((this.products.filter(p => p.price > 100).length / this.products.length) * 100);
+    },
+    alcoholPercent() {
+      if (!this.products.length) return 0;
+      return Math.round((this.alcoholCount / this.products.length) * 100);
+    },
+    avgPrice() {
+      if (!this.products.length) return '0';
+      const avg = this.products.reduce((s, p) => s + (p.price || 0), 0) / this.products.length;
+      return avg.toFixed(0);
+    },
+  },
+
+  watch: {
+    dashboardOpen(val) {
+      if (val) nextTick(() => this.renderCharts());
+    },
+  },
+
+  async mounted() {
+    if (this.configUrl && this.configKey) {
+      this.initSupabase(this.configUrl, this.configKey);
+    }
+  },
+
+  methods: {
+    // ── Supabase Init ──
+    initSupabase(url, key) {
+      try {
+        this.supabase = supabase.createClient(url, key);
+        return true;
+      } catch (e) {
+        this.showToast('Invalid Supabase credentials', 'error');
+        return false;
+      }
+    },
+
+    async connectSupabase() {
+      if (!this.configUrl || !this.configKey) return;
+      if (this.initSupabase(this.configUrl, this.configKey)) {
+        localStorage.setItem('sb_url', this.configUrl);
+        localStorage.setItem('sb_key', this.configKey);
+        this.showConfig = false;
+        await this.loadProducts();
+      }
+    },
+
+    // ── Toast ──
+    showToast(text, type = 'info') {
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+      const icons = { success: 'fas fa-check-circle', error: 'fas fa-times-circle', info: 'fas fa-info-circle' };
+      this.toast = { visible: true, text, type, icon: icons[type] || icons.info };
+      this.toastTimer = setTimeout(() => { this.toast.visible = false; }, 3000);
+    },
+
+    // ── Image helpers ──
+    getValidImageUrl(img) {
+      if (!img) return 'https://placehold.co/80x80/18181c/71717a?text=?';
+      if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) return img;
+      return 'https://placehold.co/80x80/18181c/71717a?text=?';
+    },
+
+    // ── Storage ──
+    async uploadToStorage(file, productName) {
+      if (!this.supabase) throw new Error('Not connected');
+      if (!file.type.startsWith('image/')) throw new Error('File must be an image');
+      if (file.size > 2 * 1024 * 1024) throw new Error('Max file size is 2MB');
+      const ext = file.name.split('.').pop();
+      const path = generateSafeFileName(productName, ext);
+      const { error } = await this.supabase.storage.from(STORAGE_BUCKET).upload(path, file, { cacheControl: '3600', upsert: true });
+      if (error) throw error;
+      const { data: { publicUrl } } = this.supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      return publicUrl;
+    },
+
+    // ── Load ──
+    async loadProducts() {
+      if (!this.supabase) { this.showToast('Connect to Supabase first', 'error'); return; }
+      this.loading = true;
+      try {
+        const { data, error } = await this.supabase.from('products').select('*').order('id', { ascending: true });
+        if (error) throw error;
+        this.products = (data || []).map(p => ({ ...p, category: normalizeCategory(p.category) }));
+        this.showToast(`${this.products.length} products loaded`, 'success');
+        if (this.dashboardOpen) nextTick(() => this.renderCharts());
+      } catch (err) {
+        this.showToast('Load failed: ' + err.message, 'error');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // ── Save (update) ──
+    async saveProduct(product) {
+      if (!this.supabase) return;
+      product.category = normalizeCategory(product.category);
+      try {
+        const { error } = await this.supabase.from('products').update({
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          category: product.category,
+          alcohol: product.alcohol,
+          image: product.image,
+        }).eq('id', product.id);
+        if (error) throw error;
+        this.showToast('Saved', 'success');
+      } catch (err) {
+        this.showToast('Save failed: ' + err.message, 'error');
+      }
+    },
+
+    // ── Add ──
+    async addProduct() {
+      if (!this.supabase) { this.showToast('Connect to Supabase first', 'error'); return; }
+      if (!this.newProduct.name.trim()) { this.showToast('Product name is required', 'error'); return; }
+      const item = {
+        name: this.newProduct.name.trim(),
+        description: this.newProduct.description.trim(),
+        price: parseFloat(this.newProduct.price) || 0,
+        category: normalizeCategory(this.newProduct.category),
+        alcohol: this.newProduct.alcohol,
+        image: this.newProduct.image || '',
+      };
+      try {
+        const { data, error } = await this.supabase.from('products').insert([item]).select();
+        if (error) throw error;
+        this.products.push({ ...data[0], category: normalizeCategory(data[0].category) });
+        this.newProduct = { name: '', description: '', price: 0, category: 'beers', alcohol: false, image: '', imagePreview: null };
+        this.showToast('Product added', 'success');
+        if (this.dashboardOpen) nextTick(() => this.renderCharts());
+      } catch (err) {
+        this.showToast('Add failed: ' + err.message, 'error');
+      }
+    },
+
+    // ── Delete ──
+    confirmDelete(id, name) {
+      if (confirm(`Delete "${name}"?\nThis cannot be undone.`)) this.deleteProduct(id);
+    },
+    async deleteProduct(id) {
+      if (!this.supabase) return;
+      try {
+        const { error } = await this.supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+        this.products = this.products.filter(p => p.id !== id);
+        this.showToast('Product deleted', 'success');
+        if (this.dashboardOpen) nextTick(() => this.renderCharts());
+      } catch (err) {
+        this.showToast('Delete failed: ' + err.message, 'error');
+      }
+    },
+
+    // ── Image upload ──
+    async handleNewProductImage(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      this.uploadingNewProduct = true;
+      try {
+        const url = await this.uploadToStorage(file, this.newProduct.name || 'product');
+        this.newProduct.image = url;
+        this.newProduct.imagePreview = url;
+        this.showToast('Image uploaded', 'success');
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      } finally {
+        this.uploadingNewProduct = false;
+        e.target.value = '';
+      }
+    },
+    clearNewProductImage() { this.newProduct.image = ''; this.newProduct.imagePreview = null; },
+
+    triggerImageUpload(product) {
+      const key = 'img_' + product.id;
+      const refs = this.$refs[key];
+      const el = Array.isArray(refs) ? refs[0] : refs;
+      if (el) el.click();
+    },
+    async handleProductImageChange(e, product) {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const url = await this.uploadToStorage(file, product.name);
+        product.image = url;
+        await this.saveProduct(product);
+        this.showToast('Image updated', 'success');
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      } finally {
+        e.target.value = '';
+      }
+    },
+
+    // ── Charts ──
+    toggleDashboard() {
+      this.dashboardOpen = !this.dashboardOpen;
+    },
+    renderCharts() {
+      const catMap = {};
+      this.products.forEach(p => { catMap[p.category] = (catMap[p.category] || 0) + 1; });
+      const labels = Object.keys(catMap);
+      const data = Object.values(catMap);
+      const colors = ['#E30613','#f59e0b','#10b981','#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6','#6366f1','#84cc16','#f43f5e','#0ea5e9','#d946ef','#facc15'];
+
+      const ctx1 = document.getElementById('categoryChart');
+      if (ctx1) {
+        if (this.charts.category) this.charts.category.destroy();
+        this.charts.category = new Chart(ctx1, {
+          type: 'doughnut',
+          data: { labels, datasets: [{ data, backgroundColor: colors.slice(0, labels.length) }] },
+          options: { responsive: true, plugins: { legend: { labels: { color: '#71717a', boxWidth: 8, font: { size: 9 } } } } },
+        });
+      }
+
+      const alco = this.products.filter(p => p.alcohol).length;
+      const non = this.products.length - alco;
+      const ctx2 = document.getElementById('alcoholChart');
+      if (ctx2) {
+        if (this.charts.alcohol) this.charts.alcohol.destroy();
+        this.charts.alcohol = new Chart(ctx2, {
+          type: 'bar',
+          data: { labels: ['Alcohol', 'Non-Alcohol'], datasets: [{ label: 'Count', data: [alco, non], backgroundColor: ['#E30613','#22c55e'] }] },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { ticks: { color: '#71717a', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+              x: { ticks: { color: '#71717a' } },
+            },
+          },
+        });
+      }
+    },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
