@@ -919,145 +919,203 @@ footer {
 #screensaver {
   position:fixed; inset:0; z-index:99999;
   background:#000;
-  display:flex; align-items:center; justify-content:center;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:space-between;
   opacity:0; visibility:hidden;
   transition:opacity 1s ease;
   cursor:pointer; overflow:hidden;
 }
 #screensaver.active { opacity:1; visibility:visible; }
 
-/* ── SLIDES · fade + Ken Burns zoom + parallax drift ── */
+/* ── SLIDES · fade, natural media display, no aggressive zoom ── */
 .ss-slide {
   position:absolute; inset:0;
   opacity:0;
   transition:opacity 1.2s ease-in-out;
-  background-size:cover; background-position:center;
-  display:flex; flex-direction:column;
-  align-items:center; justify-content:flex-end;
-  text-align:center;
-  transform:scale(1.02);
-  will-change:opacity, transform;
+  display:flex; align-items:center; justify-content:center;
+  background:#000;
+  will-change:opacity;
+  z-index:1;
 }
-.ss-slide.active {
-  opacity:1; z-index:2;
-  animation:ssKenBurns 64s ease-out forwards;
+.ss-slide.active { opacity:1; z-index:2; }
+
+/* Image slides — contain so full composition is visible */
+.ss-slide[style*="background-image"] {
+  background-size:contain;
+  background-position:center;
+  background-repeat:no-repeat;
 }
-@keyframes ssKenBurns {
-  0%   { transform:scale(1.02) translate3d(0,0,0); }
-  100% { transform:scale(1.16) translate3d(-1.5%, -1.5%, 0); }
+/* Subtle drift — gentle pan, not aggressive zoom */
+.ss-slide.active:not(.ss-video-slide) {
+  animation:ssGentleDrift 20s ease-in-out infinite alternate;
+}
+@keyframes ssGentleDrift {
+  0%   { background-position:48% 48%; }
+  100% { background-position:52% 52%; }
 }
 
-/* ── Cinematic overlay + vignette + ambient bloom ── */
+/* ── Cinematic overlay + vignette ── */
 .ss-overlay {
   position:absolute; inset:0; z-index:1;
   background:
-    radial-gradient(ellipse 70% 50% at 50% 18%, rgba(227,6,19,0.18) 0%, transparent 60%),
-    linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.25) 45%, rgba(0,0,0,0.55) 100%);
-}
-.ss-overlay::after {
-  content:''; position:absolute; inset:0;
-  box-shadow:inset 0 0 220px 60px rgba(0,0,0,0.75);
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(0,0,0,0.55) 0%, transparent 70%),
+    radial-gradient(ellipse 80% 40% at 50% 100%, rgba(0,0,0,0.65) 0%, transparent 70%),
+    radial-gradient(ellipse 30% 100% at 0% 50%, rgba(0,0,0,0.35) 0%, transparent 70%),
+    radial-gradient(ellipse 30% 100% at 100% 50%, rgba(0,0,0,0.35) 0%, transparent 70%);
   pointer-events:none;
 }
 
-/* ── Slide tagline ── */
-.ss-content-text {
-  position:relative; z-index:3;
-  color:#fff;
-  text-shadow:0 2px 30px rgba(0,0,0,0.7);
-  max-width:88%;
-  padding-bottom:14vh;
-  animation:ssTextRise 1.4s var(--ease) both;
-}
-@keyframes ssTextRise {
-  from { opacity:0; transform:translateY(28px); }
-  to   { opacity:1; transform:translateY(0); }
-}
-.ss-main-line {
-  font-family:'Playfair Display',serif;
-  font-size:clamp(2.6rem,7vw,6.5rem);
-  font-weight:900; letter-spacing:-0.02em; line-height:1.02;
-  margin-bottom:0.5rem;
-  text-shadow:0 0 40px rgba(0,0,0,0.6);
-}
-.ss-sub-line {
-  font-family:'Inter',sans-serif;
-  font-size:clamp(1rem,2.6vw,2rem);
-  font-weight:400; letter-spacing:5px; text-transform:uppercase;
-  opacity:0.92; color:#F2F0EE;
-}
-.red-dot { color:var(--red); display:inline-block; }
+/* Slide text hidden — we use the global overlay layout instead */
+.ss-content-text { display:none; }
+.ss-main-line, .ss-sub-line, .red-dot { display:none; }
 
-/* ── FLASHING LOGO · moved to TOP, premium glow ── */
-.ss-tap-area {
-  position:absolute; top:7%; left:50%; transform:translateX(-50%);
-  z-index:5;
-  display:flex; flex-direction:column; align-items:center; gap:22px;
-  cursor:pointer;
+/* ── VIDEO SLIDES ── */
+.ss-slide.ss-video-slide {
+  animation: none !important;
 }
-/* ambient light bloom behind the logo */
-.ss-tap-area::before {
-  content:''; position:absolute; top:-40px; left:50%;
-  width:340px; height:340px; transform:translateX(-50%);
+.ss-slide .ss-video-el {
+  position:absolute; inset:0; width:100%; height:100%;
+  object-fit:contain;
+  background:#000;
+  z-index:0;
+  display:none;
+}
+.ss-slide.active .ss-video-el { display:block; }
+
+/* ══════════════════════════════════════════
+   SCREENSAVER LAYOUT · 3-zone vertical stack
+   Top: Logo  |  Center: Headline  |  Bottom: CTA
+═══════════════════════════════════════════ */
+.ss-ui-layer {
+  position:absolute; inset:0; z-index:5;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:space-between;
+  padding:clamp(2rem,5vh,4rem) clamp(1.5rem,4vw,3rem);
+  pointer-events:none;
+}
+
+/* ── TOP: Logo ── */
+.ss-logo-block {
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  pointer-events:auto;
+}
+.ss-logo-block::before {
+  content:''; position:absolute; top:-20px; left:50%;
+  width:280px; height:280px; transform:translateX(-50%);
   border-radius:50%; pointer-events:none; z-index:-1;
-  background:radial-gradient(circle, rgba(227,6,19,0.38) 0%, rgba(227,6,19,0.10) 40%, transparent 72%);
-  filter:blur(18px);
+  background:radial-gradient(circle, rgba(227,6,19,0.32) 0%, rgba(227,6,19,0.08) 45%, transparent 72%);
+  filter:blur(20px);
   animation:ssBloom 3.4s ease-in-out infinite;
 }
-@keyframes ssBloom {
-  0%,100% { opacity:0.55; transform:translateX(-50%) scale(0.92); }
-  50%     { opacity:1;    transform:translateX(-50%) scale(1.12); }
-}
 .ss-flashing-ring {
-  width:150px; height:150px; border-radius:50%;
-  border:2px solid rgba(255,255,255,0.35);
+  width:clamp(100px,14vmin,150px); height:clamp(100px,14vmin,150px);
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,0.30);
   display:flex; align-items:center; justify-content:center;
-  background:rgba(0,0,0,0.25); backdrop-filter:blur(10px);
+  background:rgba(0,0,0,0.30); backdrop-filter:blur(10px);
   animation:ssRipple 2.6s ease-out infinite;
 }
-@keyframes ssRipple {
-  0%   { box-shadow:0 0 0 0 rgba(227,6,19,0.65), 0 0 0 0 rgba(255,255,255,0.22); }
-  50%  { box-shadow:0 0 0 26px rgba(227,6,19,0.18), 0 0 0 52px rgba(255,255,255,0.05); }
-  100% { box-shadow:0 0 0 54px rgba(227,6,19,0), 0 0 0 104px rgba(255,255,255,0); }
-}
 .ss-logo-in-ring {
-  width:112px; height:112px; border-radius:50%;
+  width:80%; height:80%;
   display:flex; align-items:center; justify-content:center;
   animation:ssLogoPulse 2.6s ease-in-out infinite;
 }
 .ss-logo-in-ring img {
-  width:96px; height:96px; object-fit:contain; border-radius:50%;
-  /* neon edge + soft glow */
-  filter:drop-shadow(0 0 14px rgba(227,6,19,0.7)) drop-shadow(0 0 28px rgba(227,6,19,0.35));
-  /* subtle chromatic aberration / neon flicker */
+  width:85%; height:85%; object-fit:contain;
+  filter:drop-shadow(0 0 12px rgba(227,6,19,0.7)) drop-shadow(0 0 24px rgba(227,6,19,0.35));
   animation:ssChroma 4.6s steps(1) infinite;
 }
+
+/* ── CENTER: Headline + Tagline ── */
+.ss-center-block {
+  display:flex; flex-direction:column; align-items:center; gap:clamp(0.5rem,1.5vh,1rem);
+  text-align:center; max-width:min(88vw,900px);
+}
+.ss-headline {
+  font-family:'Playfair Display',serif;
+  font-size:clamp(2rem,6vw,5.5rem);
+  font-weight:900; letter-spacing:-0.02em; line-height:1.05;
+  color:#fff;
+  text-shadow:0 2px 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.5);
+  animation:ssTextRise 1.2s var(--ease) both;
+}
+.ss-tagline {
+  font-family:'Inter',sans-serif;
+  font-size:clamp(0.8rem,2.2vw,1.5rem);
+  font-weight:400; letter-spacing:clamp(3px,0.8vw,7px); text-transform:uppercase;
+  color:rgba(242,240,238,0.88);
+  text-shadow:0 1px 20px rgba(0,0,0,0.8);
+  animation:ssTextRise 1.4s var(--ease) 0.1s both;
+}
+
+/* ── BOTTOM: Tap to Start button ── */
+.ss-tap-block {
+  display:flex; flex-direction:column; align-items:center; gap:12px;
+  pointer-events:auto;
+}
+.ss-tap-btn {
+  display:inline-flex; align-items:center; gap:10px;
+  background:var(--red);
+  color:#fff;
+  font-family:'Inter',sans-serif;
+  font-size:clamp(0.72rem,1.5vw,0.9rem);
+  font-weight:800; letter-spacing:clamp(3px,0.6vw,6px); text-transform:uppercase;
+  padding:clamp(14px,2.5vmin,20px) clamp(32px,5vw,56px);
+  border-radius:999px;
+  border:none; cursor:pointer;
+  box-shadow:0 0 0 0 rgba(227,6,19,0.6);
+  animation:ssBtnPulse 2.4s ease-in-out infinite;
+  transition:transform 0.2s ease, box-shadow 0.2s ease;
+}
+.ss-tap-btn:hover { transform:scale(1.04); }
+.ss-tap-btn svg {
+  width:clamp(16px,2vmin,20px); height:clamp(16px,2vmin,20px);
+  stroke:#fff; fill:none; stroke-width:2.5;
+}
+@keyframes ssBtnPulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(227,6,19,0.55), 0 8px 32px rgba(227,6,19,0.35); }
+  50%     { box-shadow:0 0 0 18px rgba(227,6,19,0), 0 12px 48px rgba(227,6,19,0.55); }
+}
+.ss-idle-indicator {
+  font-size:0.58rem; font-weight:600; letter-spacing:3px; text-transform:uppercase;
+  color:rgba(255,255,255,0.38);
+}
+
+/* ── Shared animations ── */
+@keyframes ssBloom {
+  0%,100% { opacity:0.5; transform:translateX(-50%) scale(0.92); }
+  50%     { opacity:1;   transform:translateX(-50%) scale(1.10); }
+}
+@keyframes ssRipple {
+  0%   { box-shadow:0 0 0 0 rgba(227,6,19,0.60), 0 0 0 0 rgba(255,255,255,0.18); }
+  50%  { box-shadow:0 0 0 22px rgba(227,6,19,0.15), 0 0 0 44px rgba(255,255,255,0.04); }
+  100% { box-shadow:0 0 0 46px rgba(227,6,19,0), 0 0 0 88px rgba(255,255,255,0); }
+}
 @keyframes ssLogoPulse {
-  0%,100% { transform:scale(1);    opacity:0.96; }
-  50%     { transform:scale(1.07); opacity:1; }
+  0%,100% { transform:scale(1);    opacity:0.95; }
+  50%     { transform:scale(1.06); opacity:1; }
 }
 @keyframes ssChroma {
-  0%, 88%, 100% { filter:drop-shadow(0 0 14px rgba(227,6,19,0.7)) drop-shadow(0 0 28px rgba(227,6,19,0.35)); }
-  90%  { filter:drop-shadow(2px 0 6px rgba(0,200,255,0.55)) drop-shadow(-2px 0 6px rgba(227,6,19,0.8)) drop-shadow(0 0 30px rgba(227,6,19,0.5)); }
-  93%  { filter:drop-shadow(-2px 0 6px rgba(0,200,255,0.55)) drop-shadow(2px 0 6px rgba(227,6,19,0.8)) drop-shadow(0 0 30px rgba(227,6,19,0.5)); }
-  96%  { filter:drop-shadow(0 0 14px rgba(227,6,19,0.7)); opacity:0.85; }
+  0%,88%,100% { filter:drop-shadow(0 0 12px rgba(227,6,19,0.7)) drop-shadow(0 0 24px rgba(227,6,19,0.35)); }
+  90%  { filter:drop-shadow(2px 0 6px rgba(0,200,255,0.5)) drop-shadow(-2px 0 6px rgba(227,6,19,0.8)) drop-shadow(0 0 28px rgba(227,6,19,0.5)); }
+  93%  { filter:drop-shadow(-2px 0 6px rgba(0,200,255,0.5)) drop-shadow(2px 0 6px rgba(227,6,19,0.8)) drop-shadow(0 0 28px rgba(227,6,19,0.5)); }
+  96%  { filter:drop-shadow(0 0 12px rgba(227,6,19,0.7)); opacity:0.82; }
 }
-.ss-tap-label {
-  font-size:0.82rem; font-weight:800; letter-spacing:6px; text-transform:uppercase;
-  color:#fff; background:rgba(0,0,0,0.45);
-  padding:10px 26px; border-radius:40px; backdrop-filter:blur(6px);
-  border:1px solid rgba(255,255,255,0.12);
-  animation:ssTapFlash 2.6s ease-in-out infinite;
+@keyframes ssTextRise {
+  from { opacity:0; transform:translateY(22px); }
+  to   { opacity:1; transform:translateY(0); }
 }
-@keyframes ssTapFlash { 0%,100% { opacity:0.6; } 50% { opacity:1; } }
-.ss-idle-indicator {
-  position:absolute; bottom:2rem; left:50%; transform:translateX(-50%);
-  z-index:4; font-size:0.62rem; font-weight:600; letter-spacing:3px; text-transform:uppercase;
-  color:rgba(255,255,255,0.45); background:rgba(0,0,0,0.4);
-  padding:5px 14px; border-radius:40px; white-space:nowrap;
+
+/* ── Portrait adjustments ── */
+@media (orientation:portrait) {
+  .ss-flashing-ring { width:clamp(90px,18vw,130px); height:clamp(90px,18vw,130px); }
+  .ss-headline { font-size:clamp(1.8rem,8vw,4rem); }
+  .ss-tagline { font-size:clamp(0.7rem,3vw,1.2rem); letter-spacing:3px; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .ss-slide.active { animation:none; transform:scale(1.05); }
+  .ss-slide.active { animation:none; }
+  .ss-tap-btn { animation:none; }
+  .ss-logo-in-ring { animation:none; }
 }
 </style>
 </head>
@@ -1136,7 +1194,7 @@ footer {
 </div>
 
 <!-- SCREENS -->
-<div class="screen-layer" id="screen-buyOrder"><div class="screen-header"><button class="back-btn" onclick="closeScreen('buyOrder')"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> Back</button><div class="screen-title">Buy &amp; Order</div><div class="screen-subtitle">Choose a category</div></div><div class="screen-body"><div class="sub-grid"><div class="sub-card" onclick="window.location.href='kiosk-menu2.html'"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2H7l-3 9h16L17 2zM5 11s-.5 9 7 9 7-9 7-9"/><circle cx="12" cy="13" r="2"/></svg></div><div class="sc-title">Drinks &amp; Alcohol</div><p class="sc-desc">Spirits, wine, craft beer, cocktails and premium bottles.</p><div class="sc-cta">Browse Menu <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div><div class="sub-card" onclick="openScreen('butcher')"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 4.5c0 1.5-1.5 3-3 4.5C10 10.5 8.5 12 8.5 13.5a3 3 0 006 0C14.5 12 13 10.5 11.5 9c-1.5-1.5-3-3-3-4.5a3 3 0 016 0z"/><path d="M9 18.5h6M12 21.5v-3"/><path d="M15 4.5a3 3 0 00-6 0"/></svg></div><div class="sc-title">Butcher Meat</div><p class="sc-desc">Build your platter and join the Butcher Queue.</p><div class="sc-cta">Build Platter <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div></div></div></div>
+<div class="screen-layer" id="screen-buyOrder"><div class="screen-header"><button class="back-btn" onclick="closeScreen('buyOrder')"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> Back</button><div class="screen-title">Buy &amp; Order</div><div class="screen-subtitle">Choose a category</div></div><div class="screen-body"><div class="sub-grid"><div class="sub-card" onclick="window.location.href='kiosk-menu2.html'"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2H7l-3 9h16L17 2zM5 11s-.5 9 7 9 7-9 7-9"/><circle cx="12" cy="13" r="2"/></svg></div><div class="sc-title">Drinks &amp; Alcohol</div><p class="sc-desc">Spirits, wine, craft beer, cocktails and premium bottles.</p><div class="sc-cta">Browse Menu <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div><div class="sub-card" onclick="window.location.href='kioks-pre-order-kiosk.html'"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 4.5c0 1.5-1.5 3-3 4.5C10 10.5 8.5 12 8.5 13.5a3 3 0 006 0C14.5 12 13 10.5 11.5 9c-1.5-1.5-3-3-3-4.5a3 3 0 016 0z"/><path d="M9 18.5h6M12 21.5v-3"/><path d="M15 4.5a3 3 0 00-6 0"/></svg></div><div class="sc-title">The Butcher Shop</div><p class="sc-desc">Build your platter and join the Butcher Queue.</p><div class="sc-cta">Build Platter <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div></div></div></div>
 
 <div class="screen-layer" id="screen-events">
   <div class="screen-header"><button class="back-btn" onclick="closeScreen('events')"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> Back</button><div class="screen-title">Events Hub</div><div class="screen-subtitle" id="eventsCount">Loading events...</div></div>
@@ -1182,34 +1240,39 @@ footer {
 
 <div id="screensaver" onclick="dismissScreensaver()">
 
-  <!-- FLASHING LOGO · center identity anchor, now on TOP across all slides -->
-  <div class="ss-tap-area" onclick="dismissScreensaver()">
-    <div class="ss-flashing-ring">
-      <div class="ss-logo-in-ring">
-        <img src="../assets/images/rands-logo.png" alt="Rands" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' fill=\'%23E30613\'/%3E%3Ctext x=\'16\' y=\'22\' text-anchor=\'middle\' fill=\'white\' font-size=\'16\' font-weight=\'bold\'%3ER%3C/text%3E%3C/svg%3E'">
+  <!-- ── UI LAYER · sits above all slides ── -->
+  <div class="ss-ui-layer">
+
+    <!-- TOP: Logo -->
+    <div class="ss-logo-block" onclick="dismissScreensaver()">
+      <div class="ss-flashing-ring">
+        <div class="ss-logo-in-ring">
+          <img src="../assets/images/rands-logo.png" alt="Rands"
+               onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' fill=\'%23E30613\'/%3E%3Ctext x=\'16\' y=\'22\' text-anchor=\'middle\' fill=\'white\' font-size=\'16\' font-weight=\'bold\'%3ER%3C/text%3E%3C/svg%3E'">
+        </div>
       </div>
     </div>
-    <div class="ss-tap-label">Tap To Enter</div>
+
+    <!-- CENTER: Headline + Tagline -->
+    <div class="ss-center-block">
+      <div class="ss-headline">Rands<span style="color:var(--red)">.</span> The Experience</div>
+      <div class="ss-tagline">Where Every Night Becomes a Memory</div>
+    </div>
+
+    <!-- BOTTOM: Tap to Start + indicator -->
+    <div class="ss-tap-block">
+      <button class="ss-tap-btn" onclick="dismissScreensaver()">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Tap to Start
+      </button>
+      <div class="ss-idle-indicator">Rands Venue Experience Platform</div>
+    </div>
+
   </div>
 
-  <!-- 8 SLIDES · 60s each, fade + Ken Burns, infinite loop -->
-  <div id="ss-slide-1" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide1.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Arrive Like Royalty<span class="red-dot">.</span></div><div class="ss-sub-line">Where the night bows to you</div></div></div>
+  <!-- DYNAMIC SLIDES · loaded from Supabase kiosk_idle_ads -->
+  <div id="ss-slides-container"></div>
 
-  <div id="ss-slide-2" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide2.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Beyond The Velvet Rope</div><div class="ss-sub-line">Access reserved for the few</div></div></div>
-
-  <div id="ss-slide-3" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide3.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Own The Darkness</div><div class="ss-sub-line">Every light bends to your presence</div></div></div>
-
-  <div id="ss-slide-4" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide4.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Pure Adrenaline<span class="red-dot">.</span></div><div class="ss-sub-line">The pulse of the city starts here</div></div></div>
-
-  <div id="ss-slide-5" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide5.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Liquid Gold Hours</div><div class="ss-sub-line">Crafted pours · Unforgettable nights</div></div></div>
-
-  <div id="ss-slide-6" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide6.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">The Inner Circle</div><div class="ss-sub-line">Exclusivity you can feel</div></div></div>
-
-  <div id="ss-slide-7" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide7.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Electric After Dark</div><div class="ss-sub-line">When the city sleeps · We ignite</div></div></div>
-
-  <div id="ss-slide-8" class="ss-slide" style="background-image:url('../assets/images/kiosk-slide8.png');"><div class="ss-overlay"></div><div class="ss-content-text"><div class="ss-main-line">Your Night, Elevated<span class="red-dot">.</span></div><div class="ss-sub-line">Step into a world built for legends</div></div></div>
-
-  <div class="ss-idle-indicator">Rands Venue Experience Platform</div>
 </div>
 
 <script type="module">
@@ -1668,38 +1731,225 @@ if (logoTap) { logoTap.addEventListener('click', () => { adminTapCount++; clearT
 window.checkAdminPin = function() { const p = document.getElementById('adminPin')?.value; if (p === '1234' || p === 'admin') { document.getElementById('adminLoginForm').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; document.getElementById('adminLastSync').innerText = new Date().toLocaleTimeString(); toast('Admin mode active'); } else { toast('Invalid admin PIN'); } };
 window.closeAdmin = function() { document.getElementById('adminModal').classList.remove('active'); setTimeout(() => { const loginForm = document.getElementById('adminLoginForm'); const panel = document.getElementById('adminPanel'); const pinInput = document.getElementById('adminPin'); if (loginForm) loginForm.style.display = 'block'; if (panel) panel.style.display = 'none'; if (pinInput) pinInput.value = ''; }, 300); };
 
-let idleTimer = null, slideIndex = 0, slideInterval = null;
+let idleTimer = null, slideIndex = 0;
 const ssEl = document.getElementById('screensaver');
 
-// 8 slides · 60s each · infinite loop
-const slidesList = [
-  document.getElementById('ss-slide-1'),
-  document.getElementById('ss-slide-2'),
-  document.getElementById('ss-slide-3'),
-  document.getElementById('ss-slide-4'),
-  document.getElementById('ss-slide-5'),
-  document.getElementById('ss-slide-6'),
-  document.getElementById('ss-slide-7'),
-  document.getElementById('ss-slide-8'),
-];
-const SLIDE_DURATION = 60 * 1000; // 60 seconds per slide
+// ── Unique session ID for impression logging ──
+const SESSION_ID = `kiosk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
-function showSlide(n) {
-  slidesList.forEach((s, i) => { if (s) s.classList.toggle('active', i === n); });
+// ── Slide state ──
+let dynamicSlides = [];   // array of slide data objects from DB
+let slideTimeout  = null; // current slide timer / video ended handler ref
+let ssRunning     = false;
+
+// ── FALLBACK slide shown when DB returns nothing ──
+const FALLBACK_SLIDES = [{
+  id: 'fallback',
+  media_type: 'image',
+  image_url: null,
+  video_url: null,
+  headline: 'Rands Venue',
+  tagline: 'Experience the Vibe',
+  duration_seconds: 60,
+}];
+
+// ── Build slide DOM ──
+function buildSlideEl(slide) {
+  const isVideo = slide.media_type === 'video' || !!slide.video_url;
+  const div = document.createElement('div');
+  div.className = 'ss-slide' + (isVideo ? ' ss-video-slide' : '');
+  div.dataset.slideId = slide.id;
+
+  if (isVideo && slide.video_url) {
+    const vid = document.createElement('video');
+    vid.className = 'ss-video-el';
+    vid.src = slide.video_url;
+    vid.autoplay = false; // we control play manually
+    vid.muted = true;
+    vid.setAttribute('playsinline', '');
+    vid.preload = 'metadata';
+    div.appendChild(vid);
+  } else {
+    // image or fallback gradient
+    if (slide.image_url) {
+      div.style.backgroundImage = `url('${slide.image_url}')`;
+      div.style.backgroundSize = 'cover';
+      div.style.backgroundPosition = 'center';
+    } else {
+      div.style.background = 'linear-gradient(135deg, #1a0000 0%, #2a0505 50%, #0f0f0f 100%)';
+    }
+  }
+
+  // overlay
+  const ov = document.createElement('div');
+  ov.className = 'ss-overlay';
+  div.appendChild(ov);
+
+  // text
+  const ct = document.createElement('div');
+  ct.className = 'ss-content-text';
+  ct.innerHTML = `
+    <div class="ss-main-line">${slide.headline || ''}</div>
+    ${slide.tagline ? `<div class="ss-sub-line">${slide.tagline}</div>` : ''}
+  `;
+  div.appendChild(ct);
+
+  return div;
 }
-function startSlideRotation() {
-  if (slideInterval) clearInterval(slideInterval);
-  slideInterval = setInterval(() => {
-    slideIndex = (slideIndex + 1) % slidesList.length; // loops back to slide 1 after 8
-    showSlide(slideIndex);
-  }, SLIDE_DURATION);
+
+// ── Render all slides into the container ──
+function renderSlides(slides) {
+  const container = document.getElementById('ss-slides-container');
+  container.innerHTML = '';
+  slides.forEach(slide => {
+    container.appendChild(buildSlideEl(slide));
+  });
 }
-function stopSlideRotation() { if (slideInterval) clearInterval(slideInterval); slideInterval = null; }
-function activateScreensaver() { if (ssEl.classList.contains('active')) return; ssEl.classList.add('active'); slideIndex = 0; showSlide(0); startSlideRotation(); }
-window.dismissScreensaver = function() { if (!ssEl.classList.contains('active')) return; ssEl.classList.remove('active'); stopSlideRotation(); resetInactivityTimer(); };
-function resetInactivityTimer() { if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(activateScreensaver, 5 * 60 * 1000); }
-['touchstart', 'touchend', 'mousemove', 'mousedown', 'keydown', 'scroll', 'click'].forEach(ev => { document.addEventListener(ev, () => { if (!ssEl.classList.contains('active')) resetInactivityTimer(); }, { passive: true }); });
+
+// ── Load slides from Supabase ──
+async function loadKioskSlides() {
+  try {
+    const { data, error } = await supabase
+      .from('kiosk_idle_ads')
+      .select('*')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true });
+
+    if (error) throw error;
+
+    dynamicSlides = (data && data.length > 0) ? data : FALLBACK_SLIDES;
+  } catch (err) {
+    console.warn('Screensaver: could not load slides, using fallback.', err);
+    if (dynamicSlides.length === 0) dynamicSlides = FALLBACK_SLIDES;
+  }
+  renderSlides(dynamicSlides);
+}
+
+// ── Log impression ──
+async function logImpression(slide) {
+  if (!slide || slide.id === 'fallback') return;
+  const isVideo = slide.media_type === 'video' || !!slide.video_url;
+  try {
+    await supabase.from('kiosk_ad_impressions').insert({
+      ad_id: slide.id,
+      session_id: SESSION_ID,
+      impression_type: isVideo ? 'video' : 'image',
+      created_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Impression log failed:', err);
+  }
+}
+
+// ── Show a specific slide by index ──
+function showSlide(idx) {
+  const allSlides = document.querySelectorAll('#ss-slides-container .ss-slide');
+  allSlides.forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+    // pause all videos
+    const vid = el.querySelector('video');
+    if (vid) { vid.pause(); vid.currentTime = 0; }
+  });
+
+  // for the active slide, start its timer/video
+  const activeEl = allSlides[idx];
+  if (!activeEl) return;
+
+  const slide = dynamicSlides[idx];
+  const isVideo = slide && (slide.media_type === 'video' || !!slide.video_url);
+  const vid = activeEl.querySelector('video');
+
+  // re-run Ken Burns by forcing reflow on image slides
+  if (!isVideo) {
+    activeEl.style.animation = 'none';
+    void activeEl.offsetWidth;
+    activeEl.style.animation = '';
+  }
+
+  if (isVideo && vid) {
+    vid.play().catch(() => {
+      // If video play fails, move on after 5 s
+      slideTimeout = setTimeout(() => advanceSlide(idx, slide), 5000);
+    });
+    const onEnded = () => {
+      vid.removeEventListener('ended', onEnded);
+      logImpression(slide);
+      advanceSlide(idx, slide);
+    };
+    vid.addEventListener('ended', onEnded);
+    // Safety timeout: if video doesn't end in 5 min, advance
+    const safetyMs = Math.min((slide.duration_seconds || 300) * 1000, 5 * 60 * 1000);
+    slideTimeout = setTimeout(() => {
+      vid.removeEventListener('ended', onEnded);
+      logImpression(slide);
+      advanceSlide(idx, slide);
+    }, safetyMs);
+  } else {
+    const durMs = ((slide && slide.duration_seconds) || 60) * 1000;
+    slideTimeout = setTimeout(() => {
+      logImpression(slide);
+      advanceSlide(idx, slide);
+    }, durMs);
+  }
+
+  // preload next slide image
+  const nextIdx = (idx + 1) % dynamicSlides.length;
+  const nextSlide = dynamicSlides[nextIdx];
+  if (nextSlide && nextSlide.image_url && (!nextSlide.media_type || nextSlide.media_type === 'image')) {
+    const img = new Image();
+    img.src = nextSlide.image_url;
+  }
+}
+
+function advanceSlide(fromIdx, slide) {
+  if (!ssRunning) return;
+  slideIndex = (fromIdx + 1) % dynamicSlides.length;
+  showSlide(slideIndex);
+}
+
+// ── Start / stop rotation ──
+function startScreensaverRotation() {
+  ssRunning = true;
+  slideIndex = 0;
+  // Reload slides each cycle start so admin changes propagate
+  loadKioskSlides().then(() => {
+    if (dynamicSlides.length > 0) showSlide(0);
+  });
+}
+
+function stopScreensaverRotation() {
+  ssRunning = false;
+  if (slideTimeout) { clearTimeout(slideTimeout); slideTimeout = null; }
+  // Pause all videos
+  document.querySelectorAll('#ss-slides-container video').forEach(v => v.pause());
+}
+
+// ── Screensaver activate / dismiss ──
+function activateScreensaver() {
+  if (ssEl.classList.contains('active')) return;
+  ssEl.classList.add('active');
+  startScreensaverRotation();
+}
+
+window.dismissScreensaver = function() {
+  if (!ssEl.classList.contains('active')) return;
+  ssEl.classList.remove('active');
+  stopScreensaverRotation();
+  resetInactivityTimer();
+};
+
+function resetInactivityTimer() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(activateScreensaver, 5 * 60 * 1000);
+}
+
+['touchstart','touchend','mousemove','mousedown','keydown','scroll','click'].forEach(ev => {
+  document.addEventListener(ev, () => { if (!ssEl.classList.contains('active')) resetInactivityTimer(); }, { passive: true });
+});
 resetInactivityTimer();
+
+// Pre-load slides on page ready so first activation is instant
+loadKioskSlides();
 
 setTimeout(() => { loadEvents(); loadLockers(); updateStats(); }, 100);
 
