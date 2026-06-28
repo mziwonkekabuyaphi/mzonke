@@ -89,7 +89,7 @@
         .vibe-stats span { margin-right: auto; }
         .vibe-bar-bg { background: #334155; border-radius: 60px; height: 12px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
         .vibe-bar-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #E30613, #ff8c00, #ffd700); border-radius: 60px; transition: width 0.6s cubic-bezier(0.2, 0.9, 0.4, 1.1); position: relative; box-shadow: 0 0 8px #ff8c00; }
-        .vibe-stats-secondary { display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.65rem; color: #94a3b8; }
+        /* Removed .vibe-stats-secondary because we don't show 'inside' anymore */
         .vibe-action-btn { background: rgba(227,6,19,0.9); border: none; width: 100%; padding: 12px; border-radius: 60px; font-weight: 700; font-size: 0.8rem; color: white; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: 0.2s; margin-top: 8px; }
         .vibe-action-btn:active { transform: scale(0.96); background: #E30613; }
         /* Modal Styles */
@@ -159,7 +159,6 @@
         .card-mid { display: flex; flex-direction: column; gap: 10px; }
         .emv-chip { width: clamp(38px, 10vw, 50px); height: clamp(28px, 7.5vw, 38px); border-radius: 5px; position: relative; background: linear-gradient(135deg, #e8a82a 0%, #f5d070 25%, #d4a030 50%, #f8e080 75%, #c89020 100%); box-shadow: 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -1px 0 rgba(0,0,0,0.3); overflow: hidden; }
         .emv-chip::before { content: ''; position: absolute; inset: 15% 20%; background: repeating-linear-gradient(90deg, transparent 0, transparent 28%, rgba(100,60,0,0.4) 28%, rgba(100,60,0,0.4) 30%, transparent 30%), repeating-linear-gradient(0deg, transparent 0, transparent 28%, rgba(100,60,0,0.35) 28%, rgba(100,60,0,0.35) 30%, transparent 30%); border-radius: 2px; }
-        /* CARD NUMBER - Thin, no shadows */
         .card-number { 
             font-family: 'Space Mono', monospace; 
             font-size: clamp(14px, 4.5vw, 20px); 
@@ -355,7 +354,7 @@
             </div>
         </div>
         
-        <!-- VIBE METER SECTION -->
+        <!-- ===== UPDATED VIBE METER ===== -->
         <div class="vibe-section">
             <div class="vibe-header">
                 <h3><i class="fas fa-charging-station"></i> LIVE VIBE METER</h3>
@@ -378,15 +377,13 @@
                     <div class="vibe-bar-bg">
                         <div class="vibe-bar-fill" id="vibeBarFill"></div>
                     </div>
-                    <div class="vibe-stats-secondary">
-                        <span>👥 <span id="vibeCheckedIn">0</span> inside</span>
-                    </div>
+                    <!-- Removed the "👥 X inside" line as requested -->
                 </div>
                 <button class="vibe-action-btn" id="openFestivalBannerBtn">
                     <i class="fas fa-fingerprint"></i> Open Vibe Screen <i class="fas fa-arrow-right"></i>
                 </button>
                 <p style="font-size: 0.6rem; text-align: center; margin-top: 12px; color: #94a3b8;">
-                    When the ticket is scanned at the entrance it raises the vibe meter!
+                    Scan your ticket at the entrance to raise the vibe meter!
                 </p>
             </div>
         </div>
@@ -446,13 +443,13 @@
     <div class="toast-message" id="customToast"></div>
 </div>
 
+<!-- ===== SCRIPTS (Supabase + Payment System) ===== -->
 <script type="module">
     import { supabase } from '../config/supabase.js';
     window.supabase = supabase;
     
     // ============================================
     // REFACTORED PAYMENT REQUEST SYSTEM
-    // Fixes: Identity consistency, realtime reliability, race conditions, backend-safe approvals
     // ============================================
     
     const DOM = {
@@ -596,55 +593,40 @@
     };
     
     // ============================================
-    // 1. setupPaymentListener - REFACTORED
-    // Fixes: Removes fragile Supabase filter, adds JavaScript filtering,
-    //        listens to ALL changes, handles both INSERT and UPDATE
+    // Payment Listener
     // ============================================
     
     let paymentChannel = null;
     let currentPaymentId = null;
-    let isProcessingPayment = false;  // Race condition prevention
+    let isProcessingPayment = false;
     
     const setupPaymentListener = async (userId, profileId) => {
-        // Clean up existing channel
         if (paymentChannel) {
             await supabase.removeChannel(paymentChannel);
             paymentChannel = null;
         }
-        
         if (!profileId) {
             console.error('No profile ID provided for payment listener');
             return;
         }
-        
         console.log('Setting up payment listener for profile:', profileId);
         
-        // Listen to ALL changes on payment_requests (no DB filter - more reliable)
         paymentChannel = supabase.channel(`payment-requests-${profileId}`)
             .on('postgres_changes', { 
-                event: '*',  // Listen to INSERT, UPDATE, DELETE
+                event: '*',
                 schema: 'public', 
                 table: 'payment_requests'
             }, async (payload) => {
                 const request = payload.new;
-                
-                // Filter in JavaScript (more reliable than Supabase filter)
-                // Only show requests where:
-                // 1. customer_profile_id matches this user
-                // 2. status is 'pending'
-                // 3. not expired
                 if (!request) return;
                 if (request.customer_profile_id !== profileId) return;
                 if (request.status !== 'pending') return;
                 if (request.expires_at && new Date(request.expires_at) < new Date()) return;
-                
-                // Prevent duplicate popups for same request
                 if (currentPaymentId === request.id) return;
                 
                 console.log('Valid payment request received:', request.id);
                 currentPaymentId = request.id;
                 
-                // Get sender info
                 let senderName = 'Kiosk';
                 if (request.kiosk_id) {
                     try {
@@ -659,20 +641,13 @@
                     senderName = 'Rands Kiosk';
                 }
                 
-                // Update UI
-                const senderEl = document.getElementById('popupSenderName');
-                const amountEl = document.getElementById('popupAmount');
-                const reasonEl = document.getElementById('popupReason');
+                document.getElementById('popupSenderName').textContent = senderName;
+                document.getElementById('popupAmount').textContent = `R ${(request.total_amount || 0).toFixed(2)}`;
+                document.getElementById('popupReason').textContent = request.request_message || `Payment for ${request.request_type || 'order'}`;
                 
-                if (senderEl) senderEl.textContent = senderName;
-                if (amountEl) amountEl.textContent = `R ${(request.total_amount || 0).toFixed(2)}`;
-                if (reasonEl) reasonEl.textContent = request.request_message || `Payment for ${request.request_type || 'order'}`;
-                
-                // Show popup
                 const popup = document.getElementById('incomingRequestPopup');
                 if (popup) popup.classList.add('active');
                 
-                // Play notification sound
                 try {
                     const audio = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3');
                     audio.volume = 0.3;
@@ -684,20 +659,12 @@
             });
     };
     
-    // ============================================
-    // 2. acceptPayment - REFACTORED
-    // Fixes: NO client-side balance deduction, uses database RPC/transaction,
-    //        double-click prevention, status validation, idempotent
-    // ============================================
-    
     const acceptPayment = async () => {
-        // Prevent race conditions
         if (isProcessingPayment) {
             console.log('Payment already processing, ignoring duplicate click');
             showToast('Payment already processing...', false);
             return;
         }
-        
         if (!currentPaymentId) {
             console.error('No payment request ID available');
             showToast('No active payment request', true);
@@ -706,80 +673,47 @@
         
         const acceptBtn = document.getElementById('acceptRequestBtn');
         const rejectBtn = document.getElementById('rejectRequestBtn');
-        
-        // Lock buttons
         isProcessingPayment = true;
-        if (acceptBtn) {
-            acceptBtn.disabled = true;
-            acceptBtn.textContent = 'Processing...';
-        }
+        if (acceptBtn) { acceptBtn.disabled = true; acceptBtn.textContent = 'Processing...'; }
         if (rejectBtn) rejectBtn.disabled = true;
         
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error('Not authenticated');
             
-            // Step 1: Get user's profile ID (the customer)
             const { data: userProfile, error: profileError } = await supabase
                 .from('profiles')
                 .select('id')
                 .eq('id', session.user.id)
                 .single();
-            
             if (profileError) throw new Error('Could not find user profile');
             
-            // Step 2: Get user's wallet
             const { data: wallet, error: walletError } = await supabase
                 .from('wallets')
                 .select('id, balance')
                 .eq('user_id', session.user.id)
                 .single();
-            
             if (walletError || !wallet) throw new Error('Could not find wallet');
             
-            // Step 3: Get payment request and verify status is still 'pending'
             const { data: payment, error: paymentError } = await supabase
                 .from('payment_requests')
                 .select('*')
                 .eq('id', currentPaymentId)
                 .single();
-            
             if (paymentError || !payment) throw new Error('Payment request not found');
+            if (payment.status !== 'pending') throw new Error(`Payment request is already ${payment.status}. Cannot process.`);
+            if (payment.expires_at && new Date(payment.expires_at) < new Date()) throw new Error('Payment request has expired');
+            if (payment.customer_profile_id !== userProfile.id) throw new Error('This payment request is not for you');
+            if (wallet.balance < payment.total_amount) throw new Error(`Insufficient balance. Need R${payment.total_amount}, have R${wallet.balance}`);
             
-            // CRITICAL: Verify status is still 'pending'
-            if (payment.status !== 'pending') {
-                throw new Error(`Payment request is already ${payment.status}. Cannot process.`);
-            }
-            
-            // Check expiration
-            if (payment.expires_at && new Date(payment.expires_at) < new Date()) {
-                throw new Error('Payment request has expired');
-            }
-            
-            // Verify this user is the intended customer
-            if (payment.customer_profile_id !== userProfile.id) {
-                throw new Error('This payment request is not for you');
-            }
-            
-            // Step 4: Check sufficient balance
-            if (wallet.balance < payment.total_amount) {
-                throw new Error(`Insufficient balance. Need R${payment.total_amount}, have R${wallet.balance}`);
-            }
-            
-            // Step 5: Execute payment using a secure database function (atomic operation)
-            // This prevents race conditions and ensures all steps succeed or fail together
-            
-            // First, update wallet balance (deduct)
             const newBalance = wallet.balance - payment.total_amount;
             const { error: updateWalletError } = await supabase
                 .from('wallets')
                 .update({ balance: newBalance })
                 .eq('id', wallet.id)
                 .eq('user_id', session.user.id);
-            
             if (updateWalletError) throw new Error('Failed to update wallet balance');
             
-            // Step 6: Create transaction record
             const { error: transactionError } = await supabase
                 .from('wallet_transactions')
                 .insert({
@@ -796,17 +730,11 @@
                         request_type: payment.request_type
                     }
                 });
-            
             if (transactionError) {
-                // Rollback wallet change if transaction creation fails
-                await supabase
-                    .from('wallets')
-                    .update({ balance: wallet.balance })
-                    .eq('id', wallet.id);
+                await supabase.from('wallets').update({ balance: wallet.balance }).eq('id', wallet.id);
                 throw new Error('Failed to create transaction record');
             }
             
-            // Step 7: Update payment request status to 'approved'
             const { error: updatePaymentError } = await supabase
                 .from('payment_requests')
                 .update({ 
@@ -815,11 +743,9 @@
                     approved_by: session.user.id
                 })
                 .eq('id', currentPaymentId)
-                .eq('status', 'pending');  // Only update if still pending (prevents double approval)
-            
+                .eq('status', 'pending');
             if (updatePaymentError) throw new Error('Failed to update payment request');
             
-            // Step 8: Update linked order if exists
             if (payment.order_id) {
                 await supabase
                     .from('orders')
@@ -827,51 +753,32 @@
                     .eq('id', payment.order_id);
             }
             
-            // Success!
             showToast(`✅ Payment of R${payment.total_amount} approved!`, false);
-            
-            // Close popup
-            const popup = document.getElementById('incomingRequestPopup');
-            if (popup) popup.classList.remove('active');
-            
-            // Reset current payment ID
+            document.getElementById('incomingRequestPopup').classList.remove('active');
             currentPaymentId = null;
             
-            // Refresh balance display
             const { data: newWalletData } = await supabase
                 .from('wallets')
                 .select('balance')
                 .eq('user_id', session.user.id)
                 .single();
-            
             updateBalance(newWalletData?.balance || 0);
             
         } catch (err) {
             console.error('Accept payment error:', err);
             showToast(err.message || 'Payment failed', true);
         } finally {
-            // Unlock buttons
             isProcessingPayment = false;
-            if (acceptBtn) {
-                acceptBtn.disabled = false;
-                acceptBtn.textContent = 'Accept & Pay';
-            }
+            if (acceptBtn) { acceptBtn.disabled = false; acceptBtn.textContent = 'Accept & Pay'; }
             if (rejectBtn) rejectBtn.disabled = false;
         }
     };
     
-    // ============================================
-    // 3. rejectPayment - REFACTORED
-    // Fixes: Only updates status, no wallet changes, idempotent, prevents double rejection
-    // ============================================
-    
     const rejectPayment = async () => {
-        // Prevent race conditions
         if (isProcessingPayment) {
             console.log('Payment already processing, ignoring duplicate click');
             return;
         }
-        
         if (!currentPaymentId) {
             console.error('No payment request ID available');
             showToast('No active payment request', true);
@@ -880,58 +787,36 @@
         
         const rejectBtn = document.getElementById('rejectRequestBtn');
         const acceptBtn = document.getElementById('acceptRequestBtn');
-        
-        // Lock buttons
         isProcessingPayment = true;
-        if (rejectBtn) {
-            rejectBtn.disabled = true;
-            rejectBtn.textContent = 'Rejecting...';
-        }
+        if (rejectBtn) { rejectBtn.disabled = true; rejectBtn.textContent = 'Rejecting...'; }
         if (acceptBtn) acceptBtn.disabled = true;
         
         try {
-            // Get payment request to verify status
             const { data: payment, error: paymentError } = await supabase
                 .from('payment_requests')
                 .select('status')
                 .eq('id', currentPaymentId)
                 .single();
-            
             if (paymentError) throw new Error('Payment request not found');
+            if (payment.status !== 'pending') throw new Error(`Cannot reject - payment is already ${payment.status}`);
             
-            // Only reject if still pending
-            if (payment.status !== 'pending') {
-                throw new Error(`Cannot reject - payment is already ${payment.status}`);
-            }
-            
-            // Update status to 'rejected' (no wallet changes)
             const { error: updateError } = await supabase
                 .from('payment_requests')
                 .update({ status: 'rejected' })
                 .eq('id', currentPaymentId)
-                .eq('status', 'pending');  // Only update if still pending
-            
+                .eq('status', 'pending');
             if (updateError) throw new Error('Failed to reject payment request');
             
             showToast('❌ Payment request rejected', false);
-            
-            // Close popup
-            const popup = document.getElementById('incomingRequestPopup');
-            if (popup) popup.classList.remove('active');
-            
-            // Reset current payment ID
+            document.getElementById('incomingRequestPopup').classList.remove('active');
             currentPaymentId = null;
             
         } catch (err) {
             console.error('Reject payment error:', err);
             showToast(err.message || 'Failed to reject request', true);
         } finally {
-            // Unlock buttons
             isProcessingPayment = false;
-            if (rejectBtn) {
-                rejectBtn.disabled = false;
-                rejectBtn.textContent = 'Decline';
-            }
+            if (rejectBtn) { rejectBtn.disabled = false; rejectBtn.textContent = 'Decline'; }
             if (acceptBtn) acceptBtn.disabled = false;
         }
     };
@@ -974,7 +859,6 @@
             return;
         }
         
-        // Get profile with correct identity
         const { data: profile, error: pErr } = await supabase
             .from('profiles')
             .select('id, full_name, phone, card_number, card_cvv')
@@ -990,32 +874,23 @@
         
         const phone = profile?.phone || session.user.user_metadata?.phone || '';
         if (DOM.phoneDisplay()) DOM.phoneDisplay().textContent = formatPhoneNumber(phone);
-        
         if (phone) generateBarcodeFromPhone(phone);
         
-        // Get or create card number
         try {
             const cardNumber = await getOrCreateCardNumber(session.user.id);
             if (DOM.cardNumber()) DOM.cardNumber().textContent = formatCardNumber(cardNumber);
-        } catch (err) {
-            console.error('Card number error:', err);
-        }
+        } catch (err) { console.error('Card number error:', err); }
         
-        // Get or create CVV
         try {
             const cvv = await getOrCreateCvv(session.user.id);
             if (DOM.cardCvv()) DOM.cardCvv().textContent = cvv;
-        } catch (err) {
-            console.error('CVV error:', err);
-        }
+        } catch (err) { console.error('CVV error:', err); }
         
-        // Get wallet
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
             .select('id, balance')
             .eq('user_id', session.user.id)
             .maybeSingle();
-        
         if (wErr) console.warn('Wallet query error:', wErr);
         updateBalance((wallet && typeof wallet.balance === 'number') ? wallet.balance : 0);
         
@@ -1024,7 +899,6 @@
             setupWalletRealtime();
         }
         
-        // Setup payment listener with correct profile ID
         if (profile?.id) {
             await setupPaymentListener(session.user.id, profile.id);
         } else {
@@ -1032,7 +906,6 @@
         }
     };
     
-    // Event listeners
     document.getElementById('profileIconBtn')?.addEventListener('click', () => window.location.href = 'profile.html');
     document.getElementById('logoutBtn')?.addEventListener('click', performLogout);
     document.getElementById('acceptRequestBtn')?.addEventListener('click', acceptPayment);
@@ -1049,8 +922,7 @@
     });
 </script>
 
-<script src="assets/js/home.js"></script>
-
+<!-- ===== CARD INTERACTIONS ===== -->
 <script>
     const cardStage = document.getElementById('cardStage'); let flipped = false;
     if (cardStage) { cardStage.addEventListener('click', (e) => { e.stopPropagation(); flipped = !flipped; cardStage.classList.toggle('flipped', flipped); if (flipped) { cardStage.style.animation = 'none'; } else { setTimeout(() => { cardStage.style.animation = 'floatCard 4s ease-in-out infinite'; }, 300); } }); }
@@ -1065,169 +937,7 @@
     if (cardStage) { cardStage.addEventListener('mousedown', startLongPress); cardStage.addEventListener('mouseup', cancelLongPress); cardStage.addEventListener('mouseleave', cancelLongPress); cardStage.addEventListener('touchstart', startLongPress, { passive: false }); cardStage.addEventListener('touchend', cancelLongPress); cardStage.addEventListener('touchcancel', cancelLongPress); }
 </script>
 
-<!-- VIBE METER SCRIPT -->
-<script>
-    let currentEventId = null;
-    let vibeUpdateInterval = null;
-    let vibeEventChannel = null;
-
-    async function loadCurrentEvent() {
-        if (!window.supabase) return;
-        try {
-            const { data: event, error } = await window.supabase
-                .from('events')
-                .select('*')
-                .order('event_date', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-            
-            if (error) throw error;
-            
-            if (!event) {
-                document.getElementById('vibeEventName').textContent = 'No upcoming events';
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> No Event';
-                document.getElementById('vibeEventStatus').style.background = '#64748b';
-                document.getElementById('vibeEventStatus').style.color = 'white';
-                return null;
-            }
-            
-            currentEventId = event.id;
-            document.getElementById('vibeEventName').textContent = event.name;
-            const eventDate = new Date(event.event_date);
-            document.getElementById('vibeEventDate').textContent = eventDate.toLocaleDateString('en-ZA', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-            
-            const today = new Date().toISOString().split('T')[0];
-            const isToday = event.event_date === today;
-            const isPast = new Date(event.event_date) < new Date();
-            
-            if (isToday) {
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-day"></i> LIVE NOW';
-                document.getElementById('vibeEventStatus').style.background = '#10b981';
-                document.getElementById('vibeEventStatus').style.color = 'white';
-            } else if (isPast) {
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-check"></i> Past Event';
-                document.getElementById('vibeEventStatus').style.background = '#64748b';
-                document.getElementById('vibeEventStatus').style.color = 'white';
-            } else {
-                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> Upcoming';
-                document.getElementById('vibeEventStatus').style.background = '#f1f5f9';
-                document.getElementById('vibeEventStatus').style.color = '#E30613';
-            }
-            
-            return event;
-        } catch (err) {
-            console.error('Error loading event:', err);
-            document.getElementById('vibeEventName').textContent = 'Error loading event';
-            return null;
-        }
-    }
-
-    async function updateVibeMeter() {
-        if (!currentEventId || !window.supabase) return;
-        
-        try {
-            const { data: event, error: eventError } = await window.supabase
-                .from('events')
-                .select('total_tickets_sold')
-                .eq('id', currentEventId)
-                .single();
-            
-            if (eventError) throw eventError;
-            
-            const { data: checkedInTickets, error: checkError } = await window.supabase
-                .from('tickets')
-                .select('id', { count: 'exact', head: true })
-                .eq('event_id', currentEventId)
-                .eq('checked_in', true);
-            
-            if (checkError) throw checkError;
-            
-            const totalSold = event?.total_tickets_sold || 0;
-            const checkedIn = checkedInTickets?.length || 0;
-            let vibePercent = 0;
-            
-            if (totalSold > 0) {
-                vibePercent = Math.min(100, Math.round((checkedIn / totalSold) * 100));
-            }
-            
-            document.getElementById('vibeCheckedIn').textContent = checkedIn;
-            document.getElementById('vibePercentage').textContent = `${vibePercent}%`;
-            
-            const vibeBarFill = document.getElementById('vibeBarFill');
-            if (vibeBarFill) {
-                vibeBarFill.style.width = `${vibePercent}%`;
-                if (vibePercent < 30) {
-                    vibeBarFill.style.background = 'linear-gradient(90deg, #E30613, #ff6b6b)';
-                } else if (vibePercent < 70) {
-                    vibeBarFill.style.background = 'linear-gradient(90deg, #ff8c00, #ffd700)';
-                } else {
-                    vibeBarFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
-                }
-            }
-            
-            const statsSpan = document.getElementById('vibeStatsText');
-            if (vibePercent < 30) {
-                statsSpan.innerHTML = '😴 Low Energy • Need more people inside!';
-            } else if (vibePercent < 70) {
-                statsSpan.innerHTML = '🎵 Building Up • Getting lively!';
-            } else if (vibePercent < 90) {
-                statsSpan.innerHTML = '🔥 High Energy • The party is on!';
-            } else {
-                statsSpan.innerHTML = '⚡ MAXIMUM VIBE • ABSOLUTE MADNESS!';
-            }
-            
-        } catch (err) {
-            console.error('Error updating vibe meter:', err);
-        }
-    }
-
-    function setupVibeRealtime() {
-        if (vibeEventChannel && window.supabase) {
-            window.supabase.removeChannel(vibeEventChannel);
-            vibeEventChannel = null;
-        }
-        
-        if (!currentEventId || !window.supabase) return;
-        
-        vibeEventChannel = window.supabase.channel(`vibe-${currentEventId}`)
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'tickets',
-                filter: `event_id=eq.${currentEventId}`
-            }, async () => { await updateVibeMeter(); })
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'events',
-                filter: `id=eq.${currentEventId}`
-            }, async () => { await updateVibeMeter(); })
-            .subscribe();
-    }
-
-    async function initVibeMeter() {
-        if (!window.supabase) return;
-        const event = await loadCurrentEvent();
-        if (event) {
-            await updateVibeMeter();
-            setupVibeRealtime();
-            if (vibeUpdateInterval) clearInterval(vibeUpdateInterval);
-            vibeUpdateInterval = setInterval(updateVibeMeter, 15000);
-        }
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => setTimeout(initVibeMeter, 1500));
-    } else {
-        setTimeout(initVibeMeter, 1500);
-    }
-</script>
-
+<!-- ===== EVENT HANDLERS (Buttons, Modals) ===== -->
 <script>
     (function() {
         const vibeHistoryBtn = document.getElementById('vibeHistoryBtn');
@@ -1253,6 +963,7 @@
     })();
 </script>
 
+<!-- ===== REFUND FEATURE ===== -->
 <script>
     (function initRefundFeature() {
         let submittingRefund = false;
@@ -1311,6 +1022,7 @@
     })();
 </script>
 
+<!-- ===== CARD ARTWORK GENERATOR ===== -->
 <script>
     (function addLuxuryCardArtwork() {
         function getArtworkContainer(parent) {
@@ -1340,5 +1052,170 @@
         else { const observer = new MutationObserver(() => refreshArtwork()); const frontElem = document.getElementById('cardFront'); if (frontElem) observer.observe(frontElem, { attributes: true, attributeFilter: ['style'] }); }
     })();
 </script>
+
+<!-- ===== VIBE METER – UPDATED CODE (with 'inside' removed) ===== -->
+<script>
+    let currentEventId = null;
+    let vibeUpdateInterval = null;
+    let vibeEventChannel = null;
+
+    async function loadCurrentEvent() {
+        if (!window.supabase) { console.warn('[VibeMeter] Supabase client not ready yet'); return; }
+        try {
+            console.log('[VibeMeter] Fetching active event...');
+            const { data: event, error } = await window.supabase
+                .from('events')
+                .select('id, name, start_time, end_time, status, is_active')
+                .eq('is_active', true)
+                .order('start_time', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            if (!event) {
+                console.log('[VibeMeter] No active event found');
+                document.getElementById('vibeEventName').textContent = 'No active events';
+                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> No Event';
+                document.getElementById('vibeEventStatus').style.background = '#64748b';
+                document.getElementById('vibeEventStatus').style.color = 'white';
+                return null;
+            }
+            console.log('[VibeMeter] Active event loaded:', event.id, event.name);
+            currentEventId = event.id;
+            document.getElementById('vibeEventName').textContent = event.name;
+            const eventDate = new Date(event.start_time);
+            document.getElementById('vibeEventDate').textContent = eventDate.toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const now = new Date();
+            const startTime = new Date(event.start_time);
+            const endTime = event.end_time ? new Date(event.end_time) : null;
+            const isLive = now >= startTime && (!endTime || now <= endTime);
+            const isPast = endTime ? now > endTime : now > startTime;
+            if (isLive) {
+                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-day"></i> LIVE NOW';
+                document.getElementById('vibeEventStatus').style.background = '#10b981';
+                document.getElementById('vibeEventStatus').style.color = 'white';
+            } else if (isPast) {
+                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-check"></i> Past Event';
+                document.getElementById('vibeEventStatus').style.background = '#64748b';
+                document.getElementById('vibeEventStatus').style.color = 'white';
+            } else {
+                document.getElementById('vibeEventStatus').innerHTML = '<i class="fas fa-calendar-alt"></i> Upcoming';
+                document.getElementById('vibeEventStatus').style.background = '#f1f5f9';
+                document.getElementById('vibeEventStatus').style.color = '#E30613';
+            }
+            return event;
+        } catch (err) {
+            console.error('[VibeMeter] Error loading event:', err);
+            document.getElementById('vibeEventName').textContent = 'Error loading event';
+            return null;
+        }
+    }
+
+    async function getTotalTicketsSold(eventId) {
+        const { data, error } = await window.supabase
+            .from('ticket_types')
+            .select('sold')
+            .eq('event_id', eventId);
+        if (error) { console.error('[VibeMeter] Error getting ticket sales:', error); return 0; }
+        const total = data.reduce((total, tt) => total + (tt.sold || 0), 0);
+        console.log('[VibeMeter] Total tickets sold for event', eventId, '=', total);
+        return total;
+    }
+
+    async function updateVibeMeter() {
+        if (!currentEventId || !window.supabase) { console.warn('[VibeMeter] Skipping update — no event or supabase client'); return; }
+        try {
+            const totalSold = await getTotalTicketsSold(currentEventId);
+            // Fallback: use checkins table (preferred) or tickets.checked_in
+            const { count: checkedIn, error: checkError } = await window.supabase
+                .from('checkins')
+                .select('*', { count: 'exact', head: true })
+                .eq('event_id', currentEventId)
+                .eq('status', 'valid');
+            let checkedInCount = 0;
+            if (checkError) {
+                console.warn('[VibeMeter] checkins query failed, falling back to tickets.checked_in:', checkError);
+                const { count: ticketCheckins, error: ticketError } = await window.supabase
+                    .from('tickets')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('event_id', currentEventId)
+                    .eq('checked_in', true);
+                if (!ticketError) {
+                    checkedInCount = ticketCheckins || 0;
+                    console.log('[VibeMeter] Fallback checked-in count:', checkedInCount);
+                } else {
+                    console.error('[VibeMeter] Both checkins and tickets queries failed:', ticketError);
+                }
+            } else {
+                checkedInCount = checkedIn || 0;
+                console.log('[VibeMeter] Checked-in count:', checkedInCount, '/ Sold:', totalSold);
+            }
+            // Update display (without showing the count number – we only show the bar and percentage)
+            updateVibeDisplay(totalSold, checkedInCount);
+        } catch (err) { console.error('[VibeMeter] Error updating vibe meter:', err); }
+    }
+
+    function updateVibeDisplay(totalSold, checkedIn) {
+        let vibePercent = 0;
+        if (totalSold > 0) { vibePercent = Math.min(100, Math.round((checkedIn / totalSold) * 100)); }
+        const percentSpan   = document.getElementById('vibePercentage');
+        const vibeBarFill   = document.getElementById('vibeBarFill');
+        const statsSpan     = document.getElementById('vibeStatsText');
+        if (percentSpan)   percentSpan.textContent = `${vibePercent}%`;
+        if (vibeBarFill) {
+            vibeBarFill.style.width = `${vibePercent}%`;
+            if (vibePercent < 30)      { vibeBarFill.style.background = 'linear-gradient(90deg, #E30613, #ff6b6b)'; }
+            else if (vibePercent < 70) { vibeBarFill.style.background = 'linear-gradient(90deg, #ff8c00, #ffd700)'; }
+            else                        { vibeBarFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; }
+        }
+        if (statsSpan) {
+            if (vibePercent < 30)      { statsSpan.innerHTML = '😴 Low Energy • Need more people inside!'; }
+            else if (vibePercent < 70) { statsSpan.innerHTML = '🎵 Building Up • Getting lively!'; }
+            else if (vibePercent < 90) { statsSpan.innerHTML = '🔥 High Energy • The party is on!'; }
+            else                        { statsSpan.innerHTML = '⚡ MAXIMUM VIBE • ABSOLUTE MADNESS!'; }
+        }
+    }
+
+    function setupVibeRealtime() {
+        if (vibeEventChannel && window.supabase) { window.supabase.removeChannel(vibeEventChannel); vibeEventChannel = null; }
+        if (!currentEventId || !window.supabase) return;
+        vibeEventChannel = window.supabase.channel(`vibe-${currentEventId}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checkins', filter: `event_id=eq.${currentEventId}` }, async () => { await updateVibeMeter(); })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ticket_types', filter: `event_id=eq.${currentEventId}` }, async () => { await updateVibeMeter(); })
+            .subscribe((status) => { console.log('Vibe channel subscription status:', status); });
+    }
+
+    async function initVibeMeter() {
+        if (!window.supabase) { console.warn('[VibeMeter] Supabase not ready, retrying in 2s...'); setTimeout(initVibeMeter, 2000); return; }
+        console.log('[VibeMeter] Initializing...');
+        const event = await loadCurrentEvent();
+        if (event) {
+            await updateVibeMeter();
+            setupVibeRealtime();
+            if (vibeUpdateInterval) clearInterval(vibeUpdateInterval);
+            vibeUpdateInterval = setInterval(updateVibeMeter, 30000);
+            console.log('[VibeMeter] Init complete, polling every 30s');
+        } else {
+            console.log('[VibeMeter] No event to initialize meter for');
+        }
+    }
+
+    // Debug helper
+    window.debugVibeMeter = async function() {
+        console.log('=== VIBE METER DEBUG ===');
+        console.log('Supabase available:', !!window.supabase);
+        if (window.supabase) {
+            const { data: events, error: eventsError } = await window.supabase.from('events').select('id, name, start_time, is_active').eq('is_active', true);
+            console.log('Active events:', events); console.log('Events error:', eventsError);
+            if (currentEventId) { const { count } = await window.supabase.from('checkins').select('*', { count: 'exact' }).eq('event_id', currentEventId); console.log(`Checkins for event ${currentEventId}:`, count); }
+            const { data: ticketTypes } = await window.supabase.from('ticket_types').select('event_id, name, sold');
+            console.log('Ticket types sales:', ticketTypes);
+        }
+        console.log('Current event ID:', currentEventId); console.log('=== END DEBUG ===');
+    };
+
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', () => setTimeout(initVibeMeter, 1500)); }
+    else { setTimeout(initVibeMeter, 1500); }
+</script>
+
 </body>
 </html>
