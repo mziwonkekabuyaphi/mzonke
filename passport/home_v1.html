@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rands Vibe Pass – Wallet Demo</title>
+  <style>
+    /* ── Tokens ─────────────────────────────────────────────────── */
+    :root {
+      --bg:          #080b14;
+      --surface:     #0d1221;
+      --surface2:    #131929;
+      --border:      rgba(255,255,255,.07);
+      --accent:      #7c3aed;
+      --accent2:     #a855f7;
+      --gold:        #e8c96b;
+      --gold-dim:    #b8973a;
+      --text:        #e8eaf0;
+      --muted:       #6b7280;
+      --danger:      #ef4444;
+      --success:     #10b981;
+      --radius:      16px;
+      --card-w:      340px;
+      --card-h:      210px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 20% 10%, rgba(124,58,237,.18) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 80% 85%, rgba(168,85,247,.12) 0%, transparent 55%),
+        radial-gradient(ellipse 30% 20% at 55% 50%, rgba(232,201,107,.04) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 0 0 100px; }
+
+    /* ── Loading (quick flash) ────────────────────────────────── */
+    #loading-screen {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--bg); gap: 16px;
+      transition: opacity .4s ease;
+    }
+    #loading-screen.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--accent2); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 20px 0;
+    }
+    .logo { font-size: .75rem; font-weight: 700; letter-spacing: .18em; color: var(--gold); text-transform: uppercase; }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: .85rem; font-weight: 700; cursor: pointer; flex-shrink: 0;
+    }
+    #greeting { padding: 28px 20px 0; }
+    #greeting .sup { font-size: .7rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+    #greeting .name { font-size: 1.55rem; font-weight: 700; letter-spacing: -.02em; }
+
+    #balance-tile {
+      margin: 24px 20px 0;
+      background: linear-gradient(135deg, var(--surface) 0%, #0f1628 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      position: relative; overflow: hidden;
+    }
+    #balance-tile::after {
+      content: '';
+      position: absolute; top: -40px; right: -40px;
+      width: 140px; height: 140px;
+      background: radial-gradient(circle, rgba(124,58,237,.18) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+    .balance-label { font-size: .7rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+    .balance-amount {
+      font-size: 2.4rem; font-weight: 800; letter-spacing: -.04em;
+      background: linear-gradient(90deg, var(--gold), var(--gold-dim));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .balance-currency { font-size: .95rem; font-weight: 500; -webkit-text-fill-color: var(--muted); letter-spacing: 0; }
+
+    .quick-actions {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin: 16px 20px 0;
+    }
+    .qa-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      cursor: pointer; transition: background .2s, border-color .2s;
+      font-size: .72rem; color: var(--muted); letter-spacing: .04em;
+    }
+    .qa-btn:hover { background: #1a2140; border-color: rgba(124,58,237,.4); color: var(--text); }
+    .qa-icon { font-size: 1.3rem; }
+
+    .section-head { padding: 28px 20px 14px; font-size: .7rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+
+    .card-scene {
+      width: var(--card-w); height: var(--card-h);
+      margin: 0 auto;
+      perspective: 1000px;
+      cursor: pointer;
+    }
+    .card-inner {
+      width: 100%; height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform .7s cubic-bezier(.4,0,.2,1);
+    }
+    .card-scene.flipped .card-inner { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute; inset: 0;
+      border-radius: 18px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
+    }
+
+    .card-front {
+      background: linear-gradient(135deg, #1a0533 0%, #2d1060 40%, #0a0a1a 100%);
+    }
+    .card-front .holo {
+      position: absolute; inset: 0;
+      background:
+        repeating-linear-gradient(
+          45deg,
+          rgba(255,255,255,.02) 0px,
+          rgba(255,255,255,.02) 1px,
+          transparent 1px,
+          transparent 8px
+        );
+    }
+    .card-front .shimmer {
+      position: absolute; inset: 0;
+      background: linear-gradient(130deg, transparent 30%, rgba(168,85,247,.12) 50%, transparent 70%);
+      animation: shimmer 4s ease infinite;
+    }
+    @keyframes shimmer {
+      0%   { transform: translateX(-100%); }
+      60%  { transform: translateX(100%); }
+      100% { transform: translateX(100%); }
+    }
+    .card-front-content { position: relative; z-index: 2; padding: 20px; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+    .card-brand { font-size: .6rem; letter-spacing: .22em; color: rgba(255,255,255,.5); text-transform: uppercase; }
+    .card-chip {
+      width: 34px; height: 26px; border-radius: 4px;
+      background: linear-gradient(135deg, #e8c96b, #b8973a);
+      position: relative; overflow: hidden;
+    }
+    .card-chip::after {
+      content: '';
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 60%; height: 60%; border: 1.5px solid rgba(0,0,0,.3); border-radius: 2px;
+    }
+    .card-chip-row { display: flex; align-items: center; gap: 10px; }
+    .card-number { font-size: 1rem; letter-spacing: .2em; font-weight: 600; font-family: 'Courier New', monospace; }
+    .card-footer { display: flex; justify-content: space-between; align-items: flex-end; }
+    .card-holder { font-size: .65rem; letter-spacing: .1em; color: rgba(255,255,255,.7); text-transform: uppercase; }
+    .card-holder span { display: block; font-size: .55rem; color: rgba(255,255,255,.4); margin-bottom: 2px; letter-spacing: .12em; }
+    .card-logo { font-size: .6rem; letter-spacing: .12em; color: var(--gold); font-weight: 700; text-align: right; }
+    .card-expiry-label { font-size: .5rem; letter-spacing: .1em; color: rgba(255,255,255,.4); }
+    .card-expiry { font-size: .72rem; letter-spacing: .1em; }
+
+    .card-back {
+      transform: rotateY(180deg);
+      background: linear-gradient(135deg, #0f0f1e 0%, #1a1040 100%);
+    }
+    .mag-stripe {
+      width: 100%; height: 38px; background: #111; margin-top: 22px;
+    }
+    .card-back-body { padding: 12px 18px; display: flex; flex-direction: column; gap: 10px; }
+    .sig-strip {
+      background: repeating-linear-gradient(
+        90deg,
+        #fff 0px, #fff 4px, #e0e0e0 4px, #e0e0e0 8px,
+        #fff 8px, #fff 12px, #ff9 12px, #ff9 16px
+      );
+      border-radius: 4px; height: 28px; padding: 0 8px;
+      display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    }
+    .sig-cvv-label { font-size: .5rem; color: #333; letter-spacing: .08em; }
+    .sig-cvv { font-size: .85rem; font-weight: 700; color: #111; font-family: 'Courier New', monospace; }
+
+    .barcode-wrap { text-align: center; }
+    .barcode-svg { width: 100%; max-width: 280px; height: 44px; display: block; margin: 0 auto; }
+    .wallet-id-text {
+      font-size: .52rem; letter-spacing: .06em; color: rgba(255,255,255,.45);
+      text-align: center; margin-top: 4px; font-family: 'Courier New', monospace;
+      word-break: break-all;
+    }
+    .back-brand { font-size: .5rem; letter-spacing: .14em; color: rgba(255,255,255,.2); text-align: center; margin-top: 6px; text-transform: uppercase; }
+
+    .card-flip-hint { text-align: center; margin-top: 10px; font-size: .65rem; color: var(--muted); letter-spacing: .08em; }
+
+    #vibe-tile {
+      margin: 0 20px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+    }
+    .vibe-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .vibe-title { font-size: .85rem; font-weight: 600; }
+    .vibe-badge {
+      font-size: .6rem; padding: 3px 8px; border-radius: 20px;
+      background: rgba(16,185,129,.15); color: var(--success);
+      border: 1px solid rgba(16,185,129,.3); letter-spacing: .08em; text-transform: uppercase;
+    }
+    .vibe-bar-track {
+      height: 8px; background: rgba(255,255,255,.07); border-radius: 99px; overflow: hidden; margin-bottom: 8px;
+    }
+    .vibe-bar-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2), #ec4899);
+      transition: width .6s ease;
+    }
+    .vibe-stats { display: flex; gap: 20px; }
+    .vibe-stat { font-size: .7rem; color: var(--muted); }
+    .vibe-stat strong { color: var(--text); font-weight: 600; }
+
+    #tx-list { margin: 0 20px; display: flex; flex-direction: column; gap: 8px; }
+    .tx-item {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 16px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .tx-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; flex-shrink: 0;
+    }
+    .tx-icon.credit { background: rgba(16,185,129,.15); }
+    .tx-icon.debit  { background: rgba(239,68,68,.1); }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-desc { font-size: .82rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-date { font-size: .65rem; color: var(--muted); margin-top: 2px; }
+    .tx-amount { font-size: .9rem; font-weight: 700; }
+    .tx-amount.credit { color: var(--success); }
+    .tx-amount.debit  { color: var(--danger); }
+
+    #payment-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.75); backdrop-filter: blur(8px);
+      align-items: flex-end; justify-content: center;
+    }
+    #payment-modal.open { display: flex; }
+    .modal-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 24px 24px 0 0; padding: 28px 24px 36px;
+      width: 100%; max-width: 480px;
+    }
+    .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 99px; margin: 0 auto 20px; }
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+    .modal-subtitle { font-size: .8rem; color: var(--muted); margin-bottom: 20px; }
+    .modal-amount { font-size: 2.2rem; font-weight: 800; text-align: center; margin: 16px 0;
+      background: linear-gradient(90deg, var(--gold), var(--gold-dim));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .modal-msg { background: var(--surface2); border-radius: 10px; padding: 12px 14px; font-size: .82rem; color: var(--muted); margin-bottom: 20px; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn {
+      padding: 14px; border-radius: 12px; border: none;
+      font-size: .9rem; font-weight: 700; cursor: pointer; transition: opacity .2s;
+      letter-spacing: .02em;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-approve { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+    .btn-decline { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-full { grid-column: 1/-1; }
+    #payment-timer { font-size: .72rem; color: var(--muted); text-align: center; margin-top: 12px; }
+
+    #toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 99px; padding: 10px 20px;
+      font-size: .8rem; color: var(--text); white-space: nowrap;
+      opacity: 0; transition: all .3s ease; z-index: 300; pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    #navbar {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px;
+      background: rgba(13,18,33,.95); backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-around;
+      padding: 10px 0 env(safe-area-inset-bottom, 10px);
+      z-index: 50;
+    }
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-size: .58rem; color: var(--muted); cursor: pointer;
+      padding: 6px 16px; border-radius: 10px; transition: color .2s;
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    .nav-item.active { color: var(--accent2); }
+    .nav-icon { font-size: 1.2rem; }
+
+    @media (max-width: 380px) {
+      :root { --card-w: 300px; --card-h: 186px; }
+      .card-number { font-size: .88rem; letter-spacing: .15em; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading (fades out after 600ms) -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <span style="font-size:.75rem;letter-spacing:.12em;color:var(--muted);text-transform:uppercase">Loading your wallet…</span>
+</div>
+
+<!-- Main App -->
+<div id="app">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <div class="logo">Rands Vibe Pass</div>
+    <div class="user-avatar" id="avatar-btn" title="Sign out (demo)">M</div>
+  </div>
+
+  <!-- Greeting -->
+  <div id="greeting">
+    <div class="sup">Good to see you</div>
+    <div class="name" id="user-name">Mziwonke</div>
+  </div>
+
+  <!-- Balance -->
+  <div id="balance-tile">
+    <div class="balance-label">Available Balance</div>
+    <div class="balance-amount">
+      <span class="balance-currency">R </span><span id="balance-val">2,450.00</span>
+    </div>
+  </div>
+
+  <!-- Quick actions -->
+  <div class="quick-actions">
+    <div class="qa-btn" onclick="window.showToast('Top‑up coming soon')">
+      <span class="qa-icon">↑</span>Top Up
+    </div>
+    <div class="qa-btn" onclick="window.showToast('Transfer coming soon')">
+      <span class="qa-icon">⇄</span>Transfer
+    </div>
+    <div class="qa-btn" onclick="window.showToast('Withdraw coming soon')">
+      <span class="qa-icon">↓</span>Withdraw
+    </div>
+  </div>
+
+  <!-- Virtual card -->
+  <div class="section-head">Your Card <span style="opacity:.4;font-size:.6rem">(tap to flip)</span></div>
+  <div class="card-scene" id="card-scene" onclick="this.classList.toggle('flipped')">
+    <div class="card-inner">
+
+      <!-- FRONT -->
+      <div class="card-face card-front">
+        <div class="holo"></div>
+        <div class="shimmer"></div>
+        <div class="card-front-content">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div class="card-brand">Rands Vibe Pass</div>
+            <svg width="38" height="24" viewBox="0 0 38 24" fill="none" style="opacity:.6">
+              <circle cx="14" cy="12" r="10" fill="#e8c96b" opacity=".85"/>
+              <circle cx="24" cy="12" r="10" fill="#b8973a" opacity=".7"/>
+            </svg>
+          </div>
+          <div class="card-chip-row">
+            <div class="card-chip"></div>
+            <div style="font-size:.55rem;color:rgba(255,255,255,.3);letter-spacing:.06em">NFC ◉</div>
+          </div>
+          <div class="card-number" id="card-number">4532 7891 2345 6789</div>
+          <div class="card-footer">
+            <div class="card-holder">
+              <span>Card Holder</span>
+              <span id="card-name">MZIWONKE BUYAPHI</span>
+            </div>
+            <div>
+              <div class="card-expiry-label">VALID</div>
+              <div class="card-expiry">VIBE</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BACK -->
+      <div class="card-face card-back">
+        <div class="mag-stripe"></div>
+        <div class="card-back-body">
+          <div class="sig-strip">
+            <span class="sig-cvv-label">CVV</span>
+            <span class="sig-cvv" id="card-cvv">742</span>
+          </div>
+          <div class="barcode-wrap">
+            <svg class="barcode-svg" id="barcode-svg" viewBox="0 0 280 44" preserveAspectRatio="none"></svg>
+            <div class="wallet-id-text" id="wallet-id-display">1234 5678 9012 3456</div>
+          </div>
+          <div class="back-brand">Rands Vibe Pass · Digital Wallet</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div class="card-flip-hint">Tap card to see wallet ID</div>
+
+  <!-- Vibe Meter -->
+  <div class="section-head">Live Vibe</div>
+  <div id="vibe-tile">
+    <div class="vibe-header">
+      <div class="vibe-title" id="event-name">Asilali eMakhaya</div>
+      <div class="vibe-badge" id="vibe-badge">🔥 LIVE</div>
+    </div>
+    <div class="vibe-bar-track">
+      <div class="vibe-bar-fill" id="vibe-bar" style="width:72%"></div>
+    </div>
+    <div class="vibe-stats">
+      <div class="vibe-stat">Checked in: <strong id="checkin-count">186</strong></div>
+      <div class="vibe-stat">Tickets sold: <strong id="ticket-count">258</strong></div>
+      <div class="vibe-stat">Vibe: <strong id="vibe-pct">72%</strong></div>
+    </div>
+  </div>
+
+  <!-- Transactions -->
+  <div class="section-head">Recent Transactions</div>
+  <div id="tx-list">
+    <div class="tx-item">
+      <div class="tx-icon credit">↓</div>
+      <div class="tx-info">
+        <div class="tx-desc">Top‑up from Card</div>
+        <div class="tx-date">Today, 14:32</div>
+      </div>
+      <div class="tx-amount credit">+R500.00</div>
+    </div>
+    <div class="tx-item">
+      <div class="tx-icon debit">↑</div>
+      <div class="tx-info">
+        <div class="tx-desc">Ticket: VVIP Pass</div>
+        <div class="tx-date">Today, 12:10</div>
+      </div>
+      <div class="tx-amount debit">-R150.00</div>
+    </div>
+    <div class="tx-item">
+      <div class="tx-icon credit">↓</div>
+      <div class="tx-info">
+        <div class="tx-desc">Refund – Order #1042</div>
+        <div class="tx-date">Yesterday, 18:45</div>
+      </div>
+      <div class="tx-amount credit">+R85.00</div>
+    </div>
+    <div class="tx-item">
+      <div class="tx-icon debit">↑</div>
+      <div class="tx-info">
+        <div class="tx-desc">Shisha Session</div>
+        <div class="tx-date">Yesterday, 21:20</div>
+      </div>
+      <div class="tx-amount debit">-R260.00</div>
+    </div>
+    <div class="tx-item">
+      <div class="tx-icon credit">↓</div>
+      <div class="tx-info">
+        <div class="tx-desc">Cashback Bonus</div>
+        <div class="tx-date">2 days ago, 09:15</div>
+      </div>
+      <div class="tx-amount credit">+R25.00</div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- Payment Modal (demo trigger) -->
+<div id="payment-modal">
+  <div class="modal-card">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Payment Request</div>
+    <div class="modal-subtitle" id="modal-kiosk">From: VIP Bar</div>
+    <div class="modal-amount" id="modal-amount">R 320.00</div>
+    <div class="modal-msg" id="modal-msg">2x Premium Cocktails + Service fee</div>
+    <div class="modal-actions">
+      <button class="btn btn-decline" onclick="window.closePaymentModal()">Decline</button>
+      <button class="btn btn-approve" onclick="window.approvePayment()">Approve</button>
+    </div>
+    <div id="payment-timer">Expires in 58s</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Nav -->
+<div id="navbar">
+  <div class="nav-item active"><span class="nav-icon">⌂</span>Home</div>
+  <div class="nav-item" onclick="window.showToast('Tickets coming soon')"><span class="nav-icon">🎟</span>Tickets</div>
+  <div class="nav-item" onclick="window.showToast('History coming soon')"><span class="nav-icon">↕</span>History</div>
+  <div class="nav-item" onclick="window.showToast('Settings coming soon')"><span class="nav-icon">⚙</span>Settings</div>
+</div>
+
+<script>
+  /* ── Toast ───────────────────────────────────────────────────── */
+  window.showToast = function(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  };
+
+  /* ── Payment modal (demo) ───────────────────────────────────── */
+  function openPaymentModal() {
+    document.getElementById('payment-modal').classList.add('open');
+    // Timer countdown demo
+    let secs = 58;
+    const timerEl = document.getElementById('payment-timer');
+    clearInterval(window._timerInterval);
+    window._timerInterval = setInterval(() => {
+      secs = Math.max(0, secs - 1);
+      timerEl.textContent = secs > 0 ? `Expires in ${secs}s` : 'Expired';
+      if (secs === 0) {
+        clearInterval(window._timerInterval);
+        closePaymentModal();
+        window.showToast('Payment request expired');
+      }
+    }, 1000);
+  }
+
+  window.closePaymentModal = function() {
+    document.getElementById('payment-modal').classList.remove('open');
+    clearInterval(window._timerInterval);
+  };
+
+  window.approvePayment = function() {
+    clearInterval(window._timerInterval);
+    document.getElementById('payment-modal').classList.remove('open');
+    window.showToast('✅ Payment approved!');
+    // Update balance demo
+    const balEl = document.getElementById('balance-val');
+    const current = parseFloat(balEl.textContent.replace(/,/g, ''));
+    const newBal = (current - 320).toFixed(2);
+    balEl.textContent = newBal.toLocaleString('en-ZA', { minimumFractionDigits: 2 });
+  };
+
+  /* ── Barcode generator ──────────────────────────────────────── */
+  function drawBarcode(text) {
+    const svg = document.getElementById('barcode-svg');
+    if (!svg) return;
+    svg.innerHTML = '';
+    const chars = [...text.replace(/-/g, '').replace(/\s/g, '')];
+    const barCount = 60;
+    const totalW = 280;
+    const barW = totalW / barCount;
+    const seed = chars.reduce((a, c) => a + c.charCodeAt(0), 0);
+
+    let x = 0;
+    for (let i = 0; i < barCount; i++) {
+      const charVal = chars[i % chars.length].charCodeAt(0);
+      const isBar = (charVal + i + seed) % 3 !== 0;
+      const w = barW * (1 + ((charVal * (i + 1)) % 3) * 0.3);
+      if (isBar) {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x);
+        rect.setAttribute('y', 0);
+        rect.setAttribute('width', Math.max(w - 0.8, 0.6));
+        rect.setAttribute('height', 44);
+        rect.setAttribute('fill', 'rgba(255,255,255,0.75)');
+        svg.appendChild(rect);
+      }
+      x += w;
+      if (x >= totalW) break;
+    }
+  }
+
+  /* ── Demo: Show payment modal after 3s ─────────────────────── */
+  setTimeout(() => {
+    openPaymentModal();
+  }, 3000);
+
+  /* ── Hide loading screen ───────────────────────────────────── */
+  setTimeout(() => {
+    document.getElementById('loading-screen').classList.add('hidden');
+  }, 600);
+
+  /* ── Draw barcode ───────────────────────────────────────────── */
+  drawBarcode('1234 5678 9012 3456');
+
+  /* ── Avatar click (demo) ───────────────────────────────────── */
+  document.getElementById('avatar-btn').addEventListener('click', () => {
+    window.showToast('👋 Demo – sign‑out not available');
+  });
+
+  /* ── Card flip hint ─────────────────────────────────────────── */
+  console.log('💳 Rands Vibe Pass – Demo UI loaded');
+  console.log('Tap the card to flip it!');
+</script>
+
+</body>
+</html>
