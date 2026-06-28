@@ -483,10 +483,9 @@
 </div>
 
 <script type="module">
-  // ---- Safely get Supabase client ----
+  // ---- Get Supabase client ----
   let supabase;
   try {
-    // Try import
     const module = await import('../config/supabase.js');
     supabase = module.default || module;
   } catch (e) {
@@ -494,18 +493,18 @@
     if (window.supabase) {
       supabase = window.supabase;
     } else {
-      // Fallback – show error
       document.getElementById('loading-screen').style.display = 'none';
       document.getElementById('error-screen').style.display = 'flex';
       document.getElementById('error-message').textContent = 'Supabase client not found. Check your config path.';
       throw new Error('Supabase client missing');
     }
   }
-  window.supabase = supabase; // make globally available
+  window.supabase = supabase;
 
   /* ── State ──────────────────────────────────────────────────── */
   let currentSession = null;
-  let walletId       = null;
+  let walletId       = null;       // UUID from wallets table
+  let profileWalletId = null;     // 16‑digit wallet_id from profiles
   let activeRequestId = null;
   let timerInterval   = null;
   let paymentChannel  = null;
@@ -534,7 +533,6 @@
     } else if (name === 'app') {
       appContainer.style.display = 'block';
     } else {
-      // fallback: show loading (should not happen)
       loadingScreen.style.display = 'flex';
     }
   }
@@ -552,65 +550,40 @@
   async function boot() {
     console.log('🚀 Boot started');
     try {
-      // 1. Check session
-      console.log('🔐 Getting session…');
+      // 1. Session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        throw new Error('Auth error: ' + sessionError.message);
-      }
-      if (!session) {
-        console.warn('No session – showing auth screen');
-        showScreen('auth');
-        return;
-      }
+      if (sessionError) throw new Error('Auth error: ' + sessionError.message);
+      if (!session) { showScreen('auth'); return; }
       currentSession = session;
       console.log('✅ Session OK, user:', session.user.id);
 
-      // 2. Load data sequentially with individual error handling
-      try {
-        console.log('👤 Loading profile…');
-        await loadProfile(session.user.id);
-      } catch (e) {
-        console.error('Profile error:', e);
-        // Non‑critical – we can still show app with defaults
-        window.showToast('Could not load profile');
-      }
+      // 2. Load profile (critical)
+      await loadProfile(session.user.id);
 
-      try {
-        console.log('💰 Loading wallet…');
-        await loadWallet(session.user.id);
-      } catch (e) {
-        console.error('Wallet error:', e);
-        // Critical – without wallet we can't show balance, but we can still show app
-        window.showToast('Could not load wallet');
-      }
+      // 3. Load wallet (critical – uses profile's wallet_id or user_id)
+      await loadWallet(session.user.id);
 
+      // 4. Load transactions (non‑critical)
       try {
-        console.log('📊 Loading transactions…');
         await loadTransactions();
       } catch (e) {
-        console.error('Transactions error:', e);
+        console.warn('Transactions error:', e);
         window.showToast('Could not load transactions');
       }
 
+      // 5. Load vibe (non‑critical)
       try {
-        console.log('📈 Loading vibe data…');
         await loadVibeData();
       } catch (e) {
-        console.error('Vibe error:', e);
+        console.warn('Vibe error:', e);
         window.showToast('Could not load vibe data');
       }
 
-      // 3. Subscribe to realtime channels (only if we have walletId)
-      if (walletId) {
-        console.log('🔌 Subscribing to wallet updates…');
-        subscribeWallet(walletId);
-      }
-      console.log('🔔 Subscribing to payment requests…');
+      // 6. Subscriptions
+      if (walletId) subscribeWallet(walletId);
       subscribePayments(session.user.id);
 
-      // 4. Show app
+      // 7. Show app
       console.log('✅ Boot complete – showing app');
       showScreen('app');
 
@@ -622,29 +595,23 @@
 
   /* ── Profile ────────────────────────────────────────────────── */
   async function loadProfile(userId) {
+    // IMPORTANT: Your schema uses "name" and "surname" – NOT "full_name"
     const { data: p, error } = await supabase
       .from('profiles')
-      .select('full_name, card_number, card_cvv')
+      .select('name, surname, card_number, card_cvv, wallet_id')
       .eq('id', userId)
       .single();
 
-    if (error) {
-      console.error('Profile query error:', error);
-      throw new Error('Profile load: ' + error.message);
-    }
-    if (!p) {
-      console.warn('Profile not found, using defaults');
-      // Use defaults
-      $('user-name').textContent = 'Vibe Member';
-      $('avatar-btn').textContent = 'V';
-      $('card-name').textContent = 'MEMBER';
-      return;
-    }
+    if (error) throw new Error('Profile load: ' + error.message);
+    if (!p) throw new Error('Profile not found');
 
-    const first = (p.full_name || '').split(' ')[0] || 'Vibe Member';
-    $('user-name').textContent = p.full_name || 'Vibe Member';
-    $('avatar-btn').textContent = first[0].toUpperCase();
-    $('card-name').textContent  = (p.full_name || '').toUpperCase();
+    // Build full name from name + surname
+    const fullName = [p.name, p.surname].filter(Boolean).join(' ') || 'Vibe Member';
+    const first = (p.name || 'V').charAt(0).toUpperCase();
+
+    $('user-name').textContent = fullName;
+    $('avatar-btn').textContent = first;
+    $('card-name').textContent = fullName.toUpperCase();
     $('card-cvv').textContent   = p.card_cvv || '•••';
 
     if (p.card_number) {
@@ -652,36 +619,42 @@
       const fmt = cn.match(/.{1,4}/g)?.join(' ') || cn;
       $('card-number').textContent = fmt;
     }
+
+    // Store the 16‑digit wallet_id from profiles – this goes on the card back
+    if (p.wallet_id) {
+      profileWalletId = p.wallet_id;
+      $('wallet-id-display').textContent = p.wallet_id;
+      drawBarcode(p.wallet_id);
+    } else {
+      console.warn('No wallet_id in profile – card back will show placeholder');
+      $('wallet-id-display').textContent = '—';
+    }
   }
 
   /* ── Wallet ─────────────────────────────────────────────────── */
   async function loadWallet(userId) {
+    // Your wallets table uses user_id (references profiles.id)
     const { data: w, error } = await supabase
       .from('wallets')
       .select('id, balance')
-      .eq('user_id', userId) // adjust column if needed (e.g. 'profile_id')
+      .eq('user_id', userId)
       .single();
 
-    if (error) {
-      console.error('Wallet query error:', error);
-      throw new Error('Wallet load: ' + error.message);
-    }
-    if (!w) {
-      console.warn('Wallet not found');
-      throw new Error('Wallet not found for user');
-    }
+    if (error) throw new Error('Wallet load: ' + error.message);
+    if (!w) throw new Error('Wallet not found for user');
 
     walletId = w.id;
 
-    // Balance
     const bal = parseFloat(w.balance || 0).toFixed(2);
     $('balance-val').textContent = bal;
 
-    // Card back: display wallet ID
-    $('wallet-id-display').textContent = w.id;
-
-    // Draw barcode
-    drawBarcode(w.id);
+    // If we didn't get wallet_id from profile earlier, fallback to wallet UUID
+    if (!profileWalletId) {
+      // Show a shortened version of the wallet UUID on card back
+      const short = w.id.substring(0, 8) + '…' + w.id.substring(w.id.length - 4);
+      $('wallet-id-display').textContent = short;
+      drawBarcode(w.id.replace(/-/g, ''));
+    }
   }
 
   /* ── Barcode ────────────────────────────────────────────────── */
@@ -716,9 +689,7 @@
 
   /* ── Wallet realtime ────────────────────────────────────────── */
   function subscribeWallet(wId) {
-    if (walletChannel) {
-      supabase.removeChannel(walletChannel);
-    }
+    if (walletChannel) supabase.removeChannel(walletChannel);
     walletChannel = supabase
       .channel('wallet-balance')
       .on('postgres_changes', {
@@ -727,7 +698,7 @@
       }, payload => {
         const newBal = parseFloat(payload.new.balance || 0).toFixed(2);
         $('balance-val').textContent = newBal;
-        loadTransactions(); // refresh list
+        loadTransactions().catch(e => console.warn('Tx refresh error:', e));
       })
       .subscribe();
   }
@@ -744,10 +715,7 @@
       .order('created_at', { ascending: false })
       .limit(8);
 
-    if (error) {
-      console.error('Transactions query error:', error);
-      throw new Error('Transactions load: ' + error.message);
-    }
+    if (error) throw new Error('Transactions load: ' + error.message);
 
     const list = $('tx-list');
     if (!txs || txs.length === 0) {
@@ -777,17 +745,13 @@
 
   /* ── Vibe Meter ─────────────────────────────────────────────── */
   async function loadVibeData() {
-    // Get active event
     const { data: events, error: evErr } = await supabase
       .from('events')
       .select('id, name')
       .eq('is_active', true)
       .limit(1);
 
-    if (evErr) {
-      console.error('Vibe event query error:', evErr);
-      throw new Error('Vibe event load: ' + evErr.message);
-    }
+    if (evErr) throw new Error('Vibe event load: ' + evErr.message);
 
     const event = events?.[0];
     if (!event) {
@@ -799,26 +763,16 @@
     $('event-name').textContent = event.name;
     $('vibe-badge').style.display = 'inline';
 
-    // Check-ins
-    const { count: checkins, error: ciErr } = await supabase
+    const { count: checkins } = await supabase
       .from('checkins')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', event.id)
       .eq('status', 'valid');
 
-    if (ciErr) {
-      console.warn('Check‑in count error:', ciErr);
-    }
-
-    // Tickets sold
-    const { data: ttypes, error: ttErr } = await supabase
+    const { data: ttypes } = await supabase
       .from('ticket_types')
       .select('sold')
       .eq('event_id', event.id);
-
-    if (ttErr) {
-      console.warn('Ticket sales error:', ttErr);
-    }
 
     const totalSold = (ttypes || []).reduce((s, t) => s + (t.sold || 0), 0) || 0;
     const ci = checkins || 0;
@@ -829,10 +783,7 @@
     $('vibe-pct').textContent      = pct + '%';
     $('vibe-bar').style.width      = pct + '%';
 
-    // Realtime – clean previous channel
-    if (vibeChannel) {
-      supabase.removeChannel(vibeChannel);
-    }
+    if (vibeChannel) supabase.removeChannel(vibeChannel);
     vibeChannel = supabase
       .channel('vibe-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins', filter: `event_id=eq.${event.id}` }, () => {
@@ -843,9 +794,7 @@
 
   /* ── Payment requests ───────────────────────────────────────── */
   function subscribePayments(userId) {
-    if (paymentChannel) {
-      supabase.removeChannel(paymentChannel);
-    }
+    if (paymentChannel) supabase.removeChannel(paymentChannel);
     paymentChannel = supabase
       .channel('payment-requests')
       .on('postgres_changes', {
@@ -859,12 +808,11 @@
       })
       .subscribe();
 
-    // Also check for any pending ones already there
     loadPendingRequests(userId);
   }
 
   async function loadPendingRequests(userId) {
-    const { data: reqs, error } = await supabase
+    const { data: reqs } = await supabase
       .from('payment_requests')
       .select('*')
       .eq('customer_profile_id', userId)
@@ -873,23 +821,16 @@
       .order('created_at', { ascending: false })
       .limit(1);
 
-    if (error) {
-      console.warn('Pending requests error:', error);
-      return;
-    }
-    if (reqs?.[0]) {
-      await showPaymentModal(reqs[0]);
-    }
+    if (reqs?.[0]) await showPaymentModal(reqs[0]);
   }
 
   async function showPaymentModal(req) {
     activeRequestId = req.id;
 
-    // Kiosk name
     let kiosk = 'Kiosk';
     if (req.kiosk_id) {
-      const { data: k, error } = await supabase.from('kiosks').select('name').eq('id', req.kiosk_id).single();
-      if (!error && k) kiosk = k.name;
+      const { data: k } = await supabase.from('kiosks').select('name').eq('id', req.kiosk_id).single();
+      if (k) kiosk = k.name;
     }
 
     $('modal-kiosk').textContent  = `From: ${kiosk}`;
@@ -921,9 +862,7 @@
 
     const status = action === 'approve' ? 'approved' : 'declined';
     const updateData = { status };
-    if (action === 'approve') {
-      updateData.approved_at = new Date().toISOString();
-    }
+    if (action === 'approve') updateData.approved_at = new Date().toISOString();
 
     const { error } = await supabase
       .from('payment_requests')
@@ -938,14 +877,11 @@
     closeModal();
     window.showToast(action === 'approve' ? '✓ Payment approved' : 'Payment declined');
     if (action === 'approve') {
-      // Refresh balance and transactions after a short delay
       setTimeout(async () => {
         try {
           await loadWallet(currentSession.user.id);
           await loadTransactions();
-        } catch (e) {
-          console.warn('Refresh after payment error:', e);
-        }
+        } catch (e) { console.warn('Refresh after payment error:', e); }
       }, 1000);
     }
   };
