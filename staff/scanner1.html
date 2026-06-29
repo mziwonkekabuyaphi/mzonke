@@ -1104,7 +1104,7 @@
 <div id="toast" class="toast"></div>
 
 <!-- =====================================================
-     JAVASCRIPT — all original backend logic preserved
+     JAVASCRIPT — FULL CORRECTED MODULE
 ====================================================== -->
 <script type="module">
 import { supabase } from '../config/supabase.js';
@@ -1447,36 +1447,50 @@ function classifyInput(raw) {
 }
 
 /* ============================================================
-   CONTACT-BASED CHECK-IN (phone or email)
+   FIXED: CONTACT-BASED CHECK-IN (phone or email)
+   Uses profile.name (not full_name) and customer_phone (not profile_id)
 ============================================================ */
 async function checkinByContact(contact, gate) {
     if (!currentEvent) throw new Error('No event selected');
 
-    // 1. Resolve profile
-    const field = contact.includes('@') ? 'email' : 'phone';
-    // Normalize phone: try exact, then with +27 prefix
-    let profileQuery = supabase.from('profiles').select('id, full_name, email, phone');
-    if (field === 'email') {
+    // ---- Helper: normalise phone to canonical E.164 ----
+    function canonicalPhone(input) {
+        const digits = input.replace(/\D/g, '');
+        if (!digits) return null;
+        if (digits.startsWith('27')) return '+' + digits;
+        if (digits.startsWith('0')) return '+27' + digits.substring(1);
+        return '+27' + digits;
+    }
+
+    // ---- Resolve profile ----
+    let profileQuery = supabase.from('profiles').select('id, name, phone, email');
+
+    if (contact.includes('@')) {
+        // email
         profileQuery = profileQuery.eq('email', contact.toLowerCase());
     } else {
-        // Try multiple formats
-        profileQuery = profileQuery.or(
-            `phone.eq.${contact},phone.eq.+${contact.replace(/^\+/, '')},phone.eq.0${contact.replace(/^\+27/, '').replace(/^27/, '')}`
-        );
+        // phone – normalise to canonical for a clean match
+        const canon = canonicalPhone(contact);
+        if (!canon) throw new Error('Invalid phone number');
+        profileQuery = profileQuery.eq('phone', canon);
     }
-    const { data: profiles, error: pErr } = await profileQuery.limit(5);
+
+    const { data: profiles, error: pErr } = await profileQuery.limit(1);
     if (pErr) throw new Error(pErr.message);
     if (!profiles?.length) throw new Error(`No profile found for ${contact}`);
 
-    const profileId = profiles[0].id;
-    const guestName = profiles[0].full_name || profiles[0].email || contact;
+    const profile = profiles[0];
+    const guestName = profile.name || profile.email || contact;        // ✅ FIXED: using profile.name
+    const customerPhone = profile.phone;                              // ✅ canonical phone from profile
 
-    // 2. Find issued tickets for this profile + event
+    if (!customerPhone) throw new Error('Profile has no phone number');
+
+    // ---- Fetch issued tickets for this phone + event ----
     const { data: tickets, error: tErr } = await supabase
         .from('tickets')
         .select('id, status, checked_in, ticket_types(name)')
         .eq('event_id', currentEvent.id)
-        .eq('profile_id', profileId)
+        .eq('customer_phone', customerPhone)   // ✅ FIXED: using customer_phone, not profile_id
         .eq('status', 'issued')
         .eq('checked_in', false);
 
@@ -1486,14 +1500,14 @@ async function checkinByContact(contact, gate) {
     const ticketIds = tickets.map(t => t.id);
     const now = new Date().toISOString();
 
-    // 3. Bulk update tickets → used + checked_in
+    // ---- Bulk update tickets ----
     const { error: uErr } = await supabase
         .from('tickets')
         .update({ status: 'used', checked_in: true, checked_in_at: now })
         .in('id', ticketIds);
     if (uErr) throw new Error(uErr.message);
 
-    // 4. Insert checkin records
+    // ---- Insert checkins ----
     const checkinRows = ticketIds.map(tid => ({
         ticket_id:  tid,
         event_id:   currentEvent.id,
