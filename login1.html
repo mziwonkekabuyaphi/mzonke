@@ -51,6 +51,7 @@
             padding: 24px 20px;
             overflow-y: auto;
             overflow-x: hidden;
+            flex-direction: column;  /* added to stack banner above card */
         }
 
         /* ── Background layers (dashboard style) ── */
@@ -72,6 +73,99 @@
             pointer-events: none;
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
             opacity: 0.4;
+        }
+
+        /* ── Install Banner (new) ── */
+        .login-install-banner {
+            display: none; /* hidden by default, shown by JS */
+            width: 100%;
+            max-width: 480px;
+            margin-bottom: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 18px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            animation: slideDown 0.4s var(--ease) both;
+            position: relative;
+            z-index: 2;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to   { transform: translateY(0); opacity: 1; }
+        }
+
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .banner-icon {
+            font-size: 26px;
+            flex-shrink: 0;
+        }
+
+        .banner-text {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .banner-text strong {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+
+        .banner-text p {
+            margin: 2px 0 0;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .banner-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .cta-button {
+            background: var(--red);
+            color: #fff;
+            border: none;
+            padding: 7px 18px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.15s;
+            white-space: nowrap;
+        }
+
+        .cta-button:hover {
+            background: #c8050f;
+        }
+
+        .cta-button:active {
+            transform: scale(0.96);
+        }
+
+        .banner-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 6px;
+            transition: color 0.2s;
+            line-height: 1;
+        }
+
+        .banner-close:hover {
+            color: var(--text);
         }
 
         /* ── Card container ── */
@@ -522,6 +616,20 @@
             body {
                 padding: 16px 14px;
             }
+            .login-install-banner {
+                padding: 10px 14px;
+                margin-bottom: 12px;
+            }
+            .banner-text strong {
+                font-size: 0.8rem;
+            }
+            .banner-text p {
+                font-size: 0.7rem;
+            }
+            .cta-button {
+                font-size: 0.7rem;
+                padding: 6px 14px;
+            }
             .login-card {
                 padding: 24px 20px 20px;
                 border-radius: 12px;
@@ -551,6 +659,9 @@
         @media (max-width: 400px) {
             body {
                 padding: 12px 10px;
+            }
+            .login-install-banner {
+                padding: 8px 12px;
             }
             .login-card {
                 padding: 18px 14px 16px;
@@ -605,6 +716,27 @@
 <!-- Background layers -->
 <div class="bg"></div>
 <div class="bg-noise"></div>
+
+<!--
+  ─── INSTALL BANNER (appears on login page) ──────────────────────────
+  Shown only if:
+    - App is not already installed (standalone mode)
+    - User has not dismissed it before (localStorage key)
+  Platform‑specific instructions are set by JavaScript below.
+-->
+<div id="loginInstallBanner" class="login-install-banner" style="display:none;">
+    <div class="banner-content">
+        <div class="banner-icon">📲</div>
+        <div class="banner-text">
+            <strong>Install Rands Vibe Passport</strong>
+            <p id="installInstructions">Get the full app experience with one tap.</p>
+        </div>
+        <div class="banner-actions">
+            <button id="loginInstallCta" class="cta-button">Install Now</button>
+            <button id="closeLoginBanner" class="banner-close" aria-label="Dismiss">✕</button>
+        </div>
+    </div>
+</div>
 
 <div class="login-wrapper">
     <div class="login-card">
@@ -717,7 +849,9 @@
     </div><!-- /login-card -->
 </div><!-- /login-wrapper -->
 
-<!-- ====== SCRIPTS (preserved exactly) ====== -->
+<!-- ====== SCRIPTS ====== -->
+
+<!-- Your existing login logic (module) -->
 <script type="module" src="assets/js/login.js"></script>
 
 <!-- OAuth callback handler -->
@@ -765,6 +899,105 @@
             });
         }
     });
+</script>
+
+<!-- ====== INSTALL BANNER LOGIC (new) ====== -->
+<script>
+    (function() {
+        'use strict';
+
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initBanner);
+        } else {
+            initBanner();
+        }
+
+        function initBanner() {
+            const banner = document.getElementById('loginInstallBanner');
+            const closeBtn = document.getElementById('closeLoginBanner');
+            const ctaBtn = document.getElementById('loginInstallCta');
+            const instructionsEl = document.getElementById('installInstructions');
+
+            if (!banner) return;
+
+            // 1. Check if already installed (standalone mode)
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                                 window.navigator.standalone === true;
+
+            // 2. Check if user dismissed this banner before
+            const isDismissed = localStorage.getItem('loginInstallDismissed') === 'true';
+
+            if (isStandalone || isDismissed) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            // 3. Platform detection
+            const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isAndroid = /Android/.test(navigator.userAgent);
+
+            // 4. Set the correct instructions and CTA text
+            let instructionText = '';
+            let ctaText = 'Install Now';
+
+            if (isIos) {
+                instructionText = 'Tap the Share icon below, then select "Add to Home Screen".';
+                ctaText = 'How to Install';
+            } else if (isAndroid) {
+                instructionText = 'Tap the menu (⋮) in your browser and select "Install App".';
+                ctaText = 'Install App';
+            } else {
+                // Desktop or unknown – show generic
+                instructionText = 'Install this app from your browser\'s menu for the best experience.';
+                ctaText = 'Learn How';
+            }
+
+            if (instructionsEl) instructionsEl.textContent = instructionText;
+            if (ctaBtn) ctaBtn.textContent = ctaText;
+
+            // 5. Show the banner
+            banner.style.display = 'block';
+
+            // 6. Close button – dismiss and remember
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    banner.style.display = 'none';
+                    localStorage.setItem('loginInstallDismissed', 'true');
+                });
+            }
+
+            // 7. CTA button – shows platform‑specific instructions in a friendly alert
+            if (ctaBtn) {
+                ctaBtn.addEventListener('click', function() {
+                    if (isIos) {
+                        alert(
+                            '📲 To install Rands Vibe Passport on your iPhone/iPad:\n\n' +
+                            '1. Tap the Share icon (square with arrow) at the bottom of the screen.\n' +
+                            '2. Scroll down and tap "Add to Home Screen".\n' +
+                            '3. Tap "Add" in the top‑right corner.\n\n' +
+                            'You\'ll then have the app icon on your Home Screen.'
+                        );
+                    } else if (isAndroid) {
+                        alert(
+                            '📲 To install Rands Vibe Passport on your Android device:\n\n' +
+                            '1. Tap the three‑dot menu (⋮) in your browser.\n' +
+                            '2. Tap "Install App" or "Add to Home Screen".\n' +
+                            '3. Follow the on‑screen prompts.\n\n' +
+                            'The app will be added to your Home Screen.'
+                        );
+                    } else {
+                        alert(
+                            '📲 To install this app on your computer:\n\n' +
+                            '• Chrome/Edge: Look for the install icon (➕) in the address bar.\n' +
+                            '• Firefox/Safari: Use "Add to Home Screen" or "Add to Dock" from the browser menu.\n\n' +
+                            'This will create a shortcut for quick access.'
+                        );
+                    }
+                });
+            }
+        }
+    })();
 </script>
 
 </body>
