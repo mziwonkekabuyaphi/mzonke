@@ -1,0 +1,3384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Event Monitor · Rands</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* ===== EXISTING STYLES - PRESERVED ===== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --red: #E30613;
+      --red-glow: rgba(227, 6, 19, 0.35);
+      --red-dim: rgba(227, 6, 19, 0.10);
+      --red-border: rgba(227, 6, 19, 0.22);
+      --bg: #09090b;
+      --s1: #111114;
+      --s2: #18181c;
+      --s3: #1e1e24;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-b: rgba(255, 255, 255, 0.12);
+      --text: #f4f4f5;
+      --muted: #71717a;
+      --dim: #3f3f46;
+      --green: #22c55e;
+      --gold: #f59e0b;
+      --purple: #8b5cf6;
+      --blue: #3b82f6;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      padding: 16px;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    /* ===== HEADER ===== */
+    .monitor-header {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .header-left h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .header-left h1 .event-status-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 60px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .event-status-badge.live {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .event-status-badge.upcoming {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--blue);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .event-status-badge.ended {
+      background: rgba(113, 113, 122, 0.15);
+      color: var(--muted);
+      border: 1px solid rgba(113, 113, 122, 0.3);
+    }
+
+    .header-left .event-meta {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .header-left .event-meta i {
+      color: var(--red);
+      width: 16px;
+      margin-right: 4px;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .header-btn {
+      padding: 8px 18px;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.7rem;
+      border: 1px solid var(--border);
+      background: var(--s3);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .header-btn:hover {
+      background: var(--s2);
+      color: var(--text);
+      border-color: var(--border-b);
+    }
+
+    .header-btn.danger {
+      border-color: rgba(227, 6, 19, 0.3);
+      color: var(--red);
+    }
+
+    .header-btn.danger:hover {
+      background: var(--red-dim);
+      border-color: var(--red-border);
+    }
+
+    .header-btn.primary {
+      background: var(--red);
+      color: white;
+      border: none;
+    }
+
+    .header-btn.primary:hover {
+      background: #c8050f;
+      box-shadow: 0 0 20px var(--red-glow);
+    }
+
+    /* ===== KPI CARDS ===== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--red);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .kpi-card:hover::before {
+      opacity: 1;
+    }
+
+    .kpi-card .kpi-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .kpi-card .kpi-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      transition: all 0.3s;
+    }
+
+    .kpi-card .kpi-sub {
+      font-size: 0.6rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .kpi-card .kpi-icon {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      font-size: 1.2rem;
+      color: var(--red-dim);
+      opacity: 0.5;
+    }
+
+    .kpi-value.animate {
+      animation: pulseValue 0.4s ease;
+    }
+
+    @keyframes pulseValue {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); color: var(--red); }
+      100% { transform: scale(1); }
+    }
+
+    /* ===== SEARCH CENTRE ===== */
+    .search-section {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+
+    .search-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .search-header h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search-header h3 i {
+      color: var(--red);
+    }
+
+    .search-header .search-shortcut {
+      font-size: 0.6rem;
+      color: var(--muted);
+      background: var(--s3);
+      padding: 2px 10px;
+      border-radius: 60px;
+      border: 1px solid var(--border);
+    }
+
+    .search-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .search-input-wrapper:focus-within {
+      border-color: var(--red-border);
+      box-shadow: 0 0 0 3px var(--red-dim);
+    }
+
+    .search-input-wrapper .search-icon {
+      position: absolute;
+      left: 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .search-input-wrapper input {
+      flex: 1;
+      padding: 12px 14px 12px 44px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      min-width: 0;
+    }
+
+    .search-input-wrapper input::placeholder {
+      color: var(--dim);
+    }
+
+    .search-input-wrapper .search-clear {
+      padding: 8px 14px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.8rem;
+      display: none;
+    }
+
+    .search-input-wrapper .search-clear.visible {
+      display: block;
+    }
+
+    .search-input-wrapper .search-clear:hover {
+      color: var(--text);
+    }
+
+    .search-results-container {
+      margin-top: 16px;
+      max-height: 500px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .search-results-container.active {
+      display: block;
+    }
+
+    .search-results-container::-webkit-scrollbar {
+      width: 3px;
+    }
+    .search-results-container::-webkit-scrollbar-thumb {
+      background: var(--s3);
+      border-radius: 99px;
+    }
+
+    .search-result-item {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .search-result-item:hover {
+      border-color: var(--red-border);
+      background: var(--s3);
+    }
+
+    .search-result-item.selected {
+      border-color: var(--red);
+      background: var(--red-dim);
+    }
+
+    .search-result-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .search-result-info .result-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search-result-info .result-name .ticket-status {
+      font-size: 0.55rem;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 60px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .ticket-status.issued {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .ticket-status.cancelled {
+      background: rgba(227, 6, 19, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(227, 6, 19, 0.3);
+    }
+    .ticket-status.refunded {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--gold);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .ticket-status.used {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--blue);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .search-result-info .result-details {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .search-result-info .result-details span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .search-result-info .result-details i {
+      font-size: 0.6rem;
+      color: var(--red);
+    }
+
+    .search-result-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .search-result-actions .action-btn {
+      padding: 6px 12px;
+      border-radius: 60px;
+      font-weight: 600;
+      font-size: 0.6rem;
+      border: 1px solid var(--border);
+      background: var(--s3);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .search-result-actions .action-btn:hover {
+      background: var(--s2);
+      color: var(--text);
+      border-color: var(--border-b);
+    }
+
+    .search-result-actions .action-btn.primary {
+      background: var(--red);
+      color: white;
+      border: none;
+    }
+
+    .search-result-actions .action-btn.primary:hover {
+      background: #c8050f;
+    }
+
+    .search-result-actions .action-btn.info {
+      background: var(--blue);
+      color: white;
+      border: none;
+    }
+
+    .search-result-actions .action-btn.info:hover {
+      background: #2563eb;
+    }
+
+    .search-state {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--muted);
+    }
+
+    .search-state i {
+      font-size: 2rem;
+      color: var(--dim);
+      margin-bottom: 10px;
+    }
+
+    .search-state p {
+      font-size: 0.8rem;
+    }
+
+    .search-state .search-loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--s3);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* ===== ANALYTICS SECTION ===== */
+    .analytics-section {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+
+    .analytics-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .analytics-header h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .analytics-header h3 i {
+      color: var(--red);
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .analytics-card {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+
+    .analytics-card h4 {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .analytics-card h4 i {
+      color: var(--red);
+      font-size: 0.6rem;
+    }
+
+    .analytics-stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .analytics-stat-row:last-child {
+      border-bottom: none;
+    }
+
+    .analytics-stat-row .label {
+      color: var(--muted);
+    }
+
+    .analytics-stat-row .value {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .analytics-stat-row .value.highlight {
+      color: var(--red);
+    }
+
+    .analytics-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .analytics-timeline-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 0.7rem;
+    }
+
+    .analytics-timeline-item .time {
+      min-width: 45px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .analytics-timeline-item .bar-track {
+      flex: 1;
+      height: 16px;
+      background: var(--s3);
+      border-radius: 30px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .analytics-timeline-item .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--red), #ff4d4d);
+      border-radius: 30px;
+      transition: width 0.6s ease;
+      width: 0%;
+    }
+
+    .analytics-timeline-item .bar-label {
+      min-width: 50px;
+      text-align: right;
+      color: var(--text);
+      font-weight: 500;
+      font-size: 0.65rem;
+    }
+
+    .analytics-timeline-item .bar-label .cumulative {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 0.55rem;
+    }
+
+    .analytics-empty {
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .analytics-empty i {
+      font-size: 1.5rem;
+      color: var(--dim);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    /* ===== TWO COLUMN LAYOUT ===== */
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    /* ===== ATTENDANCE PROGRESS ===== */
+    .attendance-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+    }
+
+    .attendance-card .attendance-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .attendance-card .attendance-header h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .attendance-card .attendance-header .attendance-percent {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--red);
+    }
+
+    .attendance-progress-bar {
+      width: 100%;
+      height: 10px;
+      background: var(--s3);
+      border-radius: 30px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .attendance-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--red), #ff4d4d);
+      border-radius: 30px;
+      transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      width: 0%;
+    }
+
+    .attendance-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .attendance-stats strong {
+      color: var(--text);
+    }
+
+    /* ===== TICKET BREAKDOWN ===== */
+    .ticket-breakdown {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+    }
+
+    .ticket-breakdown h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 16px;
+    }
+
+    .ticket-type-card {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+
+    .ticket-type-card:hover {
+      border-color: var(--red-border);
+    }
+
+    .ticket-type-card .ticket-type-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .ticket-type-card .ticket-type-name {
+      font-weight: 700;
+      font-size: 0.8rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ticket-type-card .ticket-type-name i {
+      color: var(--red);
+    }
+
+    .ticket-type-card .ticket-type-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 0.65rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .ticket-type-card .ticket-type-stats strong {
+      color: var(--text);
+    }
+
+    .ticket-type-card .ticket-type-progress {
+      margin-top: 8px;
+      height: 4px;
+      background: var(--s3);
+      border-radius: 30px;
+      overflow: hidden;
+    }
+
+    .ticket-type-card .ticket-type-progress .ticket-type-fill {
+      height: 100%;
+      border-radius: 30px;
+      transition: width 0.6s ease;
+      width: 0%;
+    }
+
+    /* ===== RIGHT COLUMN ===== */
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .status-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+    }
+
+    .status-card h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+    }
+
+    .status-item .label {
+      color: var(--muted);
+    }
+
+    .status-item .value {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ===== LIVE SCAN FEED ===== */
+    .scans-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-top: 20px;
+    }
+
+    .scans-card .scans-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .scans-card .scans-header h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .scans-card .scans-header .scan-count {
+      font-size: 0.65rem;
+      color: var(--muted);
+      background: var(--s3);
+      padding: 2px 12px;
+      border-radius: 60px;
+    }
+
+    .scan-feed {
+      max-height: 500px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .scan-feed::-webkit-scrollbar {
+      width: 3px;
+    }
+    .scan-feed::-webkit-scrollbar-thumb {
+      background: var(--s3);
+      border-radius: 99px;
+    }
+
+    .scan-item {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+      animation: slideIn 0.3s ease;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .scan-item:hover {
+      border-color: var(--red-border);
+      background: var(--s3);
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .scan-item .scan-time {
+      font-size: 0.6rem;
+      color: var(--muted);
+      font-weight: 600;
+      min-width: 60px;
+    }
+
+    .scan-item .scan-details {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .scan-item .scan-details .guest-name {
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+
+    .scan-item .scan-details .scan-meta {
+      font-size: 0.6rem;
+      color: var(--muted);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .scan-item .scan-details .scan-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .scan-item .scan-details .scan-meta i {
+      font-size: 0.5rem;
+      color: var(--red);
+    }
+
+    .scan-item .scan-result-badge {
+      padding: 4px 12px;
+      border-radius: 60px;
+      font-size: 0.55rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .scan-result-badge.valid {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .scan-result-badge.reentry {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--gold);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .scan-result-badge.invalid {
+      background: rgba(227, 6, 19, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(227, 6, 19, 0.3);
+    }
+    .scan-result-badge.duplicate {
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--purple);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+    .scan-result-badge.default {
+      background: var(--s3);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    /* ===== CUSTOMER DETAILS DRAWER ===== */
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 5000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .drawer-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 480px;
+      max-width: 100vw;
+      background: var(--s1);
+      border-left: 1px solid var(--border);
+      z-index: 5001;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .drawer-header h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .drawer-header h2 i {
+      color: var(--red);
+    }
+
+    .drawer-close {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .drawer-close:hover {
+      color: var(--text);
+      background: var(--s3);
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px 30px;
+    }
+
+    .drawer-body::-webkit-scrollbar {
+      width: 3px;
+    }
+    .drawer-body::-webkit-scrollbar-thumb {
+      background: var(--s3);
+      border-radius: 99px;
+    }
+
+    .drawer-section {
+      margin-bottom: 24px;
+    }
+
+    .drawer-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .drawer-section h4 {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .drawer-section h4 i {
+      color: var(--red);
+      font-size: 0.7rem;
+    }
+
+    .drawer-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 0.75rem;
+    }
+
+    .drawer-row .label {
+      color: var(--muted);
+    }
+
+    .drawer-row .value {
+      color: var(--text);
+      font-weight: 500;
+      text-align: right;
+      max-width: 60%;
+      word-break: break-all;
+    }
+
+    .drawer-row .value .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 60px;
+      font-size: 0.6rem;
+      font-weight: 600;
+    }
+
+    .drawer-row .value .badge.checked-in {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+    }
+    .drawer-row .value .badge.not-checked-in {
+      background: var(--s3);
+      color: var(--muted);
+    }
+
+    .drawer-scan-history {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .drawer-scan-item {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      font-size: 0.7rem;
+    }
+
+    .drawer-scan-item .scan-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .drawer-scan-item .scan-info .scan-time {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .drawer-scan-item .scan-info .scan-meta {
+      color: var(--muted);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.65rem;
+    }
+
+    .drawer-scan-item .scan-info .scan-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .drawer-scan-item .scan-info .scan-meta i {
+      font-size: 0.5rem;
+      color: var(--red);
+    }
+
+    .drawer-scan-item .scan-result-badge {
+      align-self: center;
+      padding: 3px 10px;
+      border-radius: 60px;
+      font-size: 0.55rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .drawer-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .drawer-actions .action-btn {
+      padding: 6px 14px;
+      border-radius: 60px;
+      font-weight: 600;
+      font-size: 0.65rem;
+      border: 1px solid var(--border);
+      background: var(--s3);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .drawer-actions .action-btn:hover {
+      background: var(--s2);
+      color: var(--text);
+      border-color: var(--border-b);
+    }
+
+    .drawer-actions .action-btn.primary {
+      background: var(--red);
+      color: white;
+      border: none;
+    }
+
+    .drawer-actions .action-btn.primary:hover {
+      background: #c8050f;
+    }
+
+    .drawer-actions .action-btn.success {
+      background: var(--green);
+      color: white;
+      border: none;
+    }
+
+    .drawer-actions .action-btn.success:hover {
+      background: #16a34a;
+    }
+
+    .drawer-actions .action-btn.warning {
+      background: var(--gold);
+      color: white;
+      border: none;
+    }
+
+    .drawer-actions .action-btn.warning:hover {
+      background: #d97706;
+    }
+
+    .drawer-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      gap: 16px;
+      color: var(--muted);
+      height: 100%;
+    }
+
+    .drawer-loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--s3);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .drawer-error {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--red);
+    }
+
+    .drawer-error i {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      color: var(--dim);
+    }
+
+    .drawer-error h3 {
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .drawer-error p {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    /* ===== EMPTY & LOADING STATES ===== */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+
+    .empty-state i {
+      font-size: 3rem;
+      color: var(--dim);
+      margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+      font-size: 1.1rem;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .empty-state p {
+      font-size: 0.8rem;
+    }
+
+    .loading-spinner {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px 20px;
+      gap: 12px;
+      color: var(--muted);
+    }
+
+    .loading-spinner .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--s3);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 1024px) {
+      .monitor-grid {
+        grid-template-columns: 1fr;
+      }
+      .drawer {
+        width: 100%;
+        max-width: 100vw;
+      }
+      .analytics-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+
+      .monitor-header {
+        padding: 16px;
+        flex-direction: column;
+      }
+
+      .header-left h1 {
+        font-size: 1.2rem;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .kpi-card .kpi-value {
+        font-size: 1.2rem;
+      }
+
+      .search-result-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+
+      .search-result-actions {
+        justify-content: flex-start;
+      }
+
+      .scan-item {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .scan-item .scan-time {
+        min-width: unset;
+      }
+
+      .scan-item .scan-result-badge {
+        align-self: flex-start;
+      }
+
+      .drawer {
+        width: 100%;
+      }
+
+      .drawer-header {
+        padding: 16px 20px;
+      }
+
+      .drawer-body {
+        padding: 16px 20px 24px;
+      }
+
+      .drawer-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 8px 0;
+      }
+
+      .drawer-row .value {
+        text-align: left;
+        max-width: 100%;
+      }
+
+      .analytics-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .kpi-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .monitor-header {
+        padding: 12px;
+      }
+
+      .drawer-actions .action-btn {
+        font-size: 0.6rem;
+        padding: 5px 10px;
+      }
+    }
+
+    /* ===== TOAST ===== */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--s2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 24px;
+      border-radius: 60px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      z-index: 6000;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+    }
+    .toast.success {
+      border-color: var(--green);
+    }
+    .toast.error {
+      border-color: var(--red);
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- ===== HEADER ===== -->
+    <header class="monitor-header" id="monitorHeader">
+      <div class="header-left">
+        <h1>
+          <span id="eventName">Loading...</span>
+          <span class="event-status-badge" id="eventStatusBadge">—</span>
+        </h1>
+        <div class="event-meta">
+          <span><i class="fas fa-map-marker-alt"></i> <span id="eventVenue">—</span></span>
+          <span><i class="fas fa-calendar-alt"></i> <span id="eventDate">—</span></span>
+          <span><i class="fas fa-clock"></i> <span id="eventTime">—</span></span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="header-btn" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <button class="header-btn" onclick="exportData()"><i class="fas fa-download"></i> Export</button>
+        <button class="header-btn danger" onclick="closeEvent()"><i class="fas fa-times-circle"></i> Close Event</button>
+      </div>
+    </header>
+
+    <!-- ===== KPI CARDS ===== -->
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card"><div class="kpi-label">Tickets Sold</div><div class="kpi-value" id="kpiSold">—</div><div class="kpi-sub">Total tickets</div><i class="fas fa-ticket-alt kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">Checked In</div><div class="kpi-value" id="kpiCheckedIn">—</div><div class="kpi-sub">Current attendees</div><i class="fas fa-user-check kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">Remaining</div><div class="kpi-value" id="kpiRemaining">—</div><div class="kpi-sub">Guests left</div><i class="fas fa-user-plus kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">Attendance</div><div class="kpi-value" id="kpiAttendance">—</div><div class="kpi-sub">% of capacity</div><i class="fas fa-chart-line kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">General</div><div class="kpi-value" id="kpiGeneral">—</div><div class="kpi-sub">Sold</div><i class="fas fa-users kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">VIP</div><div class="kpi-value" id="kpiVip">—</div><div class="kpi-sub">Sold</div><i class="fas fa-crown kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">Revenue</div><div class="kpi-value" id="kpiRevenue">—</div><div class="kpi-sub">Total sales</div><i class="fas fa-rand kpi-icon"></i></div>
+      <div class="kpi-card"><div class="kpi-label">Last Scan</div><div class="kpi-value" id="kpiLastScan">—</div><div class="kpi-sub">Most recent</div><i class="fas fa-clock kpi-icon"></i></div>
+    </div>
+
+    <!-- ===== SEARCH CENTRE ===== -->
+    <div class="search-section" id="searchSection">
+      <div class="search-header">
+        <h3><i class="fas fa-search"></i> Search Centre</h3>
+        <span class="search-shortcut"><kbd>Ctrl</kbd> + <kbd>K</kbd></span>
+      </div>
+      <div class="search-input-wrapper">
+        <i class="fas fa-search search-icon"></i>
+        <input 
+          type="text" 
+          id="searchInput" 
+          placeholder="Search by name, ticket number, phone, email or QR code..."
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button class="search-clear" id="searchClear" aria-label="Clear search">
+          <i class="fas fa-times-circle"></i>
+        </button>
+      </div>
+      <div class="search-results-container" id="searchResultsContainer">
+        <!-- Search results will be rendered here -->
+      </div>
+    </div>
+
+    <!-- ===== EVENT ANALYTICS & GATE PERFORMANCE ===== -->
+    <div class="analytics-section" id="analyticsSection">
+      <div class="analytics-header">
+        <h3><i class="fas fa-chart-line"></i> Event Analytics & Gate Performance</h3>
+        <button class="header-btn" onclick="refreshAnalytics()" title="Refresh Analytics">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+      <div id="analyticsContainer">
+        <!-- Analytics will be rendered here -->
+      </div>
+    </div>
+
+    <!-- ===== MAIN GRID ===== -->
+    <div class="monitor-grid" id="monitorGrid">
+      <!-- Left Column -->
+      <div class="left-column">
+        <!-- Attendance -->
+        <div class="attendance-card" id="attendanceCard">
+          <div class="attendance-header">
+            <h3><i class="fas fa-users" style="color:var(--red);margin-right:6px;"></i> Attendance</h3>
+            <span class="attendance-percent" id="attendancePercent">0%</span>
+          </div>
+          <div class="attendance-progress-bar">
+            <div class="attendance-progress-fill" id="attendanceFill" style="width:0%;"></div>
+          </div>
+          <div class="attendance-stats">
+            <span><strong id="attendanceChecked">0</strong> Checked In</span>
+            <span><strong id="attendanceTotal">0</strong> Total Guests</span>
+          </div>
+        </div>
+
+        <!-- Ticket Breakdown -->
+        <div class="ticket-breakdown" id="ticketBreakdown">
+          <h3><i class="fas fa-tags" style="color:var(--red);margin-right:6px;"></i> Ticket Breakdown</h3>
+          <div id="ticketTypesContainer">
+            <div class="empty-state"><i class="fas fa-ticket-alt"></i><p>No ticket types configured</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="right-column">
+        <div class="status-card" id="statusCard">
+          <h3><i class="fas fa-bolt" style="color:var(--red);margin-right:6px;"></i> Live Status</h3>
+          <div class="status-item"><span class="label">Event Status</span><span class="value" id="statusEventStatus">—</span></div>
+          <div class="status-item"><span class="label">Time Remaining</span><span class="value" id="statusTimeRemaining">—</span></div>
+          <div class="status-item"><span class="label">Current Attendance</span><span class="value" id="statusCurrentAttendance">—</span></div>
+          <div class="status-item"><span class="label">Scanners Online</span><span class="value" id="statusScannersOnline">—</span></div>
+          <div class="status-item"><span class="label">Last Check-in</span><span class="value" id="statusLastCheckin">—</span></div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="status-card" id="quickStats">
+          <h3><i class="fas fa-chart-bar" style="color:var(--red);margin-right:6px;"></i> Quick Stats</h3>
+          <div class="status-item"><span class="label">Capacity</span><span class="value" id="quickCapacity">—</span></div>
+          <div class="status-item"><span class="label">Checked In %</span><span class="value" id="quickCheckinPercent">—</span></div>
+          <div class="status-item"><span class="label">Ticket Types</span><span class="value" id="quickTicketTypes">—</span></div>
+          <div class="status-item"><span class="label">Total Revenue</span><span class="value" id="quickRevenue">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== LIVE SCAN FEED ===== -->
+    <div class="scans-card" id="scansCard">
+      <div class="scans-header">
+        <h3><i class="fas fa-bolt" style="color:var(--red);margin-right:6px;"></i> Live Scan Feed</h3>
+        <span class="scan-count" id="scanCount">0 scans</span>
+      </div>
+      <div id="scanFeedContainer" class="scan-feed">
+        <!-- Scan items will be rendered here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CUSTOMER DETAILS DRAWER ===== -->
+  <div class="drawer-overlay" id="drawerOverlay" onclick="closeCustomerDrawer()"></div>
+  <div class="drawer" id="customerDrawer">
+    <div class="drawer-header">
+      <h2><i class="fas fa-user-circle"></i> <span id="drawerTitle">Customer Details</span></h2>
+      <button class="drawer-close" onclick="closeCustomerDrawer()" aria-label="Close drawer">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+      <!-- Content will be rendered here -->
+    </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast" id="toast"><span id="toastMessage">Success!</span></div>
+
+  <script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    // ============================================================
+    // EVENT MONITOR - COMPLETE IMPLEMENTATION WITH ANALYTICS
+    // ============================================================
+
+    // ─── STATE ───
+    let eventId = null;
+    let eventData = null;
+    let ticketTypes = [];
+    let tickets = [];
+    let checkins = [];
+    let profiles = [];
+    let staffProfiles = [];
+    let subscriptions = [];
+    let refreshInterval = null;
+    let isInitialLoad = true;
+    
+    // Search state
+    let searchTimeout = null;
+    let searchResults = [];
+    let selectedIndex = -1;
+    let isSearching = false;
+
+    // Drawer state
+    let currentDrawerTicketId = null;
+
+    // ─── HELPERS ───
+    function getUrlParam(param) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(param);
+    }
+
+    function fmtR(val) {
+      return `R${(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function fmtNum(val) {
+      return (val || 0).toLocaleString();
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function formatTime(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      return d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function formatDateTime(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      return d.toLocaleString('en-ZA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function getResultBadgeClass(result) {
+      const normalized = (result || '').toLowerCase();
+      const map = {
+        'valid': 'valid',
+        'reentry': 'reentry',
+        're-entry': 'reentry',
+        'duplicate': 'duplicate',
+        'invalid': 'invalid',
+        'cancelled': 'invalid',
+        'refunded': 'invalid',
+        'already checked in': 'invalid'
+      };
+      return map[normalized] || 'default';
+    }
+
+    function getStatusBadgeClass(status) {
+      const normalized = (status || '').toLowerCase();
+      const map = {
+        'issued': 'issued',
+        'cancelled': 'cancelled',
+        'refunded': 'refunded',
+        'used': 'used'
+      };
+      return map[normalized] || 'issued';
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      if (!toast) return;
+      const msgEl = document.getElementById('toastMessage');
+      if (!msgEl) return;
+      toast.className = `toast ${type === 'success' ? 'success' : 'error'} show`;
+      msgEl.innerText = message;
+      clearTimeout(toast._timeout);
+      toast._timeout = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    function animateValue(elementId, newValue) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const current = el.innerText;
+      if (current !== String(newValue)) {
+        el.classList.remove('animate');
+        void el.offsetWidth;
+        el.classList.add('animate');
+      }
+      el.innerText = newValue;
+    }
+
+    // ─── DATA LOADING ───
+    async function loadEventData() {
+      if (!eventId) return;
+
+      try {
+        const { data: event, error: eventError } = await supabase
+          .from('events')
+          .select('*')
+          .eq('id', eventId)
+          .single();
+
+        if (eventError) throw eventError;
+        eventData = event;
+
+        const { data: types, error: typesError } = await supabase
+          .from('ticket_types')
+          .select('*')
+          .eq('event_id', eventId);
+
+        if (typesError) throw typesError;
+        ticketTypes = types || [];
+
+        const { data: ticketData, error: ticketError } = await supabase
+          .from('tickets')
+          .select(`
+            *,
+            profiles:customer_id (
+              id,
+              first_name,
+              last_name,
+              phone,
+              email
+            )
+          `)
+          .eq('event_id', eventId);
+
+        if (ticketError) throw ticketError;
+        tickets = ticketData || [];
+
+        const ticketIds = tickets.map(t => t.id);
+        let checkinData = [];
+        if (ticketIds.length > 0) {
+          const { data: checks, error: checkError } = await supabase
+            .from('checkins')
+            .select(`
+              *,
+              ticket:ticket_id (
+                id,
+                ticket_number,
+                ticket_type_id,
+                profiles:customer_id (
+                  first_name,
+                  last_name,
+                  phone
+                )
+              ),
+              profiles:override_by (
+                id,
+                first_name,
+                last_name
+              )
+            `)
+            .in('ticket_id', ticketIds)
+            .order('scanned_at', { ascending: false });
+
+          if (checkError) throw checkError;
+          checkinData = checks || [];
+        }
+        checkins = checkinData;
+
+        const staffIds = checkins
+          .map(c => c.override_by)
+          .filter(id => id !== null && id !== undefined);
+
+        if (staffIds.length > 0) {
+          const { data: staffData, error: staffError } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name')
+            .in('id', staffIds);
+
+          if (!staffError) staffProfiles = staffData || [];
+        }
+
+        renderAll();
+
+        if (isInitialLoad) {
+          setupRealtime();
+          isInitialLoad = false;
+        }
+
+      } catch (err) {
+        console.error('Error loading event data:', err);
+        showToast('Failed to load event data: ' + err.message, 'error');
+        showEmptyState();
+      }
+    }
+
+    // ─── RENDER FUNCTIONS ───
+    function renderAll() {
+      if (!eventData) {
+        showEmptyState();
+        return;
+      }
+
+      renderEventInfo();
+      renderKPIs();
+      renderAttendance();
+      renderTicketBreakdown();
+      renderLiveStatus();
+      renderQuickStats();
+      renderScanFeed();
+      renderAnalytics();
+    }
+
+    function showEmptyState() {
+      const grid = document.getElementById('monitorGrid');
+      if (grid) {
+        grid.innerHTML = `
+          <div class="empty-state" style="grid-column:1/-1;padding:60px 20px;">
+            <i class="fas fa-calendar-times"></i>
+            <h3>No event selected</h3>
+            <p>Select an event to monitor from the Event Manager.</p>
+          </div>
+        `;
+      }
+      const kpiGrid = document.getElementById('kpiGrid');
+      if (kpiGrid) kpiGrid.style.display = 'none';
+      const scansCard = document.getElementById('scansCard');
+      if (scansCard) scansCard.style.display = 'none';
+      const searchSection = document.getElementById('searchSection');
+      if (searchSection) searchSection.style.display = 'none';
+      const analyticsSection = document.getElementById('analyticsSection');
+      if (analyticsSection) analyticsSection.style.display = 'none';
+    }
+
+    function renderEventInfo() {
+      const nameEl = document.getElementById('eventName');
+      if (nameEl) nameEl.innerText = eventData.name || 'Unnamed Event';
+
+      const venueEl = document.getElementById('eventVenue');
+      if (venueEl) venueEl.innerText = eventData.location || 'Rands Cape Town';
+
+      const dateEl = document.getElementById('eventDate');
+      if (dateEl) dateEl.innerText = formatDate(eventData.start_time);
+
+      const timeEl = document.getElementById('eventTime');
+      if (timeEl) timeEl.innerText = eventData.start_time ? formatTime(eventData.start_time) : '—';
+
+      const badge = document.getElementById('eventStatusBadge');
+      if (badge) {
+        const now = new Date();
+        const start = new Date(eventData.start_time);
+        const end = eventData.end_time ? new Date(eventData.end_time) : null;
+
+        let status = 'upcoming';
+        let statusText = 'Upcoming';
+
+        if (end && now > end) {
+          status = 'ended';
+          statusText = 'Ended';
+        } else if (now >= start) {
+          status = 'live';
+          statusText = 'Live';
+        }
+
+        badge.className = `event-status-badge ${status}`;
+        badge.innerText = statusText;
+      }
+    }
+
+    function renderKPIs() {
+      const totalSold = tickets.filter(t => t.status === 'issued').length;
+      const validCheckins = checkins.filter(c => c.scan_result === 'valid' || c.scan_result === 'reentry');
+      const uniqueCheckedIn = new Set(validCheckins.map(c => c.ticket_id)).size;
+
+      let totalCapacity = 0;
+      let totalRevenue = 0;
+      const typeSales = {};
+
+      ticketTypes.forEach(tt => {
+        totalCapacity += tt.capacity || 0;
+        const sold = tickets.filter(t => t.ticket_type_id === tt.id && t.status === 'issued').length;
+        typeSales[tt.name] = sold;
+        totalRevenue += sold * (tt.price || 0);
+      });
+
+      const remaining = Math.max(0, totalCapacity - totalSold);
+      const attendancePercent = totalSold > 0 ? Math.round((uniqueCheckedIn / totalSold) * 100) : 0;
+
+      let lastScanTime = '—';
+      if (checkins.length > 0) {
+        const lastCheckin = checkins.reduce((latest, c) => {
+          return new Date(c.scanned_at) > new Date(latest.scanned_at) ? c : latest;
+        }, checkins[0]);
+        lastScanTime = formatTime(lastCheckin.scanned_at);
+      }
+
+      const generalSold = typeSales['General Admission'] || typeSales['General'] || 0;
+      const vipSold = typeSales['VIP Experience'] || typeSales['VIP'] || 0;
+
+      animateValue('kpiSold', fmtNum(totalSold));
+      animateValue('kpiCheckedIn', fmtNum(uniqueCheckedIn));
+      animateValue('kpiRemaining', fmtNum(remaining));
+      animateValue('kpiAttendance', `${attendancePercent}%`);
+      animateValue('kpiGeneral', fmtNum(generalSold));
+      animateValue('kpiVip', fmtNum(vipSold));
+      animateValue('kpiRevenue', fmtR(totalRevenue));
+      animateValue('kpiLastScan', lastScanTime);
+    }
+
+    function renderAttendance() {
+      const totalSold = tickets.filter(t => t.status === 'issued').length;
+      const validCheckins = checkins.filter(c => c.scan_result === 'valid' || c.scan_result === 'reentry');
+      const uniqueCheckedIn = new Set(validCheckins.map(c => c.ticket_id)).size;
+
+      let totalCapacity = 0;
+      ticketTypes.forEach(tt => {
+        totalCapacity += tt.capacity || 0;
+      });
+
+      const attendancePercent = totalSold > 0 ? Math.round((uniqueCheckedIn / totalSold) * 100) : 0;
+      const displayTotal = Math.max(totalCapacity, totalSold);
+
+      const percentEl = document.getElementById('attendancePercent');
+      if (percentEl) percentEl.innerText = `${attendancePercent}%`;
+
+      const fillEl = document.getElementById('attendanceFill');
+      if (fillEl) fillEl.style.width = `${Math.min(attendancePercent, 100)}%`;
+
+      const checkedEl = document.getElementById('attendanceChecked');
+      if (checkedEl) checkedEl.innerText = fmtNum(uniqueCheckedIn);
+
+      const totalEl = document.getElementById('attendanceTotal');
+      if (totalEl) totalEl.innerText = fmtNum(displayTotal);
+    }
+
+    function renderTicketBreakdown() {
+      const container = document.getElementById('ticketTypesContainer');
+      if (!container) return;
+
+      if (!ticketTypes.length) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding:20px;text-align:center;">
+            <p style="color:var(--muted);">No tickets have been sold.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const colors = ['#E30613', '#f97316', '#8b5cf6', '#3b82f6', '#22c55e'];
+      const icons = ['fa-ticket', 'fa-users', 'fa-crown', 'fa-star', 'fa-gem'];
+
+      let html = '';
+      ticketTypes.forEach((tt, index) => {
+        const sold = tickets.filter(t => t.ticket_type_id === tt.id && t.status === 'issued').length;
+        const validCheckins = checkins.filter(c => {
+          const ticket = tickets.find(t => t.id === c.ticket_id);
+          return ticket && ticket.ticket_type_id === tt.id && (c.scan_result === 'valid' || c.scan_result === 'reentry');
+        });
+        const uniqueCheckedIn = new Set(validCheckins.map(c => c.ticket_id)).size;
+        const remaining = Math.max(0, (tt.capacity || 0) - sold);
+        const percent = tt.capacity > 0 ? Math.round((sold / tt.capacity) * 100) : 0;
+
+        html += `
+          <div class="ticket-type-card" data-ticket-type="${tt.id}">
+            <div class="ticket-type-header">
+              <div class="ticket-type-name">
+                <i class="fas ${icons[index % icons.length]}"></i>
+                ${escapeHtml(tt.name)}
+              </div>
+              <span style="font-weight:700;color:var(--red);font-size:0.7rem;">${fmtR(tt.price || 0)}</span>
+            </div>
+            <div class="ticket-type-stats">
+              <span><strong>${fmtNum(sold)}</strong> Sold</span>
+              <span><strong>${fmtNum(uniqueCheckedIn)}</strong> Checked In</span>
+              <span><strong>${fmtNum(remaining)}</strong> Remaining</span>
+            </div>
+            <div class="ticket-type-progress">
+              <div class="ticket-type-fill" style="width:${Math.min(percent, 100)}%;background:${colors[index % colors.length]};"></div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function renderLiveStatus() {
+      const now = new Date();
+      const start = new Date(eventData.start_time);
+      const end = eventData.end_time ? new Date(eventData.end_time) : null;
+
+      let statusText = 'Upcoming';
+      let statusColor = 'var(--blue)';
+      if (end && now > end) {
+        statusText = 'Ended';
+        statusColor = 'var(--muted)';
+      } else if (now >= start) {
+        statusText = 'Live';
+        statusColor = 'var(--green)';
+      }
+
+      const statusEl = document.getElementById('statusEventStatus');
+      if (statusEl) statusEl.innerHTML = `<span style="color:${statusColor};font-weight:700;">${statusText}</span>`;
+
+      let timeRemaining = '—';
+      if (end && now < end) {
+        const diff = end - now;
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        timeRemaining = `${hours}h ${mins}m`;
+      } else if (end && now >= end) {
+        timeRemaining = 'Ended';
+      }
+      const timeEl = document.getElementById('statusTimeRemaining');
+      if (timeEl) timeEl.innerText = timeRemaining;
+
+      const validCheckins = checkins.filter(c => c.scan_result === 'valid' || c.scan_result === 'reentry');
+      const uniqueCheckedIn = new Set(validCheckins.map(c => c.ticket_id)).size;
+      const currentEl = document.getElementById('statusCurrentAttendance');
+      if (currentEl) currentEl.innerText = fmtNum(uniqueCheckedIn);
+
+      const scannersEl = document.getElementById('statusScannersOnline');
+      if (scannersEl) scannersEl.innerText = '—';
+
+      let lastCheckin = '—';
+      if (checkins.length > 0) {
+        const latest = checkins.reduce((a, b) => new Date(a.scanned_at) > new Date(b.scanned_at) ? a : b);
+        lastCheckin = formatDateTime(latest.scanned_at);
+      }
+      const lastEl = document.getElementById('statusLastCheckin');
+      if (lastEl) lastEl.innerText = lastCheckin;
+    }
+
+    function renderQuickStats() {
+      let totalCapacity = 0;
+      let totalRevenue = 0;
+
+      ticketTypes.forEach(tt => {
+        totalCapacity += tt.capacity || 0;
+        const sold = tickets.filter(t => t.ticket_type_id === tt.id && t.status === 'issued').length;
+        totalRevenue += sold * (tt.price || 0);
+      });
+
+      const totalSold = tickets.filter(t => t.status === 'issued').length;
+      const validCheckins = checkins.filter(c => c.scan_result === 'valid' || c.scan_result === 'reentry');
+      const uniqueCheckedIn = new Set(validCheckins.map(c => c.ticket_id)).size;
+      const checkinPercent = totalSold > 0 ? Math.round((uniqueCheckedIn / totalSold) * 100) : 0;
+
+      const capEl = document.getElementById('quickCapacity');
+      if (capEl) capEl.innerText = fmtNum(totalCapacity);
+
+      const percentEl = document.getElementById('quickCheckinPercent');
+      if (percentEl) percentEl.innerText = `${checkinPercent}%`;
+
+      const typesEl = document.getElementById('quickTicketTypes');
+      if (typesEl) typesEl.innerText = ticketTypes.length;
+
+      const revEl = document.getElementById('quickRevenue');
+      if (revEl) revEl.innerText = fmtR(totalRevenue);
+    }
+
+    // ─── SCAN FEED FUNCTIONS ───
+    function renderScanFeed() {
+      const container = document.getElementById('scanFeedContainer');
+      if (!container) return;
+
+      if (!checkins.length) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding:20px;text-align:center;">
+            <i class="fas fa-qrcode" style="font-size:2rem;color:var(--dim);margin-bottom:8px;"></i>
+            <p style="color:var(--muted);">No guests have checked in yet.</p>
+          </div>
+        `;
+        const countEl = document.getElementById('scanCount');
+        if (countEl) countEl.innerText = '0 scans';
+        return;
+      }
+
+      const recent = checkins.slice(0, 20);
+
+      const countEl = document.getElementById('scanCount');
+      if (countEl) countEl.innerText = `${checkins.length} scans`;
+
+      let html = '';
+      recent.forEach(scan => {
+        html += renderScanItem(scan);
+      });
+
+      container.innerHTML = html;
+
+      container.querySelectorAll('.scan-item').forEach(item => {
+        item.addEventListener('click', function() {
+          const scanId = this.dataset.scanId;
+          const scan = checkins.find(c => c.id === scanId);
+          if (scan && scan.ticket_id) {
+            openCustomerDrawer(scan.ticket_id);
+          }
+        });
+      });
+    }
+
+    function renderScanItem(scan) {
+      const ticket = tickets.find(t => t.id === scan.ticket_id);
+      const ticketType = ticketTypes.find(tt => tt.id === ticket?.ticket_type_id);
+      const customer = ticket?.profiles || null;
+      const staff = staffProfiles.find(p => p.id === scan.override_by);
+
+      const guestName = customer ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() : 'Guest';
+      const staffName = staff ? `${staff.first_name || ''} ${staff.last_name || ''}`.trim() : '—';
+      const resultClass = getResultBadgeClass(scan.scan_result);
+      const resultDisplay = scan.scan_result || 'Unknown';
+      const time = formatTime(scan.scanned_at);
+      const ticketNum = ticket?.ticket_number || 'N/A';
+      const typeName = ticketType?.name || '—';
+      const gate = scan.gate || scan.device_name || '—';
+
+      return `
+        <div class="scan-item" data-scan-id="${scan.id}" data-ticket-id="${scan.ticket_id}">
+          <div class="scan-time">${time}</div>
+          <div class="scan-details">
+            <div class="guest-name">${escapeHtml(guestName)}</div>
+            <div class="scan-meta">
+              <span><i class="fas fa-ticket"></i> ${escapeHtml(ticketNum)}</span>
+              <span><i class="fas fa-tag"></i> ${escapeHtml(typeName)}</span>
+              <span><i class="fas fa-user"></i> ${escapeHtml(staffName)}</span>
+              <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(gate)}</span>
+            </div>
+          </div>
+          <div class="scan-result-badge ${resultClass}">${escapeHtml(resultDisplay)}</div>
+        </div>
+      `;
+    }
+
+    function appendScan(scan) {
+      const container = document.getElementById('scanFeedContainer');
+      if (!container) return;
+
+      const emptyState = container.querySelector('.empty-state');
+      if (emptyState) container.innerHTML = '';
+
+      if (container.querySelector(`[data-scan-id="${scan.id}"]`)) return;
+
+      const scanHtml = renderScanItem(scan);
+      container.insertAdjacentHTML('afterbegin', scanHtml);
+
+      const countEl = document.getElementById('scanCount');
+      if (countEl) {
+        const currentCount = checkins.length;
+        countEl.innerText = `${currentCount} scans`;
+      }
+
+      const items = container.querySelectorAll('.scan-item');
+      while (items.length > 20) {
+        items[items.length - 1].remove();
+      }
+
+      const newItem = container.querySelector('.scan-item:first-child');
+      if (newItem) {
+        newItem.style.animation = 'none';
+        void newItem.offsetWidth;
+        newItem.style.animation = 'slideIn 0.3s ease';
+        
+        newItem.addEventListener('click', function() {
+          const scanId = this.dataset.scanId;
+          const scan = checkins.find(c => c.id === scanId);
+          if (scan && scan.ticket_id) {
+            openCustomerDrawer(scan.ticket_id);
+          }
+        });
+      }
+    }
+
+    // ─── SEARCH FUNCTIONS ───
+    async function searchTickets(query) {
+      if (!eventId || !query || query.length < 2) {
+        clearSearch();
+        return;
+      }
+
+      const container = document.getElementById('searchResultsContainer');
+      container.classList.add('active');
+      container.innerHTML = `
+        <div class="search-state">
+          <div class="search-loading"></div>
+          <p>Searching...</p>
+        </div>
+      `;
+
+      isSearching = true;
+
+      try {
+        const searchTerm = `%${query}%`;
+        const searchLower = query.toLowerCase();
+
+        const { data, error } = await supabase
+          .from('tickets')
+          .select(`
+            *,
+            profiles:customer_id (
+              id,
+              first_name,
+              last_name,
+              phone,
+              email
+            ),
+            ticket_types (
+              id,
+              name,
+              price
+            )
+          `)
+          .eq('event_id', eventId)
+          .or(
+            `ticket_number.ilike.${searchTerm},` +
+            `qr_token.ilike.${searchTerm},` +
+            `id.ilike.${searchTerm},` +
+            `profiles.first_name.ilike.${searchTerm},` +
+            `profiles.last_name.ilike.${searchTerm},` +
+            `profiles.phone.ilike.${searchTerm},` +
+            `profiles.email.ilike.${searchTerm}`
+          )
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) throw error;
+
+        const results = (data || []).filter(ticket => {
+          const profile = ticket.profiles || {};
+          const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.toLowerCase();
+          const searchLowerLocal = query.toLowerCase();
+          
+          return (
+            (ticket.ticket_number && ticket.ticket_number.toLowerCase().includes(searchLowerLocal)) ||
+            (ticket.qr_token && ticket.qr_token.toLowerCase().includes(searchLowerLocal)) ||
+            (ticket.id && ticket.id.toLowerCase().includes(searchLowerLocal)) ||
+            (profile.first_name && profile.first_name.toLowerCase().includes(searchLowerLocal)) ||
+            (profile.last_name && profile.last_name.toLowerCase().includes(searchLowerLocal)) ||
+            (fullName && fullName.includes(searchLowerLocal)) ||
+            (profile.phone && profile.phone.toLowerCase().includes(searchLowerLocal)) ||
+            (profile.email && profile.email.toLowerCase().includes(searchLowerLocal))
+          );
+        });
+
+        isSearching = false;
+        renderSearchResults(results);
+
+      } catch (err) {
+        isSearching = false;
+        console.error('Search error:', err);
+        container.innerHTML = `
+          <div class="search-state">
+            <i class="fas fa-exclamation-triangle" style="color:var(--red);"></i>
+            <p style="color:var(--red);">Search error: ${escapeHtml(err.message)}</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderSearchResults(results) {
+      const container = document.getElementById('searchResultsContainer');
+      
+      if (!results || results.length === 0) {
+        container.innerHTML = `
+          <div class="search-state">
+            <i class="fas fa-search"></i>
+            <p>No results found</p>
+          </div>
+        `;
+        return;
+      }
+
+      searchResults = results;
+      selectedIndex = -1;
+
+      let html = '';
+      results.forEach((ticket, index) => {
+        html += renderSearchResultItem(ticket, index);
+      });
+
+      container.innerHTML = html;
+    }
+
+    function renderSearchResultItem(ticket, index) {
+      const profile = ticket.profiles || {};
+      const ticketType = ticket.ticket_types || {};
+      const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Guest';
+      
+      const ticketCheckins = checkins.filter(c => c.ticket_id === ticket.id && (c.scan_result === 'valid' || c.scan_result === 'reentry'));
+      const isCheckedIn = ticketCheckins.length > 0;
+      const lastCheckin = ticketCheckins.length > 0 ? ticketCheckins[0] : null;
+      
+      const statusClass = getStatusBadgeClass(ticket.status);
+      const entriesUsed = ticket.entries_used || 0;
+      const entriesAllowed = ticket.entries_allowed || 1;
+
+      return `
+        <div class="search-result-item" data-index="${index}" data-ticket-id="${ticket.id}">
+          <div class="search-result-info">
+            <div class="result-name">
+              ${escapeHtml(fullName)}
+              <span class="ticket-status ${statusClass}">${escapeHtml(ticket.status || 'issued')}</span>
+              ${isCheckedIn ? '<span class="ticket-status used">Checked In</span>' : ''}
+            </div>
+            <div class="result-details">
+              <span><i class="fas fa-ticket"></i> ${escapeHtml(ticket.ticket_number || '—')}</span>
+              <span><i class="fas fa-tag"></i> ${escapeHtml(ticketType.name || '—')}</span>
+              <span><i class="fas fa-phone"></i> ${escapeHtml(profile.phone || '—')}</span>
+              <span><i class="fas fa-envelope"></i> ${escapeHtml(profile.email || '—')}</span>
+              <span><i class="fas fa-check-circle"></i> ${entriesUsed}/${entriesAllowed} used</span>
+              ${ticket.allow_reentry ? '<span><i class="fas fa-undo"></i> Re-entry allowed</span>' : ''}
+              ${lastCheckin ? `<span><i class="fas fa-clock"></i> ${formatTime(lastCheckin.scanned_at)}</span>` : ''}
+            </div>
+          </div>
+          <div class="search-result-actions">
+            <button class="action-btn info" onclick="window.viewTicketDetails('${ticket.id}')" title="View Details">
+              <i class="fas fa-eye"></i> Details
+            </button>
+            <button class="action-btn primary" onclick="window.manualCheckin('${ticket.id}')" title="Manual Check-in">
+              <i class="fas fa-user-check"></i> Check-in
+            </button>
+            <button class="action-btn" onclick="window.copyTicketNumber('${ticket.ticket_number}')" title="Copy Ticket Number">
+              <i class="fas fa-copy"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function clearSearch() {
+      const container = document.getElementById('searchResultsContainer');
+      container.classList.remove('active');
+      container.innerHTML = '';
+      searchResults = [];
+      selectedIndex = -1;
+    }
+
+    // ─── CUSTOMER DETAILS DRAWER ───
+    async function openCustomerDrawer(ticketId) {
+      if (!ticketId) {
+        showToast('Invalid ticket ID', 'error');
+        return;
+      }
+
+      currentDrawerTicketId = ticketId;
+      const drawer = document.getElementById('customerDrawer');
+      const overlay = document.getElementById('drawerOverlay');
+      const body = document.getElementById('drawerBody');
+      const title = document.getElementById('drawerTitle');
+
+      body.innerHTML = `
+        <div class="drawer-loading">
+          <div class="spinner"></div>
+          <p>Loading customer details...</p>
+        </div>
+      `;
+
+      drawer.classList.add('open');
+      overlay.classList.add('active');
+      document.body.style.overflow = 'hidden';
+
+      try {
+        const data = await loadCustomerDetails(ticketId);
+        if (data) {
+          title.innerText = `${data.customer?.name || 'Customer'} Details`;
+          renderCustomerDrawer(data);
+        } else {
+          throw new Error('Ticket not found');
+        }
+      } catch (err) {
+        console.error('Error loading customer details:', err);
+        body.innerHTML = `
+          <div class="drawer-error">
+            <i class="fas fa-exclamation-circle"></i>
+            <h3>Error loading ticket</h3>
+            <p>${escapeHtml(err.message || 'Ticket not found')}</p>
+          </div>
+        `;
+      }
+    }
+
+    async function loadCustomerDetails(ticketId) {
+      const { data: ticket, error: ticketError } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          profiles:customer_id (
+            id,
+            first_name,
+            last_name,
+            phone,
+            email
+          ),
+          ticket_types (
+            id,
+            name,
+            price,
+            capacity
+          ),
+          events!inner (
+            id,
+            name,
+            start_time,
+            end_time,
+            location
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (ticketError) throw ticketError;
+      if (!ticket) throw new Error('Ticket not found');
+
+      const { data: scanHistory, error: scanError } = await supabase
+        .from('checkins')
+        .select(`
+          *,
+          profiles:override_by (
+            id,
+            first_name,
+            last_name
+          )
+        `)
+        .eq('ticket_id', ticketId)
+        .order('scanned_at', { ascending: false });
+
+      if (scanError) throw scanError;
+
+      return {
+        ticket: ticket,
+        customer: ticket.profiles || {},
+        ticketType: ticket.ticket_types || {},
+        event: ticket.events || {},
+        scanHistory: scanHistory || []
+      };
+    }
+
+    function renderCustomerDrawer(data) {
+      const body = document.getElementById('drawerBody');
+      const { ticket, customer, ticketType, event, scanHistory } = data;
+
+      const fullName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Guest';
+      const checkedInScans = scanHistory.filter(s => s.scan_result === 'valid' || s.scan_result === 'reentry');
+      const isCheckedIn = checkedInScans.length > 0;
+      const lastCheckin = checkedInScans.length > 0 ? checkedInScans[0] : null;
+
+      let scanHistoryHtml = '';
+      if (scanHistory.length === 0) {
+        scanHistoryHtml = `
+          <div class="empty-state" style="padding:12px;text-align:center;">
+            <p style="color:var(--muted);font-size:0.7rem;">No scans recorded for this ticket</p>
+          </div>
+        `;
+      } else {
+        scanHistoryHtml = scanHistory.map(scan => {
+          const staff = scan.profiles || {};
+          const staffName = `${staff.first_name || ''} ${staff.last_name || ''}`.trim() || '—';
+          const resultClass = getResultBadgeClass(scan.scan_result);
+          const gate = scan.gate || scan.device_name || '—';
+          
+          return `
+            <div class="drawer-scan-item">
+              <div class="scan-info">
+                <div class="scan-time">${formatDateTime(scan.scanned_at)}</div>
+                <div class="scan-meta">
+                  <span><i class="fas fa-user"></i> ${escapeHtml(staffName)}</span>
+                  <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(gate)}</span>
+                  <span><i class="fas fa-qrcode"></i> ${escapeHtml(scan.scan_type || 'qr')}</span>
+                </div>
+              </div>
+              <span class="scan-result-badge ${resultClass}">${escapeHtml(scan.scan_result || '—')}</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      body.innerHTML = `
+        <!-- Customer Information -->
+        <div class="drawer-section">
+          <h4><i class="fas fa-user"></i> Customer Information</h4>
+          <div class="drawer-row"><span class="label">Full Name</span><span class="value">${escapeHtml(fullName)}</span></div>
+          <div class="drawer-row"><span class="label">Phone</span><span class="value">${escapeHtml(customer.phone || '—')}</span></div>
+          <div class="drawer-row"><span class="label">Email</span><span class="value">${escapeHtml(customer.email || '—')}</span></div>
+          <div class="drawer-row"><span class="label">Customer ID</span><span class="value"><code style="font-size:0.65rem;color:var(--muted);">${escapeHtml(customer.id || '—')}</code></span></div>
+        </div>
+
+        <!-- Ticket Information -->
+        <div class="drawer-section">
+          <h4><i class="fas fa-ticket-alt"></i> Ticket Information</h4>
+          <div class="drawer-row"><span class="label">Ticket Number</span><span class="value"><strong>${escapeHtml(ticket.ticket_number || '—')}</strong></span></div>
+          <div class="drawer-row"><span class="label">Ticket Type</span><span class="value">${escapeHtml(ticketType.name || '—')}</span></div>
+          <div class="drawer-row"><span class="label">Ticket Status</span><span class="value"><span class="badge ${getStatusBadgeClass(ticket.status)}">${escapeHtml(ticket.status || '—')}</span></span></div>
+          <div class="drawer-row"><span class="label">Event</span><span class="value">${escapeHtml(event.name || '—')}</span></div>
+          <div class="drawer-row"><span class="label">QR Token</span><span class="value"><code style="font-size:0.6rem;color:var(--muted);">${escapeHtml(ticket.qr_token || '—')}</code></span></div>
+          <div class="drawer-row"><span class="label">Purchase Date</span><span class="value">${formatDateTime(ticket.created_at)}</span></div>
+          <div class="drawer-row"><span class="label">Entries</span><span class="value">${ticket.entries_used || 0} / ${ticket.entries_allowed || 1} used</span></div>
+          <div class="drawer-row"><span class="label">Re-entry</span><span class="value">${ticket.allow_reentry ? '✅ Allowed' : '❌ Not allowed'}</span></div>
+        </div>
+
+        <!-- Check-in Information -->
+        <div class="drawer-section">
+          <h4><i class="fas fa-check-circle"></i> Check-in Information</h4>
+          <div class="drawer-row">
+            <span class="label">Checked In</span>
+            <span class="value">
+              <span class="badge ${isCheckedIn ? 'checked-in' : 'not-checked-in'}">
+                ${isCheckedIn ? '✅ Yes' : '❌ No'}
+              </span>
+            </span>
+          </div>
+          ${isCheckedIn && lastCheckin ? `
+            <div class="drawer-row"><span class="label">Check-in Time</span><span class="value">${formatDateTime(lastCheckin.scanned_at)}</span></div>
+            <div class="drawer-row"><span class="label">Last Scan</span><span class="value">${formatDateTime(ticket.last_scanned_at)}</span></div>
+            <div class="drawer-row"><span class="label">Scan Result</span><span class="value"><span class="badge ${getResultBadgeClass(lastCheckin.scan_result)}">${escapeHtml(lastCheckin.scan_result || '—')}</span></span></div>
+            <div class="drawer-row"><span class="label">Staff Member</span><span class="value">${escapeHtml(lastCheckin.profiles ? `${lastCheckin.profiles.first_name || ''} ${lastCheckin.profiles.last_name || ''}`.trim() : '—')}</span></div>
+            <div class="drawer-row"><span class="label">Gate</span><span class="value">${escapeHtml(lastCheckin.gate || lastCheckin.device_name || '—')}</span></div>
+          ` : ''}
+        </div>
+
+        <!-- Scan History -->
+        <div class="drawer-section">
+          <h4><i class="fas fa-history"></i> Scan History (${scanHistory.length})</h4>
+          <div class="drawer-scan-history">
+            ${scanHistoryHtml}
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="drawer-section">
+          <h4><i class="fas fa-bolt"></i> Quick Actions</h4>
+          <div class="drawer-actions">
+            <button class="action-btn success" onclick="window.manualCheckin('${ticket.id}')">
+              <i class="fas fa-user-check"></i> Check-in
+            </button>
+            <button class="action-btn warning" onclick="window.undoCheckin('${ticket.id}')">
+              <i class="fas fa-undo"></i> Undo Check-in
+            </button>
+            <button class="action-btn" onclick="window.copyTicketNumber('${ticket.ticket_number}')">
+              <i class="fas fa-copy"></i> Copy Ticket #
+            </button>
+            <button class="action-btn" onclick="window.copyQrToken('${ticket.qr_token}')">
+              <i class="fas fa-qrcode"></i> Copy QR
+            </button>
+            <button class="action-btn" onclick="window.printTicket('${ticket.id}')">
+              <i class="fas fa-print"></i> Print Ticket
+            </button>
+            <button class="action-btn" onclick="window.resendTicket('${ticket.id}')">
+              <i class="fas fa-envelope"></i> Resend Ticket
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function closeCustomerDrawer() {
+      const drawer = document.getElementById('customerDrawer');
+      const overlay = document.getElementById('drawerOverlay');
+      
+      drawer.classList.remove('open');
+      overlay.classList.remove('active');
+      document.body.style.overflow = '';
+      
+      setTimeout(() => {
+        if (!drawer.classList.contains('open')) {
+          document.getElementById('drawerBody').innerHTML = '';
+          document.getElementById('drawerTitle').innerText = 'Customer Details';
+        }
+      }, 400);
+    }
+
+    // ─── SEARCH ACTION FUNCTIONS ───
+    window.viewTicketDetails = function(ticketId) {
+      openCustomerDrawer(ticketId);
+    };
+
+    window.manualCheckin = function(ticketId) {
+      showToast('Manual Check-in feature coming soon', 'success');
+      console.log('Manual check-in for ticket:', ticketId);
+    };
+
+    window.undoCheckin = function(ticketId) {
+      showToast('Undo Check-in feature coming soon', 'success');
+      console.log('Undo check-in for ticket:', ticketId);
+    };
+
+    window.copyTicketNumber = function(ticketNumber) {
+      if (!ticketNumber) {
+        showToast('No ticket number to copy', 'error');
+        return;
+      }
+      navigator.clipboard.writeText(ticketNumber).then(() => {
+        showToast(`Copied: ${ticketNumber}`, 'success');
+      }).catch(() => {
+        const textArea = document.createElement('textarea');
+        textArea.value = ticketNumber;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showToast(`Copied: ${ticketNumber}`, 'success');
+      });
+    };
+
+    window.copyQrToken = function(qrToken) {
+      if (!qrToken) {
+        showToast('No QR token to copy', 'error');
+        return;
+      }
+      navigator.clipboard.writeText(qrToken).then(() => {
+        showToast('QR token copied to clipboard', 'success');
+      }).catch(() => {
+        const textArea = document.createElement('textarea');
+        textArea.value = qrToken;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showToast('QR token copied to clipboard', 'success');
+      });
+    };
+
+    window.printTicket = function(ticketId) {
+      showToast('Print Ticket feature coming soon', 'success');
+      console.log('Print ticket:', ticketId);
+    };
+
+    window.resendTicket = function(ticketId) {
+      showToast('Resend Ticket feature coming soon', 'success');
+      console.log('Resend ticket:', ticketId);
+    };
+
+    // ─── SEARCH KEYBOARD NAVIGATION ───
+    function navigateSearchResults(direction) {
+      if (searchResults.length === 0) return;
+
+      const items = document.querySelectorAll('.search-result-item');
+      if (items.length === 0) return;
+
+      items.forEach(item => item.classList.remove('keyboard-nav'));
+
+      if (direction === 'down') {
+        selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+      } else if (direction === 'up') {
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+      }
+
+      if (selectedIndex >= 0 && selectedIndex < items.length) {
+        const selectedItem = items[selectedIndex];
+        selectedItem.classList.add('keyboard-nav');
+        selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    function selectCurrentResult() {
+      if (selectedIndex < 0 || selectedIndex >= searchResults.length) return;
+      const ticket = searchResults[selectedIndex];
+      if (ticket) {
+        window.viewTicketDetails(ticket.id);
+      }
+    }
+
+    // ─── SEARCH EVENT HANDLERS ───
+    function setupSearch() {
+      const searchInput = document.getElementById('searchInput');
+      const searchClear = document.getElementById('searchClear');
+
+      searchInput.addEventListener('input', function(e) {
+        const query = this.value.trim();
+        
+        if (query.length === 0) {
+          clearSearch();
+          searchClear.classList.remove('visible');
+          return;
+        }
+
+        searchClear.classList.add('visible');
+
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+          searchTickets(query);
+        }, 300);
+      });
+
+      searchClear.addEventListener('click', function() {
+        document.getElementById('searchInput').value = '';
+        this.classList.remove('visible');
+        clearSearch();
+        document.getElementById('searchInput').focus();
+      });
+
+      searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          this.value = '';
+          searchClear.classList.remove('visible');
+          clearSearch();
+          this.blur();
+          e.preventDefault();
+          return;
+        }
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          navigateSearchResults('down');
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          navigateSearchResults('up');
+        }
+
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          selectCurrentResult();
+        }
+      });
+
+      document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+          e.preventDefault();
+          const searchInput = document.getElementById('searchInput');
+          searchInput.focus();
+          searchInput.select();
+        }
+
+        if (e.key === 'Escape') {
+          const drawer = document.getElementById('customerDrawer');
+          if (drawer.classList.contains('open')) {
+            closeCustomerDrawer();
+          }
+        }
+      });
+
+      document.addEventListener('click', function(e) {
+        const searchSection = document.getElementById('searchSection');
+        if (searchSection && !searchSection.contains(e.target)) {
+          clearSearch();
+        }
+      });
+    }
+
+    // ─── ANALYTICS FUNCTIONS ───
+
+    function renderAnalytics() {
+      const container = document.getElementById('analyticsContainer');
+      if (!container) return;
+
+      const validCheckins = checkins.filter(c => c.scan_result === 'valid' || c.scan_result === 'reentry');
+      const totalCheckedIn = new Set(validCheckins.map(c => c.ticket_id)).size;
+      const totalSold = tickets.filter(t => t.status === 'issued').length;
+
+      if (totalCheckedIn === 0) {
+        container.innerHTML = `
+          <div class="analytics-empty">
+            <i class="fas fa-chart-line"></i>
+            <p>Analytics will appear once guests begin checking in.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Calculate analytics
+      const analytics = calculateAnalytics(validCheckins);
+      const gatePerformance = calculateGatePerformance(validCheckins);
+      const staffPerformance = calculateStaffPerformance(validCheckins);
+      const ticketTypeAnalytics = calculateTicketTypeAnalytics(validCheckins);
+      const timeline = calculateTimeline(validCheckins);
+      const peakActivity = calculatePeakActivity(validCheckins);
+
+      let html = `
+        <div class="analytics-grid">
+          <!-- Overview Stats -->
+          <div class="analytics-card">
+            <h4><i class="fas fa-chart-simple"></i> Overview</h4>
+            <div class="analytics-stat-row"><span class="label">Total Tickets Sold</span><span class="value">${fmtNum(totalSold)}</span></div>
+            <div class="analytics-stat-row"><span class="label">Guests Checked In</span><span class="value highlight">${fmtNum(totalCheckedIn)}</span></div>
+            <div class="analytics-stat-row"><span class="label">Attendance Percentage</span><span class="value">${totalSold > 0 ? Math.round((totalCheckedIn / totalSold) * 100) : 0}%</span></div>
+            <div class="analytics-stat-row"><span class="label">Guests Remaining</span><span class="value">${Math.max(0, totalSold - totalCheckedIn)}</span></div>
+            <div class="analytics-stat-row"><span class="label">Revenue</span><span class="value highlight">${fmtR(calculateTotalRevenue())}</span></div>
+            <div class="analytics-stat-row"><span class="label">Avg Check-in Rate</span><span class="value">${analytics.avgRate} guests/min</span></div>
+            <div class="analytics-stat-row"><span class="label">Peak Hour</span><span class="value">${analytics.peakHour || '—'}</span></div>
+            <div class="analytics-stat-row"><span class="label">First Check-in</span><span class="value">${analytics.firstCheckin || '—'}</span></div>
+            <div class="analytics-stat-row"><span class="label">Latest Check-in</span><span class="value">${analytics.latestCheckin || '—'}</span></div>
+          </div>
+
+          <!-- Gate Performance -->
+          <div class="analytics-card">
+            <h4><i class="fas fa-door-open"></i> Gate Performance</h4>
+            ${gatePerformance.length > 0 ? gatePerformance.map(gate => `
+              <div class="analytics-stat-row">
+                <span class="label">${escapeHtml(gate.name)}</span>
+                <span class="value">${gate.count} guests (${gate.percentage}%)</span>
+              </div>
+              ${gate.lastScan ? `<div class="analytics-stat-row" style="font-size:0.65rem;color:var(--muted);padding:2px 0;border-bottom:1px solid var(--border);">
+                <span class="label">Last scan</span>
+                <span class="value">${formatTime(gate.lastScan)}</span>
+              </div>` : ''}
+            `).join('') : `
+              <div class="analytics-empty" style="padding:10px;">
+                <p style="font-size:0.7rem;">Gate analytics are not yet available.</p>
+              </div>
+            `}
+          </div>
+
+          <!-- Staff Performance -->
+          <div class="analytics-card">
+            <h4><i class="fas fa-user-tie"></i> Staff Performance</h4>
+            ${staffPerformance.length > 0 ? staffPerformance.map((staff, index) => `
+              <div class="analytics-stat-row">
+                <span class="label">${index + 1}. ${escapeHtml(staff.name)}</span>
+                <span class="value">${staff.total} scans</span>
+              </div>
+              <div style="font-size:0.6rem;color:var(--muted);padding:0 0 4px 0;border-bottom:1px solid var(--border);display:flex;gap:12px;flex-wrap:wrap;">
+                <span>✓ ${staff.valid} valid</span>
+                <span>✋ ${staff.manual} manual</span>
+                <span>⚠️ ${staff.duplicates} duplicates</span>
+                ${staff.lastActivity ? `<span>🕐 ${formatTime(staff.lastActivity)}</span>` : ''}
+              </div>
+            `).join('') : `
+              <div class="analytics-empty" style="padding:10px;">
+                <p style="font-size:0.7rem;">No scanner activity available.</p>
+              </div>
+            `}
+          </div>
+
+          <!-- Ticket Type Analytics -->
+          <div class="analytics-card">
+            <h4><i class="fas fa-tags"></i> Ticket Type Analytics</h4>
+            ${ticketTypeAnalytics.length > 0 ? ticketTypeAnalytics.map(tt => `
+              <div class="analytics-stat-row">
+                <span class="label">${escapeHtml(tt.name)}</span>
+                <span class="value">${tt.sold} sold · ${tt.checkedIn} checked in (${tt.percentage}%)</span>
+              </div>
+              <div style="font-size:0.6rem;color:var(--muted);padding:0 0 4px 0;border-bottom:1px solid var(--border);">
+                ${tt.remaining} remaining
+              </div>
+            `).join('') : `
+              <div class="analytics-empty" style="padding:10px;">
+                <p style="font-size:0.7rem;">No ticket types available.</p>
+              </div>
+            `}
+          </div>
+        </div>
+
+        <!-- Attendance Timeline -->
+        <div class="analytics-card" style="margin-top:16px;">
+          <h4><i class="fas fa-clock"></i> Attendance Timeline</h4>
+          <div class="analytics-timeline">
+            ${timeline.length > 0 ? timeline.map(item => `
+              <div class="analytics-timeline-item">
+                <span class="time">${item.hour}</span>
+                <div class="bar-track">
+                  <div class="bar-fill" style="width:${item.percentage}%;"></div>
+                </div>
+                <span class="bar-label">${item.total} <span class="cumulative">(${item.cumulative})</span></span>
+              </div>
+            `).join('') : `
+              <div class="analytics-empty" style="padding:10px;">
+                <p style="font-size:0.7rem;">No timeline data available.</p>
+              </div>
+            `}
+          </div>
+          ${peakActivity.busiestHour || peakActivity.quietestHour ? `
+            <div style="display:flex;gap:16px;margin-top:8px;font-size:0.65rem;color:var(--muted);flex-wrap:wrap;">
+              ${peakActivity.busiestHour ? `<span>🔥 Busiest: ${peakActivity.busiestHour} (${peakActivity.highestRate} guests/hr)</span>` : ''}
+              ${peakActivity.quietestHour ? `<span>❄️ Quietest: ${peakActivity.quietestHour} (${peakActivity.lowestRate} guests/hr)</span>` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      container.innerHTML = html;
+    }
+
+    // ─── ANALYTICS CALCULATION FUNCTIONS ───
+
+    function calculateAnalytics(validCheckins) {
+      if (validCheckins.length === 0) {
+        return { avgRate: 0, peakHour: '—', firstCheckin: '—', latestCheckin: '—' };
+      }
+
+      const sorted = [...validCheckins].sort((a, b) => new Date(a.scanned_at) - new Date(b.scanned_at));
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      
+      const firstTime = new Date(first.scanned_at);
+      const lastTime = new Date(last.scanned_at);
+      const diffMinutes = (lastTime - firstTime) / 60000;
+      const avgRate = diffMinutes > 0 ? Math.round(validCheckins.length / diffMinutes * 10) / 10 : validCheckins.length;
+
+      // Find peak hour
+      const hourCounts = {};
+      validCheckins.forEach(c => {
+        const hour = new Date(c.scanned_at).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      });
+      
+      let peakHour = '—';
+      let maxCount = 0;
+      for (const [hour, count] of Object.entries(hourCounts)) {
+        if (count > maxCount) {
+          maxCount = count;
+          peakHour = `${String(hour).padStart(2, '0')}:00`;
+        }
+      }
+
+      return {
+        avgRate: avgRate,
+        peakHour: peakHour,
+        firstCheckin: formatTime(first.scanned_at),
+        latestCheckin: formatTime(last.scanned_at)
+      };
+    }
+
+    function calculateGatePerformance(validCheckins) {
+      const gateMap = {};
+      
+      validCheckins.forEach(c => {
+        const gate = c.gate || c.device_name || 'Unknown';
+        if (!gateMap[gate]) {
+          gateMap[gate] = { count: 0, lastScan: null };
+        }
+        gateMap[gate].count++;
+        if (!gateMap[gate].lastScan || new Date(c.scanned_at) > new Date(gateMap[gate].lastScan)) {
+          gateMap[gate].lastScan = c.scanned_at;
+        }
+      });
+
+      const total = validCheckins.length;
+      return Object.entries(gateMap)
+        .map(([name, data]) => ({
+          name: name,
+          count: data.count,
+          percentage: Math.round((data.count / total) * 100),
+          lastScan: data.lastScan
+        }))
+        .sort((a, b) => b.count - a.count);
+    }
+
+    function calculateStaffPerformance(validCheckins) {
+      const staffMap = {};
+      
+      validCheckins.forEach(c => {
+        const staffId = c.override_by;
+        if (!staffId) return;
+        
+        const staff = staffProfiles.find(p => p.id === staffId);
+        const name = staff ? `${staff.first_name || ''} ${staff.last_name || ''}`.trim() : 'Unknown';
+        
+        if (!staffMap[staffId]) {
+          staffMap[staffId] = {
+            name: name,
+            total: 0,
+            valid: 0,
+            manual: 0,
+            duplicates: 0,
+            lastActivity: null
+          };
+        }
+        
+        staffMap[staffId].total++;
+        if (c.scan_result === 'valid') staffMap[staffId].valid++;
+        if (c.scan_result === 'manual' || c.scan_result === 'Manual Entry') staffMap[staffId].manual++;
+        if (c.scan_result === 'duplicate') staffMap[staffId].duplicates++;
+        
+        if (!staffMap[staffId].lastActivity || new Date(c.scanned_at) > new Date(staffMap[staffId].lastActivity)) {
+          staffMap[staffId].lastActivity = c.scanned_at;
+        }
+      });
+
+      return Object.values(staffMap)
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10);
+    }
+
+    function calculateTicketTypeAnalytics(validCheckins) {
+      const typeMap = {};
+      
+      // Initialize with all ticket types
+      ticketTypes.forEach(tt => {
+        typeMap[tt.id] = {
+          name: tt.name,
+          sold: tickets.filter(t => t.ticket_type_id === tt.id && t.status === 'issued').length,
+          checkedIn: 0,
+          remaining: 0
+        };
+      });
+
+      // Count check-ins
+      validCheckins.forEach(c => {
+        const ticket = tickets.find(t => t.id === c.ticket_id);
+        if (ticket && ticket.ticket_type_id && typeMap[ticket.ticket_type_id]) {
+          typeMap[ticket.ticket_type_id].checkedIn++;
+        }
+      });
+
+      return Object.values(typeMap)
+        .map(tt => ({
+          ...tt,
+          percentage: tt.sold > 0 ? Math.round((tt.checkedIn / tt.sold) * 100) : 0,
+          remaining: Math.max(0, tt.sold - tt.checkedIn)
+        }))
+        .sort((a, b) => b.sold - a.sold);
+    }
+
+    function calculateTimeline(validCheckins) {
+      if (validCheckins.length === 0) return [];
+
+      const sorted = [...validCheckins].sort((a, b) => new Date(a.scanned_at) - new Date(b.scanned_at));
+      const first = new Date(sorted[0].scanned_at);
+      const last = new Date(sorted[sorted.length - 1].scanned_at);
+      
+      // Round down to start of hour
+      const startHour = new Date(first);
+      startHour.setMinutes(0, 0, 0);
+      
+      const endHour = new Date(last);
+      endHour.setMinutes(0, 0, 0);
+      
+      const timeline = [];
+      let cumulative = 0;
+      let current = new Date(startHour);
+      
+      while (current <= endHour) {
+        const hourStr = current.toTimeString().slice(0, 5);
+        const nextHour = new Date(current);
+        nextHour.setHours(nextHour.getHours() + 1);
+        
+        const count = validCheckins.filter(c => {
+          const t = new Date(c.scanned_at);
+          return t >= current && t < nextHour;
+        }).length;
+        
+        cumulative += count;
+        const maxCount = Math.max(1, validCheckins.length);
+        const percentage = Math.round((cumulative / maxCount) * 100);
+        
+        timeline.push({
+          hour: hourStr,
+          total: count,
+          cumulative: cumulative,
+          percentage: Math.min(percentage, 100)
+        });
+        
+        current = nextHour;
+      }
+
+      return timeline;
+    }
+
+    function calculatePeakActivity(validCheckins) {
+      if (validCheckins.length === 0) {
+        return { busiestHour: null, quietestHour: null, highestRate: 0, lowestRate: 0 };
+      }
+
+      const hourCounts = {};
+      validCheckins.forEach(c => {
+        const hour = new Date(c.scanned_at).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      });
+
+      let busiestHour = null;
+      let quietestHour = null;
+      let highestRate = 0;
+      let lowestRate = Infinity;
+
+      for (const [hour, count] of Object.entries(hourCounts)) {
+        if (count > highestRate) {
+          highestRate = count;
+          busiestHour = `${String(hour).padStart(2, '0')}:00`;
+        }
+        if (count < lowestRate) {
+          lowestRate = count;
+          quietestHour = `${String(hour).padStart(2, '0')}:00`;
+        }
+      }
+
+      return {
+        busiestHour: busiestHour,
+        quietestHour: quietestHour,
+        highestRate: highestRate,
+        lowestRate: lowestRate
+      };
+    }
+
+    function calculateTotalRevenue() {
+      let total = 0;
+      tickets.forEach(ticket => {
+        if (ticket.status === 'issued') {
+          const ticketType = ticketTypes.find(tt => tt.id === ticket.ticket_type_id);
+          if (ticketType) {
+            total += ticketType.price || 0;
+          }
+        }
+      });
+      return total;
+    }
+
+    window.refreshAnalytics = function() {
+      renderAnalytics();
+      showToast('Analytics refreshed', 'success');
+    };
+
+    // ─── REAL-TIME SUBSCRIPTIONS ───
+    function setupRealtime() {
+      subscriptions.forEach(sub => sub.unsubscribe());
+      subscriptions = [];
+
+      if (!eventId) return;
+
+      const ticketIds = tickets.map(t => t.id);
+
+      const checkinSub = supabase
+        .channel(`scan-feed-${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'checkins',
+            filter: ticketIds.length > 0 ? `ticket_id=in.(${ticketIds.join(',')})` : undefined
+          },
+          async (payload) => {
+            console.log('New scan detected:', payload);
+            const newScan = payload.new;
+            
+            try {
+              const { data: fullScan, error } = await supabase
+                .from('checkins')
+                .select(`
+                  *,
+                  ticket:ticket_id (
+                    id,
+                    ticket_number,
+                    ticket_type_id,
+                    profiles:customer_id (
+                      first_name,
+                      last_name,
+                      phone
+                    )
+                  ),
+                  profiles:override_by (
+                    id,
+                    first_name,
+                    last_name
+                  )
+                `)
+                .eq('id', newScan.id)
+                .single();
+
+              if (error) throw error;
+
+              checkins = [fullScan, ...checkins];
+              appendScan(fullScan);
+              renderKPIs();
+              renderAttendance();
+              renderLiveStatus();
+              renderQuickStats();
+              renderTicketBreakdown();
+              renderAnalytics();
+
+              if (currentDrawerTicketId && currentDrawerTicketId === fullScan.ticket_id) {
+                openCustomerDrawer(currentDrawerTicketId);
+              }
+
+            } catch (err) {
+              console.error('Error processing new scan:', err);
+            }
+          }
+        )
+        .subscribe();
+
+      subscriptions.push(checkinSub);
+
+      const ticketSub = supabase
+        .channel(`tickets-monitor-${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'tickets',
+            filter: `event_id=eq.${eventId}`
+          },
+          async (payload) => {
+            console.log('Ticket updated:', payload);
+            const updatedTicket = payload.new;
+            
+            const index = tickets.findIndex(t => t.id === updatedTicket.id);
+            if (index !== -1) {
+              tickets[index] = { ...tickets[index], ...updatedTicket };
+            }
+
+            const container = document.getElementById('searchResultsContainer');
+            if (container.classList.contains('active')) {
+              const searchInput = document.getElementById('searchInput');
+              if (searchInput.value.trim().length >= 2) {
+                searchTickets(searchInput.value.trim());
+              }
+            }
+
+            if (currentDrawerTicketId && currentDrawerTicketId === updatedTicket.id) {
+              openCustomerDrawer(currentDrawerTicketId);
+            }
+
+            renderKPIs();
+            renderAttendance();
+            renderTicketBreakdown();
+            renderLiveStatus();
+            renderQuickStats();
+            renderAnalytics();
+          }
+        )
+        .subscribe();
+
+      subscriptions.push(ticketSub);
+    }
+
+    // ─── ACTIONS ───
+    window.refreshData = async function() {
+      if (window.isRefreshing) return;
+      window.isRefreshing = true;
+      await loadEventData();
+      window.isRefreshing = false;
+      showToast('Data refreshed', 'success');
+    };
+
+    window.exportData = function() {
+      if (!eventData) {
+        showToast('No event data to export', 'error');
+        return;
+      }
+
+      const data = {
+        event: eventData,
+        ticketTypes: ticketTypes,
+        tickets: tickets,
+        checkins: checkins,
+        analytics: {
+          totalCheckedIn: new Set(checkins.filter(c => c.scan_result === 'valid' || c.scan_result === 'reentry').map(c => c.ticket_id)).size,
+          totalSold: tickets.filter(t => t.status === 'issued').length,
+          revenue: calculateTotalRevenue(),
+          timestamp: new Date().toISOString()
+        },
+        exportedAt: new Date().toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `event-${eventData.name || 'export'}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Data exported successfully', 'success');
+    };
+
+    window.closeEvent = async function() {
+      if (!eventData) {
+        showToast('No event selected', 'error');
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to close "${eventData.name}"? This will mark the event as ended.`)) return;
+
+      try {
+        const { error } = await supabase
+          .from('events')
+          .update({ status: 'completed', end_time: new Date().toISOString() })
+          .eq('id', eventId);
+
+        if (error) throw error;
+
+        showToast('Event closed successfully', 'success');
+        await loadEventData();
+      } catch (err) {
+        showToast('Failed to close event: ' + err.message, 'error');
+      }
+    };
+
+    // ─── INIT ───
+    async function init() {
+      eventId = getUrlParam('event_id');
+
+      if (!eventId) {
+        showEmptyState();
+        const header = document.querySelector('.monitor-header');
+        if (header) header.style.display = 'none';
+        return;
+      }
+
+      await loadEventData();
+      setupSearch();
+
+      if (refreshInterval) clearInterval(refreshInterval);
+      refreshInterval = setInterval(() => {
+        if (!document.hidden) {
+          loadEventData();
+        }
+      }, 30000);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && eventId) {
+        loadEventData();
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
