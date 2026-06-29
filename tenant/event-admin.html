@@ -136,6 +136,8 @@
   .btn-secondary:hover { background: var(--s2); color: var(--text); }
   .btn-danger { background: #dc2626; color: white; }
   .btn-danger:hover { background: #b91c1c; }
+  .btn-success { background: var(--green); color: white; }
+  .btn-success:hover { background: #16a34a; }
 
   /* Event cards */
   .events-grid {
@@ -243,11 +245,13 @@
     color: var(--muted);
     border: 1px solid var(--border);
     transition: 0.15s;
+    font-family: 'Inter', sans-serif;
   }
   .action-btn:hover { background: var(--s2); color: var(--text); }
   .action-btn.primary { background: var(--red); color: white; border: none; }
   .action-btn.danger { background: #dc2626; color: white; border: none; }
   .action-btn.info { background: #2563eb; color: white; border: none; }
+  .action-btn.success { background: var(--green); color: white; border: none; }
 
   .card-body { padding: 14px 18px; }
   .selected-event-info {
@@ -426,6 +430,20 @@
     margin-bottom: 12px;
     font-size: 0.75rem;
     color: var(--red);
+    transition: all 0.2s;
+  }
+  .file-input-label:hover {
+    background: var(--s2);
+    border-color: var(--red);
+  }
+  .file-input-label .file-status {
+    display: block;
+    font-size: 0.6rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .file-input-label .file-status.success {
+    color: var(--green);
   }
   .ticket-type-toggle { margin-bottom: 12px; border-bottom: 1px solid var(--border); }
   .ticket-header {
@@ -624,7 +642,7 @@
     <h2><i class="fas fa-calendar-alt"></i> Event Manager</h2>
     <div class="header-actions">
       <button class="icon-btn" onclick="toggleDashboard()" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
-      <button class="icon-btn" @click="refreshAllEvents" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+      <button class="icon-btn" onclick="refreshAllEvents()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
     </div>
   </div>
 
@@ -645,6 +663,9 @@
             <h3><i class="fas fa-crown"></i> Event Management</h3>
             <div class="action-buttons">
               <button class="action-btn" id="editEventBtn"><i class="fas fa-pencil-alt"></i> Edit</button>
+              <button class="action-btn success" id="openEventMonitorBtn" title="Open Event Monitor">
+                <i class="fas fa-eye"></i> Monitor
+              </button>
               <button class="action-btn danger" id="deleteSelectedEventBtn"><i class="fas fa-trash-alt"></i> Delete</button>
             </div>
           </div>
@@ -723,7 +744,10 @@
         <label style="font-size:0.7rem;font-weight:600;color:var(--muted);padding:0 4px;">End Date &amp; Time (optional, after start)</label>
         <input type="datetime-local" id="eventEndTime" class="topup-input">
         <input type="text" id="eventLocation" placeholder="Location" class="topup-input" value="Rands Cape Town">
-        <label class="file-input-label" for="eventBannerInput"><i class="fas fa-cloud-upload-alt"></i> Upload Event Banner</label>
+        <label class="file-input-label" for="eventBannerInput">
+          <i class="fas fa-cloud-upload-alt"></i> Upload Event Banner
+          <span class="file-status" id="bannerUploadStatus">No file selected</span>
+        </label>
         <input type="file" id="eventBannerInput" accept="image/*" style="display:none;">
         <div id="currentBannerContainer" style="margin-bottom:12px; display:none;">
           <div style="font-size:0.7rem; font-weight:600; color:var(--muted); margin-bottom:4px;">Current banner</div>
@@ -784,12 +808,25 @@
   // ─── SUPABASE OPERATIONS ───
   async function uploadEventBanner(eventId, file) {
     if (!file) return null;
-    const ext = file.name.split('.').pop();
-    const path = `event-banners/${eventId}_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('event-banners').upload(path, file);
-    if (error) { showToast('Banner upload failed: '+error.message, 'error'); return null; }
-    const { data } = supabase.storage.from('event-banners').getPublicUrl(path);
-    return data.publicUrl;
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `event-banners/${eventId}_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('event-banners').upload(path, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        showToast('Banner upload failed: ' + uploadError.message, 'error');
+        return null;
+      }
+      const { data } = supabase.storage.from('event-banners').getPublicUrl(path);
+      return data.publicUrl;
+    } catch (err) {
+      console.error('Upload exception:', err);
+      showToast('Banner upload failed: ' + err.message, 'error');
+      return null;
+    }
   }
 
   async function getRelatedCounts(eventId) {
@@ -975,7 +1012,7 @@
             <div class="purchase-info">
               <div class="purchase-ticket-type">${escapeHtml(typeName)}</div>
               <div class="purchase-id">${escapeHtml(t.customer_phone||'')} &bull; ${timeStr}</div>
-              <div class="purchase-id">ID: ${t.id?.slice(-12)||'N/A'}</div>
+              <div class="purchase-id">ID: ${escapeHtml(t.id)}</div>
             </div>
             <div class="purchase-amount">R${Number(price).toFixed(2)}</div>
           </div>
@@ -1009,6 +1046,8 @@
     const preview = document.getElementById('eventBannerPreview');
     const bannerContainer = document.getElementById('currentBannerContainer');
     const hint = document.getElementById('newBannerHint');
+    const statusEl = document.getElementById('bannerUploadStatus');
+    
     if (editMode && eventData) {
       title.innerText = 'Edit Event';
       editingEventId = eventData.id;
@@ -1027,10 +1066,14 @@
         preview.style.display = 'block';
         bannerContainer.style.display = 'block';
         hint.style.display = 'none';
+        statusEl.textContent = 'Current banner: ✓';
+        statusEl.className = 'file-status success';
       } else {
         bannerContainer.style.display = 'none';
         preview.style.display = 'none';
         hint.style.display = 'none';
+        statusEl.textContent = 'No file selected';
+        statusEl.className = 'file-status';
       }
       selectedBannerFile = null;
       document.getElementById('eventBannerInput').value = '';
@@ -1052,6 +1095,8 @@
       hint.style.display = 'none';
       selectedBannerFile = null;
       document.getElementById('eventBannerInput').value = '';
+      statusEl.textContent = 'No file selected';
+      statusEl.className = 'file-status';
     }
     modal.classList.add('active');
   }
@@ -1100,7 +1145,10 @@
         await supabase.from('ticket_types').insert(types);
         if (selectedBannerFile) {
           const url = await uploadEventBanner(eventId, selectedBannerFile);
-          if (url) await supabase.from('events').update({ image_url: url }).eq('id', eventId);
+          if (url) {
+            await supabase.from('events').update({ image_url: url }).eq('id', eventId);
+            showToast(`Banner uploaded successfully`, 'success');
+          }
         }
         showToast(`Event "${name}" updated`, 'success');
       } else {
@@ -1112,7 +1160,10 @@
         eventId = eventData.id;
         if (selectedBannerFile) {
           const url = await uploadEventBanner(eventId, selectedBannerFile);
-          if (url) await supabase.from('events').update({ image_url: url }).eq('id', eventId);
+          if (url) {
+            await supabase.from('events').update({ image_url: url }).eq('id', eventId);
+            showToast(`Banner uploaded successfully`, 'success');
+          }
         }
         const types = [];
         if (ebPrice && ebCap && ebPrice>0 && ebCap>0) types.push({ event_id:eventId, name:'Early Bird', price:ebPrice, capacity:ebCap, sold:0 });
@@ -1168,9 +1219,20 @@
     finally { btn.innerHTML=orig; btn.disabled=false; document.getElementById('deleteConfirmModal').classList.remove('active'); pendingDeleteEventId=null; }
   }
 
+  // ─── OPEN EVENT MONITOR ───
+  function openEventMonitor() {
+    if (!selectedEventId) {
+      showToast('Select an event first', 'error');
+      return;
+    }
+    const url = `event-monitor.html?event_id=${selectedEventId}`;
+    window.open(url, '_blank');
+  }
+
   // ─── EVENT BINDINGS ───
   document.getElementById('eventBannerInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
+    const statusEl = document.getElementById('bannerUploadStatus');
     if (file) {
       selectedBannerFile = file;
       const reader = new FileReader();
@@ -1180,11 +1242,15 @@
         preview.style.display = 'block';
         document.getElementById('currentBannerContainer').style.display = 'block';
         document.getElementById('newBannerHint').style.display = 'block';
+        statusEl.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        statusEl.className = 'file-status success';
       };
       reader.readAsDataURL(file);
     } else {
       selectedBannerFile = null;
       document.getElementById('newBannerHint').style.display = 'none';
+      statusEl.textContent = 'No file selected';
+      statusEl.className = 'file-status';
     }
   });
   document.querySelector('.file-input-label').addEventListener('click', () => document.getElementById('eventBannerInput').click());
@@ -1195,6 +1261,7 @@
     const ev = events.find(e => e.id === selectedEventId);
     if (ev) openEventModal(true, ev);
   });
+  document.getElementById('openEventMonitorBtn').addEventListener('click', openEventMonitor);
   document.getElementById('closeEventModalBtn').addEventListener('click', () => document.getElementById('eventModal').classList.remove('active'));
   document.getElementById('saveEventBtn').addEventListener('click', saveEvent);
   document.getElementById('deleteSelectedEventBtn').addEventListener('click', deleteSelectedEvent);
@@ -1220,12 +1287,10 @@
   // ─── CHART RENDERING ───
   function renderCharts() {
     if (!events.length) {
-      // Show placeholder messages
       document.getElementById('dashKpiGrid').innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center;">No event data</div>';
       return;
     }
 
-    // Compute stats
     const totalEvents = events.length;
     const totalSold = events.reduce((s,e) => s + (e.ticketTypes.earlyBird.sold||0) + (e.ticketTypes.general.sold||0) + (e.ticketTypes.vip.sold||0), 0);
     const totalRevenue = events.reduce((s,e) => {
@@ -1242,7 +1307,6 @@
     const totalCap = events.reduce((s,e) => s + e.ticketTypes.earlyBird.capacity + e.ticketTypes.general.capacity + e.ticketTypes.vip.capacity, 0);
     const avgTicket = totalSold ? totalRevenue / totalSold : 0;
 
-    // KPIs
     document.getElementById('dashKpiGrid').innerHTML = `
       <div class="dash-kpi"><div class="val">${totalEvents}</div><div class="label">Total Events</div><div class="sub">${active} active | ${upcoming} upcoming</div></div>
       <div class="dash-kpi"><div class="val">${fmtNum(totalSold)}</div><div class="label">Tickets Sold</div><div class="sub">of ${fmtNum(totalCap)} capacity</div></div>
@@ -1250,7 +1314,6 @@
       <div class="dash-kpi"><div class="val">${avgOcc}%</div><div class="label">Avg Occupancy</div></div>
     `;
 
-    // Event Performance mini stats
     const completed = events.filter(e => e.status === 'completed' || (e.date && new Date(e.date) < new Date())).length;
     const bestEvent = events.reduce((max,e) => e.revenue > max.revenue ? e : max, events[0]);
     document.getElementById('dashEventPerformance').innerHTML = `
@@ -1262,7 +1325,6 @@
       <div class="dash-stat-mini"><div class="num">${bestEvent?.name?.slice(0,12)||'—'}</div><div class="lbl">Top Event</div></div>
     `;
 
-    // Ticket Sales by Tier
     const tiers = { 'Early Bird':0, 'General':0, 'VIP':0 };
     events.forEach(e => {
       tiers['Early Bird'] += e.ticketTypes.earlyBird.sold || 0;
@@ -1277,7 +1339,6 @@
       options: { responsive: true, plugins: { legend: { labels: { color: '#71717a', boxWidth: 8 } } } }
     });
 
-    // Revenue Trend (last 7)
     const sorted = [...events].sort((a,b) => new Date(a.start_time) - new Date(b.start_time)).slice(-7);
     const ctx2 = document.getElementById('dashRevenueChart').getContext('2d');
     if (charts.revenue) charts.revenue.destroy();
@@ -1290,7 +1351,6 @@
       options: { responsive: true, plugins: { tooltip: { callbacks: { label: (ctx) => fmtR(ctx.raw) } } } }
     });
 
-    // Attendance vs Capacity
     const ctx3 = document.getElementById('dashAttendanceChart').getContext('2d');
     if (charts.attendance) charts.attendance.destroy();
     charts.attendance = new Chart(ctx3, {
@@ -1302,7 +1362,6 @@
       options: { responsive: true, plugins: { legend: { labels: { color: '#71717a', boxWidth: 8 } } }, scales: { x: { ticks: { color: '#71717a' } }, y: { ticks: { color: '#71717a' } } } }
     });
 
-    // Inventory Health
     const available = totalCap - totalSold;
     const lowInv = events.filter(e => {
       const cap = e.ticketTypes.earlyBird.capacity + e.ticketTypes.general.capacity + e.ticketTypes.vip.capacity;
@@ -1327,7 +1386,6 @@
       options: { responsive: true, plugins: { legend: { labels: { color: '#71717a', boxWidth: 8 } } } }
     });
 
-    // Top Events
     const top = [...events].sort((a,b) => {
       const revA = (a.ticketTypes.earlyBird.sold||0)*a.ticketTypes.earlyBird.price + (a.ticketTypes.general.sold||0)*a.ticketTypes.general.price + (a.ticketTypes.vip.sold||0)*a.ticketTypes.vip.price;
       const revB = (b.ticketTypes.earlyBird.sold||0)*b.ticketTypes.earlyBird.price + (b.ticketTypes.general.sold||0)*b.ticketTypes.general.price + (b.ticketTypes.vip.sold||0)*b.ticketTypes.vip.price;
@@ -1342,7 +1400,6 @@
       </div>`;
     }).join('');
 
-    // Alerts
     const nearCap = events.filter(e => {
       const cap = e.ticketTypes.earlyBird.capacity + e.ticketTypes.general.capacity + e.ticketTypes.vip.capacity;
       const sold = e.ticketTypes.earlyBird.sold + e.ticketTypes.general.sold + e.ticketTypes.vip.sold;
@@ -1363,9 +1420,7 @@
   // ─── INIT ───
   async function init() {
     await refreshAllEvents();
-    // Auto-refresh every 30s
     setInterval(refreshAllEvents, 30000);
-    // Close overlay on escape
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         const overlay = document.getElementById('dashboardOverlay');
