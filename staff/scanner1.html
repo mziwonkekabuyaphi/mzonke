@@ -846,6 +846,47 @@
             transition-duration: 0.01ms !important;
         }
     }
+    /* ============================================================
+       NO ACTIVE EVENT BANNER
+    ============================================================ */
+    .no-event-banner {
+        display: none; align-items: center; justify-content: center; gap: 8px;
+        background: #7c2d12; color: #fdba74;
+        padding: 9px 16px; font-size: 0.72rem; font-weight: 600;
+    }
+    .no-event-banner.show { display: flex; }
+
+    /* Scan button disabled state */
+    .scan-main-btn:disabled,
+    .scan-main-btn.disabled {
+        opacity: 0.45; cursor: not-allowed; pointer-events: none;
+    }
+    .manual-hero-btn:disabled,
+    .manual-hero-btn.disabled {
+        opacity: 0.45; cursor: not-allowed; pointer-events: none;
+    }
+
+    /* Event select locked state */
+    .cmd-select:disabled {
+        background-color: var(--surface);
+        cursor: not-allowed;
+        opacity: 0.8;
+        border-color: var(--success);
+        box-shadow: 0 0 0 3px var(--success-glow);
+    }
+    /* Active event indicator badge */
+    .event-active-badge {
+        display: inline-flex; align-items: center; gap: 5px;
+        background: var(--success-bg); color: var(--success);
+        font-size: 0.58rem; font-weight: 700; letter-spacing: 0.5px;
+        padding: 3px 8px; border-radius: var(--r-pill);
+        margin-top: 4px;
+    }
+    .event-active-dot {
+        width: 5px; height: 5px; border-radius: 50%; background: var(--success);
+        animation: livePulse 1.6s infinite;
+    }
+
     </style>
 </head>
 <body>
@@ -873,6 +914,12 @@
     <i class="fas fa-wifi"></i> No network — scans will be queued
 </div>
 
+<!-- No active event banner -->
+<div class="no-event-banner" id="noEventBanner" style="display:none">
+    <i class="fas fa-calendar-times"></i>
+    <span>No active event right now — scanning is disabled</span>
+</div>
+
 <div class="main-container">
 
     <!-- EVENT & GATE COMMAND STRIP -->
@@ -880,6 +927,9 @@
         <div class="command-group grow">
             <span class="cmd-label"><i class="fas fa-calendar-alt"></i> Event</span>
             <select id="eventSelect" class="cmd-select"><option>Loading events…</option></select>
+            <div id="eventActiveBadge" style="display:none" class="event-active-badge">
+                <span class="event-active-dot"></span>ACTIVE NOW
+            </div>
         </div>
         <div class="command-group gate">
             <span class="cmd-label"><i class="fas fa-door-open"></i> Gate</span>
@@ -1020,7 +1070,7 @@
 
     <!-- Manual code entry (inline, while scanner is open) -->
     <div class="manual-strip">
-        <input type="text" id="manualCode" class="manual-field" placeholder="Enter ticket code manually…"
+        <input type="text" id="manualCode" class="manual-field" placeholder="Ticket code, phone, or email…"
                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button id="manualSubmit" class="manual-go">VERIFY</button>
     </div>
@@ -1033,8 +1083,8 @@
 <div id="sheetOverlay" class="sheet-overlay" role="dialog" aria-label="Manual ticket entry">
     <div class="sheet">
         <div class="sheet-handle"></div>
-        <h3>Enter Ticket Code</h3>
-        <input type="text" id="sheetCode" class="sheet-input" placeholder="Paste or type the ticket code…"
+        <h3>Manual Check-In</h3>
+        <input type="text" id="sheetCode" class="sheet-input" placeholder="Ticket code, phone, or email…"
                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button id="sheetSubmit" class="sheet-submit">VERIFY TICKET</button>
         <span class="sheet-cancel" id="sheetCancel">Cancel</span>
@@ -1063,6 +1113,7 @@ import { supabase } from '../config/supabase.js';
    STATE
 ============================================================ */
 let currentEvent   = null;
+let activeEventLocked = false;       // true when an active event was auto-selected
 let scanner        = null;
 let scanning       = false;          // debounce flag
 let camera         = 'environment';
@@ -1096,6 +1147,10 @@ const scannerBadge      = $('scannerBadge');
 const scannerBadgeText  = $('scannerBadgeText');
 const offlineBanner     = $('offlineBanner');
 const sheetOverlay      = $('sheetOverlay');
+const noEventBanner     = $('noEventBanner');
+const eventActiveBadge  = $('eventActiveBadge');
+const scanBtn           = $('scanBtn');
+const manualOpenBtn     = $('manualOpenBtn');
 
 /* ============================================================
    AUDIO ENGINE — lazy-initialised on first user gesture
@@ -1289,26 +1344,84 @@ function subscribeRealtime() {
 }
 
 /* ============================================================
-   EVENT LOADER (original logic preserved)
+   ACTIVE EVENT DETECTION
+============================================================ */
+function findActiveEvent(events) {
+    const now = new Date();
+    return events.find(ev => {
+        const start = ev.start_time ? new Date(ev.start_time) : null;
+        const end   = ev.end_time   ? new Date(ev.end_time)   : null;
+        if (!start) return false;
+        if (end) return now >= start && now <= end;
+        return now >= start; // no end_time → open-ended
+    }) || null;
+}
+
+function setScanEnabled(enabled) {
+    if (enabled) {
+        scanBtn.disabled = false;
+        scanBtn.classList.remove('disabled');
+        manualOpenBtn.disabled = false;
+        manualOpenBtn.classList.remove('disabled');
+        noEventBanner.classList.remove('show');
+        noEventBanner.style.display = '';
+    } else {
+        scanBtn.disabled = true;
+        scanBtn.classList.add('disabled');
+        manualOpenBtn.disabled = true;
+        manualOpenBtn.classList.add('disabled');
+        noEventBanner.classList.add('show');
+        noEventBanner.style.display = '';
+    }
+}
+
+/* ============================================================
+   EVENT LOADER — with auto-active-event selection
 ============================================================ */
 async function loadEvents() {
     const { data } = await supabase
         .from('events')
         .select('*')
         .order('start_time', { ascending: false });
-    if (!data?.length) return;
+    if (!data?.length) {
+        setScanEnabled(false);
+        showToast('No events found in database', true);
+        return;
+    }
 
     eventSelect.innerHTML = data
         .map(ev => `<option value="${ev.id}">${ev.name}</option>`)
         .join('');
 
-    currentEvent = data[0];
-    eventSelect.value = data[0].id;
+    const active = findActiveEvent(data);
+
+    if (active) {
+        // Auto-select & lock
+        currentEvent = active;
+        eventSelect.value = active.id;
+        eventSelect.disabled = true;
+        activeEventLocked = true;
+        eventActiveBadge.style.display = '';
+        setScanEnabled(true);
+        showToast(`Auto-selected: ${active.name}`, false);
+    } else {
+        // No active event — pick most recent but disable scanning
+        currentEvent = data[0];
+        eventSelect.value = data[0].id;
+        eventSelect.disabled = false;
+        activeEventLocked = false;
+        eventActiveBadge.style.display = 'none';
+        setScanEnabled(false);
+        showToast('No active event right now — scanning disabled', true);
+    }
+
     await loadStats();
     await loadRecentScans();
     subscribeRealtime();
 
+    // Only allow switching events if not locked
     eventSelect.onchange = async (e) => {
+        if (activeEventLocked) return; // locked — ignore
         currentEvent = data.find(ev => ev.id == e.target.value);
         rejectedLocal = 0;
         rejectedSpan.textContent = '0';
@@ -1316,6 +1429,87 @@ async function loadEvents() {
         await loadStats();
         await loadRecentScans();
         subscribeRealtime();
+    };
+}
+
+/* ============================================================
+   INPUT CLASSIFIER — detect phone, email, or ticket code
+============================================================ */
+function classifyInput(raw) {
+    const s = raw.trim();
+    // Email
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return { type: 'email', value: s };
+    // Phone: starts with +, 0, or is 9–15 digits
+    const phone = s.replace(/[\s\-().]/g, '');
+    if (/^(\+?\d{9,15})$/.test(phone)) return { type: 'phone', value: phone };
+    // UUID / ticket token
+    return { type: 'token', value: s };
+}
+
+/* ============================================================
+   CONTACT-BASED CHECK-IN (phone or email)
+============================================================ */
+async function checkinByContact(contact, gate) {
+    if (!currentEvent) throw new Error('No event selected');
+
+    // 1. Resolve profile
+    const field = contact.includes('@') ? 'email' : 'phone';
+    // Normalize phone: try exact, then with +27 prefix
+    let profileQuery = supabase.from('profiles').select('id, full_name, email, phone');
+    if (field === 'email') {
+        profileQuery = profileQuery.eq('email', contact.toLowerCase());
+    } else {
+        // Try multiple formats
+        profileQuery = profileQuery.or(
+            `phone.eq.${contact},phone.eq.+${contact.replace(/^\+/, '')},phone.eq.0${contact.replace(/^\+27/, '').replace(/^27/, '')}`
+        );
+    }
+    const { data: profiles, error: pErr } = await profileQuery.limit(5);
+    if (pErr) throw new Error(pErr.message);
+    if (!profiles?.length) throw new Error(`No profile found for ${contact}`);
+
+    const profileId = profiles[0].id;
+    const guestName = profiles[0].full_name || profiles[0].email || contact;
+
+    // 2. Find issued tickets for this profile + event
+    const { data: tickets, error: tErr } = await supabase
+        .from('tickets')
+        .select('id, status, checked_in, ticket_types(name)')
+        .eq('event_id', currentEvent.id)
+        .eq('profile_id', profileId)
+        .eq('status', 'issued')
+        .eq('checked_in', false);
+
+    if (tErr) throw new Error(tErr.message);
+    if (!tickets?.length) throw new Error(`No valid tickets found for this contact`);
+
+    const ticketIds = tickets.map(t => t.id);
+    const now = new Date().toISOString();
+
+    // 3. Bulk update tickets → used + checked_in
+    const { error: uErr } = await supabase
+        .from('tickets')
+        .update({ status: 'used', checked_in: true, checked_in_at: now })
+        .in('id', ticketIds);
+    if (uErr) throw new Error(uErr.message);
+
+    // 4. Insert checkin records
+    const checkinRows = ticketIds.map(tid => ({
+        ticket_id:  tid,
+        event_id:   currentEvent.id,
+        gate:       gate || 'Main Gate',
+        scanned_at: now,
+        scanned_by: null,
+    }));
+    const { error: cErr } = await supabase.from('checkins').insert(checkinRows);
+    if (cErr) throw new Error(cErr.message);
+
+    return {
+        success:       true,
+        attendee_name: guestName,
+        ticket_count:  ticketIds.length,
+        ticket_type:   tickets[0]?.ticket_types?.name || 'Standard',
+        message:       `Checked in ${guestName} (${ticketIds.length} ticket${ticketIds.length > 1 ? 's' : ''})`,
     };
 }
 
@@ -1363,7 +1557,7 @@ function setScannerStatus(state) {
 /* ============================================================
    RESULT DISPLAY
 ============================================================ */
-const RESULT_DURATION = 2800; // ms before auto-dismiss
+const RESULT_DURATION = 1800; // ms before auto-dismiss (fast scan cycle)
 
 /**
  * Show a full-screen result card.
@@ -1425,10 +1619,12 @@ function showResult(type, title, message, meta = {}) {
 function dismissResult() {
     clearTimeout(autoResumeTimer);
     resultOverlay.classList.remove('active');
-    // Re-enable scanning
+    // Re-arm scanning instantly — critical for throughput
     scanning = false;
     setScannerStatus('ready');
     if (processingOverlay) processingOverlay.classList.remove('active');
+    // Tiny delay then re-enable to prevent double-fire on same QR still in frame
+    setTimeout(() => { scanning = false; }, 400);
 }
 
 /** Escape HTML entities */
@@ -1437,7 +1633,7 @@ function esc(str) {
 }
 
 /* ============================================================
-   TICKET PROCESSING (original logic + UI upgrades)
+   TICKET PROCESSING — supports QR token OR contact (phone/email)
 ============================================================ */
 async function processTicket(scannedData) {
     // Reject if no event
@@ -1447,8 +1643,8 @@ async function processTicket(scannedData) {
         return false;
     }
 
-    const qrToken = extractQrTokenFromScan(scannedData);
-    const gate    = gateInput.value.trim() || 'Main Gate';
+    const gate = gateInput.value.trim() || 'Main Gate';
+    const classified = classifyInput(scannedData);
 
     // Show processing state immediately (non-blocking visual)
     setScannerStatus('busy');
@@ -1457,34 +1653,54 @@ async function processTicket(scannedData) {
     animateNum(pendingSpan, processingQueue);
 
     try {
-        const result = await checkinTicket(qrToken, gate);
+        let result;
 
-        processingQueue = Math.max(0, processingQueue - 1);
-        animateNum(pendingSpan, processingQueue);
+        if (classified.type === 'phone' || classified.type === 'email') {
+            // ── Contact-based bulk check-in ──
+            result = await checkinByContact(classified.value, gate);
 
-        playFeedback(true);
-        processingOverlay.classList.remove('active');
+            processingQueue = Math.max(0, processingQueue - 1);
+            animateNum(pendingSpan, processingQueue);
+            playFeedback(true);
+            processingOverlay.classList.remove('active');
 
-        // Build metadata from returned data (adapt field names to your schema)
-        const meta = {
-            name:       result.attendee_name || result.name || result.full_name || '',
-            ticketType: result.ticket_type   || result.type_name || '',
-            orderRef:   result.order_ref     || result.order_id   || result.reference || '',
-            eventName:  currentEvent?.name   || '',
-        };
+            const meta = {
+                name:       result.attendee_name,
+                ticketType: result.ticket_type + (result.ticket_count > 1 ? ` ×${result.ticket_count}` : ''),
+                eventName:  currentEvent?.name || '',
+            };
+            showResult('success', 'ACCESS GRANTED', result.message, meta);
+            prependScanRow(classified.value, meta.ticketType, gate, true);
+            loadStats();
 
-        showResult('success', 'ACCESS GRANTED', result.message || 'Welcome!', meta);
-        prependScanRow(qrToken, meta.ticketType, gate, true);
+        } else {
+            // ── QR / token single-ticket check-in (original path) ──
+            const qrToken = extractQrTokenFromScan(scannedData);
+            result = await checkinTicket(qrToken, gate);
 
-        // Update stats in background
-        loadStats();
+            processingQueue = Math.max(0, processingQueue - 1);
+            animateNum(pendingSpan, processingQueue);
+            playFeedback(true);
+            processingOverlay.classList.remove('active');
 
-        // Trigger wristband printing if configured (original hook preserved)
-        if (window.printWristband && result.wristband_data) {
-            window.printWristband(result.wristband_data).catch(() => {});
+            const meta = {
+                name:       result.attendee_name || result.name || result.full_name || '',
+                ticketType: result.ticket_type   || result.type_name || '',
+                orderRef:   result.order_ref     || result.order_id   || result.reference || '',
+                eventName:  currentEvent?.name   || '',
+            };
+
+            showResult('success', 'ACCESS GRANTED', result.message || 'Welcome!', meta);
+            prependScanRow(qrToken, meta.ticketType, gate, true);
+            loadStats();
+
+            if (window.printWristband && result.wristband_data) {
+                window.printWristband(result.wristband_data).catch(() => {});
+            }
         }
 
         return true;
+
     } catch(err) {
         processingQueue = Math.max(0, processingQueue - 1);
         animateNum(pendingSpan, processingQueue);
@@ -1499,6 +1715,8 @@ async function processTicket(scannedData) {
 
         if (isOffline) {
             showResult('error', 'NETWORK ERROR', 'You appear to be offline. Check your connection and try again.');
+        } else if (/no valid tickets|no profile/i.test(msg)) {
+            showResult('error', 'NOT FOUND', msg);
         } else if (/already|already used/i.test(msg)) {
             showResult('used', 'ALREADY CHECKED IN', msg);
         } else if (/different event|wrong.?event/i.test(msg)) {
@@ -1511,10 +1729,11 @@ async function processTicket(scannedData) {
             showResult('error', 'CHECK-IN FAILED', msg);
         }
 
-        prependScanRow(qrToken, '', gate, false);
+        prependScanRow(scannedData, '', gate, false);
         return false;
     }
 }
+
 
 /* ============================================================
    CAMERA / SCANNER (original logic with UI state hooks)
@@ -1531,11 +1750,21 @@ async function startScanner() {
         await scanner.start(
             { facingMode: camera },
             {
-                fps:          30,
-                qrbox:        { width: 240, height: 240 },
+                fps:          60,
+                qrbox:        { width: 280, height: 280 },
                 aspectRatio:  1.0,
                 disableFlip:  false,
-                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+                experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+                formatsToSupport: [0], // QR_CODE only — skip other formats for speed
+                rememberLastUsedCamera: true,
+                videoConstraints: {
+                    facingMode:  camera,
+                    width:       { ideal: 1280 },
+                    height:      { ideal: 720 },
+                    frameRate:   { ideal: 60, max: 60 },
+                    focusMode:   'continuous',
+                    exposureMode:'continuous',
+                }
             },
             (text) => {
                 // Debounce: only process one QR at a time
