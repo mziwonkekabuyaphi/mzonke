@@ -788,7 +788,7 @@
                 <div class="passport-grid">
                     <div class="passport-info">
                         <p>PASSPORT ID</p>
-                        <strong id="passportId">RNDS-XXXX-XXXX</strong>
+                        <strong id="passportId">—————</strong>
                         <p style="margin-top: 10px;">Member since <strong id="joinDate">—</strong></p>
                     </div>
                     <div class="qr-placeholder"><div id="passportQR"></div></div>
@@ -1098,7 +1098,25 @@
                     month: 'long' }) : "March 2025";
             document.getElementById('joinDate').innerText = joinDate;
 
-            // Wallet balance
+            // --- Use wallet_id as Passport ID ---
+            const walletId = profile?.wallet_id || '—————';
+            document.getElementById('passportId').innerText = walletId;
+
+            // --- Generate QR with wallet_id (and email for extra context) ---
+            const qrDiv = document.getElementById('passportQR');
+            if (qrDiv && typeof QRCode !== 'undefined') {
+                qrDiv.innerHTML = '';
+                new QRCode(qrDiv, {
+                    text: `RandsVibe:${walletId}|${session.user.email}`,
+                    width: 80,
+                    height: 80,
+                    colorDark: "#E30613",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            }
+
+            // Wallet balance (from wallets table)
             const { data: wallet, error: walletErr } = await supabase
                 .from('wallets')
                 .select('id, balance')
@@ -1109,25 +1127,6 @@
             currentWalletId = wallet?.id;
             document.getElementById('walletPreview').innerText =
                 `R ${balance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
-
-            // Passport ID
-            const uid = session.user.id.slice(0, 12).toUpperCase();
-            const passportId = `RNDS-${uid.slice(0,4)}-${uid.slice(4,8)}`;
-            document.getElementById('passportId').innerText = passportId;
-
-            // Passport QR
-            const qrDiv = document.getElementById('passportQR');
-            if (qrDiv && typeof QRCode !== 'undefined') {
-                qrDiv.innerHTML = '';
-                new QRCode(qrDiv, {
-                    text: passportId,
-                    width: 80,
-                    height: 80,
-                    colorDark: "#E30613",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.H
-                });
-            }
 
             // Stats
             const phone = profile?.phone || '';
@@ -1210,13 +1209,11 @@
             const newVal = prompt("Enter new phone number (e.g., +27123456789):", current === '—' ? '' : current);
             if (newVal !== null) {
                 const trimmed = newVal.trim();
-                // Basic validation: at least 10 digits
                 const digits = trimmed.replace(/\D/g, '');
                 if (digits.length < 10) {
                     showToast("Phone must have at least 10 digits", true);
                     return;
                 }
-                // Add leading '+' if not present
                 let formatted = trimmed;
                 if (!formatted.startsWith('+') && !formatted.startsWith('0')) {
                     formatted = '+' + formatted;
@@ -1225,8 +1222,7 @@
                 if (success) {
                     document.getElementById('displayPhone').innerText = formatted;
                     showToast("Phone updated!");
-                    // Reload stats because tickets depend on phone
-                    loadAllUserData(); // refreshes everything
+                    loadAllUserData(); // refresh stats
                 }
             }
         });
@@ -1239,11 +1235,11 @@
             qrBtn.addEventListener('click', async () => {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) return;
-                const passportId = document.getElementById('passportId').innerText;
+                const walletId = document.getElementById('passportId').innerText;
                 const container = document.getElementById('modalQRContainer');
                 container.innerHTML = '';
                 new QRCode(container, {
-                    text: `RandsVibe:${passportId}|${session.user.email}`,
+                    text: `RandsVibe:${walletId}|${session.user.email}`,
                     width: 180,
                     height: 180,
                     colorDark: "#E30613",
