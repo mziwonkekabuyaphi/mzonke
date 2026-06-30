@@ -434,10 +434,11 @@
         <div class="cp-identity">
             <div class="cp-avatar" id="cpAvatar">?</div>
             <div class="cp-name">
-                <span id="cpName" class="cp-tip" data-tip="No CRM name field — showing phone number">—</span>
+                <span id="cpName">—</span>
             </div>
             <div class="cp-phone" id="cpPhone">—</div>
             <div class="cp-meta-row" id="cpOnlineStatus"><span class="online-dot"></span> —</div>
+            <div class="cp-chip-row" id="cpStatusRow" style="margin-top:8px;"></div>
         </div>
 
         <!-- AI CONCIERGE -->
@@ -477,7 +478,7 @@
         <div class="cp-section">
             <h3><i class="fas fa-user" style="color:var(--muted);"></i>Profile</h3>
             <div class="cp-field"><span class="k">Phone</span><span class="v" id="cpFieldPhone">—</span></div>
-            <div class="cp-field cp-disabled" data-tip="No email column on any connected table"><span class="k">Email</span><span class="v">Not connected</span></div>
+            <div class="cp-field cp-disabled" id="cpEmailRow" data-tip="No matching profile email found"><span class="k">Email</span><span class="v" id="cpFieldEmail">Not connected</span></div>
             <div class="cp-field"><span class="k">First Contact</span><span class="v" id="cpFirstContact">—</span></div>
             <div class="cp-field"><span class="k">Total Messages</span><span class="v" id="cpTotalMsgs">—</span></div>
             <div class="cp-field cp-disabled" data-tip="Wallet table not connected"><span class="k">Wallet Balance</span><span class="v">Not connected</span></div>
@@ -514,7 +515,7 @@
                 <button class="cp-btn" disabled data-tip="No customer profile table yet"><i class="fas fa-user-circle"></i>Open Customer Profile</button>
                 <button class="cp-btn" disabled data-tip="No staff/assignment table yet"><i class="fas fa-user-plus"></i>Assign Conversation</button>
                 <button class="cp-btn" disabled data-tip="No staff/assignment table yet"><i class="fas fa-right-left"></i>Transfer Conversation</button>
-                <button class="cp-btn danger" disabled data-tip="No status column on conversations yet"><i class="fas fa-check-circle"></i>Mark Resolved</button>
+                <button class="cp-btn danger" id="cpMarkResolvedBtn" onclick="markResolved()"><i class="fas fa-check-circle"></i>Mark Resolved</button>
             </div>
         </div>
     </aside>
@@ -582,8 +583,13 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    let charts = {}, currentEditingTemplate = null, currentEditingIntent = null, selectedPhone = null;
+    let charts = {}, currentEditingTemplate = null, currentEditingIntent = null;
+    let selectedConversationId = null;
     let allConversations = [], allAIRequests = [], allSessions = [], allTemplates = [], allIntents = [], aiSettings = {};
+    let allMessagesFlat = []; // flattened messages from the conversations join, used for dashboard stats
+    const messagesCache = new Map(); // conversation_id -> messages[] (full row set once a conversation has been opened)
+    const profilesCache = new Map(); // profile_id -> profiles row
+    let realtimeChannel = null;
 
     window.showToast = function(msg, isError = false) {
         const t = document.getElementById('toastMsg');
@@ -606,18 +612,73 @@
     }
     function initials(p) { return p ? (p.replace(/[^a-zA-Z0-9]/g,'').slice(-4) || '?') : '?'; }
 
-    async function loadConversations() { try { const {data,error} = await supabase.from('whatsapp_conversations').select('*').order('created_at',{ascending:false}).limit(300); if(error) throw error; allConversations = data||[]; } catch(e) { allConversations=[]; } }
+    // ─── DATA HELPERS ───
+    function getConv(id) { return allConversations.find(c => c.id === id); }
+    function getMsgs(id) { return messagesCache.get(id) || []; }
+    function lastMsg(id) { const m = getMsgs(id); return m.length ? m[m.length - 1] : null; }
+    function displayName(c) { return (c && (c.customer_name || c.phone || c.phone_number)) || 'Unknown'; }
+
+    // ─── LOADERS ───
+    // Loads conversations along with their messages (used for previews + dashboard stats).
+    async function loadConversations() {
+        try {
+            const { data, error } = await supabase
+                .from('conversations')
+                .select(`*, messages ( id, message_text, direction, created_at, status, message_type )`)
+                .order('last_message_at', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            allConversations = data || [];
+            allMessagesFlat = [];
+            allConversations.forEach(c => {
+                const msgs = Array.isArray(c.messages) ? [...c.messages].sort((a,b) => new Date(a.created_at) - new Date(b.created_at)) : [];
+                allMessagesFlat.push(...msgs);
+                // Don't clobber a full message set already loaded for an open conversation
+                if (!messagesCache.has(c.id) || messagesCache.get(c.id).length <= msgs.length) {
+                    if (!messagesCache.has(c.id)) messagesCache.set(c.id, msgs);
+                }
+                delete c.messages;
+            });
+        } catch (e) { allConversations = []; allMessagesFlat = []; }
+    }
+
+    // Loads the full message row set (all columns) for a single conversation.
+    async function loadMessages(conversationId) {
+        try {
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('conversation_id', conversationId)
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+            messagesCache.set(conversationId, data || []);
+            return data || [];
+        } catch (e) { messagesCache.set(conversationId, []); return []; }
+    }
+
+    async function getProfile(profileId) {
+        if (!profileId) return null;
+        if (profilesCache.has(profileId)) return profilesCache.get(profileId);
+        try {
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle();
+            if (error) throw error;
+            profilesCache.set(profileId, data);
+            return data;
+        } catch (e) { return null; }
+    }
+
     async function loadAIRequests() { try { const {data,error} = await supabase.from('ai_requests').select('*').order('created_at',{ascending:false}).limit(300); if(error) throw error; allAIRequests = data||[]; } catch(e) { allAIRequests=[]; } }
     async function loadActiveSessions() { try { const {data,error} = await supabase.from('conversation_sessions').select('*').order('last_message_at',{ascending:false}).limit(50); if(error) throw error; allSessions = data||[]; } catch(e) { allSessions=[]; } }
     async function loadTemplates() { try { const {data,error} = await supabase.from('whatsapp_templates').select('*').order('template_name'); if(error) throw error; allTemplates = data||[]; } catch(e) { allTemplates=[]; } }
     async function loadIntents() { try { const {data,error} = await supabase.from('ai_intents').select('*').order('intent_name'); if(error) throw error; allIntents = data||[]; } catch(e) { allIntents=[]; } }
     async function loadAISettings() { try { const {data,error} = await supabase.from('ai_settings').select('*').eq('id','default').maybeSingle(); if(error) throw error; aiSettings = data||{model:'claude',temperature:0.3,max_tokens:500,enable_ai:true}; } catch(e) { aiSettings={model:'claude',temperature:0.3,max_tokens:500,enable_ai:true}; } }
 
-    function groupByPhone(convs) {
-        const map = new Map();
-        for (const c of convs) { const k = c.phone||'unknown'; if (!map.has(k)) map.set(k,[]); map.get(k).push(c); }
-        for (const [k,v] of map) v.sort((a,b) => new Date(a.created_at)-new Date(b.created_at));
-        return map;
+    async function updateConversationLastMessage(conversationId, iso) {
+        try {
+            await supabase.from('conversations').update({ last_message_at: iso, updated_at: iso }).eq('id', conversationId);
+        } catch (e) { /* non-fatal — UI already has the optimistic value */ }
+        const c = getConv(conversationId);
+        if (c) { c.last_message_at = iso; c.updated_at = iso; }
     }
 
     let currentChatFilter = 'all';
@@ -628,59 +689,77 @@
         renderChatList(document.getElementById('chatSearch').value);
     };
 
-    function matchesFilter(phone, msgs, last) {
+    function matchesFilter(conv, last) {
         if (currentChatFilter === 'all') return true;
-        if (currentChatFilter === 'unread') return msgs.some(m => m.direction === 'inbound' && !m.read);
-        if (currentChatFilter === 'ai_active') return aiSettings.enable_ai && !aiPausedFor.has(phone) && last && last.intent && last.intent !== 'manual';
-        if (currentChatFilter === 'needs_human') { const lastReq = allAIRequests.find(r => r.phone === phone); return !!(lastReq && lastReq.success === false); }
-        if (currentChatFilter === 'waiting_customer') return last && last.direction === 'outbound';
+        if (currentChatFilter === 'unread') return !!last && last.direction === 'incoming' && last.status !== 'read';
+        if (currentChatFilter === 'ai_active') return !!conv.ai_enabled && conv.status === 'active';
+        if (currentChatFilter === 'needs_human') { const lastReq = allAIRequests.find(r => r.phone === conv.phone); return !!(lastReq && lastReq.success === false); }
+        if (currentChatFilter === 'waiting_customer') return !!last && last.direction === 'outgoing';
         return true;
     }
 
     function renderChatList(searchTerm='') {
         const container = document.getElementById('chatList');
-        const grouped = groupByPhone(allConversations);
-        const phones = Array.from(grouped.keys()).sort((a,b) => {
-            const al = grouped.get(a).slice(-1)[0]?.created_at||'', bl = grouped.get(b).slice(-1)[0]?.created_at||'';
-            return new Date(bl)-new Date(al);
-        });
+        const sorted = [...allConversations].sort((a,b) => new Date(b.last_message_at||b.updated_at||0) - new Date(a.last_message_at||a.updated_at||0));
         const s = searchTerm.toLowerCase().trim();
-        let filtered = s ? phones.filter(p => p.toLowerCase().includes(s) || grouped.get(p).some(c=>(c.message||'').toLowerCase().includes(s))) : phones;
-        filtered = filtered.filter(p => matchesFilter(p, grouped.get(p), grouped.get(p).slice(-1)[0]));
+        let filtered = s ? sorted.filter(c => {
+            const last = lastMsg(c.id);
+            return (c.customer_name||'').toLowerCase().includes(s)
+                || (c.phone||'').toLowerCase().includes(s)
+                || (last?.message_text||'').toLowerCase().includes(s);
+        }) : sorted;
+        filtered = filtered.filter(c => matchesFilter(c, lastMsg(c.id)));
         if (!filtered.length) {
             const emptyMsg = currentChatFilter !== 'all' ? `No conversations match "${currentChatFilter.replace(/_/g,' ')}"` : 'No conversations found';
             container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:0.82rem;">${esc(emptyMsg)}</div>`;
             return;
         }
-        container.innerHTML = filtered.map(phone => {
-            const msgs = grouped.get(phone), last = msgs.slice(-1)[0];
-            const unread = msgs.filter(m=>m.direction==='inbound'&&!m.read).length;
-            const online = !!allSessions.find(s=>s.phone===phone);
-            const preview = last?.message ? esc(last.message.slice(0,55)) : 'No messages';
-            const intent = last?.intent||'general';
-            const lastReq = allAIRequests.find(r => r.phone === phone);
+        container.innerHTML = filtered.map(c => {
+            const last = lastMsg(c.id);
+            const msgs = getMsgs(c.id);
+            const unread = msgs.filter(m => m.direction === 'incoming' && m.status !== 'read').length;
+            const online = !!allSessions.find(s => s.phone === c.phone);
+            const preview = last?.message_text ? esc(last.message_text.slice(0,55)) : (last?.message_type ? `📎 ${esc(last.message_type)}` : 'No messages');
+            const intent = c.current_intent || 'general';
+            const lastReq = allAIRequests.find(r => r.phone === c.phone);
             const needsHuman = !!(lastReq && lastReq.success === false);
-            const aiActive = aiSettings.enable_ai && !aiPausedFor.has(phone) && last && last.intent && last.intent !== 'manual';
+            const aiActive = !!c.ai_enabled && c.status === 'active';
             const statusBadge = needsHuman ? '<span class="mini-badge human">HUMAN</span>' : (aiActive ? '<span class="mini-badge ai">AI</span>' : '');
-            return `<div class="chat-item ${phone===selectedPhone?'active':''}" onclick="selectConversation('${esc(phone)}')">
-                <div class="chat-avatar">${initials(phone)}<span class="status-dot ${online?'':'offline'}"></span>${needsHuman?'<span class="priority-dot" title="Needs human attention"></span>':''}</div>
+            const name = displayName(c);
+            return `<div class="chat-item ${c.id===selectedConversationId?'active':''}" onclick="selectConversation('${c.id}')">
+                <div class="chat-avatar">${initials(name)}<span class="status-dot ${online?'':'offline'}"></span>${needsHuman?'<span class="priority-dot" title="Needs human attention"></span>':''}</div>
                 <div class="chat-info">
-                    <div class="name"><span class="name-txt">${esc(phone)}</span><span class="time">${fmtDate(last?.created_at)}</span></div>
+                    <div class="name"><span class="name-txt">${esc(name)}</span><span class="time">${fmtDate(c.last_message_at||last?.created_at)}</span></div>
                     <div class="last-msg"><span class="preview-wrap">${statusBadge}<span>${preview}</span></span><span style="display:flex;gap:5px;align-items:center;flex-shrink:0;"><span class="intent-tag">${esc(intent)}</span>${unread>0?`<span class="badge">${unread}</span>`:''}</span></div>
                 </div></div>`;
         }).join('');
     }
 
-    window.selectConversation = function(phone) { selectedPhone=phone; renderChatList(document.getElementById('chatSearch').value); renderChatMessages(phone); updateChatHeader(phone); renderCustomerPanel(phone); };
+    window.selectConversation = async function(id) {
+        selectedConversationId = id;
+        renderChatList(document.getElementById('chatSearch').value);
+        updateChatHeader(id);
+        renderCustomerPanel(id);
+        const area = document.getElementById('messagesArea');
+        area.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><span>Loading messages…</span></div>`;
+        await loadMessages(id);
+        renderChatMessages(id);
+    };
 
-    function updateChatHeader(phone) {
-        document.getElementById('chatContactName').textContent = phone||'Select a conversation';
-        document.getElementById('chatAvatar').textContent = initials(phone);
-        const online = !!allSessions.find(s=>s.phone===phone);
-        document.getElementById('chatStatus').innerHTML = `<span class="online-dot" style="background:${online?'var(--green)':'var(--dim)'};box-shadow:${online?'0 0 5px var(--green)':'none'}"></span> ${online?'online':'last seen recently'}`;
+    function updateChatHeader(id) {
+        const c = getConv(id);
+        const name = c ? displayName(c) : null;
+        document.getElementById('chatContactName').textContent = name || 'Select a conversation';
+        document.getElementById('chatAvatar').textContent = initials(name);
+        const online = !!(c && allSessions.find(s => s.phone === c.phone));
+        let statusTxt = '';
+        if (c) {
+            if (c.status === 'closed') statusTxt = 'closed';
+            else if (c.status === 'blocked') statusTxt = 'blocked';
+            else statusTxt = online ? 'online' : 'last seen recently';
+        }
+        document.getElementById('chatStatus').innerHTML = c ? `<span class="online-dot" style="background:${online?'var(--green)':'var(--dim)'};box-shadow:${online?'0 0 5px var(--green)':'none'}"></span> ${statusTxt}` : '<span class="online-dot"></span> —';
     }
-
-    let aiPausedFor = new Set(); // phones where staff has taken over (client-side only — no column to persist this yet)
 
     window.toggleCustomerPanel = function() {
         const panel = document.getElementById('customerPanel');
@@ -690,58 +769,97 @@
         document.getElementById('toggleCustomerPanelBtn').classList.toggle('active-toggle', !panel.classList.contains('collapsed') || panel.classList.contains('open'));
     };
 
-    window.toggleAIGlobal = function() {
-        if (!selectedPhone) { showToast('Select a conversation first', true); return; }
-        if (aiPausedFor.has(selectedPhone)) aiPausedFor.delete(selectedPhone);
-        else aiPausedFor.add(selectedPhone);
-        renderCustomerPanel(selectedPhone);
-        showToast(aiPausedFor.has(selectedPhone) ? 'AI paused — you have taken over' : 'AI resumed for this conversation');
+    // Toggles the AI concierge for the SELECTED conversation by flipping conversations.ai_enabled.
+    window.toggleAIGlobal = async function() {
+        if (!selectedConversationId) { showToast('Select a conversation first', true); return; }
+        const c = getConv(selectedConversationId);
+        if (!c) return;
+        const newVal = !c.ai_enabled;
+        try {
+            const { error } = await supabase.from('conversations').update({ ai_enabled: newVal, updated_at: new Date().toISOString() }).eq('id', c.id);
+            if (error) throw error;
+            c.ai_enabled = newVal;
+            renderCustomerPanel(selectedConversationId);
+            renderChatList(document.getElementById('chatSearch').value);
+            showToast(newVal ? 'AI resumed for this conversation' : 'AI paused — you have taken over');
+        } catch (e) { showToast(e.message, true); }
     };
 
-    function renderCustomerPanel(phone) {
+    window.markResolved = async function() {
+        if (!selectedConversationId) { showToast('Select a conversation first', true); return; }
+        try {
+            const { error } = await supabase.from('conversations').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', selectedConversationId);
+            if (error) throw error;
+            const c = getConv(selectedConversationId); if (c) c.status = 'closed';
+            updateChatHeader(selectedConversationId);
+            renderCustomerPanel(selectedConversationId);
+            renderChatList(document.getElementById('chatSearch').value);
+            showToast('Conversation marked resolved');
+        } catch (e) { showToast(e.message, true); }
+    };
+
+    const STATUS_COLORS = { active: 'var(--green)', closed: 'var(--muted)', blocked: 'var(--red)' };
+
+    async function renderCustomerPanel(id) {
         const avatar = document.getElementById('cpAvatar'), nameEl = document.getElementById('cpName'), phoneEl = document.getElementById('cpPhone');
-        if (!phone) {
+        const c = id ? getConv(id) : null;
+
+        if (!c) {
             avatar.textContent = '?'; nameEl.textContent = '—'; phoneEl.textContent = 'No conversation selected';
             document.getElementById('cpOnlineStatus').innerHTML = '<span class="online-dot" style="background:var(--dim);box-shadow:none;"></span> —';
+            document.getElementById('cpStatusRow').innerHTML = '';
             document.getElementById('cpFieldPhone').textContent='—'; document.getElementById('cpFirstContact').textContent='—'; document.getElementById('cpTotalMsgs').textContent='—';
             document.getElementById('cpTagsRow').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
             document.getElementById('aiSuggestedList').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
             document.getElementById('aiLastAction').querySelector('.intent-row').innerHTML = '<span class="intent-name">—</span>';
+            const emailRow = document.getElementById('cpEmailRow'); emailRow.classList.add('cp-disabled'); document.getElementById('cpFieldEmail').textContent = 'Not connected';
             return;
         }
 
-        const msgs = groupByPhone(allConversations).get(phone) || [];
-        const online = !!allSessions.find(s => s.phone === phone);
-        const first = msgs[0], totalMsgs = msgs.length;
+        const profile = c.profile_id ? await getProfile(c.profile_id) : null;
+        // Bail out if the user has since clicked into a different conversation.
+        if (selectedConversationId !== id) return;
 
-        avatar.textContent = initials(phone);
-        nameEl.innerHTML = `<span>${esc(phone)}</span>` + (totalMsgs >= 20 ? '<span class="vip-badge">VIP</span>' : '');
+        const msgs = getMsgs(c.id);
+        const online = !!allSessions.find(s => s.phone === c.phone);
+        const first = msgs[0], totalMsgs = msgs.length;
+        const name = c.customer_name || profile?.full_name || profile?.name || c.phone || 'Unknown';
+
+        avatar.textContent = initials(name);
+        nameEl.innerHTML = `<span>${esc(name)}</span>` + (totalMsgs >= 20 ? '<span class="vip-badge">VIP</span>' : '');
         if (totalMsgs >= 20) nameEl.title = 'Heuristic: 20+ messages — not a real VIP flag yet';
-        phoneEl.textContent = esc(phone);
+        phoneEl.textContent = esc(c.phone || c.phone_number || '—');
         document.getElementById('cpOnlineStatus').innerHTML = `<span class="online-dot" style="background:${online?'var(--green)':'var(--dim)'};box-shadow:${online?'0 0 5px var(--green)':'none'}"></span> ${online?'Online now':'Offline'}`;
-        document.getElementById('cpFieldPhone').textContent = esc(phone);
+
+        const statusColor = STATUS_COLORS[c.status] || 'var(--muted)';
+        document.getElementById('cpStatusRow').innerHTML = `<span class="cp-chip" style="border-color:${statusColor};color:${statusColor};">${esc(c.status||'unknown')}</span>` + (c.current_intent ? `<span class="cp-chip">${esc(c.current_intent.replace(/_/g,' '))}</span>` : '');
+
+        document.getElementById('cpFieldPhone').textContent = esc(c.phone || c.phone_number || '—');
         document.getElementById('cpFirstContact').textContent = first ? fmtDate(first.created_at) : '—';
         document.getElementById('cpTotalMsgs').textContent = totalMsgs;
 
-        // Common topics — derived from real intent tags on this phone's messages
+        const emailRow = document.getElementById('cpEmailRow');
+        if (profile?.email) { emailRow.classList.remove('cp-disabled'); emailRow.removeAttribute('data-tip'); document.getElementById('cpFieldEmail').textContent = profile.email; }
+        else { emailRow.classList.add('cp-disabled'); emailRow.setAttribute('data-tip','No matching profile email found'); document.getElementById('cpFieldEmail').textContent = 'Not connected'; }
+
+        // Common topics — derived from this customer's AI request history
         const intentCounts = {};
-        msgs.forEach(m => { if (m.intent && m.intent !== 'manual') intentCounts[m.intent] = (intentCounts[m.intent]||0)+1; });
+        allAIRequests.filter(r => r.phone === c.phone).forEach(r => { if (r.intent) intentCounts[r.intent] = (intentCounts[r.intent]||0)+1; });
         const topIntents = Object.entries(intentCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
         document.getElementById('cpTagsRow').innerHTML = topIntents.length
             ? topIntents.map(([name,count]) => `<span class="cp-chip${count>2?' tone-red':''}">${esc(name.replace(/_/g,' '))} · ${count}</span>`).join('')
             : '<span class="cp-empty-note">No intent history yet</span>';
 
-        // AI status for this phone
-        const paused = aiPausedFor.has(phone);
-        const aiOn = aiSettings.enable_ai && !paused;
+        // AI status for this conversation
+        const aiOn = aiSettings.enable_ai && !!c.ai_enabled;
         document.getElementById('aiGlobalSwitch').classList.toggle('on', aiOn);
         document.getElementById('aiStatusDot').className = 'ai-status-dot' + (aiOn ? '' : ' off');
-        document.getElementById('aiStatusText').textContent = !aiSettings.enable_ai ? 'AI disabled globally' : (paused ? 'Paused — human handling' : 'AI enabled');
-        document.getElementById('aiTakeOverLabel').textContent = paused ? 'Resume AI' : 'Take Over';
-        document.getElementById('aiTakeOverBtn').querySelector('i').className = paused ? 'fas fa-robot' : 'fas fa-hand-paper';
+        document.getElementById('aiStatusText').textContent = !aiSettings.enable_ai ? 'AI disabled globally' : (!c.ai_enabled ? 'Paused — human handling' : 'AI enabled');
+        document.getElementById('aiTakeOverLabel').textContent = !c.ai_enabled ? 'Resume AI' : 'Take Over';
+        document.getElementById('aiTakeOverBtn').querySelector('i').className = !c.ai_enabled ? 'fas fa-robot' : 'fas fa-hand-paper';
 
         // Last AI action for this phone, from ai_requests
-        const lastReq = allAIRequests.find(r => r.phone === phone);
+        const lastReq = allAIRequests.find(r => r.phone === c.phone);
         const actionBox = document.getElementById('aiLastAction');
         if (lastReq) {
             actionBox.querySelector('.intent-row').innerHTML = `<span class="intent-name">${esc((lastReq.intent||'unknown').replace(/_/g,' '))}</span><span class="ai-result-pill ${lastReq.success?'success':'fail'}">${lastReq.success?'Success':'Failed'}</span>`;
@@ -753,8 +871,8 @@
             const tsLine = actionBox.querySelector('.ts'); if (tsLine) tsLine.remove();
         }
 
-        // Suggested replies — active templates matching this phone's most common intent
-        const topIntent = topIntents[0]?.[0];
+        // Suggested replies — active templates matching this conversation's current intent
+        const topIntent = c.current_intent || topIntents[0]?.[0];
         const matches = allTemplates.filter(t => t.active && (!topIntent || t.template_key === topIntent || (t.template_name||'').toLowerCase().includes(topIntent||''))).slice(0,4);
         const fallback = allTemplates.filter(t => t.active).slice(0,3);
         const list = matches.length ? matches : fallback;
@@ -771,9 +889,9 @@
     };
 
     function statusTickHtml(m) {
-        if (m.direction !== 'outbound') return '';
+        if (m.direction !== 'outgoing') return '';
         const s = m.status || 'sent';
-        const icons = { queued:'fa-clock', sending:'fa-clock', sent:'fa-check', delivered:'fa-check-double', read:'fa-check-double', failed:'fa-circle-exclamation', deleted:'fa-trash' };
+        const icons = { sent:'fa-check', delivered:'fa-check-double', read:'fa-check-double', failed:'fa-circle-exclamation' };
         const icon = icons[s] || 'fa-check';
         return `<span class="msg-status tick-${s}" title="${esc(s)}"><i class="fas ${icon}"></i></span>`;
     }
@@ -781,29 +899,30 @@
     function mediaBubbleHtml(m) {
         if (!m.media_url) return '';
         const type = (m.media_type || '').toLowerCase();
-        if (type.startsWith('image/')) return `<img class="msg-media-img" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')" alt="attachment" />`;
-        if (type.startsWith('audio/')) return `<div class="msg-voice"><i class="fas fa-microphone" style="color:inherit;opacity:0.7;"></i><audio controls src="${esc(m.media_url)}"></audio></div>`;
+        if (type.startsWith('image/') || m.message_type === 'image') return `<img class="msg-media-img" src="${esc(m.media_url)}" onclick="window.open('${esc(m.media_url)}','_blank')" alt="attachment" />`;
+        if (type.startsWith('video/') || m.message_type === 'video') return `<video class="msg-media-img" src="${esc(m.media_url)}" controls></video>`;
+        if (type.startsWith('audio/') || m.message_type === 'audio') return `<div class="msg-voice"><i class="fas fa-microphone" style="color:inherit;opacity:0.7;"></i><audio controls src="${esc(m.media_url)}"></audio></div>`;
         const name = (m.media_url.split('/').pop()||'document').split('?')[0];
         return `<a class="msg-doc-chip" href="${esc(m.media_url)}" target="_blank" style="text-decoration:none;color:inherit;"><i class="fas fa-file-lines"></i><span class="doc-name">${esc(decodeURIComponent(name))}</span></a>`;
     }
 
-    function renderChatMessages(phone) {
+    function renderChatMessages(id) {
         const area = document.getElementById('messagesArea');
-        if (!phone) { area.innerHTML=`<div class="empty-state"><i class="fab fa-whatsapp"></i><span>Select a conversation to start</span></div>`; renderQuickReplyStrip(null); return; }
-        const msgs = groupByPhone(allConversations).get(phone)||[];
-        if (!msgs.length) { area.innerHTML=`<div class="empty-state"><i class="far fa-comment-dots"></i><span>No messages yet</span></div>`; renderQuickReplyStrip(phone); return; }
+        if (!id) { area.innerHTML=`<div class="empty-state"><i class="fab fa-whatsapp"></i><span>Select a conversation to start</span></div>`; renderQuickReplyStrip(null); return; }
+        const msgs = getMsgs(id);
+        if (!msgs.length) { area.innerHTML=`<div class="empty-state"><i class="far fa-comment-dots"></i><span>No messages yet</span></div>`; renderQuickReplyStrip(id); return; }
         let html='', lastDate='';
         for (const m of msgs) {
             const date = new Date(m.created_at).toDateString();
             if (date!==lastDate) { html+=`<div class="message-divider"><span>${new Date(m.created_at).toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'})}</span></div>`; lastDate=date; }
-            const isIn = m.direction==='inbound';
+            const isIn = m.direction==='incoming';
             const media = mediaBubbleHtml(m);
-            const textPart = m.message ? esc(m.message) : '';
-            html+=`<div class="message-row ${isIn?'incoming':'outgoing'}"><div class="message-bubble">${media}${textPart}${m.intent?`<span class="intent-tag">${esc(m.intent)}</span>`:''}<span class="time">${fmtTime(m.created_at)}${statusTickHtml(m)}</span></div></div>`;
+            const textPart = m.message_text ? esc(m.message_text) : '';
+            html+=`<div class="message-row ${isIn?'incoming':'outgoing'}"><div class="message-bubble">${media}${textPart}<span class="time">${fmtTime(m.created_at)}${statusTickHtml(m)}</span></div></div>`;
         }
         area.innerHTML=html;
         scrollMessagesToBottom(false);
-        renderQuickReplyStrip(phone);
+        renderQuickReplyStrip(id);
     }
 
     function scrollMessagesToBottom(smooth) {
@@ -819,9 +938,9 @@
         document.getElementById('scrollBottomBtn').classList.toggle('show', !nearBottom);
     };
 
-    function renderQuickReplyStrip(phone) {
+    function renderQuickReplyStrip(id) {
         const strip = document.getElementById('quickReplyStrip');
-        if (!phone) { strip.innerHTML = ''; return; }
+        if (!id) { strip.innerHTML = ''; return; }
         const active = allTemplates.filter(t => t.active).slice(0, 8);
         strip.innerHTML = active.length
             ? active.map(t => `<button class="qr-chip" onclick="useSuggestedReply('${esc(t.template_key||'').replace(/'/g,"\\'")}')">${esc(t.template_name||t.template_key)}</button>`).join('')
@@ -830,12 +949,28 @@
 
     window.sendMessage = async function() {
         const input=document.getElementById('messageInput'), text=input.value.trim();
-        if (!text||!selectedPhone) { if (!selectedPhone) showToast('Select a conversation first',true); return; }
+        if (!text||!selectedConversationId) { if (!selectedConversationId) showToast('Select a conversation first',true); return; }
+        const conv = getConv(selectedConversationId);
         const btn=document.getElementById('sendBtn'); btn.disabled=true;
         try {
-            const {error}=await supabase.from('whatsapp_conversations').insert({phone:selectedPhone,message:text,direction:'outbound',intent:'manual',status:'sent',created_at:new Date().toISOString()});
+            const nowIso = new Date().toISOString();
+            const { data, error } = await supabase.from('messages').insert({
+                conversation_id: selectedConversationId,
+                direction: 'outgoing',
+                message_text: text,
+                message_type: 'text',
+                status: 'sent',
+                sender_phone: conv?.phone_number || null,
+                recipient_phone: conv?.phone || null,
+                created_at: nowIso
+            }).select().single();
             if (error) throw error;
-            input.value=''; await loadConversations(); renderChatList(document.getElementById('chatSearch').value); renderChatMessages(selectedPhone); showToast('Message sent');
+            await updateConversationLastMessage(selectedConversationId, nowIso);
+            const cache = getMsgs(selectedConversationId); cache.push(data); messagesCache.set(selectedConversationId, cache);
+            input.value='';
+            renderChatMessages(selectedConversationId);
+            renderChatList(document.getElementById('chatSearch').value);
+            showToast('Message sent');
         } catch(e) { showToast(e.message,true); }
         btn.disabled=false;
     };
@@ -848,7 +983,7 @@
     };
 
     window.triggerAttach = function(type) {
-        if (!selectedPhone) { showToast('Select a conversation first', true); return; }
+        if (!selectedConversationId) { showToast('Select a conversation first', true); return; }
         pendingAttachType = type;
         const input = document.getElementById('attachFileInput');
         input.accept = type === 'image' ? 'image/*' : (type === 'voice' ? 'audio/*' : '.pdf,.doc,.docx,.xls,.xlsx,.txt');
@@ -859,18 +994,25 @@
     window.handleAttachSelected = async function(e) {
         const file = e.target.files[0];
         e.target.value = '';
-        if (!file || !selectedPhone) return;
+        if (!file || !selectedConversationId) return;
+        const conv = getConv(selectedConversationId);
         // No storage bucket wired yet — using a local object URL so the bubble renders correctly;
         // swap this for a real Supabase Storage upload + public URL once a bucket is connected.
         const objectUrl = URL.createObjectURL(file);
         const mediaType = file.type || (pendingAttachType === 'voice' ? 'audio/webm' : 'application/octet-stream');
+        const messageType = pendingAttachType === 'voice' ? 'audio' : (pendingAttachType === 'image' ? 'image' : 'document');
         try {
-            const {error} = await supabase.from('whatsapp_conversations').insert({
-                phone: selectedPhone, message: '', direction: 'outbound', intent: 'manual',
-                status: 'sent', media_url: objectUrl, media_type: mediaType, created_at: new Date().toISOString()
-            });
+            const nowIso = new Date().toISOString();
+            const { data, error } = await supabase.from('messages').insert({
+                conversation_id: selectedConversationId, direction: 'outgoing', message_text: '',
+                message_type: messageType, status: 'sent', media_url: objectUrl, media_type: mediaType,
+                sender_phone: conv?.phone_number || null, recipient_phone: conv?.phone || null, created_at: nowIso
+            }).select().single();
             if (error) throw error;
-            await loadConversations(); renderChatList(document.getElementById('chatSearch').value); renderChatMessages(selectedPhone);
+            await updateConversationLastMessage(selectedConversationId, nowIso);
+            const cache = getMsgs(selectedConversationId); cache.push(data); messagesCache.set(selectedConversationId, cache);
+            renderChatMessages(selectedConversationId);
+            renderChatList(document.getElementById('chatSearch').value);
             showToast('Attachment sent (local preview only — connect Storage for persistence)');
         } catch(err) { showToast(err.message, true); }
         pendingAttachType = null;
@@ -899,12 +1041,12 @@
     const C = { grid:'rgba(255,255,255,0.04)', tick:'#52525b', legend:'#71717a' };
 
     function renderDashboard() {
-        const totalMsgs=allConversations.length, uniqueUsers=new Set(allConversations.map(c=>c.phone)).size;
+        const totalMsgs=allMessagesFlat.length, uniqueUsers=allConversations.length;
         const aiSuccess=allAIRequests.length?(allAIRequests.filter(r=>r.success).length/allAIRequests.length*100):0;
         document.getElementById('dashKpiGrid').innerHTML=`<div class="dash-kpi"><div class="val">${totalMsgs}</div><div class="label">Total Messages</div></div><div class="dash-kpi"><div class="val">${uniqueUsers}</div><div class="label">Unique Users</div></div><div class="dash-kpi"><div class="val">${Math.round(aiSuccess)}%</div><div class="label">AI Success</div></div><div class="dash-kpi"><div class="val">${allSessions.length}</div><div class="label">Active Chats</div></div>`;
 
         const last30=[...Array(30)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().split('T')[0];}).reverse();
-        const volData=last30.map(day=>allConversations.filter(c=>c.created_at?.startsWith(day)).length);
+        const volData=last30.map(day=>allMessagesFlat.filter(m=>m.created_at?.startsWith(day)).length);
         const ctxV=document.getElementById('dashVolumeChart').getContext('2d');
         if(charts.vol) charts.vol.destroy();
         charts.vol=new Chart(ctxV,{type:'line',data:{labels:last30.map(d=>d.slice(5)),datasets:[{label:'Messages',data:volData,borderColor:'#E30613',backgroundColor:'rgba(227,6,19,0.06)',fill:true,tension:0.3,pointRadius:1,pointHoverRadius:4}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:C.legend,boxWidth:10,font:{size:10}}}},scales:{x:{ticks:{color:C.tick,maxTicksLimit:10,font:{size:9}},grid:{color:C.grid}},y:{ticks:{color:C.tick,stepSize:1,font:{size:9}},grid:{color:C.grid}}}}});
@@ -930,7 +1072,7 @@
         showToast('Refreshing…');
         await Promise.all([loadConversations(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
         renderChatList(document.getElementById('chatSearch').value);
-        if (selectedPhone) { renderChatMessages(selectedPhone); updateChatHeader(selectedPhone); renderCustomerPanel(selectedPhone); }
+        if (selectedConversationId) { renderChatMessages(selectedConversationId); updateChatHeader(selectedConversationId); renderCustomerPanel(selectedConversationId); }
         if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashboard();
         showToast('Data refreshed');
     };
@@ -947,14 +1089,57 @@
     window.closeAISettingsModal=()=>document.getElementById('aiSettingsModal').classList.remove('active');
     window.saveAISettings=async()=>{const model=document.getElementById('aiModel').value,temperature=parseFloat(document.getElementById('aiTemperature').value),maxTokens=parseInt(document.getElementById('aiMaxTokens').value),enableAi=document.getElementById('aiEnable').value==='true';try{await supabase.from('ai_settings').upsert({id:'default',model,temperature,max_tokens:maxTokens,enable_ai:enableAi,updated_at:new Date()});showToast('AI settings saved');closeAISettingsModal();await loadAISettings();if(document.getElementById('dashboardOverlay').classList.contains('open'))renderDashboard();}catch(e){showToast(e.message,true);}};
 
-    setInterval(()=>{loadConversations();loadAIRequests();loadActiveSessions();},30000);
-    setInterval(()=>{ if (selectedPhone) renderCustomerPanel(selectedPhone); },30000);
+    // ─── REAL-TIME ───
+    function handleNewMessage(msg) {
+        const cache = getMsgs(msg.conversation_id);
+        if (!cache.some(m => m.id === msg.id)) {
+            cache.push(msg);
+            cache.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+            messagesCache.set(msg.conversation_id, cache);
+        }
+        const c = getConv(msg.conversation_id);
+        if (c) c.last_message_at = msg.created_at;
+        allMessagesFlat.push(msg);
+
+        if (selectedConversationId === msg.conversation_id) { renderChatMessages(msg.conversation_id); }
+        else if (msg.direction === 'incoming') { showToast(`New message from ${c ? displayName(c) : msg.sender_phone}`); }
+        renderChatList(document.getElementById('chatSearch').value);
+        if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashboard();
+    }
+
+    function handleConversationChange(conv, isNew) {
+        const idx = allConversations.findIndex(c => c.id === conv.id);
+        if (idx >= 0) allConversations[idx] = { ...allConversations[idx], ...conv };
+        else { allConversations.unshift(conv); messagesCache.set(conv.id, []); }
+        renderChatList(document.getElementById('chatSearch').value);
+        if (selectedConversationId === conv.id) { updateChatHeader(conv.id); renderCustomerPanel(conv.id); }
+        if (isNew) showToast(`New conversation: ${displayName(conv)}`);
+    }
+
+    function setupRealtime() {
+        realtimeChannel = supabase
+            .channel('messages_channel')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => handleNewMessage(payload.new))
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, (payload) => handleConversationChange(payload.new, false))
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (payload) => handleConversationChange(payload.new, true))
+            .subscribe();
+    }
+
+    // Lighter polling fallback for tables without realtime wired up (AI requests / sessions)
+    setInterval(()=>{loadAIRequests();loadActiveSessions();if(selectedConversationId)renderCustomerPanel(selectedConversationId);},30000);
 
     async function init() {
         await Promise.all([loadConversations(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
         renderChatList('');
-        const phones=Array.from(groupByPhone(allConversations).keys());
-        if(phones.length){selectedPhone=phones[0];renderChatMessages(selectedPhone);updateChatHeader(selectedPhone);renderChatList('');renderCustomerPanel(selectedPhone);}
+        if (allConversations.length) {
+            selectedConversationId = allConversations[0].id;
+            await loadMessages(selectedConversationId);
+            renderChatMessages(selectedConversationId);
+            updateChatHeader(selectedConversationId);
+            renderChatList('');
+            renderCustomerPanel(selectedConversationId);
+        }
+        setupRealtime();
         window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.allIntents=allIntents;window.aiSettings=aiSettings;
     }
     document.addEventListener('click', (e) => {
