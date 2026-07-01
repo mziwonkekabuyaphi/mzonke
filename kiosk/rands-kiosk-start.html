@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Rands — Tonight's Ticket</title>
+
+<!--
+  RANDS KIOSK START PAGE
+  =======================
+  Design language: "the venue's ticket book" — a paper-ticket / receipt-tape
+  aesthetic drawn from the venue's own vernacular (door tickets, bar tabs,
+  thermal receipts, locker claim-checks) rather than generic glassmorphism.
+  Deep oxblood "counter" background, warm ticket-paper cards with punch-hole
+  notches and tear-lines, monospace "printer" digits for live numbers.
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ---------------------------------------------------------------
+     TOKENS
+  --------------------------------------------------------------- */
+  :root{
+    --ink:        #1B1014;   /* counter background */
+    --ink-2:      #241419;   /* raised panel */
+    --ink-3:      #2E1A20;   /* hover / active panel */
+    --paper:      #F3ECE0;   /* ticket paper */
+    --paper-dim:  #E6DECD;   /* ticket paper, shadowed */
+    --paper-line: #C9BCA4;   /* dashed tear-line on paper */
+    --red:        #D4263C;   /* rands red */
+    --red-dark:   #A81C2E;
+    --ash:        #A8969A;   /* muted text on ink */
+    --ash-dim:    #7B6B6E;
+    --lime:       #C8F169;   /* "live" signal only — used sparingly */
+    --gold:       #C9A227;   /* VIP / wallet accent */
+    --radius-stub: 14px;
+
+    --font-display:'Big Shoulders Display', sans-serif;
+    --font-mono:'Space Mono', monospace;
+    --font-body:'Inter', sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--font-body);
+    overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button{ font-family:inherit; cursor:pointer; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; }
+  }
+
+  /* subtle animated counter-top texture — slow diagonal sheen, not a gradient hero */
+  body::before{
+    content:'';
+    position:fixed; inset:-20%;
+    background:
+      repeating-linear-gradient(115deg, rgba(212,38,60,0.05) 0 2px, transparent 2px 140px);
+    animation:drift 40s linear infinite;
+    pointer-events:none; z-index:0;
+  }
+  @keyframes drift{ to{ transform:translate(4%, 3%); } }
+
+  .app{ position:relative; z-index:1; height:100vh; display:flex; flex-direction:column; }
+
+  /* ---------------------------------------------------------------
+     HEADER — ticket-book spine
+  --------------------------------------------------------------- */
+  header.top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 28px;
+    border-bottom:2px dashed var(--paper-line);
+    background:var(--ink-2);
+  }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand img, .brand .fallback{
+    width:46px; height:46px; border-radius:10px; object-fit:cover;
+  }
+  .brand .fallback{
+    display:flex; align-items:center; justify-content:center;
+    background:var(--red); color:var(--paper);
+    font-family:var(--font-display); font-weight:800; font-size:26px;
+  }
+  .brand h1{
+    font-family:var(--font-display); font-weight:800; letter-spacing:0.02em;
+    font-size:26px; margin:0; text-transform:uppercase;
+  }
+  .brand .eyebrow{
+    font-family:var(--font-mono); font-size:11px; color:var(--ash);
+    letter-spacing:0.12em; text-transform:uppercase; margin-top:2px;
+  }
+  .clock{ text-align:right; font-family:var(--font-mono); color:var(--ash); }
+  .clock .time{ font-size:22px; color:var(--paper); }
+  .clock .date{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase; }
+
+  /* ---------------------------------------------------------------
+     LIVE TICKER — receipt tape
+  --------------------------------------------------------------- */
+  .ticker-wrap{
+    background:var(--red); color:var(--paper);
+    padding:8px 0; overflow:hidden; white-space:nowrap;
+    border-bottom:2px dashed var(--ink);
+    flex-shrink:0;
+  }
+  .ticker-track{
+    display:inline-block; font-family:var(--font-mono); font-size:13px;
+    padding-left:100%;
+    animation:scrollTicker 32s linear infinite;
+  }
+  .ticker-track span{ margin-right:48px; }
+  @keyframes scrollTicker{ from{ transform:translateX(0); } to{ transform:translateX(-100%); } }
+
+  /* ---------------------------------------------------------------
+     MAIN SCROLL AREA
+  --------------------------------------------------------------- */
+  main{ flex:1; overflow-y:auto; padding:22px 28px 32px; }
+
+  .hero{ margin-bottom:22px; }
+  .hero .kicker{
+    font-family:var(--font-mono); color:var(--red); font-size:12px;
+    letter-spacing:0.16em; text-transform:uppercase; margin-bottom:6px;
+  }
+  .hero h2{
+    font-family:var(--font-display); font-weight:800; text-transform:uppercase;
+    font-size:clamp(32px, 5vw, 54px); line-height:1; margin:0;
+    letter-spacing:0.01em;
+  }
+  .hero p{ color:var(--ash); max-width:560px; margin:10px 0 0; font-size:15px; }
+
+  /* ---------------------------------------------------------------
+     STAT STUBS — the signature element.
+     Shaped like a real ticket stub: two punch-hole notches + a
+     dashed tear line separating the label half from the value half.
+  --------------------------------------------------------------- */
+  .stub-row{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;
+    margin-bottom:28px;
+  }
+  .stub{
+    position:relative; display:flex; flex-direction:column;
+    background:var(--paper); color:var(--ink);
+    border-radius:var(--radius-stub);
+    padding:16px 18px 14px;
+    min-height:118px;
+    transition:transform .18s ease, box-shadow .18s ease;
+    overflow:hidden;
+  }
+  .stub:hover, .stub:active{
+    transform:translateY(-3px);
+    box-shadow:0 10px 24px rgba(0,0,0,0.35);
+  }
+  .stub::before, .stub::after{
+    content:''; position:absolute; width:16px; height:16px;
+    background:var(--ink); border-radius:50%;
+    top:50%; transform:translateY(-50%);
+  }
+  .stub::before{ left:-8px; }
+  .stub::after{ right:-8px; }
+  .stub .stub-label{
+    font-family:var(--font-mono); font-size:10.5px; letter-spacing:0.1em;
+    text-transform:uppercase; color:var(--ash-dim);
+    display:flex; align-items:center; gap:6px;
+  }
+  .stub .stub-label .dot{
+    width:7px; height:7px; border-radius:50%; background:var(--red);
+  }
+  .stub .stub-label .dot.live{ background:var(--lime); box-shadow:0 0 0 0 rgba(200,241,105,.6); animation:pulseDot 1.8s infinite; }
+  @keyframes pulseDot{
+    0%{ box-shadow:0 0 0 0 rgba(200,241,105,.55); }
+    70%{ box-shadow:0 0 0 7px rgba(200,241,105,0); }
+    100%{ box-shadow:0 0 0 0 rgba(200,241,105,0); }
+  }
+  .stub .tear{
+    border-top:1.5px dashed var(--paper-line); margin:10px 0 8px;
+  }
+  .stub .stub-value{
+    font-family:var(--font-mono); font-weight:700; font-size:30px;
+    letter-spacing:-0.02em;
+  }
+  .stub .stub-sub{ font-size:11.5px; color:var(--ash-dim); margin-top:2px; font-family:var(--font-body); }
+  .stub .stub-value.updating{ animation:flicker .4s ease; }
+  @keyframes flicker{ 0%{ opacity:0.25; } 100%{ opacity:1; } }
+
+  /* ---------------------------------------------------------------
+     NAV GRID — large ticket-tab buttons
+  --------------------------------------------------------------- */
+  .section-title{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:0.14em;
+    text-transform:uppercase; color:var(--ash-dim); margin:0 0 12px;
+  }
+  .nav-grid{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;
+    margin-bottom:8px;
+  }
+  .nav-tab{
+    position:relative; display:flex; flex-direction:column; align-items:flex-start;
+    gap:10px; text-align:left; background:var(--ink-2);
+    border:2px solid transparent; border-radius:16px; color:var(--paper);
+    padding:20px 20px 18px; min-height:118px;
+    transition:transform .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .nav-tab:hover, .nav-tab:active{
+    background:var(--ink-3); border-color:var(--red);
+    transform:translateY(-2px) scale(1.01);
+  }
+  .nav-tab .icon{ font-size:26px; }
+  .nav-tab .label{ font-family:var(--font-display); font-weight:700; font-size:19px; text-transform:uppercase; letter-spacing:0.01em; }
+  .nav-tab .desc{ font-size:12.5px; color:var(--ash); }
+  .nav-tab .corner{
+    position:absolute; top:14px; right:14px; font-family:var(--font-mono);
+    font-size:10px; color:var(--ash-dim); letter-spacing:0.08em;
+  }
+  .nav-tab.accent-gold .corner{ color:var(--gold); }
+
+  /* ---------------------------------------------------------------
+     OVERLAYS (lockers / wallet / events / admin) — a torn ticket
+     pulled up from the counter
+  --------------------------------------------------------------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(15,8,10,0.72);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index:50; opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  .overlay.open{ opacity:1; pointer-events:auto; }
+  .overlay-panel{
+    background:var(--paper); color:var(--ink); width:min(920px, 94vw);
+    max-height:88vh; overflow-y:auto; border-radius:22px 22px 0 0;
+    padding:26px 30px 30px; transform:translateY(30px);
+    transition:transform .25s ease;
+  }
+  .overlay.open .overlay-panel{ transform:translateY(0); }
+  .overlay-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .overlay-head h3{ font-family:var(--font-display); text-transform:uppercase; font-size:26px; margin:0; }
+  .close-btn{
+    background:var(--ink); color:var(--paper); border:none; border-radius:50%;
+    width:40px; height:40px; font-size:18px; line-height:1;
+  }
+
+  /* locker grid */
+  .locker-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; }
+  .locker-cell{
+    border:2px dashed var(--paper-line); border-radius:12px; padding:12px 10px;
+    font-family:var(--font-mono); font-size:12px; background:var(--paper-dim);
+    display:flex; flex-direction:column; gap:6px; min-height:74px;
+  }
+  .locker-cell.rented{ border-color:var(--red); background:rgba(212,38,60,0.08); }
+  .locker-cell .num{ font-size:16px; font-weight:700; }
+  .locker-cell button{
+    margin-top:auto; border:none; border-radius:8px; padding:6px 8px;
+    font-family:var(--font-body); font-size:11.5px; font-weight:600;
+    background:var(--ink); color:var(--paper);
+  }
+  .locker-cell.rented button{ background:var(--red); }
+
+  /* forms */
+  .form-row{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .form-row input{
+    flex:1; min-width:140px; padding:12px 14px; border-radius:10px;
+    border:1.5px solid var(--paper-line); background:#fff; font-family:var(--font-body);
+    font-size:14px;
+  }
+  .btn{
+    padding:12px 18px; border-radius:10px; border:none; font-weight:700;
+    font-size:14px; background:var(--red); color:var(--paper);
+  }
+  .btn.secondary{ background:var(--ink); }
+  .btn.ghost{ background:transparent; border:1.5px solid var(--ink); color:var(--ink); }
+
+  /* wallet */
+  .wallet-balance{
+    font-family:var(--font-mono); font-size:44px; font-weight:700; margin:6px 0 2px;
+  }
+  .tx-row{
+    display:flex; justify-content:space-between; padding:10px 0;
+    border-bottom:1px dashed var(--paper-line); font-size:13.5px;
+  }
+  .tx-row .amt.credit{ color:#1a7a3c; }
+  .tx-row .amt.debit{ color:var(--red-dark); }
+
+  /* events list */
+  .event-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 0; border-bottom:1px dashed var(--paper-line);
+  }
+  .event-row .name{ font-weight:700; }
+  .event-row .meta{ font-size:12px; color:var(--ash-dim); }
+
+  /* admin */
+  .admin-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0; font-family:var(--font-mono); font-size:13px; }
+  .admin-grid .k{ color:var(--ash-dim); }
+  .admin-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+
+  /* ---------------------------------------------------------------
+     SCREENSAVER
+  --------------------------------------------------------------- */
+  #screensaver{
+    position:fixed; inset:0; background:var(--ink); z-index:100;
+    display:none; align-items:center; justify-content:center; overflow:hidden;
+  }
+  #screensaver.active{ display:flex; }
+  #screensaver .slide{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; opacity:0;
+    transition:opacity .8s ease; text-align:center; padding:40px;
+  }
+  #screensaver .slide.show{ opacity:1; }
+  #screensaver .slide img, #screensaver .slide video{
+    max-width:80%; max-height:60vh; border-radius:18px; object-fit:cover;
+  }
+  #screensaver .slide h2{
+    font-family:var(--font-display); font-size:clamp(30px,6vw,64px);
+    text-transform:uppercase; margin:20px 0 6px; color:var(--paper);
+  }
+  #screensaver .slide p{ color:var(--ash); font-size:16px; }
+  #screensaver .tap-hint{
+    position:absolute; bottom:36px; font-family:var(--font-mono);
+    font-size:12px; letter-spacing:0.1em; color:var(--ash-dim);
+    text-transform:uppercase;
+  }
+
+  /* ---------------------------------------------------------------
+     TOASTS
+  --------------------------------------------------------------- */
+  #toast-stack{
+    position:fixed; top:18px; right:18px; z-index:200;
+    display:flex; flex-direction:column; gap:8px; align-items:flex-end;
+  }
+  .toast{
+    background:var(--ink-2); color:var(--paper); border-left:4px solid var(--red);
+    border-radius:10px; padding:12px 16px; font-size:13px; max-width:320px;
+    box-shadow:0 8px 20px rgba(0,0,0,.4);
+    animation:toastIn .25s ease;
+  }
+  .toast.success{ border-left-color:#3fae6a; }
+  @keyframes toastIn{ from{ opacity:0; transform:translateY(-8px); } to{ opacity:1; transform:translateY(0); } }
+
+  /* responsive: portrait kiosk */
+  @media (max-width: 900px){
+    .stub-row{ grid-template-columns:repeat(2,1fr); }
+    .nav-grid{ grid-template-columns:repeat(2,1fr); }
+  }
+  @media (max-width: 560px){
+    .stub-row{ grid-template-columns:1fr 1fr; }
+    .nav-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <header class="top">
+    <div class="brand" id="logo-tap-zone" title="">
+      <img src="../assets/images/rands-logo.png" alt="Rands" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'fallback',textContent:'R'}))" />
+      <div>
+        <h1>Rands</h1>
+        <div class="eyebrow">Admit One &middot; Kiosk</div>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="time" id="clock-time">--:--</div>
+      <div class="date" id="clock-date">-- --- ----</div>
+    </div>
+  </header>
+
+  <div class="ticker-wrap">
+    <div class="ticker-track" id="ticker-track">
+      <span>Loading tonight's updates…</span>
+    </div>
+  </div>
+
+  <main>
+    <div class="hero">
+      <div class="kicker">Tonight's Ticket</div>
+      <h2 id="hero-heading">Welcome to Rands</h2>
+      <p id="hero-sub">Tap a stub below to order, check in, or manage your night.</p>
+    </div>
+
+    <!-- STAT STUBS -->
+    <div class="section-title">On the counter right now</div>
+    <div class="stub-row" id="stub-row">
+      <div class="stub" id="stub-tab">
+        <div class="stub-label"><span class="dot"></span>Room's Tab</div>
+        <div class="tear"></div>
+        <div class="stub-value" id="stat-tab">R0</div>
+        <div class="stub-sub">completed orders today</div>
+      </div>
+      <div class="stub" id="stub-pulse">
+        <div class="stub-label"><span class="dot live"></span>Live Pulse</div>
+        <div class="tear"></div>
+        <div class="stub-value" id="stat-pulse">0</div>
+        <div class="stub-sub" id="stat-pulse-sub">check-ins / 15 min</div>
+      </div>
+      <div class="stub" id="stub-vault">
+        <div class="stub-label"><span class="dot"></span>Vault Count</div>
+        <div class="tear"></div>
+        <div class="stub-value" id="stat-vault">0 / 0</div>
+        <div class="stub-sub">lockers occupied</div>
+      </div>
+      <div class="stub" id="stub-beat">
+        <div class="stub-label"><span class="dot"></span>Next Beat</div>
+        <div class="tear"></div>
+        <div class="stub-value" id="stat-beat">--</div>
+        <div class="stub-sub" id="stat-beat-sub">no event scheduled</div>
+      </div>
+    </div>
+
+    <!-- NAV -->
+    <div class="section-title">Where to next</div>
+    <div class="nav-grid">
+      <button class="nav-tab" onclick="Nav.orderDrinks()">
+        <span class="corner">01</span>
+        <span class="icon">🍹</span>
+        <span class="label">Order Drinks</span>
+        <span class="desc">Browse the bar menu and send it to your table.</span>
+      </button>
+      <button class="nav-tab" onclick="Nav.butcher()">
+        <span class="corner">02</span>
+        <span class="icon">🥩</span>
+        <span class="label">Butcher Platter</span>
+        <span class="desc">Pre-order tonight's cuts before the queue builds.</span>
+      </button>
+      <button class="nav-tab" onclick="Overlays.open('events')">
+        <span class="corner">03</span>
+        <span class="icon">🎟️</span>
+        <span class="label">Events</span>
+        <span class="desc">Check in with your ticket or see what's on.</span>
+      </button>
+      <button class="nav-tab accent-gold" onclick="Nav.vip()">
+        <span class="corner">04</span>
+        <span class="icon">✨</span>
+        <span class="label">VIP Packages</span>
+        <span class="desc">Reserve a table and bottle service upfront.</span>
+      </button>
+      <button class="nav-tab" onclick="Overlays.open('lockers')">
+        <span class="corner">05</span>
+        <span class="icon">🔒</span>
+        <span class="label">Booze Lockers</span>
+        <span class="desc">Store or collect a bottle for the night.</span>
+      </button>
+      <button class="nav-tab accent-gold" onclick="Overlays.open('wallet')">
+        <span class="corner">06</span>
+        <span class="icon">💳</span>
+        <span class="label">Wallet</span>
+        <span class="desc">Check your balance, top up, or view spend.</span>
+      </button>
+    </div>
+  </main>
+</div>
+
+<!-- ===================== EVENTS OVERLAY ===================== -->
+<div class="overlay" id="overlay-events">
+  <div class="overlay-panel">
+    <div class="overlay-head">
+      <h3>Events</h3>
+      <button class="close-btn" onclick="Overlays.close('events')">✕</button>
+    </div>
+    <div class="form-row">
+      <button class="btn" onclick="Nav.checkin()">Check in with a ticket</button>
+    </div>
+    <div class="section-title" style="margin-top:18px;">Coming up</div>
+    <div id="events-list">Loading events…</div>
+  </div>
+</div>
+
+<!-- ===================== LOCKERS OVERLAY ===================== -->
+<div class="overlay" id="overlay-lockers">
+  <div class="overlay-panel">
+    <div class="overlay-head">
+      <h3>Booze Lockers</h3>
+      <button class="close-btn" onclick="Overlays.close('lockers')">✕</button>
+    </div>
+    <p style="color:var(--ash-dim); font-size:13px; margin-top:-8px;">Tap an available locker to store a bottle, or an occupied one to collect it.</p>
+    <div class="locker-grid" id="locker-grid">Loading lockers…</div>
+  </div>
+</div>
+
+<!-- ===================== WALLET OVERLAY ===================== -->
+<div class="overlay" id="overlay-wallet">
+  <div class="overlay-panel">
+    <div class="overlay-head">
+      <h3>Wallet</h3>
+      <button class="close-btn" onclick="Overlays.close('wallet')">✕</button>
+    </div>
+
+    <div id="wallet-lookup">
+      <p style="color:var(--ash-dim); font-size:13px;">Enter the phone number on your profile to pull up your wallet.</p>
+      <div class="form-row">
+        <input type="tel" id="wallet-phone" placeholder="e.g. 082 123 4567" />
+        <button class="btn" onclick="Wallet.lookup()">Find my wallet</button>
+      </div>
+    </div>
+
+    <div id="wallet-detail" style="display:none;">
+      <div class="stub-label" style="color:var(--ash-dim);">Balance</div>
+      <div class="wallet-balance" id="wallet-balance">R0.00</div>
+      <div class="form-row">
+        <input type="number" id="wallet-topup-amount" placeholder="Amount to top up (R)" min="10" />
+        <button class="btn" onclick="Wallet.topUp()">Top up</button>
+        <button class="btn ghost" onclick="Wallet.reset()">Switch wallet</button>
+      </div>
+      <div class="section-title" style="margin-top:18px;">Recent activity</div>
+      <div id="wallet-tx-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ADMIN OVERLAY ===================== -->
+<div class="overlay" id="overlay-admin">
+  <div class="overlay-panel">
+    <div class="overlay-head">
+      <h3>Kiosk Admin</h3>
+      <button class="close-btn" onclick="Overlays.close('admin')">✕</button>
+    </div>
+    <div class="admin-grid">
+      <div class="k">Supabase connection</div><div id="admin-conn">Checking…</div>
+      <div class="k">Printer</div><div id="admin-printer">Ready (simulated)</div>
+      <div class="k">Last sync</div><div id="admin-sync">—</div>
+      <div class="k">Kiosk build</div><div>Rands Kiosk · Ticket Edition</div>
+    </div>
+    <div class="admin-actions">
+      <button class="btn secondary" onclick="Admin.testPrinter()">Test printer</button>
+      <button class="btn secondary" onclick="Admin.syncData()">Sync data</button>
+      <button class="btn" onclick="Admin.restart()">Restart kiosk</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SCREENSAVER ===================== -->
+<div id="screensaver"></div>
+
+<!-- ===================== TOASTS ===================== -->
+<div id="toast-stack"></div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  /* ================================================================
+     TOASTS
+  ================================================================ */
+  const Toast = {
+    show(message, kind = 'info'){
+      const stack = document.getElementById('toast-stack');
+      const el = document.createElement('div');
+      el.className = 'toast' + (kind === 'success' ? ' success' : '');
+      el.textContent = message;
+      stack.appendChild(el);
+      setTimeout(() => el.remove(), 4200);
+    }
+  };
+  window.Toast = Toast;
+
+  /* ================================================================
+     CLOCK
+  ================================================================ */
+  function tickClock(){
+    const now = new Date();
+    document.getElementById('clock-time').textContent =
+      now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('clock-date').textContent =
+      now.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  tickClock();
+  setInterval(tickClock, 15000);
+
+  /* ================================================================
+     NAVIGATION — existing pages/screens
+  ================================================================ */
+  const Nav = {
+    orderDrinks(){ window.location.href = 'kiosk-menu2.html?category=drinks'; },
+    butcher(){ window.location.href = 'kioks-pre-order-kiosk.html'; },
+    checkin(){ window.location.href = 'gate-kiosk.html'; },
+    vip(){ window.location.href = 'vvip-kiosk.html'; },
+  };
+  window.Nav = Nav;
+
+  /* ================================================================
+     OVERLAYS
+  ================================================================ */
+  const Overlays = {
+    open(name){
+      document.getElementById(`overlay-${name}`).classList.add('open');
+      if (name === 'lockers') Lockers.load();
+      if (name === 'events') Events.load();
+    },
+    close(name){
+      document.getElementById(`overlay-${name}`).classList.remove('open');
+    }
+  };
+  window.Overlays = Overlays;
+
+  /* ================================================================
+     STAT STUBS — live aggregated data from Supabase
+  ================================================================ */
+  function startOfToday(){
+    const d = new Date(); d.setHours(0,0,0,0); return d;
+  }
+
+  async function refreshRoomsTab(){
+    try{
+      const { data, error } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .eq('status', 'completed')
+        .gte('created_at', startOfToday().toISOString());
+      if (error) throw error;
+      const total = (data || []).reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+      flashUpdate('stat-tab', `R${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+    } catch (err){
+      console.error('Room\'s Tab error', err);
+      Toast.show("Couldn't refresh today's tab total.");
+    }
+  }
+
+  async function refreshLivePulse(){
+    try{
+      const now = new Date();
+      const fifteenMinAgo = new Date(now.getTime() - 15 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const { data: recent, error: e1 } = await supabase
+        .from('checkins')
+        .select('id, scanned_at')
+        .gte('scanned_at', fifteenMinAgo.toISOString());
+      if (e1) throw e1;
+      const currentCount = (recent || []).length;
+
+      const { data: week, error: e2 } = await supabase
+        .from('checkins')
+        .select('scanned_at')
+        .gte('scanned_at', sevenDaysAgo.toISOString());
+      if (e2) throw e2;
+
+      // bucket the last 7 days of check-ins into 15-minute slots, find the peak
+      const buckets = {};
+      (week || []).forEach(row => {
+        const t = new Date(row.scanned_at).getTime();
+        const bucket = Math.floor(t / (15 * 60 * 1000));
+        buckets[bucket] = (buckets[bucket] || 0) + 1;
+      });
+      const peak = Math.max(1, ...Object.values(buckets));
+
+      flashUpdate('stat-pulse', String(currentCount));
+      document.getElementById('stat-pulse-sub').textContent =
+        `${currentCount} now · peak was ${peak}`;
+    } catch (err){
+      console.error('Live Pulse error', err);
+      Toast.show("Couldn't refresh check-in pulse.");
+    }
+  }
+
+  async function refreshVaultCount(){
+    try{
+      const { data: rented, error: e1 } = await supabase
+        .from('lockers').select('id').eq('status', 'rented');
+      if (e1) throw e1;
+      const { data: all, error: e2 } = await supabase
+        .from('lockers').select('id');
+      if (e2) throw e2;
+      flashUpdate('stat-vault', `${(rented||[]).length} / ${(all||[]).length}`);
+    } catch (err){
+      console.error('Vault Count error', err);
+      Toast.show("Couldn't refresh locker count.");
+    }
+  }
+
+  async function refreshNextBeat(){
+    try{
+      const { data, error } = await supabase
+        .from('events')
+        .select('name, start_time, location')
+        .eq('is_active', true)
+        .gte('start_time', new Date().toISOString())
+        .order('start_time', { ascending: true })
+        .limit(1);
+      if (error) throw error;
+      const ev = (data || [])[0];
+      if (!ev){
+        flashUpdate('stat-beat', '—');
+        document.getElementById('stat-beat-sub').textContent = 'no event scheduled';
+        return;
+      }
+      const diff = new Date(ev.start_time).getTime() - Date.now();
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      const label = days > 0 ? `${days}d ${hours}h` : `${hours}h ${mins}m`;
+      flashUpdate('stat-beat', label);
+      document.getElementById('stat-beat-sub').textContent = ev.name;
+    } catch (err){
+      console.error('Next Beat error', err);
+      Toast.show("Couldn't refresh the events countdown.");
+    }
+  }
+
+  function flashUpdate(id, value){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = value;
+    el.classList.remove('updating');
+    // restart animation
+    void el.offsetWidth;
+    el.classList.add('updating');
+  }
+
+  async function refreshAllStats(){
+    await Promise.all([
+      refreshRoomsTab(),
+      refreshLivePulse(),
+      refreshVaultCount(),
+      refreshNextBeat(),
+    ]);
+    lastSyncAt = new Date();
+    const syncEl = document.getElementById('admin-sync');
+    if (syncEl) syncEl.textContent = lastSyncAt.toLocaleTimeString();
+  }
+  let lastSyncAt = null;
+  window.refreshAllStats = refreshAllStats;
+
+  refreshAllStats();
+  setInterval(refreshAllStats, 10000);
+
+  /* ================================================================
+     LIVE FEED TICKER
+  ================================================================ */
+  const FALLBACK_TICKER = [
+    '🍾 Bottle service moving fast tonight',
+    '🥩 Butcher counter is firing',
+    '🎟️ Tickets available at the door',
+    '💳 Top up your wallet to skip the bar queue',
+  ];
+
+  async function buildTicker(){
+    const messages = [];
+    try{
+      const { data: checkins } = await supabase
+        .from('checkins').select('guest_name, scanned_at')
+        .order('scanned_at', { ascending: false }).limit(5);
+      (checkins || []).forEach(c => {
+        if (c.guest_name) messages.push(`✅ ${c.guest_name} just checked in`);
+      });
+
+      const { data: lockers } = await supabase
+        .from('lockers').select('locker_number, status, occupied_at')
+        .eq('status', 'rented')
+        .order('occupied_at', { ascending: false }).limit(5);
+      (lockers || []).forEach(l => {
+        messages.push(`🔒 Bottle stored in Locker ${l.locker_number}`);
+      });
+
+      const { data: events } = await supabase
+        .from('events').select('name, start_time')
+        .eq('is_active', true)
+        .gte('start_time', new Date().toISOString())
+        .order('start_time', { ascending: true }).limit(3);
+      (events || []).forEach(e => {
+        messages.push(`🎟️ ${e.name} — tickets moving`);
+      });
+
+      const { data: orders } = await supabase
+        .from('orders').select('id, status, created_at')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false }).limit(5);
+      if ((orders || []).length){
+        messages.push(`🍹 ${orders.length} orders completed in the last few minutes`);
+      }
+    } catch (err){
+      console.error('Ticker build error', err);
+    }
+    return messages.length ? messages : FALLBACK_TICKER;
+  }
+
+  async function refreshTicker(){
+    const messages = await buildTicker();
+    const track = document.getElementById('ticker-track');
+    track.innerHTML = messages.map(m => `<span>${m}</span>`).join('');
+  }
+  refreshTicker();
+  setInterval(refreshTicker, 30000);
+
+  /* ================================================================
+     EVENTS OVERLAY
+  ================================================================ */
+  const Events = {
+    async load(){
+      const list = document.getElementById('events-list');
+      list.textContent = 'Loading events…';
+      try{
+        const { data, error } = await supabase
+          .from('events')
+          .select('name, start_time, location, base_price')
+          .eq('is_active', true)
+          .gte('start_time', new Date().toISOString())
+          .order('start_time', { ascending: true })
+          .limit(10);
+        if (error) throw error;
+        if (!data || !data.length){
+          list.innerHTML = `<p style="color:var(--ash-dim);">No events on the books right now — check back soon.</p>`;
+          return;
+        }
+        list.innerHTML = data.map(ev => `
+          <div class="event-row">
+            <div>
+              <div class="name">${escapeHtml(ev.name)}</div>
+              <div class="meta">${escapeHtml(ev.location || '')} · ${new Date(ev.start_time).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })}</div>
+            </div>
+            <div class="meta">${ev.base_price ? 'from R' + ev.base_price : ''}</div>
+          </div>
+        `).join('');
+      } catch (err){
+        console.error('Events load error', err);
+        list.innerHTML = `<p style="color:var(--red-dark);">Couldn't load events right now.</p>`;
+        Toast.show("Couldn't load events.");
+      }
+    }
+  };
+  window.Events = Events;
+
+  function escapeHtml(str){
+    return String(str ?? '').replace(/[&<>"']/g, s => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[s]));
+  }
+
+  /* ================================================================
+     LOCKERS OVERLAY — store / collect
+  ================================================================ */
+  const Lockers = {
+    async load(){
+      const grid = document.getElementById('locker-grid');
+      grid.textContent = 'Loading lockers…';
+      try{
+        const { data, error } = await supabase
+          .from('lockers')
+          .select('id, locker_number, status, customer_name, customer_phone')
+          .order('locker_number', { ascending: true });
+        if (error) throw error;
+        if (!data || !data.length){
+          grid.innerHTML = `<p style="color:var(--ash-dim);">No lockers configured yet.</p>`;
+          return;
+        }
+        grid.innerHTML = data.map(l => `
+          <div class="locker-cell ${l.status === 'rented' ? 'rented' : ''}">
+            <div class="num">#${l.locker_number}</div>
+            <div>${l.status === 'rented' ? escapeHtml(l.customer_name || 'Occupied') : 'Available'}</div>
+            <button onclick="Lockers.${l.status === 'rented' ? 'collect' : 'store'}(${l.id})">
+              ${l.status === 'rented' ? 'Collect' : 'Store'}
+            </button>
+          </div>
+        `).join('');
+      } catch (err){
+        console.error('Lockers load error', err);
+        grid.innerHTML = `<p style="color:var(--red-dark);">Couldn't load lockers right now.</p>`;
+        Toast.show("Couldn't load lockers.");
+      }
+    },
+
+    async store(id){
+      const name = prompt('Name for the locker claim check:');
+      if (!name) return;
+      const phone = prompt('Phone number:') || '';
+      try{
+        const { error } = await supabase
+          .from('lockers')
+          .update({ status: 'rented', customer_name: name, customer_phone: phone, occupied_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) throw error;
+        Toast.show('Locker reserved. Enjoy your night!', 'success');
+        Lockers.load();
+        refreshVaultCount();
+      } catch (err){
+        console.error('Locker store error', err);
+        Toast.show("Couldn't reserve that locker.");
+      }
+    },
+
+    async collect(id){
+      if (!confirm('Confirm collection and free up this locker?')) return;
+      try{
+        const { error } = await supabase
+          .from('lockers')
+          .update({ status: 'available', customer_name: null, customer_phone: null, occupied_at: null })
+          .eq('id', id);
+        if (error) throw error;
+        Toast.show('Locker freed up.', 'success');
+        Lockers.load();
+        refreshVaultCount();
+      } catch (err){
+        console.error('Locker collect error', err);
+        Toast.show("Couldn't free up that locker.");
+      }
+    }
+  };
+  window.Lockers = Lockers;
+
+  /* ================================================================
+     WALLET OVERLAY
+  ================================================================ */
+  const Wallet = {
+    currentUserId: null,
+
+    async lookup(){
+      const phone = document.getElementById('wallet-phone').value.trim();
+      if (!phone){ Toast.show('Enter a phone number first.'); return; }
+      try{
+        const { data: profile, error: e1 } = await supabase
+          .from('profiles').select('id, name, phone').eq('phone', phone).maybeSingle();
+        if (e1) throw e1;
+        if (!profile){ Toast.show("No profile found for that number."); return; }
+
+        this.currentUserId = profile.id;
+        await this.renderWallet();
+      } catch (err){
+        console.error('Wallet lookup error', err);
+        Toast.show("Couldn't look up that wallet.");
+      }
+    },
+
+    async renderWallet(){
+      try{
+        const { data: wallet, error: e1 } = await supabase
+          .from('wallets').select('balance, wallet_id').eq('user_id', this.currentUserId).maybeSingle();
+        if (e1) throw e1;
+
+        document.getElementById('wallet-lookup').style.display = 'none';
+        document.getElementById('wallet-detail').style.display = 'block';
+        document.getElementById('wallet-balance').textContent =
+          `R${(wallet?.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+        const { data: txs, error: e2 } = await supabase
+          .from('wallet_transactions')
+          .select('amount, direction, description, created_at')
+          .eq('user_id', this.currentUserId)
+          .order('created_at', { ascending: false })
+          .limit(8);
+        if (e2) throw e2;
+
+        const list = document.getElementById('wallet-tx-list');
+        if (!txs || !txs.length){
+          list.innerHTML = `<p style="color:var(--ash-dim); font-size:13px;">No activity yet.</p>`;
+        } else {
+          list.innerHTML = txs.map(t => `
+            <div class="tx-row">
+              <span>${escapeHtml(t.description || (t.direction === 'credit' ? 'Top up' : 'Spend'))}</span>
+              <span class="amt ${t.direction}">${t.direction === 'credit' ? '+' : '-'}R${Number(t.amount).toFixed(2)}</span>
+            </div>
+          `).join('');
+        }
+      } catch (err){
+        console.error('Wallet render error', err);
+        Toast.show("Couldn't load wallet details.");
+      }
+    },
+
+    topUp(){
+      const amount = document.getElementById('wallet-topup-amount').value;
+      if (!amount || Number(amount) <= 0){ Toast.show('Enter an amount to top up.'); return; }
+      if (!this.currentUserId){ Toast.show('Find your wallet first.'); return; }
+      window.location.href = `payment.html?mode=topup&amount=${encodeURIComponent(amount)}&uid=${encodeURIComponent(this.currentUserId)}`;
+    },
+
+    reset(){
+      this.currentUserId = null;
+      document.getElementById('wallet-lookup').style.display = 'block';
+      document.getElementById('wallet-detail').style.display = 'none';
+      document.getElementById('wallet-phone').value = '';
+    }
+  };
+  window.Wallet = Wallet;
+
+  // resume wallet view after returning from payment.html
+  (function resumeWalletIfNeeded(){
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('wallet') === 'resume' && params.get('uid')){
+      Wallet.currentUserId = params.get('uid');
+      Overlays.open('wallet');
+      Wallet.renderWallet();
+      Toast.show('Top up complete — wallet updated.', 'success');
+      // clean the URL so a refresh doesn't re-trigger this
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  })();
+
+  /* ================================================================
+     ADMIN PANEL — 5 taps on the logo
+  ================================================================ */
+  const Admin = {
+    async testPrinter(){
+      Toast.show('Printer test sent — listen for the ticket feed.', 'success');
+    },
+    async syncData(){
+      await refreshAllStats();
+      await refreshTicker();
+      Toast.show('Kiosk data synced.', 'success');
+    },
+    restart(){
+      window.location.reload();
+    },
+    async checkConnection(){
+      const el = document.getElementById('admin-conn');
+      try{
+        const { error } = await supabase.from('events').select('id').limit(1);
+        el.textContent = error ? 'Error' : 'Connected';
+      } catch {
+        el.textContent = 'Offline';
+      }
+    }
+  };
+  window.Admin = Admin;
+
+  let logoTapCount = 0;
+  let logoTapTimer = null;
+  document.getElementById('logo-tap-zone').addEventListener('click', () => {
+    logoTapCount++;
+    clearTimeout(logoTapTimer);
+    logoTapTimer = setTimeout(() => { logoTapCount = 0; }, 3000);
+    if (logoTapCount >= 5){
+      logoTapCount = 0;
+      Overlays.open('admin');
+      Admin.checkConnection();
+      document.getElementById('admin-sync').textContent = lastSyncAt ? lastSyncAt.toLocaleTimeString() : '—';
+    }
+  });
+
+  /* ================================================================
+     SCREENSAVER / IDLE MODE
+  ================================================================ */
+  const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+  let idleTimer = null;
+  let screensaverInterval = null;
+  let screensaverSlides = [];
+  let screensaverIndex = 0;
+
+  function resetIdleTimer(){
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(activateScreensaver, IDLE_TIMEOUT_MS);
+  }
+  ['pointerdown','keydown','touchstart','wheel'].forEach(evt =>
+    window.addEventListener(evt, resetIdleTimer, { passive: true })
+  );
+  resetIdleTimer();
+
+  async function activateScreensaver(){
+    const container = document.getElementById('screensaver');
+    container.classList.add('active');
+    container.addEventListener('click', deactivateScreensaver, { once: true });
+
+    try{
+      const { data, error } = await supabase
+        .from('kiosk_idle_ads')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+      if (error) throw error;
+      screensaverSlides = (data && data.length) ? data : [null];
+    } catch (err){
+      console.error('Idle ads load error', err);
+      screensaverSlides = [null];
+    }
+
+    renderScreensaverSlides();
+    screensaverIndex = 0;
+    showScreensaverSlide(0);
+  }
+
+  function renderScreensaverSlides(){
+    const container = document.getElementById('screensaver');
+    container.innerHTML = screensaverSlides.map((ad, i) => {
+      if (!ad){
+        return `
+          <div class="slide" data-i="${i}">
+            <div class="fallback" style="width:120px;height:120px;border-radius:20px;background:var(--red);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;font-size:64px;">R</div>
+            <h2>Rands</h2>
+            <p>Tap anywhere to start your night</p>
+          </div>`;
+      }
+      const media = ad.media_type === 'video'
+        ? `<video src="${escapeHtml(ad.video_url)}" autoplay muted loop playsinline></video>`
+        : `<img src="${escapeHtml(ad.image_url)}" alt="" />`;
+      return `
+        <div class="slide" data-i="${i}">
+          ${media}
+          ${ad.headline ? `<h2>${escapeHtml(ad.headline)}</h2>` : ''}
+          ${ad.tagline ? `<p>${escapeHtml(ad.tagline)}</p>` : ''}
+        </div>`;
+    }).join('') + `<div class="tap-hint">Tap anywhere to continue</div>`;
+  }
+
+  function showScreensaverSlide(i){
+    document.querySelectorAll('#screensaver .slide').forEach(s => s.classList.remove('show'));
+    const slide = document.querySelector(`#screensaver .slide[data-i="${i}"]`);
+    if (slide) slide.classList.add('show');
+
+    const ad = screensaverSlides[i];
+    logAdImpression(ad);
+
+    clearTimeout(screensaverInterval);
+    const duration = (ad && ad.duration_seconds ? ad.duration_seconds : 8) * 1000;
+    screensaverInterval = setTimeout(() => {
+      screensaverIndex = (screensaverIndex + 1) % screensaverSlides.length;
+      showScreensaverSlide(screensaverIndex);
+    }, duration);
+  }
+
+  async function logAdImpression(ad){
+    if (!ad || !ad.id) return;
+    try{
+      await supabase.from('kiosk_ad_impressions').insert({ ad_id: ad.id, shown_at: new Date().toISOString() });
+    } catch (err){
+      // table may not exist yet — degrade gracefully, no user-facing error
+      console.warn('Impression log skipped', err?.message || err);
+    }
+  }
+
+  function deactivateScreensaver(){
+    clearTimeout(screensaverInterval);
+    document.getElementById('screensaver').classList.remove('active');
+    document.getElementById('screensaver').innerHTML = '';
+    resetIdleTimer();
+  }
+</script>
+
+</body>
+</html>

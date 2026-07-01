@@ -1,0 +1,2406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Rands · Kiosk</title>
+
+    <!-- ============================================================
+    STYLES — fresh, dark editorial with warm neon accents
+    ============================================================ -->
+    <style>
+        /* ---------- reset & base ---------- */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(255, 32, 64, 0.25);
+            --red: #ff2040;
+            --red-dim: rgba(255, 32, 64, 0.12);
+            --gold: #ffb347;
+            --teal: #00d4aa;
+            --purple: #b07cff;
+            --text-primary: #f0f0f5;
+            --text-secondary: rgba(255, 255, 255, 0.6);
+            --text-muted: rgba(255, 255, 255, 0.35);
+            --shadow-glow: 0 8px 32px rgba(255, 32, 64, 0.15);
+            --radius: 20px;
+            --radius-sm: 12px;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --tap-size: 56px;
+        }
+
+        html,
+        body {
+            height: 100%;
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ---------- animated background ---------- */
+        .bg-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(255, 32, 64, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 20%, rgba(0, 212, 170, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 100%, rgba(176, 124, 255, 0.06) 0%, transparent 50%),
+                var(--bg-primary);
+            animation: bgPulse 12s ease-in-out infinite alternate;
+        }
+        @keyframes bgPulse {
+            0% {
+                opacity: 0.7;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+
+        /* floating orbs */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.25;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--red);
+            top: -120px;
+            right: -80px;
+            animation: orbFloat 20s ease-in-out infinite alternate;
+        }
+        .orb-2 {
+            width: 300px;
+            height: 300px;
+            background: var(--teal);
+            bottom: -60px;
+            left: -60px;
+            animation: orbFloat 24s ease-in-out infinite alternate-reverse;
+        }
+        .orb-3 {
+            width: 200px;
+            height: 200px;
+            background: var(--purple);
+            top: 40%;
+            right: 10%;
+            animation: orbFloat 18s ease-in-out infinite alternate;
+        }
+        @keyframes orbFloat {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                transform: translate(40px, -30px) scale(1.1);
+            }
+        }
+
+        /* ---------- main layout ---------- */
+        .app {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            padding: 16px 24px 12px;
+            max-width: 1440px;
+            margin: 0 auto;
+            gap: 12px;
+        }
+
+        /* ---------- header ---------- */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0 4px;
+            flex-shrink: 0;
+            gap: 16px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .logo-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 4px 8px 4px 4px;
+            border-radius: var(--radius-sm);
+            transition: background var(--transition);
+        }
+        .logo-wrap:active {
+            background: var(--bg-card);
+        }
+        .logo-wrap img {
+            height: 40px;
+            width: auto;
+            display: block;
+            filter: drop-shadow(0 0 12px rgba(255, 32, 64, 0.3));
+        }
+        .logo-fallback {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 22px;
+            color: #fff;
+            box-shadow: 0 0 24px rgba(255, 32, 64, 0.4);
+        }
+        .brand-name {
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff 60%, var(--gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header-center {
+            flex: 1;
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-secondary);
+            letter-spacing: 0.3px;
+        }
+        .header-center .time {
+            font-weight: 600;
+            font-size: 18px;
+            color: var(--text-primary);
+            letter-spacing: 0.5px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--teal);
+            display: inline-block;
+            animation: pulseDot 2s ease-in-out infinite;
+            box-shadow: 0 0 12px rgba(0, 212, 170, 0.4);
+        }
+        @keyframes pulseDot {
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(0.85);
+            }
+        }
+
+        /* ---------- hero / countdown ---------- */
+        .hero {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: var(--radius);
+            padding: 14px 24px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            box-shadow: var(--shadow-glow);
+            min-height: 72px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .hero-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .hero-left .label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+        .hero-left .event-name {
+            font-weight: 600;
+            font-size: 16px;
+            color: var(--gold);
+        }
+        .hero-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .countdown-block {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+        .countdown-block .num {
+            font-size: 28px;
+            font-weight: 700;
+            min-width: 40px;
+            text-align: center;
+            background: var(--bg-card);
+            padding: 0 6px;
+            border-radius: 8px;
+            color: #fff;
+            letter-spacing: 1px;
+        }
+        .countdown-block .unit {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 2px;
+        }
+        .countdown-block .sep {
+            color: var(--text-muted);
+            font-size: 20px;
+            font-weight: 300;
+            padding: 0 2px;
+        }
+        .hero .no-event {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* ---------- stat cards grid ---------- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            flex-shrink: 0;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: var(--radius);
+            padding: 16px 18px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            transition: all var(--transition);
+            cursor: default;
+            position: relative;
+            overflow: hidden;
+            min-height: 88px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), transparent 60%);
+            pointer-events: none;
+        }
+        .stat-card:active {
+            transform: scale(0.97);
+            background: var(--bg-card-hover);
+        }
+        .stat-card .stat-value {
+            font-size: 34px;
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -0.5px;
+            margin-bottom: 2px;
+            transition: all var(--transition);
+        }
+        .stat-card .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+        .stat-card .stat-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .stat-card .stat-icon {
+            position: absolute;
+            right: 14px;
+            top: 14px;
+            font-size: 22px;
+            opacity: 0.3;
+        }
+        .stat-card .stat-trend {
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .stat-card .stat-trend.up {
+            color: var(--teal);
+        }
+        .stat-card .stat-trend.down {
+            color: var(--red);
+        }
+
+        /* card accent colours */
+        .stat-card.accent-red .stat-value {
+            color: var(--red);
+        }
+        .stat-card.accent-gold .stat-value {
+            color: var(--gold);
+        }
+        .stat-card.accent-teal .stat-value {
+            color: var(--teal);
+        }
+        .stat-card.accent-purple .stat-value {
+            color: var(--purple);
+        }
+
+        /* card glow on hover (touch: active state) */
+        @media (hover: hover) {
+            .stat-card:hover {
+                transform: translateY(-2px);
+                border-color: rgba(255, 255, 255, 0.08);
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+            }
+        }
+
+        /* ---------- navigation grid ---------- */
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            flex: 1;
+            min-height: 0;
+        }
+        .nav-btn {
+            background: var(--bg-card);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: var(--radius);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 12px 8px;
+            transition: all var(--transition);
+            cursor: pointer;
+            min-height: var(--tap-size);
+            color: var(--text-primary);
+            text-decoration: none;
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+        }
+        .nav-btn:active {
+            transform: scale(0.94);
+            background: var(--bg-card-hover);
+        }
+        .nav-btn .nav-icon {
+            font-size: 28px;
+            line-height: 1;
+            filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.05));
+        }
+        .nav-btn .nav-label {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            line-height: 1.2;
+        }
+        .nav-btn .nav-sub {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: 400;
+            letter-spacing: 0.2px;
+        }
+        .nav-btn .nav-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--red);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        /* individual nav accents */
+        .nav-btn.drinks {
+            border-color: rgba(255, 32, 64, 0.15);
+        }
+        .nav-btn.drinks .nav-icon {
+            color: var(--red);
+        }
+        .nav-btn.butcher {
+            border-color: rgba(255, 179, 71, 0.15);
+        }
+        .nav-btn.butcher .nav-icon {
+            color: var(--gold);
+        }
+        .nav-btn.events {
+            border-color: rgba(176, 124, 255, 0.15);
+        }
+        .nav-btn.events .nav-icon {
+            color: var(--purple);
+        }
+        .nav-btn.vip {
+            border-color: rgba(255, 215, 0, 0.15);
+        }
+        .nav-btn.vip .nav-icon {
+            color: #ffd700;
+        }
+        .nav-btn.lockers {
+            border-color: rgba(0, 212, 170, 0.15);
+        }
+        .nav-btn.lockers .nav-icon {
+            color: var(--teal);
+        }
+        .nav-btn.wallet {
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+        .nav-btn.wallet .nav-icon {
+            color: #fff;
+        }
+        @media (hover: hover) {
+            .nav-btn:hover {
+                transform: translateY(-2px);
+                border-color: rgba(255, 255, 255, 0.12);
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+            }
+            .nav-btn.drinks:hover {
+                border-color: var(--red);
+                box-shadow: 0 8px 30px rgba(255, 32, 64, 0.15);
+            }
+            .nav-btn.butcher:hover {
+                border-color: var(--gold);
+                box-shadow: 0 8px 30px rgba(255, 179, 71, 0.12);
+            }
+            .nav-btn.events:hover {
+                border-color: var(--purple);
+                box-shadow: 0 8px 30px rgba(176, 124, 255, 0.12);
+            }
+            .nav-btn.vip:hover {
+                border-color: #ffd700;
+                box-shadow: 0 8px 30px rgba(255, 215, 0, 0.12);
+            }
+            .nav-btn.lockers:hover {
+                border-color: var(--teal);
+                box-shadow: 0 8px 30px rgba(0, 212, 170, 0.12);
+            }
+            .nav-btn.wallet:hover {
+                border-color: rgba(255, 255, 255, 0.15);
+            }
+        }
+
+        /* ---------- ticker ---------- */
+        .ticker-wrap {
+            flex-shrink: 0;
+            background: var(--bg-card);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 8px 0;
+            overflow: hidden;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .ticker-wrap .ticker-icon {
+            flex-shrink: 0;
+            padding: 0 16px;
+            font-size: 16px;
+            color: var(--red);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg-primary);
+            height: 100%;
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .ticker-track {
+            display: flex;
+            white-space: nowrap;
+            animation: tickerScroll 60s linear infinite;
+            padding-left: 20px;
+        }
+        .ticker-item {
+            padding-right: 60px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 400;
+            letter-spacing: 0.2px;
+        }
+        .ticker-item strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        .ticker-item .emoji {
+            margin-right: 4px;
+        }
+        @keyframes tickerScroll {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                transform: translateX(-50%);
+            }
+        }
+        .ticker-wrap.paused .ticker-track {
+            animation-play-state: paused;
+        }
+
+        /* ---------- overlays ---------- */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(10, 10, 18, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+        .overlay.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .overlay .overlay-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 24px;
+            flex-shrink: 0;
+        }
+        .overlay .overlay-header h2 {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        .overlay .overlay-close {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .overlay .overlay-close:active {
+            transform: scale(0.9);
+            background: var(--bg-card-hover);
+        }
+        .overlay .overlay-body {
+            width: 100%;
+            max-width: 600px;
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+        .overlay .overlay-body::-webkit-scrollbar {
+            width: 4px;
+        }
+        .overlay .overlay-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .overlay .overlay-body::-webkit-scrollbar-thumb {
+            background: var(--red);
+            border-radius: 4px;
+        }
+
+        /* ---------- wallet overlay ---------- */
+        .wallet-balance {
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--gold);
+            text-align: center;
+            padding: 20px 0;
+            letter-spacing: -1px;
+        }
+        .wallet-balance small {
+            font-size: 20px;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+        .wallet-actions {
+            display: flex;
+            gap: 12px;
+            margin: 16px 0 24px;
+            flex-wrap: wrap;
+        }
+        .wallet-actions .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all var(--transition);
+            text-align: center;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .wallet-actions .btn:active {
+            transform: scale(0.95);
+        }
+        .wallet-actions .btn-primary {
+            background: var(--red);
+            color: #fff;
+            border-color: var(--red);
+        }
+        .wallet-actions .btn-primary:active {
+            background: #cc1a33;
+        }
+        .wallet-actions .btn-outline {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .wallet-tx {
+            margin-top: 12px;
+        }
+        .wallet-tx .tx-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 14px;
+        }
+        .wallet-tx .tx-item .tx-desc {
+            color: var(--text-secondary);
+        }
+        .wallet-tx .tx-item .tx-amount {
+            font-weight: 600;
+        }
+        .wallet-tx .tx-item .tx-amount.credit {
+            color: var(--teal);
+        }
+        .wallet-tx .tx-item .tx-amount.debit {
+            color: var(--red);
+        }
+        .wallet-tx .tx-empty {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 30px 0;
+            font-size: 15px;
+        }
+
+        /* ---------- lockers overlay ---------- */
+        .locker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .locker-item {
+            aspect-ratio: 1/1;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all var(--transition);
+            cursor: default;
+            padding: 4px;
+            text-align: center;
+            min-height: 70px;
+        }
+        .locker-item .locker-num {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .locker-item .locker-status {
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+        .locker-item.available {
+            border-color: rgba(0, 212, 170, 0.2);
+        }
+        .locker-item.available .locker-status {
+            color: var(--teal);
+        }
+        .locker-item.rented {
+            border-color: rgba(255, 32, 64, 0.2);
+            background: rgba(255, 32, 64, 0.06);
+        }
+        .locker-item.rented .locker-status {
+            color: var(--red);
+        }
+        .locker-item:active {
+            transform: scale(0.94);
+        }
+        .locker-item .locker-name {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ---------- events overlay ---------- */
+        .event-list .event-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            transition: all var(--transition);
+        }
+        .event-list .event-item:active {
+            transform: scale(0.98);
+        }
+        .event-list .event-item .ev-name {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .event-list .event-item .ev-meta {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .event-list .event-item .ev-time {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--gold);
+        }
+        .event-list .event-empty {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 30px 0;
+            font-size: 15px;
+        }
+
+        /* ---------- screensaver ---------- */
+        .screensaver {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: var(--bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.8s ease;
+        }
+        .screensaver.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .screensaver .ss-content {
+            text-align: center;
+            max-width: 80%;
+        }
+        .screensaver .ss-content img {
+            max-height: 50vh;
+            max-width: 80vw;
+            object-fit: contain;
+            border-radius: var(--radius);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+        .screensaver .ss-content video {
+            max-height: 50vh;
+            max-width: 80vw;
+            border-radius: var(--radius);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+        .screensaver .ss-content .ss-logo {
+            font-size: 80px;
+            font-weight: 800;
+            color: var(--red);
+            letter-spacing: -2px;
+            text-shadow: 0 0 60px rgba(255, 32, 64, 0.3);
+        }
+        .screensaver .ss-content .ss-tagline {
+            font-size: 22px;
+            color: var(--text-secondary);
+            margin-top: 12px;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+        .screensaver .ss-content .ss-hint {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 30px;
+            animation: pulseHint 2.5s ease-in-out infinite;
+        }
+        @keyframes pulseHint {
+            0%,
+            100% {
+                opacity: 0.3;
+            }
+            50% {
+                opacity: 0.9;
+            }
+        }
+        .screensaver .ss-progress {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+        }
+        .screensaver .ss-progress .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            transition: all 0.3s ease;
+        }
+        .screensaver .ss-progress .dot.active {
+            background: var(--red);
+            box-shadow: 0 0 16px rgba(255, 32, 64, 0.4);
+            width: 24px;
+            border-radius: 4px;
+        }
+
+        /* ---------- admin modal ---------- */
+        .admin-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            background: rgba(10, 10, 18, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            padding: 24px;
+        }
+        .admin-modal.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .admin-modal .admin-box {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 32px;
+            max-width: 480px;
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .admin-modal .admin-box h2 {
+            font-size: 22px;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+        .admin-modal .admin-box .admin-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 14px;
+        }
+        .admin-modal .admin-box .admin-row .label {
+            color: var(--text-secondary);
+        }
+        .admin-modal .admin-box .admin-row .value {
+            font-weight: 600;
+        }
+        .admin-modal .admin-box .admin-row .value.online {
+            color: var(--teal);
+        }
+        .admin-modal .admin-box .admin-row .value.offline {
+            color: var(--red);
+        }
+        .admin-modal .admin-box .admin-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 18px;
+            flex-wrap: wrap;
+        }
+        .admin-modal .admin-box .admin-actions .btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all var(--transition);
+            text-align: center;
+        }
+        .admin-modal .admin-box .admin-actions .btn:active {
+            transform: scale(0.95);
+        }
+        .admin-modal .admin-box .admin-actions .btn-danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+        .admin-modal .admin-box .admin-actions .btn-danger:active {
+            background: var(--red);
+            color: #fff;
+        }
+        .admin-modal .admin-box .admin-actions .btn-primary {
+            background: var(--red);
+            color: #fff;
+            border-color: var(--red);
+        }
+
+        /* ---------- toast ---------- */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 380px;
+            width: 100%;
+            pointer-events: none;
+        }
+        .toast {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: var(--radius-sm);
+            padding: 14px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            color: var(--text-primary);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateX(120%);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: all;
+        }
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        .toast .toast-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .toast .toast-msg {
+            flex: 1;
+            line-height: 1.4;
+        }
+        .toast .toast-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px;
+        }
+        .toast.error {
+            border-color: rgba(255, 32, 64, 0.3);
+        }
+        .toast.success {
+            border-color: rgba(0, 212, 170, 0.3);
+        }
+        .toast.info {
+            border-color: rgba(176, 124, 255, 0.3);
+        }
+
+        /* ---------- responsive ---------- */
+        @media (max-width: 1024px) {
+            .app {
+                padding: 12px 16px 10px;
+                gap: 10px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .nav-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .stat-card .stat-value {
+                font-size: 28px;
+            }
+            .countdown-block .num {
+                font-size: 22px;
+                min-width: 32px;
+            }
+            .hero {
+                padding: 12px 18px;
+                min-height: 60px;
+            }
+            .wallet-balance {
+                font-size: 36px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .app {
+                padding: 8px 10px 8px;
+                gap: 8px;
+            }
+            .header .brand-name {
+                font-size: 14px;
+            }
+            .header .header-center .time {
+                font-size: 14px;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .stat-card {
+                padding: 12px 14px 10px;
+                min-height: 68px;
+            }
+            .stat-card .stat-value {
+                font-size: 24px;
+            }
+            .stat-card .stat-label {
+                font-size: 11px;
+            }
+            .nav-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
+            }
+            .nav-btn {
+                padding: 8px 4px;
+                min-height: 56px;
+            }
+            .nav-btn .nav-icon {
+                font-size: 22px;
+            }
+            .nav-btn .nav-label {
+                font-size: 11px;
+            }
+            .hero-left .event-name {
+                font-size: 13px;
+            }
+            .countdown-block .num {
+                font-size: 18px;
+                min-width: 26px;
+            }
+            .countdown-block .unit {
+                font-size: 10px;
+            }
+            .ticker-wrap {
+                height: 36px;
+            }
+            .ticker-item {
+                font-size: 12px;
+                padding-right: 30px;
+            }
+            .overlay {
+                padding: 16px;
+            }
+            .overlay .overlay-header h2 {
+                font-size: 22px;
+            }
+            .wallet-balance {
+                font-size: 32px;
+            }
+            .locker-grid {
+                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+                gap: 6px;
+            }
+            .locker-item {
+                min-height: 56px;
+                font-size: 12px;
+            }
+            .locker-item .locker-num {
+                font-size: 14px;
+            }
+            .admin-modal .admin-box {
+                padding: 20px;
+            }
+            .toast-container {
+                bottom: 12px;
+                right: 12px;
+                left: 12px;
+                max-width: none;
+            }
+            .screensaver .ss-content .ss-logo {
+                font-size: 48px;
+            }
+            .screensaver .ss-content .ss-tagline {
+                font-size: 16px;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+            }
+            .nav-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 6px;
+            }
+            .stat-card .stat-value {
+                font-size: 20px;
+            }
+            .hero {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
+                padding: 10px 14px;
+            }
+            .hero-right {
+                justify-content: center;
+            }
+            .header .brand-name {
+                display: none;
+            }
+        }
+
+        /* ---------- utilities ---------- */
+        .hidden {
+            display: none !important;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .mt-8 {
+            margin-top: 8px;
+        }
+        .mb-8 {
+            margin-bottom: 8px;
+        }
+        .gap-8 {
+            gap: 8px;
+        }
+        .flex-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .w-full {
+            width: 100%;
+        }
+        .tap-active:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+    BACKGROUND
+    ============================================================ -->
+    <div class="bg-canvas"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- ============================================================
+    APP
+    ============================================================ -->
+    <div class="app" id="app">
+
+        <!-- HEADER -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo-wrap" id="logoWrap" title="Tap 5× for admin">
+                    <img src="../assets/images/rands-logo.png" alt="Rands" id="logoImg" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='flex'" />
+                    <div class="logo-fallback" id="logoFallback" style="display:none;">R</div>
+                    <span class="brand-name">Rands</span>
+                </div>
+            </div>
+            <div class="header-center">
+                <span class="time" id="clockDisplay">--:--</span>
+            </div>
+            <div class="header-right">
+                <span class="status-dot" title="Supabase connected"></span>
+                <span id="venueStatus">Live</span>
+            </div>
+        </header>
+
+        <!-- HERO / COUNTDOWN -->
+        <section class="hero" id="heroSection">
+            <div class="hero-left">
+                <span class="label">🎯 Next Beat</span>
+                <span class="event-name" id="eventName">—</span>
+            </div>
+            <div class="hero-right" id="countdownContainer">
+                <div class="countdown-block" id="countdownBlock">
+                    <span class="num" id="cdDays">00</span><span class="unit">d</span><span class="sep">:</span>
+                    <span class="num" id="cdHours">00</span><span class="unit">h</span><span class="sep">:</span>
+                    <span class="num" id="cdMins">00</span><span class="unit">m</span><span class="sep">:</span>
+                    <span class="num" id="cdSecs">00</span><span class="unit">s</span>
+                </div>
+                <span class="no-event hidden" id="noEventMsg">No upcoming events</span>
+            </div>
+        </section>
+
+        <!-- STAT CARDS -->
+        <section class="stats-grid" id="statsGrid">
+            <div class="stat-card accent-red" id="statRevenue">
+                <span class="stat-icon">💰</span>
+                <div class="stat-value" id="revenueValue">R0</div>
+                <div class="stat-label">Room's Tab · Today</div>
+                <div class="stat-sub" id="revenueSub">—</div>
+            </div>
+            <div class="stat-card accent-teal" id="statPulse">
+                <span class="stat-icon">📈</span>
+                <div class="stat-value" id="pulseValue">0</div>
+                <div class="stat-label">Live Pulse · 15m</div>
+                <div class="stat-sub" id="pulseSub">vs peak</div>
+            </div>
+            <div class="stat-card accent-gold" id="statLockers">
+                <span class="stat-icon">🔒</span>
+                <div class="stat-value" id="lockerValue">0</div>
+                <div class="stat-label">Vault Count · Occupied</div>
+                <div class="stat-sub" id="lockerSub">of total</div>
+            </div>
+            <div class="stat-card accent-purple" id="statEvents">
+                <span class="stat-icon">🎟️</span>
+                <div class="stat-value" id="eventCountValue">0</div>
+                <div class="stat-label">Active Events</div>
+                <div class="stat-sub" id="eventCountSub">today</div>
+            </div>
+        </section>
+
+        <!-- NAVIGATION -->
+        <nav class="nav-grid" id="navGrid">
+            <button class="nav-btn drinks" data-nav="drinks">
+                <span class="nav-icon">🍸</span>
+                <span class="nav-label">Order Drinks</span>
+                <span class="nav-sub">Menu</span>
+            </button>
+            <button class="nav-btn butcher" data-nav="butcher">
+                <span class="nav-icon">🥩</span>
+                <span class="nav-label">Butcher Platter</span>
+                <span class="nav-sub">Pre-order</span>
+            </button>
+            <button class="nav-btn events" data-nav="events">
+                <span class="nav-icon">🎪</span>
+                <span class="nav-label">Events</span>
+                <span class="nav-sub">Line-up</span>
+                <span class="nav-badge" id="eventBadge">0</span>
+            </button>
+            <button class="nav-btn vip" data-nav="vip">
+                <span class="nav-icon">⭐</span>
+                <span class="nav-label">VIP Packages</span>
+                <span class="nav-sub">Exclusive</span>
+            </button>
+            <button class="nav-btn lockers" data-nav="lockers">
+                <span class="nav-icon">🗄️</span>
+                <span class="nav-label">Booze Lockers</span>
+                <span class="nav-sub">Store / Collect</span>
+                <span class="nav-badge" id="lockerBadge">0</span>
+            </button>
+            <button class="nav-btn wallet" data-nav="wallet">
+                <span class="nav-icon">💳</span>
+                <span class="nav-label">Wallet</span>
+                <span class="nav-sub" id="walletSub">R0.00</span>
+            </button>
+        </nav>
+
+        <!-- TICKER -->
+        <div class="ticker-wrap" id="tickerWrap">
+            <div class="ticker-icon">🔴 LIVE</div>
+            <div class="ticker-track" id="tickerTrack">
+                <!-- populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+    OVERLAYS
+    ============================================================ -->
+
+    <!-- EVENTS OVERLAY -->
+    <div class="overlay" id="eventsOverlay">
+        <div class="overlay-header">
+            <h2>🎪 Upcoming Events</h2>
+            <button class="overlay-close" data-close="eventsOverlay">✕</button>
+        </div>
+        <div class="overlay-body event-list" id="eventList">
+            <div class="event-empty">Loading events…</div>
+        </div>
+    </div>
+
+    <!-- LOCKERS OVERLAY -->
+    <div class="overlay" id="lockersOverlay">
+        <div class="overlay-header">
+            <h2>🗄️ Booze Lockers</h2>
+            <button class="overlay-close" data-close="lockersOverlay">✕</button>
+        </div>
+        <div class="overlay-body">
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:12px;">Tap a locker to view details · <span id="lockerStats">—</span></p>
+            <div class="locker-grid" id="lockerGrid">
+                <!-- populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- WALLET OVERLAY -->
+    <div class="overlay" id="walletOverlay">
+        <div class="overlay-header">
+            <h2>💳 Digital Wallet</h2>
+            <button class="overlay-close" data-close="walletOverlay">✕</button>
+        </div>
+        <div class="overlay-body">
+            <div class="wallet-balance" id="walletBalance">R<span id="walletAmount">0.00</span></div>
+            <div class="wallet-actions">
+                <button class="btn btn-primary" id="walletTopup">💰 Top Up</button>
+                <button class="btn btn-outline" id="walletRefresh">🔄 Refresh</button>
+            </div>
+            <div style="margin-top:8px;font-size:14px;color:var(--text-secondary);">Transaction History</div>
+            <div class="wallet-tx" id="walletTxList">
+                <div class="tx-empty">No transactions yet</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+    SCREENSAVER
+    ============================================================ -->
+    <div class="screensaver" id="screensaver">
+        <div class="ss-content" id="ssContent">
+            <div class="ss-logo" id="ssLogo">R</div>
+            <div class="ss-tagline" id="ssTagline">Venue Experience</div>
+            <div class="ss-hint">⋮ tap to return ⋮</div>
+        </div>
+        <div class="ss-progress" id="ssProgress"></div>
+    </div>
+
+    <!-- ============================================================
+    ADMIN MODAL
+    ============================================================ -->
+    <div class="admin-modal" id="adminModal">
+        <div class="admin-box">
+            <h2>⚙️ System Admin</h2>
+            <div class="admin-row">
+                <span class="label">Supabase</span>
+                <span class="value online" id="adminDbStatus">● Online</span>
+            </div>
+            <div class="admin-row">
+                <span class="label">Printer</span>
+                <span class="value online" id="adminPrinterStatus">● Ready</span>
+            </div>
+            <div class="admin-row">
+                <span class="label">Last Sync</span>
+                <span class="value" id="adminLastSync">—</span>
+            </div>
+            <div class="admin-row">
+                <span class="label">Uptime</span>
+                <span class="value" id="adminUptime">—</span>
+            </div>
+            <div class="admin-actions">
+                <button class="btn" id="adminTestPrinter">🖨️ Test Printer</button>
+                <button class="btn btn-primary" id="adminSync">🔄 Sync Data</button>
+                <button class="btn btn-danger" id="adminRestart">⟳ Restart Kiosk</button>
+                <button class="btn" id="adminClose">✕ Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+    TOAST CONTAINER
+    ============================================================ -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ============================================================
+    SUPABASE + APP SCRIPT
+    ============================================================ -->
+    <script type="importmap">
+        {
+            "imports": {
+                "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // ============================================================
+        // IMPORTS
+        // ============================================================
+        import { createClient } from '@supabase/supabase-js';
+
+        // ============================================================
+        // CONFIG — use your own project URL and anon key
+        // ============================================================
+        const SUPABASE_URL = 'https://your-project.supabase.co';
+        const SUPABASE_ANON_KEY = 'your-anon-key';
+
+        // ============================================================
+        // STATE
+        // ============================================================
+        const state = {
+            stats: {
+                revenue: 0,
+                pulse: 0,
+                pulsePeak: 0,
+                lockers: 0,
+                totalLockers: 0,
+                events: 0,
+            },
+            wallet: {
+                balance: 0,
+                transactions: [],
+            },
+            lockers: [],
+            events: [],
+            tickerItems: [],
+            ssSlides: [],
+            ssIndex: 0,
+            ssTimer: null,
+            idleTimer: null,
+            isIdle: false,
+            adminTapCount: 0,
+            adminTapTimeout: null,
+            lastSync: new Date(),
+            uptimeStart: Date.now(),
+            refreshInterval: null,
+        };
+
+        // ============================================================
+        // SUPABASE CLIENT
+        // ============================================================
+        let supabase;
+        try {
+            supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } catch (e) {
+            console.warn('Supabase init failed:', e);
+            showToast('⚠️ Could not connect to Supabase', 'error');
+        }
+
+        // ============================================================
+        // DOM REFS
+        // ============================================================
+        const $ = (sel) => document.querySelector(sel);
+        const $$ = (sel) => document.querySelectorAll(sel);
+
+        const els = {
+            clock: $('#clockDisplay'),
+            logoWrap: $('#logoWrap'),
+            eventName: $('#eventName'),
+            cdDays: $('#cdDays'),
+            cdHours: $('#cdHours'),
+            cdMins: $('#cdMins'),
+            cdSecs: $('#cdSecs'),
+            noEventMsg: $('#noEventMsg'),
+            countdownBlock: $('#countdownBlock'),
+            revenueValue: $('#revenueValue'),
+            revenueSub: $('#revenueSub'),
+            pulseValue: $('#pulseValue'),
+            pulseSub: $('#pulseSub'),
+            lockerValue: $('#lockerValue'),
+            lockerSub: $('#lockerSub'),
+            eventCountValue: $('#eventCountValue'),
+            eventCountSub: $('#eventCountSub'),
+            tickerTrack: $('#tickerTrack'),
+            tickerWrap: $('#tickerWrap'),
+            eventBadge: $('#eventBadge'),
+            lockerBadge: $('#lockerBadge'),
+            walletSub: $('#walletSub'),
+            // overlays
+            eventsOverlay: $('#eventsOverlay'),
+            lockersOverlay: $('#lockersOverlay'),
+            walletOverlay: $('#walletOverlay'),
+            eventList: $('#eventList'),
+            lockerGrid: $('#lockerGrid'),
+            lockerStats: $('#lockerStats'),
+            walletAmount: $('#walletAmount'),
+            walletTxList: $('#walletTxList'),
+            // screensaver
+            screensaver: $('#screensaver'),
+            ssContent: $('#ssContent'),
+            ssLogo: $('#ssLogo'),
+            ssTagline: $('#ssTagline'),
+            ssProgress: $('#ssProgress'),
+            // admin
+            adminModal: $('#adminModal'),
+            adminDbStatus: $('#adminDbStatus'),
+            adminPrinterStatus: $('#adminPrinterStatus'),
+            adminLastSync: $('#adminLastSync'),
+            adminUptime: $('#adminUptime'),
+            // toast
+            toastContainer: $('#toastContainer'),
+        };
+
+        // ============================================================
+        // TOAST SYSTEM
+        // ============================================================
+        function showToast(message, type = 'info', duration = 4000) {
+            const container = els.toastContainer;
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            const icons = { info: 'ℹ️', success: '✅', error: '❌' };
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || 'ℹ️'}</span>
+                <span class="toast-msg">${message}</span>
+                <button class="toast-close">✕</button>
+            `;
+            container.appendChild(toast);
+            // trigger show
+            requestAnimationFrame(() => toast.classList.add('show'));
+            // close button
+            toast.querySelector('.toast-close').addEventListener('click', () => dismissToast(toast));
+            // auto dismiss
+            setTimeout(() => dismissToast(toast), duration);
+            return toast;
+        }
+
+        function dismissToast(toast) {
+            if (!toast || !toast.parentNode) return;
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 400);
+        }
+
+        // ============================================================
+        // CLOCK
+        // ============================================================
+        function updateClock() {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            els.clock.textContent = `${h}:${m}`;
+        }
+        setInterval(updateClock, 10000);
+        updateClock();
+
+        // ============================================================
+        // DATA FETCHING
+        // ============================================================
+
+        // --- Revenue (today's completed orders) ---
+        async function fetchRevenue() {
+            try {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('total_amount')
+                    .eq('status', 'completed')
+                    .gte('created_at', today.toISOString());
+                if (error) throw error;
+                const total = data.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+                state.stats.revenue = total;
+                return total;
+            } catch (e) {
+                console.warn('Revenue fetch error:', e);
+                return state.stats.revenue;
+            }
+        }
+
+        // --- Pulse: check-ins in last 15 min vs peak 7-day 15-min slot ---
+        async function fetchPulse() {
+            try {
+                const now = new Date();
+                const fifteenAgo = new Date(now.getTime() - 15 * 60 * 1000);
+                const { data: recent, error: e1 } = await supabase
+                    .from('checkins')
+                    .select('id')
+                    .gte('scanned_at', fifteenAgo.toISOString());
+                if (e1) throw e1;
+                const recentCount = recent?.length || 0;
+
+                // peak 15-min slot in last 7 days
+                const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                const { data: all, error: e2 } = await supabase
+                    .from('checkins')
+                    .select('scanned_at')
+                    .gte('scanned_at', sevenDaysAgo.toISOString());
+                if (e2) throw e2;
+
+                let peak = 0;
+                if (all && all.length > 0) {
+                    const slots = {};
+                    all.forEach(c => {
+                        const t = new Date(c.scanned_at);
+                        const key = Math.floor(t.getTime() / (15 * 60 * 1000));
+                        slots[key] = (slots[key] || 0) + 1;
+                    });
+                    peak = Math.max(...Object.values(slots), 0);
+                }
+                state.stats.pulse = recentCount;
+                state.stats.pulsePeak = peak;
+                return { recent: recentCount, peak };
+            } catch (e) {
+                console.warn('Pulse fetch error:', e);
+                return { recent: state.stats.pulse, peak: state.stats.pulsePeak };
+            }
+        }
+
+        // --- Lockers ---
+        async function fetchLockers() {
+            try {
+                const { data, error } = await supabase
+                    .from('lockers')
+                    .select('id, locker_number, status, customer_name')
+                    .order('locker_number', { ascending: true });
+                if (error) throw error;
+                const occupied = data.filter(l => l.status === 'rented').length;
+                state.lockers = data || [];
+                state.stats.lockers = occupied;
+                state.stats.totalLockers = data?.length || 0;
+                return { lockers: data, occupied };
+            } catch (e) {
+                console.warn('Lockers fetch error:', e);
+                return { lockers: state.lockers, occupied: state.stats.lockers };
+            }
+        }
+
+        // --- Events ---
+        async function fetchEvents() {
+            try {
+                const now = new Date().toISOString();
+                const { data, error } = await supabase
+                    .from('events')
+                    .select('*')
+                    .eq('is_active', true)
+                    .gte('start_time', now)
+                    .order('start_time', { ascending: true })
+                    .limit(10);
+                if (error) throw error;
+                state.events = data || [];
+                state.stats.events = data?.length || 0;
+                return data;
+            } catch (e) {
+                console.warn('Events fetch error:', e);
+                return state.events;
+            }
+        }
+
+        // --- Wallet ---
+        async function fetchWallet() {
+            try {
+                // For demo, we fetch the first wallet. In production, use user_id from auth.
+                const { data: wallets, error: e1 } = await supabase
+                    .from('wallets')
+                    .select('id, balance')
+                    .limit(1);
+                if (e1) throw e1;
+                if (!wallets || wallets.length === 0) {
+                    state.wallet.balance = 0;
+                    return { balance: 0, transactions: [] };
+                }
+                const wallet = wallets[0];
+                const { data: tx, error: e2 } = await supabase
+                    .from('wallet_transactions')
+                    .select('*')
+                    .eq('user_id', wallet.id) // assuming wallet.id maps to user_id
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+                if (e2) throw e2;
+                state.wallet.balance = wallet.balance || 0;
+                state.wallet.transactions = tx || [];
+                return { balance: wallet.balance, transactions: tx };
+            } catch (e) {
+                console.warn('Wallet fetch error:', e);
+                return { balance: state.wallet.balance, transactions: state.wallet.transactions };
+            }
+        }
+
+        // --- Ticker messages ---
+        async function fetchTickerMessages() {
+            const messages = [];
+            try {
+                // recent check-ins
+                const now = new Date();
+                const fiveAgo = new Date(now.getTime() - 5 * 60 * 1000);
+                const { data: checkins } = await supabase
+                    .from('checkins')
+                    .select('guest_name')
+                    .gte('scanned_at', fiveAgo.toISOString())
+                    .limit(3);
+                if (checkins) {
+                    checkins.forEach(c => {
+                        if (c.guest_name) messages.push(`🎫 ${c.guest_name} checked in`);
+                    });
+                }
+            } catch (_) { /* ignore */ }
+
+            try {
+                // recent locker activity
+                const { data: lockerEvents } = await supabase
+                    .from('lockers')
+                    .select('locker_number, status, customer_name')
+                    .order('occupied_at', { ascending: false })
+                    .limit(3);
+                if (lockerEvents) {
+                    lockerEvents.forEach(l => {
+                        if (l.status === 'rented' && l.customer_name) {
+                            messages.push(`🔒 ${l.customer_name} stored in Locker ${l.locker_number}`);
+                        }
+                    });
+                }
+            } catch (_) { /* ignore */ }
+
+            try {
+                // recent orders
+                const { data: orders } = await supabase
+                    .from('orders')
+                    .select('total_amount')
+                    .eq('status', 'completed')
+                    .order('created_at', { ascending: false })
+                    .limit(2);
+                if (orders) {
+                    orders.forEach(o => {
+                        messages.push(`🛒 Order completed · R${(o.total_amount || 0).toFixed(2)}`);
+                    });
+                }
+            } catch (_) { /* ignore */ }
+
+            // fallback static messages if nothing fresh
+            if (messages.length === 0) {
+                messages.push('🔥 Rooftop Party tickets selling fast');
+                messages.push('🥩 Butcher queue now serving #27');
+                messages.push('🍾 Bottle storage available at the Vault');
+                messages.push('🎵 Live DJ from 8pm tonight');
+            }
+
+            // shuffle and dedupe
+            const unique = [...new Set(messages)];
+            for (let i = unique.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [unique[i], unique[j]] = [unique[j], unique[i]];
+            }
+            state.tickerItems = unique.slice(0, 12);
+            return state.tickerItems;
+        }
+
+        // --- Screensaver ads ---
+        async function fetchScreensaverAds() {
+            try {
+                const { data, error } = await supabase
+                    .from('kiosk_idle_ads')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('display_order', { ascending: true });
+                if (error) throw error;
+                state.ssSlides = data || [];
+                return state.ssSlides;
+            } catch (e) {
+                console.warn('Screensaver ads fetch error:', e);
+                state.ssSlides = [];
+                return [];
+            }
+        }
+
+        // ============================================================
+        // UI UPDATE FUNCTIONS
+        // ============================================================
+
+        function updateStatsUI() {
+            const s = state.stats;
+            // Revenue
+            els.revenueValue.textContent = `R${s.revenue.toFixed(2)}`;
+            els.revenueSub.textContent = `from today's orders`;
+
+            // Pulse
+            els.pulseValue.textContent = s.pulse;
+            const pct = s.pulsePeak > 0 ? Math.round((s.pulse / s.pulsePeak) * 100) : 0;
+            els.pulseSub.textContent = s.pulsePeak > 0 ? `${pct}% of 7‑day peak (${s.pulsePeak})` : 'no data yet';
+
+            // Lockers
+            els.lockerValue.textContent = s.lockers;
+            els.lockerSub.textContent = `of ${s.totalLockers} lockers`;
+
+            // Events
+            els.eventCountValue.textContent = s.events;
+            els.eventCountSub.textContent = 'upcoming';
+
+            // badges
+            els.eventBadge.textContent = s.events;
+            els.lockerBadge.textContent = s.lockers;
+        }
+
+        function updateWalletUI() {
+            const bal = state.wallet.balance || 0;
+            els.walletAmount.textContent = bal.toFixed(2);
+            els.walletSub.textContent = `R${bal.toFixed(2)}`;
+        }
+
+        function updateTickerUI() {
+            const items = state.tickerItems;
+            if (items.length === 0) {
+                els.tickerTrack.innerHTML =
+                '<span class="ticker-item">✦ Welcome to Rands — enjoy the experience</span>';
+                return;
+            }
+            // double for seamless loop
+            const doubled = [...items, ...items];
+            els.tickerTrack.innerHTML = doubled.map(t =>
+                `<span class="ticker-item">${t}</span>`
+            ).join('');
+        }
+
+        function updateEventsUI() {
+            const list = els.eventList;
+            const events = state.events;
+            if (!events || events.length === 0) {
+                list.innerHTML = `<div class="event-empty">No upcoming events scheduled</div>`;
+                return;
+            }
+            list.innerHTML = events.map(e => {
+                const start = new Date(e.start_time);
+                const dateStr = start.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+                const timeStr = start.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div class="event-item">
+                        <div>
+                            <div class="ev-name">${e.name || 'Untitled'}</div>
+                            <div class="ev-meta">${e.location || 'Venue'} · ${e.base_price ? 'From R'+e.base_price : ''}</div>
+                        </div>
+                        <div class="ev-time">${dateStr} ${timeStr}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateLockersUI() {
+            const grid = els.lockerGrid;
+            const lockers = state.lockers;
+            if (!lockers || lockers.length === 0) {
+                grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0;">No lockers configured</div>`;
+                els.lockerStats.textContent = '0 available';
+                return;
+            }
+            const total = lockers.length;
+            const occupied = lockers.filter(l => l.status === 'rented').length;
+            const available = total - occupied;
+            els.lockerStats.textContent = `${available} available · ${occupied} rented`;
+
+            grid.innerHTML = lockers.map(l => {
+                const isRented = l.status === 'rented';
+                return `
+                    <div class="locker-item ${isRented ? 'rented' : 'available'}">
+                        <div class="locker-num">${l.locker_number || '?'}</div>
+                        <div class="locker-status">${isRented ? '🔒 Rented' : '🟢 Available'}</div>
+                        ${isRented && l.customer_name ? `<div class="locker-name">${l.customer_name}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateWalletTxUI() {
+            const container = els.walletTxList;
+            const tx = state.wallet.transactions || [];
+            if (tx.length === 0) {
+                container.innerHTML = `<div class="tx-empty">No transactions yet</div>`;
+                return;
+            }
+            container.innerHTML = tx.slice(0, 10).map(t => {
+                const isCredit = t.direction === 'credit';
+                const amt = (t.amount || 0).toFixed(2);
+                const desc = t.description || 'Transaction';
+                const date = t.created_at ? new Date(t.created_at).toLocaleDateString('en-ZA') : '';
+                return `
+                    <div class="tx-item">
+                        <span class="tx-desc">${desc} <span style="color:var(--text-muted);font-size:12px;">${date}</span></span>
+                        <span class="tx-amount ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '-'}R${amt}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ============================================================
+        // COUNTDOWN
+        // ============================================================
+        function updateCountdown() {
+            const events = state.events;
+            if (!events || events.length === 0) {
+                els.eventName.textContent = '—';
+                els.countdownBlock.classList.add('hidden');
+                els.noEventMsg.classList.remove('hidden');
+                return;
+            }
+            const next = events[0];
+            els.eventName.textContent = next.name || 'Next Event';
+            const target = new Date(next.start_time).getTime();
+            const now = Date.now();
+            const diff = Math.max(0, target - now);
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hrs = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const secs = Math.floor((diff % (1000 * 60)) / 1000);
+            els.cdDays.textContent = String(days).padStart(2, '0');
+            els.cdHours.textContent = String(hrs).padStart(2, '0');
+            els.cdMins.textContent = String(mins).padStart(2, '0');
+            els.cdSecs.textContent = String(secs).padStart(2, '0');
+            els.countdownBlock.classList.remove('hidden');
+            els.noEventMsg.classList.add('hidden');
+        }
+
+        // ============================================================
+        // REFRESH ALL DATA
+        // ============================================================
+        async function refreshAllData(showToastMsg = true) {
+            try {
+                const [revenue, pulse, lockersData, eventsData, walletData, tickerData, adsData] = await Promise.all([
+                    fetchRevenue(),
+                    fetchPulse(),
+                    fetchLockers(),
+                    fetchEvents(),
+                    fetchWallet(),
+                    fetchTickerMessages(),
+                    fetchScreensaverAds(),
+                ]);
+
+                updateStatsUI();
+                updateWalletUI();
+                updateTickerUI();
+                updateEventsUI();
+                updateLockersUI();
+                updateWalletTxUI();
+                updateCountdown();
+
+                state.lastSync = new Date();
+                els.adminLastSync.textContent = state.lastSync.toLocaleTimeString();
+
+                if (showToastMsg) showToast('🔄 Data synced successfully', 'success', 2500);
+            } catch (e) {
+                console.warn('Refresh error:', e);
+                showToast('⚠️ Error refreshing data', 'error', 3000);
+            }
+        }
+
+        // ============================================================
+        // SCREENSAVER
+        // ============================================================
+        let ssInterval = null;
+        let ssSlideIndex = 0;
+
+        function startScreensaver() {
+            if (state.isIdle) return;
+            state.isIdle = true;
+            const ss = els.screensaver;
+            const content = els.ssContent;
+            const progress = els.ssProgress;
+
+            // Build slides from ads or fallback
+            let slides = state.ssSlides;
+            if (!slides || slides.length === 0) {
+                slides = [{
+                    media_type: 'fallback',
+                    headline: 'Rands',
+                    tagline: 'Venue Experience',
+                }];
+            }
+
+            // Reset progress dots
+            progress.innerHTML = slides.map((_, i) =>
+                `<div class="dot ${i === 0 ? 'active' : ''}"></div>`
+            ).join('');
+
+            // Show first slide
+            ssSlideIndex = 0;
+            renderScreensaverSlide(slides, ssSlideIndex);
+
+            ss.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            // Auto-advance
+            if (ssInterval) clearInterval(ssInterval);
+            ssInterval = setInterval(() => {
+                ssSlideIndex = (ssSlideIndex + 1) % slides.length;
+                renderScreensaverSlide(slides, ssSlideIndex);
+                // update dots
+                const dots = progress.querySelectorAll('.dot');
+                dots.forEach((d, i) => d.classList.toggle('active', i === ssSlideIndex));
+            }, 8000);
+        }
+
+        function renderScreensaverSlide(slides, index) {
+            const slide = slides[index] || slides[0] || { media_type: 'fallback' };
+            const content = els.ssContent;
+            const logo = els.ssLogo;
+            const tagline = els.ssTagline;
+
+            // Clear previous media
+            const existingImg = content.querySelector('img');
+            const existingVideo = content.querySelector('video');
+            if (existingImg) existingImg.remove();
+            if (existingVideo) existingVideo.remove();
+
+            logo.style.display = 'none';
+            tagline.style.display = 'block';
+
+            if (slide.media_type === 'image' && slide.image_url) {
+                const img = document.createElement('img');
+                img.src = slide.image_url;
+                img.alt = slide.headline || 'Rands';
+                img.onerror = () => { img.remove();
+                    showFallback(); };
+                content.prepend(img);
+                tagline.textContent = slide.tagline || slide.headline || '';
+                tagline.style.display = 'block';
+            } else if (slide.media_type === 'video' && slide.video_url) {
+                const video = document.createElement('video');
+                video.src = slide.video_url;
+                video.autoplay = true;
+                video.muted = true;
+                video.loop = false;
+                video.playsInline = true;
+                video.onended = () => { /* handled by interval */ };
+                video.onerror = () => { video.remove();
+                    showFallback(); };
+                content.prepend(video);
+                tagline.textContent = slide.tagline || slide.headline || '';
+                tagline.style.display = 'block';
+            } else {
+                showFallback();
+            }
+
+            function showFallback() {
+                logo.style.display = 'block';
+                logo.textContent = slide.headline ? slide.headline.charAt(0) : 'R';
+                tagline.textContent = slide.tagline || 'Venue Experience';
+                tagline.style.display = 'block';
+            }
+        }
+
+        function stopScreensaver() {
+            if (!state.isIdle) return;
+            state.isIdle = false;
+            if (ssInterval) {
+                clearInterval(ssInterval);
+                ssInterval = null;
+            }
+            els.screensaver.classList.remove('active');
+            document.body.style.overflow = '';
+            // Log impression (gracefully)
+            try {
+                const slide = state.ssSlides[ssSlideIndex];
+                if (slide && slide.id) {
+                    supabase.from('kiosk_ad_impressions').insert({
+                        ad_id: slide.id,
+                        viewed_at: new Date().toISOString(),
+                    }).then(() => {}).catch(() => {});
+                }
+            } catch (_) { /* skip if table missing */ }
+            resetIdleTimer();
+        }
+
+        // ============================================================
+        // IDLE TIMER
+        // ============================================================
+        function resetIdleTimer() {
+            if (state.idleTimer) {
+                clearTimeout(state.idleTimer);
+                state.idleTimer = null;
+            }
+            if (state.isIdle) return;
+            state.idleTimer = setTimeout(() => {
+                startScreensaver();
+            }, 5 * 60 * 1000); // 5 minutes
+        }
+
+        // User activity resets idle
+        function onUserActivity() {
+            if (state.isIdle) {
+                stopScreensaver();
+            } else {
+                resetIdleTimer();
+            }
+        }
+
+        // ============================================================
+        // ADMIN MODAL
+        // ============================================================
+        let adminTapCount = 0;
+        let adminTapTimer = null;
+
+        els.logoWrap.addEventListener('click', () => {
+            adminTapCount++;
+            if (adminTapTimer) clearTimeout(adminTapTimer);
+            adminTapTimer = setTimeout(() => { adminTapCount = 0; }, 800);
+            if (adminTapCount >= 5) {
+                adminTapCount = 0;
+                openAdminModal();
+            }
+        });
+
+        function openAdminModal() {
+            els.adminModal.classList.add('open');
+            els.adminUptime.textContent = formatUptime();
+            els.adminLastSync.textContent = state.lastSync.toLocaleTimeString();
+        }
+
+        function closeAdminModal() {
+            els.adminModal.classList.remove('open');
+        }
+
+        function formatUptime() {
+            const diff = Date.now() - state.uptimeStart;
+            const secs = Math.floor(diff / 1000);
+            const mins = Math.floor(secs / 60);
+            const hrs = Math.floor(mins / 60);
+            return `${hrs}h ${mins % 60}m ${secs % 60}s`;
+        }
+
+        // Admin buttons
+        document.getElementById('adminClose').addEventListener('click', closeAdminModal);
+        document.getElementById('adminTestPrinter').addEventListener('click', () => {
+            showToast('🖨️ Printer test: signal sent (simulated)', 'info', 3000);
+        });
+        document.getElementById('adminSync').addEventListener('click', async () => {
+            await refreshAllData(true);
+            els.adminLastSync.textContent = state.lastSync.toLocaleTimeString();
+        });
+        document.getElementById('adminRestart').addEventListener('click', () => {
+            if (confirm('Restart kiosk? This will reload the page.')) {
+                window.location.reload();
+            }
+        });
+
+        // ============================================================
+        // NAVIGATION HANDLERS
+        // ============================================================
+
+        // Navigation buttons
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const nav = btn.dataset.nav;
+                switch (nav) {
+                    case 'drinks':
+                        window.location.href = 'kiosk-menu2.html?category=drinks';
+                        break;
+                    case 'butcher':
+                        window.location.href = 'kioks-pre-order-kiosk.html';
+                        break;
+                    case 'events':
+                        openOverlay('eventsOverlay');
+                        break;
+                    case 'vip':
+                        window.location.href = 'vvip-kiosk.html';
+                        break;
+                    case 'lockers':
+                        openOverlay('lockersOverlay');
+                        break;
+                    case 'wallet':
+                        openOverlay('walletOverlay');
+                        break;
+                    default:
+                        break;
+                }
+                onUserActivity();
+            });
+        });
+
+        // Overlay controls
+        function openOverlay(id) {
+            const overlay = document.getElementById(id);
+            if (overlay) {
+                overlay.classList.add('open');
+                // refresh content if needed
+                if (id === 'eventsOverlay') updateEventsUI();
+                if (id === 'lockersOverlay') updateLockersUI();
+                if (id === 'walletOverlay') { updateWalletUI();
+                    updateWalletTxUI(); }
+                onUserActivity();
+            }
+        }
+
+        function closeOverlay(id) {
+            const overlay = document.getElementById(id);
+            if (overlay) overlay.classList.remove('open');
+            onUserActivity();
+        }
+
+        document.querySelectorAll('[data-close]').forEach(el => {
+            el.addEventListener('click', () => {
+                closeOverlay(el.dataset.close);
+            });
+        });
+
+        // Close overlay on backdrop click
+        document.querySelectorAll('.overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('open');
+                    onUserActivity();
+                }
+            });
+        });
+
+        // Wallet top-up
+        document.getElementById('walletTopup').addEventListener('click', () => {
+            const amt = prompt('Enter amount to top up (R):', '100');
+            if (amt && !isNaN(parseFloat(amt)) && parseFloat(amt) > 0) {
+                const amount = parseFloat(amt);
+                window.location.href = `payment.html?mode=topup&amount=${amount}`;
+            } else if (amt !== null) {
+                showToast('⚠️ Please enter a valid amount', 'error', 2500);
+            }
+            onUserActivity();
+        });
+
+        document.getElementById('walletRefresh').addEventListener('click', async () => {
+            await fetchWallet();
+            updateWalletUI();
+            updateWalletTxUI();
+            showToast('💳 Wallet refreshed', 'success', 2000);
+            onUserActivity();
+        });
+
+        // ============================================================
+        // SCREENSAVER TAP TO DISMISS
+        // ============================================================
+        els.screensaver.addEventListener('click', (e) => {
+            if (e.target === els.screensaver || e.target.closest('.ss-content')) {
+                stopScreensaver();
+            }
+        });
+
+        // ============================================================
+        // GLOBAL ACTIVITY LISTENERS
+        // ============================================================
+        ['click', 'touchstart', 'keydown', 'mousemove'].forEach(evt => {
+            document.addEventListener(evt, onUserActivity, { passive: true });
+        });
+
+        // ============================================================
+        // WALLET RESUME HANDLER
+        // ============================================================
+        function checkWalletResume() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('wallet') === 'resume') {
+                // Refresh wallet data and show overlay
+                setTimeout(async () => {
+                    await fetchWallet();
+                    updateWalletUI();
+                    updateWalletTxUI();
+                    openOverlay('walletOverlay');
+                    showToast('💳 Wallet updated', 'success', 2500);
+                    // Clean URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }, 300);
+            }
+        }
+
+        // ============================================================
+        // AUTO-REFRESH LOOP
+        // ============================================================
+        function startAutoRefresh() {
+            if (state.refreshInterval) clearInterval(state.refreshInterval);
+            state.refreshInterval = setInterval(async () => {
+                await refreshAllData(false);
+            }, 10000);
+        }
+
+        // ============================================================
+        // INIT
+        // ============================================================
+        async function init() {
+            try {
+                // Initial data load
+                await refreshAllData(false);
+
+                // Start auto-refresh
+                startAutoRefresh();
+
+                // Start idle timer
+                resetIdleTimer();
+
+                // Check for wallet resume
+                checkWalletResume();
+
+                // Update uptime in admin periodically
+                setInterval(() => {
+                    if (els.adminModal.classList.contains('open')) {
+                        els.adminUptime.textContent = formatUptime();
+                    }
+                }, 5000);
+
+                // Update countdown every second
+                setInterval(updateCountdown, 1000);
+
+                // Initial countdown update
+                updateCountdown();
+
+                console.log('🚀 Rands Kiosk Start Page initialized');
+                showToast('👋 Welcome to Rands', 'info', 3000);
+
+                // Log startup
+                try {
+                    await supabase.from('kiosk_ad_impressions').insert({
+                        ad_id: null,
+                        viewed_at: new Date().toISOString(),
+                        meta: { event: 'kiosk_startup' }
+                    });
+                } catch (_) { /* ignore */ }
+
+            } catch (e) {
+                console.error('Init error:', e);
+                showToast('⚠️ Failed to initialize kiosk', 'error', 5000);
+            }
+        }
+
+        // Go!
+        init();
+
+        // Expose for debugging
+        window.__rands = { supabase, state, refreshAllData, showToast };
+
+        console.log('✅ Rands Kiosk loaded');
+    </script>
+</body>
+</html>
