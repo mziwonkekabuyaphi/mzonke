@@ -68,12 +68,12 @@ async function finishLogin(user) {
 
   // Profile row missing entirely
   if (error === 'NO_PROFILE') {
-    throw new Error('Your account is not fully configured. Please contact support.');
+    throw new Error('Your account is not fully configured. Please contact support team at info@rands.co.za.');
   }
 
   // Profile exists but role column is null/empty
   if (error === 'NO_ROLE') {
-    throw new Error('Your account has no role assigned. Please contact support.');
+    throw new Error('Your account has no role assigned. Please contact support team at info@rands.co.za.');
   }
 
   // Unexpected DB / network error — don't expose internals
@@ -84,13 +84,13 @@ async function finishLogin(user) {
 
   // Account inactive
   if (profile.status !== 'Active') {
-    throw new Error('Your account is inactive. Please contact support.');
+    throw new Error('Your account is inactive. Please contact support team at info@rands.co.za.');
   }
 
   // Unrecognised role (shouldn't happen, but guard anyway)
   const redirectUrl = getRoleRedirectUrl(profile.role);
   if (!redirectUrl) {
-    throw new Error(`Unknown role "${profile.role}". Please contact support.`);
+    throw new Error(`Unknown role "${profile.role}". Please contact Rands support team at info@rands.co.za.`);
   }
 
   console.log(`✅ Login complete — role: ${profile.role} → ${redirectUrl}`);
@@ -105,11 +105,11 @@ async function handleLogin() {
   const password = passwordInput?.value;
 
   if (!email || !password) {
-    showAuthError('Enter your email and password.');
+    showAuthError('Enter your email and passport key.');
     return;
   }
 
-  setLoading(true, loginBtn, loginBtnLabel, 'SIGNING IN…', 'SIGN IN');
+  setLoading(true, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
 
   try {
     const { user, error } = await signIn(email, password);
@@ -119,7 +119,7 @@ async function handleLogin() {
     console.error('Login error:', err);
     showAuthError(err.message);
   } finally {
-    setLoading(false, loginBtn, loginBtnLabel, 'SIGNING IN…', 'SIGN IN');
+    setLoading(false, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
   }
 }
 
