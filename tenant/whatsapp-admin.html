@@ -588,7 +588,8 @@
     let allConversations = [], allAIRequests = [], allSessions = [], allTemplates = [], allIntents = [], aiSettings = {};
     let allMessagesFlat = []; // flattened messages from the conversations join, used for dashboard stats
     const messagesCache = new Map(); // conversation_id -> messages[] (full row set once a conversation has been opened)
-    const profilesCache = new Map(); // profile_id -> profiles row
+    const profilesCache = new Map(); // customer_id -> profiles row
+    let stateByPhone = new Map(); // phone -> conversation_states row (state, data, updated_at)
     let realtimeChannel = null;
 
     window.showToast = function(msg, isError = false) {
@@ -612,11 +613,53 @@
     }
     function initials(p) { return p ? (p.replace(/[^a-zA-Z0-9]/g,'').slice(-4) || '?') : '?'; }
 
+    // ─── SCHEMA-DERIVED STATE HELPERS ───
+    // conversations no longer carry status / ai_enabled / current_intent / customer_name directly.
+    // Those are now derived from conversation_states (keyed by phone) and profiles (keyed by customer_id).
+    const AI_OFF_STATES = ['paused', 'human', 'handoff', 'manual'];
+    const CLOSED_STATES = ['closed', 'resolved'];
+    const BLOCKED_STATES = ['blocked', 'banned'];
+    const CONTROL_STATES = [...AI_OFF_STATES, ...CLOSED_STATES, ...BLOCKED_STATES, 'active'];
+
+    function getState(phone) { return phone ? stateByPhone.get(phone) : null; }
+    function getConvState(c) { return c ? getState(c.phone) : null; }
+
+    // AI is considered enabled unless conversation_states.state explicitly says a human has taken over.
+    function isAIEnabled(c) {
+        const st = getConvState(c);
+        if (!st || !st.state) return true;
+        return !AI_OFF_STATES.includes(String(st.state).toLowerCase());
+    }
+
+    // Conversation "status" derived from state — falls back to 'active' when no state row exists yet.
+    function getConvStatus(c) {
+        const st = getConvState(c);
+        if (!st || !st.state) return 'active';
+        const s = String(st.state).toLowerCase();
+        if (CLOSED_STATES.includes(s)) return 'closed';
+        if (BLOCKED_STATES.includes(s)) return 'blocked';
+        return 'active';
+    }
+
+    // Current intent is read from conversation_states.data.intent first, falling back to the state
+    // label itself when it isn't one of the generic control states (paused/active/closed/blocked...).
+    function getCurrentIntent(c) {
+        const st = getConvState(c);
+        if (!st) return null;
+        if (st.data && typeof st.data === 'object' && st.data.intent) return st.data.intent;
+        if (st.state && !CONTROL_STATES.includes(String(st.state).toLowerCase())) return st.state;
+        return null;
+    }
+
     // ─── DATA HELPERS ───
     function getConv(id) { return allConversations.find(c => c.id === id); }
     function getMsgs(id) { return messagesCache.get(id) || []; }
     function lastMsg(id) { const m = getMsgs(id); return m.length ? m[m.length - 1] : null; }
-    function displayName(c) { return (c && (c.customer_name || c.phone || c.phone_number)) || 'Unknown'; }
+    function displayName(c) {
+        if (!c) return 'Unknown';
+        const profile = c.customer_id ? profilesCache.get(c.customer_id) : null;
+        return (profile && (profile.full_name || profile.name)) || c.phone || c.phone_number || 'Unknown';
+    }
 
     // ─── LOADERS ───
     // Loads conversations along with their messages (used for previews + dashboard stats).
@@ -639,6 +682,14 @@
                 }
                 delete c.messages;
             });
+            // Batch-fetch profiles for every customer_id we saw, so displayName() can resolve synchronously.
+            const customerIds = [...new Set(allConversations.map(c => c.customer_id).filter(Boolean))];
+            if (customerIds.length) {
+                try {
+                    const { data: profiles, error: profErr } = await supabase.from('profiles').select('*').in('id', customerIds);
+                    if (!profErr && profiles) profiles.forEach(p => profilesCache.set(p.id, p));
+                } catch (e) { /* profiles are optional — fall back to phone-based display names */ }
+            }
         } catch (e) { allConversations = []; allMessagesFlat = []; }
     }
 
@@ -656,15 +707,24 @@
         } catch (e) { messagesCache.set(conversationId, []); return []; }
     }
 
-    async function getProfile(profileId) {
-        if (!profileId) return null;
-        if (profilesCache.has(profileId)) return profilesCache.get(profileId);
+    async function getProfile(customerId) {
+        if (!customerId) return null;
+        if (profilesCache.has(customerId)) return profilesCache.get(customerId);
         try {
-            const { data, error } = await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle();
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', customerId).maybeSingle();
             if (error) throw error;
-            profilesCache.set(profileId, data);
+            profilesCache.set(customerId, data);
             return data;
         } catch (e) { return null; }
+    }
+
+    // Loads conversation_states (one row per phone) which carries the live AI state + free-form data blob.
+    async function loadConversationStates() {
+        try {
+            const { data, error } = await supabase.from('conversation_states').select('*');
+            if (error) throw error;
+            stateByPhone = new Map((data || []).map(s => [s.phone, s]));
+        } catch (e) { stateByPhone = new Map(); }
     }
 
     async function loadAIRequests() { try { const {data,error} = await supabase.from('ai_requests').select('*').order('created_at',{ascending:false}).limit(300); if(error) throw error; allAIRequests = data||[]; } catch(e) { allAIRequests=[]; } }
@@ -692,7 +752,7 @@
     function matchesFilter(conv, last) {
         if (currentChatFilter === 'all') return true;
         if (currentChatFilter === 'unread') return !!last && last.direction === 'incoming' && last.status !== 'read';
-        if (currentChatFilter === 'ai_active') return !!conv.ai_enabled && conv.status === 'active';
+        if (currentChatFilter === 'ai_active') return isAIEnabled(conv) && getConvStatus(conv) === 'active';
         if (currentChatFilter === 'needs_human') { const lastReq = allAIRequests.find(r => r.phone === conv.phone); return !!(lastReq && lastReq.success === false); }
         if (currentChatFilter === 'waiting_customer') return !!last && last.direction === 'outgoing';
         return true;
@@ -704,7 +764,7 @@
         const s = searchTerm.toLowerCase().trim();
         let filtered = s ? sorted.filter(c => {
             const last = lastMsg(c.id);
-            return (c.customer_name||'').toLowerCase().includes(s)
+            return (displayName(c)||'').toLowerCase().includes(s)
                 || (c.phone||'').toLowerCase().includes(s)
                 || (last?.message_text||'').toLowerCase().includes(s);
         }) : sorted;
@@ -720,10 +780,10 @@
             const unread = msgs.filter(m => m.direction === 'incoming' && m.status !== 'read').length;
             const online = !!allSessions.find(s => s.phone === c.phone);
             const preview = last?.message_text ? esc(last.message_text.slice(0,55)) : (last?.message_type ? `📎 ${esc(last.message_type)}` : 'No messages');
-            const intent = c.current_intent || 'general';
+            const intent = getCurrentIntent(c) || 'general';
             const lastReq = allAIRequests.find(r => r.phone === c.phone);
             const needsHuman = !!(lastReq && lastReq.success === false);
-            const aiActive = !!c.ai_enabled && c.status === 'active';
+            const aiActive = isAIEnabled(c) && getConvStatus(c) === 'active';
             const statusBadge = needsHuman ? '<span class="mini-badge human">HUMAN</span>' : (aiActive ? '<span class="mini-badge ai">AI</span>' : '');
             const name = displayName(c);
             return `<div class="chat-item ${c.id===selectedConversationId?'active':''}" onclick="selectConversation('${c.id}')">
@@ -754,8 +814,9 @@
         const online = !!(c && allSessions.find(s => s.phone === c.phone));
         let statusTxt = '';
         if (c) {
-            if (c.status === 'closed') statusTxt = 'closed';
-            else if (c.status === 'blocked') statusTxt = 'blocked';
+            const status = getConvStatus(c);
+            if (status === 'closed') statusTxt = 'closed';
+            else if (status === 'blocked') statusTxt = 'blocked';
             else statusTxt = online ? 'online' : 'last seen recently';
         }
         document.getElementById('chatStatus').innerHTML = c ? `<span class="online-dot" style="background:${online?'var(--green)':'var(--dim)'};box-shadow:${online?'0 0 5px var(--green)':'none'}"></span> ${statusTxt}` : '<span class="online-dot"></span> —';
@@ -769,28 +830,46 @@
         document.getElementById('toggleCustomerPanelBtn').classList.toggle('active-toggle', !panel.classList.contains('collapsed') || panel.classList.contains('open'));
     };
 
-    // Toggles the AI concierge for the SELECTED conversation by flipping conversations.ai_enabled.
+    // Toggles the AI concierge for the SELECTED conversation by upserting conversation_states.state
+    // (ai_enabled no longer lives on conversations — it's derived from the per-phone state row).
     window.toggleAIGlobal = async function() {
         if (!selectedConversationId) { showToast('Select a conversation first', true); return; }
         const c = getConv(selectedConversationId);
         if (!c) return;
-        const newVal = !c.ai_enabled;
+        const currentlyEnabled = isAIEnabled(c);
+        const newState = currentlyEnabled ? 'paused' : 'active';
+        const nowIso = new Date().toISOString();
         try {
-            const { error } = await supabase.from('conversations').update({ ai_enabled: newVal, updated_at: new Date().toISOString() }).eq('id', c.id);
+            const existing = getState(c.phone);
+            const { error } = await supabase.from('conversation_states').upsert({
+                phone: c.phone,
+                state: newState,
+                data: existing?.data || {},
+                updated_at: nowIso
+            });
             if (error) throw error;
-            c.ai_enabled = newVal;
+            stateByPhone.set(c.phone, { ...(existing || {}), phone: c.phone, state: newState, updated_at: nowIso });
             renderCustomerPanel(selectedConversationId);
             renderChatList(document.getElementById('chatSearch').value);
-            showToast(newVal ? 'AI resumed for this conversation' : 'AI paused — you have taken over');
+            showToast(newState === 'active' ? 'AI resumed for this conversation' : 'AI paused — you have taken over');
         } catch (e) { showToast(e.message, true); }
     };
 
     window.markResolved = async function() {
         if (!selectedConversationId) { showToast('Select a conversation first', true); return; }
+        const c = getConv(selectedConversationId);
+        if (!c) return;
+        const nowIso = new Date().toISOString();
         try {
-            const { error } = await supabase.from('conversations').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', selectedConversationId);
+            const existing = getState(c.phone);
+            const { error } = await supabase.from('conversation_states').upsert({
+                phone: c.phone,
+                state: 'closed',
+                data: existing?.data || {},
+                updated_at: nowIso
+            });
             if (error) throw error;
-            const c = getConv(selectedConversationId); if (c) c.status = 'closed';
+            stateByPhone.set(c.phone, { ...(existing || {}), phone: c.phone, state: 'closed', updated_at: nowIso });
             updateChatHeader(selectedConversationId);
             renderCustomerPanel(selectedConversationId);
             renderChatList(document.getElementById('chatSearch').value);
@@ -816,14 +895,14 @@
             return;
         }
 
-        const profile = c.profile_id ? await getProfile(c.profile_id) : null;
+        const profile = c.customer_id ? await getProfile(c.customer_id) : null;
         // Bail out if the user has since clicked into a different conversation.
         if (selectedConversationId !== id) return;
 
         const msgs = getMsgs(c.id);
         const online = !!allSessions.find(s => s.phone === c.phone);
         const first = msgs[0], totalMsgs = msgs.length;
-        const name = c.customer_name || profile?.full_name || profile?.name || c.phone || 'Unknown';
+        const name = profile?.full_name || profile?.name || c.phone || 'Unknown';
 
         avatar.textContent = initials(name);
         nameEl.innerHTML = `<span>${esc(name)}</span>` + (totalMsgs >= 20 ? '<span class="vip-badge">VIP</span>' : '');
@@ -831,8 +910,10 @@
         phoneEl.textContent = esc(c.phone || c.phone_number || '—');
         document.getElementById('cpOnlineStatus').innerHTML = `<span class="online-dot" style="background:${online?'var(--green)':'var(--dim)'};box-shadow:${online?'0 0 5px var(--green)':'none'}"></span> ${online?'Online now':'Offline'}`;
 
-        const statusColor = STATUS_COLORS[c.status] || 'var(--muted)';
-        document.getElementById('cpStatusRow').innerHTML = `<span class="cp-chip" style="border-color:${statusColor};color:${statusColor};">${esc(c.status||'unknown')}</span>` + (c.current_intent ? `<span class="cp-chip">${esc(c.current_intent.replace(/_/g,' '))}</span>` : '');
+        const status = getConvStatus(c);
+        const currentIntent = getCurrentIntent(c);
+        const statusColor = STATUS_COLORS[status] || 'var(--muted)';
+        document.getElementById('cpStatusRow').innerHTML = `<span class="cp-chip" style="border-color:${statusColor};color:${statusColor};">${esc(status||'unknown')}</span>` + (currentIntent ? `<span class="cp-chip">${esc(currentIntent.replace(/_/g,' '))}</span>` : '');
 
         document.getElementById('cpFieldPhone').textContent = esc(c.phone || c.phone_number || '—');
         document.getElementById('cpFirstContact').textContent = first ? fmtDate(first.created_at) : '—';
@@ -851,12 +932,12 @@
             : '<span class="cp-empty-note">No intent history yet</span>';
 
         // AI status for this conversation
-        const aiOn = aiSettings.enable_ai && !!c.ai_enabled;
+        const aiOn = aiSettings.enable_ai && isAIEnabled(c);
         document.getElementById('aiGlobalSwitch').classList.toggle('on', aiOn);
         document.getElementById('aiStatusDot').className = 'ai-status-dot' + (aiOn ? '' : ' off');
-        document.getElementById('aiStatusText').textContent = !aiSettings.enable_ai ? 'AI disabled globally' : (!c.ai_enabled ? 'Paused — human handling' : 'AI enabled');
-        document.getElementById('aiTakeOverLabel').textContent = !c.ai_enabled ? 'Resume AI' : 'Take Over';
-        document.getElementById('aiTakeOverBtn').querySelector('i').className = !c.ai_enabled ? 'fas fa-robot' : 'fas fa-hand-paper';
+        document.getElementById('aiStatusText').textContent = !aiSettings.enable_ai ? 'AI disabled globally' : (!isAIEnabled(c) ? 'Paused — human handling' : 'AI enabled');
+        document.getElementById('aiTakeOverLabel').textContent = !isAIEnabled(c) ? 'Resume AI' : 'Take Over';
+        document.getElementById('aiTakeOverBtn').querySelector('i').className = !isAIEnabled(c) ? 'fas fa-robot' : 'fas fa-hand-paper';
 
         // Last AI action for this phone, from ai_requests
         const lastReq = allAIRequests.find(r => r.phone === c.phone);
@@ -872,7 +953,7 @@
         }
 
         // Suggested replies — active templates matching this conversation's current intent
-        const topIntent = c.current_intent || topIntents[0]?.[0];
+        const topIntent = currentIntent || topIntents[0]?.[0];
         const matches = allTemplates.filter(t => t.active && (!topIntent || t.template_key === topIntent || (t.template_name||'').toLowerCase().includes(topIntent||''))).slice(0,4);
         const fallback = allTemplates.filter(t => t.active).slice(0,3);
         const list = matches.length ? matches : fallback;
@@ -1070,7 +1151,7 @@
 
     window.refreshAllData = async function() {
         showToast('Refreshing…');
-        await Promise.all([loadConversations(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
+        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
         renderChatList(document.getElementById('chatSearch').value);
         if (selectedConversationId) { renderChatMessages(selectedConversationId); updateChatHeader(selectedConversationId); renderCustomerPanel(selectedConversationId); }
         if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashboard();
@@ -1116,20 +1197,32 @@
         if (isNew) showToast(`New conversation: ${displayName(conv)}`);
     }
 
+    // conversation_states changes drive AI-enabled / status / intent everywhere in the UI, so any
+    // insert or update needs to refresh the relevant conversation's rendering.
+    function handleStateChange(state) {
+        if (!state || !state.phone) return;
+        stateByPhone.set(state.phone, state);
+        const conv = allConversations.find(c => c.phone === state.phone);
+        renderChatList(document.getElementById('chatSearch').value);
+        if (conv && selectedConversationId === conv.id) { updateChatHeader(conv.id); renderCustomerPanel(conv.id); }
+    }
+
     function setupRealtime() {
         realtimeChannel = supabase
             .channel('messages_channel')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => handleNewMessage(payload.new))
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, (payload) => handleConversationChange(payload.new, false))
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (payload) => handleConversationChange(payload.new, true))
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_states' }, (payload) => handleStateChange(payload.new))
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_states' }, (payload) => handleStateChange(payload.new))
             .subscribe();
     }
 
-    // Lighter polling fallback for tables without realtime wired up (AI requests / sessions)
-    setInterval(()=>{loadAIRequests();loadActiveSessions();if(selectedConversationId)renderCustomerPanel(selectedConversationId);},30000);
+    // Lighter polling fallback for tables without realtime wired up (AI requests / sessions / states)
+    setInterval(()=>{loadAIRequests();loadActiveSessions();loadConversationStates();if(selectedConversationId)renderCustomerPanel(selectedConversationId);},30000);
 
     async function init() {
-        await Promise.all([loadConversations(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
+        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
         renderChatList('');
         if (allConversations.length) {
             selectedConversationId = allConversations[0].id;
@@ -1140,7 +1233,7 @@
             renderCustomerPanel(selectedConversationId);
         }
         setupRealtime();
-        window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.allIntents=allIntents;window.aiSettings=aiSettings;
+        window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.allIntents=allIntents;window.aiSettings=aiSettings;window.conversationStates=stateByPhone;
     }
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.attach-menu') && !e.target.closest('[onclick="toggleAttachMenu()"]')) document.getElementById('attachMenu')?.classList.remove('open');
@@ -1148,7 +1241,7 @@
     });
 
     init();
-    console.log('WhatsApp Concierge dark theme ready');
+    console.log('WhatsApp Concierge dark theme ready (new schema: conversation_states + customer_id)');
 </script>
 </body>
 </html>
