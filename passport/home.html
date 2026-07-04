@@ -1045,7 +1045,7 @@
                 .select('id, balance')
                 .eq('user_id', session.user.id)
                 .single();
-            if (walletError || !wallet) throw new Error('Could not find wallet');
+            if (walletError || !wallet) throw new Error('Could not find passport');
             
             const { data: payment, error: paymentError } = await supabase
                 .from('payment_requests')
@@ -1064,7 +1064,7 @@
                 .update({ balance: newBalance })
                 .eq('id', wallet.id)
                 .eq('user_id', session.user.id);
-            if (updateWalletError) throw new Error('Failed to update wallet balance');
+            if (updateWalletError) throw new Error('Failed to update Rands Passport Credit');
             
             const { error: transactionError } = await supabase
                 .from('wallet_transactions')
@@ -1293,15 +1293,17 @@
         if (wErr) console.warn('Wallet query error:', wErr);
         updateBalance((wallet && typeof wallet.balance === 'number') ? wallet.balance : 0);
 
-        // Show wallet UUID on card back + draw barcode from it
-        if (wallet?.id) {
-            const walletIdShort = wallet.id; // full UUID
-            if (DOM.phoneDisplay()) DOM.phoneDisplay().textContent = walletIdShort;
-            generateBarcodeFromId(wallet.id);
-            currentWalletRowId = wallet.id;
-            setupWalletRealtime();
-            loadRecentTransactions(wallet.id);
-        }
+       // Show phone number on card back + draw barcode from wallet UUID
+if (wallet?.id) {
+    // Get the user's phone number from profile
+    const phone = profile?.phone || session.user.user_metadata?.phone || '';
+    const formattedPhone = phone ? formatPhoneNumber(phone) : 'No phone number';
+    if (DOM.phoneDisplay()) DOM.phoneDisplay().textContent = `Passport ID: ${formattedPhone}`;
+    generateBarcodeFromId(wallet.id);
+    currentWalletRowId = wallet.id;
+    setupWalletRealtime();
+    loadRecentTransactions(wallet.id);
+}
         
         if (profile?.id) {
             await setupPaymentListener(session.user.id, profile.id);
