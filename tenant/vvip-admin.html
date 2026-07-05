@@ -343,6 +343,43 @@
             cursor: pointer;
             margin-top: 6px;
         }
+        /* Table naming (per-table labels inside package modal) */
+        .table-labels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 8px;
+        }
+        .table-label-input {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--s2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.72rem;
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            outline: none;
+        }
+        .table-label-input:focus { border-color: var(--red-border); box-shadow: 0 0 0 2px var(--red-dim); }
+
+        /* Table status chips (package card + dashboard) */
+        .table-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .table-chip {
+            padding: 2px 10px;
+            border-radius: 40px;
+            font-size: 0.6rem;
+            font-weight: 600;
+        }
+        .table-chip.available { background: rgba(34,197,94,0.15); color: var(--green); }
+        .table-chip.booked { background: var(--red-dim); color: var(--red); }
+        .table-chip.more { background: var(--s3); color: var(--muted); }
+        .table-chip.pending { background: var(--s3); color: var(--muted); font-style: italic; font-weight: 400; }
+
         .benefits-input-group {
             display: flex;
             gap: 8px;
@@ -577,6 +614,11 @@
         </div>
         <!-- KPIs -->
         <div class="dash-kpi-grid" id="dashKpiGrid"></div>
+        <!-- Table Availability -->
+        <div class="dash-section">
+            <h3>Table Availability</h3>
+            <div id="dashTableAvailability"></div>
+        </div>
         <!-- Package Sales -->
         <div class="dash-section">
             <h3>Package Sales</h3>
@@ -630,6 +672,10 @@
                     <div class="form-group">
                         <label>Number of Tables *</label>
                         <input type="number" id="packageCapacity" min="1" required placeholder="e.g., 15">
+                    </div>
+                    <div class="form-group" id="tableLabelsGroup" style="display:none;">
+                        <label>Table Names <span style="text-transform:none;font-weight:400;color:var(--dim);">(optional — leave as the number or rename each one)</span></label>
+                        <div id="tableLabelsContainer" class="table-labels-grid"></div>
                     </div>
                     <div class="form-group">
                         <label>Tab Credit (R) *</label>
@@ -709,6 +755,8 @@
     let packages = [];
     let pendingDeletePackage = null;
     let charts = {};
+    let tableLabels = []; // per-table names for the package currently open in the modal
+    let existingTableRows = []; // vvip_tables rows already saved for the package being edited
 
     // ─── HELPERS ───
     function showToast(message, isError = false) {
@@ -756,6 +804,35 @@
             input.focus();
         }
     });
+
+    // ─── TABLE NAMES (one input per table, defaults to "Table N") ───
+    function renderTableLabelInputs() {
+        const capacity = parseInt(document.getElementById('packageCapacity').value) || 0;
+        const group = document.getElementById('tableLabelsGroup');
+        const container = document.getElementById('tableLabelsContainer');
+        if (!capacity || capacity < 1) {
+            group.style.display = 'none';
+            container.innerHTML = '';
+            return;
+        }
+        group.style.display = 'block';
+        // Grow/shrink the labels array to match capacity, keeping anything already typed/loaded
+        const newLabels = [];
+        for (let i = 0; i < capacity; i++) {
+            newLabels.push(tableLabels[i] || `Table ${i + 1}`);
+        }
+        tableLabels = newLabels;
+        container.innerHTML = tableLabels.map((label, idx) => `
+            <input type="text" class="table-label-input" data-idx="${idx}" value="${escapeHtml(label)}" placeholder="Table ${idx + 1}">
+        `).join('');
+        container.querySelectorAll('.table-label-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                tableLabels[idx] = e.target.value.trim() || `Table ${idx + 1}`;
+            });
+        });
+    }
+    document.getElementById('packageCapacity').addEventListener('input', renderTableLabelInputs);
 
     // ─── IMAGE UPLOAD ───
     function fileToBase64(file) {
@@ -806,17 +883,20 @@
         currentEditingId = null;
         benefitsArray = [];
         currentImageBase64 = null;
+        tableLabels = [];
+        existingTableRows = [];
         document.getElementById('modalTitle').innerText = 'Create VVIP Package';
         document.getElementById('packageForm').reset();
         document.getElementById('packageStatus').value = 'active';
         document.getElementById('packageTabCredit').value = '0';
         updateBenefitsDisplay();
+        renderTableLabelInputs();
         resetImageUpload();
         document.getElementById('packageModal').classList.add('active');
         document.body.style.overflow = 'hidden';
     }
 
-    window.editPackage = function(id) {
+    window.editPackage = async function(id) {
         const pkg = packages.find(p => p.id === id);
         if (!pkg) return;
         currentEditingId = id;
@@ -835,6 +915,23 @@
             document.getElementById('imagePreviewContainer').style.display = 'block';
             document.getElementById('imageUploadArea').style.display = 'none';
         } else resetImageUpload();
+
+        // Load this package's existing tables so their names prefill instead of resetting to "Table N"
+        tableLabels = [];
+        existingTableRows = [];
+        try {
+            const { data: tables, error } = await supabase
+                .from('vvip_tables')
+                .select('id, table_number')
+                .eq('package_id', id)
+                .order('created_at', { ascending: true });
+            if (!error && tables) {
+                existingTableRows = tables;
+                tableLabels = tables.map(t => t.table_number);
+            }
+        } catch (err) { console.warn('Could not load existing tables:', err); }
+        renderTableLabelInputs();
+
         document.getElementById('packageModal').classList.add('active');
         document.body.style.overflow = 'hidden';
     };
@@ -854,6 +951,10 @@
         currentEditingId = null;
         benefitsArray = [];
         currentImageBase64 = null;
+        tableLabels = [];
+        existingTableRows = [];
+        document.getElementById('tableLabelsGroup').style.display = 'none';
+        document.getElementById('tableLabelsContainer').innerHTML = '';
         resetImageUpload();
     }
 
@@ -886,12 +987,17 @@
         const packageData = { name, description, price, capacity, tab_credit, status, benefits, image };
         try {
             let result;
+            let packageId = currentEditingId;
             if (currentEditingId) {
                 result = await supabase.from('vvip_packages').update(packageData).eq('id', currentEditingId);
             } else {
-                result = await supabase.from('vvip_packages').insert([packageData]);
+                result = await supabase.from('vvip_packages').insert([packageData]).select().single();
             }
             if (result.error) throw result.error;
+            if (!currentEditingId) packageId = result.data.id;
+
+            await syncPackageTables(packageId, price, capacity);
+
             showToast(currentEditingId ? 'Package updated!' : 'Package created!');
             closeModal();
             await loadPackages();
@@ -899,6 +1005,70 @@
             showToast('Error: ' + error.message, true);
         }
     });
+
+    // ─── SYNC vvip_tables TO MATCH THE NAMED TABLES ENTERED IN THE MODAL ───
+    async function syncPackageTables(packageId, price, capacity) {
+        try {
+            const { data: currentTables, error: fetchErr } = await supabase
+                .from('vvip_tables')
+                .select('id, table_number')
+                .eq('package_id', packageId)
+                .order('created_at', { ascending: true });
+            if (fetchErr) throw fetchErr;
+
+            const existing = currentTables || [];
+            const desiredLabels = (tableLabels.length === capacity)
+                ? tableLabels
+                : Array.from({ length: capacity }, (_, i) => existing[i]?.table_number || tableLabels[i] || `Table ${i + 1}`);
+
+            // Rename/update tables that already exist, keeping their id (and any bookings tied to them)
+            const keepCount = Math.min(existing.length, capacity);
+            for (let i = 0; i < keepCount; i++) {
+                const row = existing[i];
+                const label = desiredLabels[i];
+                await supabase.from('vvip_tables').update({ table_number: label, price }).eq('id', row.id);
+            }
+
+            // Capacity increased: create the new tables
+            if (capacity > existing.length) {
+                const newRows = [];
+                for (let i = existing.length; i < capacity; i++) {
+                    newRows.push({ package_id: packageId, table_number: desiredLabels[i] || `Table ${i + 1}`, capacity: 4, price });
+                }
+                const { error: insertErr } = await supabase.from('vvip_tables').insert(newRows);
+                if (insertErr) throw insertErr;
+            }
+
+            // Capacity decreased: only remove tables that have no active booking, keep the rest
+            if (capacity < existing.length) {
+                const toRemove = existing.slice(capacity);
+                const removableIds = [];
+                const blockedLabels = [];
+                for (const row of toRemove) {
+                    const { data: bookings } = await supabase
+                        .from('vvip_bookings')
+                        .select('id')
+                        .eq('table_id', row.id)
+                        .not('status', 'in', '(cancelled,no_show)')
+                        .limit(1);
+                    if (bookings && bookings.length) {
+                        blockedLabels.push(row.table_number);
+                    } else {
+                        removableIds.push(row.id);
+                    }
+                }
+                if (removableIds.length) {
+                    await supabase.from('vvip_tables').delete().in('id', removableIds);
+                }
+                if (blockedLabels.length) {
+                    showToast(`Kept "${blockedLabels.join('", "')}" — has an active booking, can't remove it`, true);
+                }
+            }
+        } catch (err) {
+            console.error('Table sync error:', err);
+            showToast('Package saved, but syncing table names had an issue: ' + err.message, true);
+        }
+    }
 
     // ─── DELETE ACTIONS ───
     async function archivePackage() {
@@ -939,6 +1109,23 @@
                 .order('created_at', { ascending: false });
             if (error) throw error;
             packages = data || [];
+
+            // Pull real table rows + active bookings so the card shows named tables, not just a count
+            const { data: allTables } = await supabase
+                .from('vvip_tables')
+                .select('id, package_id, table_number');
+            const { data: activeBookings } = await supabase
+                .from('vvip_bookings')
+                .select('table_id')
+                .not('status', 'in', '(cancelled,no_show)')
+                .not('table_id', 'is', null);
+            const bookedTableIds = new Set((activeBookings || []).map(b => b.table_id));
+            const tablesByPackage = {};
+            (allTables || []).forEach(t => {
+                if (!tablesByPackage[t.package_id]) tablesByPackage[t.package_id] = [];
+                tablesByPackage[t.package_id].push(t);
+            });
+
             const container = document.getElementById('packagesGrid');
             if (packages.length === 0) {
                 container.innerHTML = `
@@ -955,6 +1142,12 @@
                 const totalPrice = pkg.price;
                 const tables = pkg.capacity;
                 const tabCredit = pkg.tab_credit || 0;
+                const pkgTables = tablesByPackage[pkg.id] || [];
+                const bookedCount = pkgTables.filter(t => bookedTableIds.has(t.id)).length;
+                const tablesLabel = pkgTables.length
+                    ? `${bookedCount}/${pkgTables.length} booked`
+                    : `${tables}`;
+                const visibleChips = pkgTables.slice(0, 6);
                 return `
                 <div class="package-card">
                     <div class="package-image">
@@ -966,12 +1159,17 @@
                             <span class="package-price">${fmtR(totalPrice)}</span>
                         </div>
                         <div class="package-meta">
-                            <span><i class="fas fa-table"></i> Tables: ${tables}</span>
+                            <span><i class="fas fa-table"></i> Tables: ${tablesLabel}</span>
                             <span><i class="fas fa-coins"></i> Tab Credit: ${fmtR(tabCredit)}</span>
                             <span><i class="fas fa-ticket-alt"></i> Sold: ${pkg.sold_count || 0}</span>
                             <span class="status-badge ${pkg.status === 'active' ? 'status-active' : 'status-inactive'}">${pkg.status}</span>
                         </div>
                         <div class="package-description">${escapeHtml(pkg.description || 'No description')}</div>
+                        <div class="table-chips">
+                            ${visibleChips.map(t => `<span class="table-chip ${bookedTableIds.has(t.id) ? 'booked' : 'available'}">${escapeHtml(t.table_number)}</span>`).join('')}
+                            ${pkgTables.length > 6 ? `<span class="table-chip more">+${pkgTables.length - 6} more</span>` : ''}
+                            ${pkgTables.length === 0 ? `<span class="table-chip pending">Save this package to generate its tables</span>` : ''}
+                        </div>
                         <div class="benefits-list">
                             ${(pkg.benefits || []).slice(0,3).map(b => `<span class="benefit-tag"><i class="fas fa-check"></i> ${escapeHtml(b)}</span>`).join('')}
                             ${(pkg.benefits || []).length > 3 ? `<span class="benefit-tag">+${pkg.benefits.length - 3} more</span>` : ''}
@@ -1026,6 +1224,40 @@
             <div class="dash-kpi"><div class="val">${fmtR(totalRevenue)}</div><div class="label">Revenue</div></div>
             <div class="dash-kpi"><div class="val">${fmtR(avgPrice)}</div><div class="label">Avg Price</div></div>
         `;
+
+        // Table Availability — named tables per package, booked vs available
+        const { data: allTablesForDash } = await supabase
+            .from('vvip_tables')
+            .select('id, package_id, table_number');
+        const { data: activeBookingsForDash } = await supabase
+            .from('vvip_bookings')
+            .select('table_id')
+            .not('status', 'in', '(cancelled,no_show)')
+            .not('table_id', 'is', null);
+        const bookedSet = new Set((activeBookingsForDash || []).map(b => b.table_id));
+        const tablesByPkgForDash = {};
+        (allTablesForDash || []).forEach(t => {
+            (tablesByPkgForDash[t.package_id] = tablesByPkgForDash[t.package_id] || []).push(t);
+        });
+        const dashTableContainer = document.getElementById('dashTableAvailability');
+        if (dashTableContainer) {
+            if (!allTablesForDash || allTablesForDash.length === 0) {
+                dashTableContainer.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;">No tables yet — save a package to generate its tables</div>';
+            } else {
+                dashTableContainer.innerHTML = packages.map(pkg => {
+                    const tbls = tablesByPkgForDash[pkg.id] || [];
+                    if (!tbls.length) return '';
+                    return `
+                        <div style="margin-bottom:10px;">
+                            <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">${escapeHtml(pkg.name)}</div>
+                            <div class="table-chips">
+                                ${tbls.map(t => `<span class="table-chip ${bookedSet.has(t.id) ? 'booked' : 'available'}">${escapeHtml(t.table_number)}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('') || '<div style="color:var(--muted);font-size:0.7rem;">No tables yet</div>';
+            }
+        }
 
         // Package Sales chart
         const ctx1 = document.getElementById('dashPackageChart').getContext('2d');
