@@ -1157,7 +1157,7 @@
                 });
                 if (authError) {
                     if (authError.message.includes('already registered')) {
-                        showToast('This email is already registered. Please use a different email.', 'error');
+                        showToast('This email is already registered. If this is a staff member stuck without a role, use Edit instead of Create.', 'error');
                     } else {
                         throw authError;
                     }
@@ -1165,19 +1165,35 @@
                 }
                 if (!auth.user) throw new Error('Failed to create user');
 
-                // Create profile
-                const { error: profError } = await supabase.from('profiles').insert([{
-                    id: auth.user.id,
-                    name, surname, email,
-                    phone: data.get('phone') || null,
-                    role: 'staff',
-                    staff_role: staffRole,
-                    clock_in_pin: data.get('clock_in_pin') || null,
-                    status: data.get('status') || 'active',
-                    hourly_rate: parseFloat(hourlyRate)
-                }]);
-                if (profError) throw profError;
-                showToast('Staff created!', 'success');
+                // Create/repair profile via atomic RPC — this can be safely retried and
+                // will NEVER leave the profile without a staff_role, unlike a raw insert.
+                const finalizeProfile = () => supabase.rpc('upsert_staff_profile', {
+                    p_id: auth.user.id,
+                    p_name: name,
+                    p_surname: surname,
+                    p_email: email,
+                    p_phone: data.get('phone') || null,
+                    p_staff_role: staffRole,
+                    p_clock_in_pin: data.get('clock_in_pin') || null,
+                    p_status: data.get('status') || 'active',
+                    p_hourly_rate: parseFloat(hourlyRate)
+                });
+
+                let { error: profError } = await finalizeProfile();
+                if (profError) {
+                    // One automatic retry — covers transient network blips, the most
+                    // common cause of the old "orphaned auth user" failure mode.
+                    console.warn('Profile save failed, retrying once:', profError);
+                    ({ error: profError } = await finalizeProfile());
+                }
+                if (profError) {
+                    // Surface this persistently — the auth login now exists even though
+                    // the profile failed, so the admin MUST know to retry via Edit.
+                    showToast(`Login created but profile save failed: ${profError.message}. Click Edit on "${email}" to retry.`, 'error');
+                    console.error('upsert_staff_profile failed after retry:', profError);
+                    return;
+                }
+                showToast('Staff created with role assigned!', 'success');
             }
             closeStaffForm();
             await loadWorkforceData();
