@@ -44,45 +44,64 @@
             position: relative;
         }
 
-        /* ─── HEADER ─── */
-        .main-header {
+        /* ─── TOPBAR (matches order-admin so both iframes look alike) ─── */
+        .topbar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px 16px;
+            padding: 0 20px;
+            height: 54px;
             background: var(--s1);
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
             border-radius: 12px 12px 0 0;
             margin-bottom: 12px;
+            gap: 16px;
         }
-        .main-header h2 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-weight: 600;
-            font-size: 1rem;
-            color: var(--text);
+        .topbar-brand {
             display: flex;
             align-items: center;
             gap: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text);
+            letter-spacing: -0.01em;
         }
-        .main-header h2 i { color: var(--red); }
-        .header-actions { display: flex; gap: 8px; }
-        .icon-btn {
-            background: var(--s3);
-            border: 1px solid var(--border);
-            color: var(--muted);
-            font-size: 0.9rem;
+        .topbar-brand .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--red);
+            box-shadow: 0 0 8px var(--red-glow);
+        }
+        .topbar-actions { display: flex; gap: 8px; align-items: center; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: none;
             cursor: pointer;
-            border-radius: 8px;
-            width: 36px;
-            height: 36px;
-            display: flex;
+            transition: all 0.15s;
+            font-family: 'Inter', sans-serif;
+            white-space: nowrap;
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-ghost {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover { background: var(--s3); color: var(--text); border-color: var(--border-b); }
+        .btn-ghost.active { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
+        .btn-icon {
+            width: 34px; height: 34px;
+            padding: 0;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.15s;
+            border-radius: 7px;
+            font-size: 0.85rem;
         }
-        .icon-btn:hover { background: var(--s2); border-color: var(--border-b); color: var(--text); }
-        .icon-btn.active-toggle { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
 
         /* ─── MAIN CONTENT ─── */
         .main-content {
@@ -587,14 +606,17 @@
 <body>
 <div class="app" id="app">
 
-    <!-- ─── HEADER ─── -->
-    <div class="main-header">
-        <h2><i class="fas fa-crown"></i> VVIP Packages</h2>
-        <div class="header-actions">
-            <button class="icon-btn" onclick="toggleDashboard()" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
-            <button class="icon-btn" onclick="loadPackages()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+    <!-- ─── TOPBAR ─── -->
+    <header class="topbar">
+        <div class="topbar-brand">
+            <span class="dot"></span>
+            VVIP Packages
         </div>
-    </div>
+        <div class="topbar-actions">
+            <button class="btn btn-ghost btn-icon" onclick="toggleDashboard()" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
+            <button class="btn btn-ghost btn-icon" onclick="loadPackages()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        </div>
+    </header>
 
     <!-- ─── MAIN CONTENT ─── -->
     <div class="main-content">
@@ -660,6 +682,12 @@
                     <div class="form-group">
                         <label>Package Name *</label>
                         <input type="text" id="packageName" required placeholder="e.g., Paradise VVIP Experience">
+                    </div>
+                    <div class="form-group">
+                        <label>Event *</label>
+                        <select id="packageEvent" required>
+                            <option value="">Select an event…</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Description</label>
@@ -757,6 +785,7 @@
     let charts = {};
     let tableLabels = []; // per-table names for the package currently open in the modal
     let existingTableRows = []; // vvip_tables rows already saved for the package being edited
+    let events = []; // cached events list, used to populate the Event dropdown and show dates on cards
 
     // ─── HELPERS ───
     function showToast(message, isError = false) {
@@ -774,6 +803,34 @@
     }
 
     function fmtR(val) { return `R${(val||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+    function fmtDate(val) {
+        if (!val) return 'No date set';
+        return new Date(val).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    // ─── EVENTS (packages are tied to an event, which carries the date) ───
+    async function loadEvents() {
+        try {
+            const { data, error } = await supabase
+                .from('events')
+                .select('id, name, start_time')
+                .order('start_time', { ascending: true });
+            if (error) throw error;
+            events = data || [];
+            populateEventSelect();
+        } catch (err) {
+            console.warn('Could not load events:', err);
+        }
+    }
+    function populateEventSelect() {
+        const select = document.getElementById('packageEvent');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = '<option value="">Select an event…</option>' + events.map(ev =>
+            `<option value="${ev.id}">${escapeHtml(ev.name)} — ${fmtDate(ev.start_time)}</option>`
+        ).join('');
+        if (current) select.value = current;
+    }
 
     // ─── BENEFITS ───
     function updateBenefitsDisplay() {
@@ -889,6 +946,8 @@
         document.getElementById('packageForm').reset();
         document.getElementById('packageStatus').value = 'active';
         document.getElementById('packageTabCredit').value = '0';
+        populateEventSelect();
+        document.getElementById('packageEvent').value = '';
         updateBenefitsDisplay();
         renderTableLabelInputs();
         resetImageUpload();
@@ -904,6 +963,8 @@
         currentImageBase64 = pkg.image || null;
         document.getElementById('modalTitle').innerText = 'Edit VVIP Package';
         document.getElementById('packageName').value = pkg.name;
+        populateEventSelect();
+        document.getElementById('packageEvent').value = pkg.event_id || '';
         document.getElementById('packageDescription').value = pkg.description || '';
         document.getElementById('packagePrice').value = pkg.price;
         document.getElementById('packageCapacity').value = pkg.capacity;
@@ -968,6 +1029,7 @@
     document.getElementById('packageForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('packageName').value.trim();
+        const event_id = document.getElementById('packageEvent').value || null;
         const description = document.getElementById('packageDescription').value.trim();
         const price = parseFloat(document.getElementById('packagePrice').value);
         const capacity = parseInt(document.getElementById('packageCapacity').value);
@@ -980,11 +1042,12 @@
             showToast('Please fill in all required fields', true);
             return;
         }
+        if (!event_id) { showToast('Please select which event this package is for', true); return; }
         if (price <= 0) { showToast('Price must be greater than 0', true); return; }
         if (capacity <= 0) { showToast('Tables must be at least 1', true); return; }
         if (tab_credit < 0) { showToast('Tab credit cannot be negative', true); return; }
 
-        const packageData = { name, description, price, capacity, tab_credit, status, benefits, image };
+        const packageData = { name, description, price, capacity, tab_credit, status, benefits, image, event_id };
         try {
             let result;
             let packageId = currentEditingId;
@@ -1073,36 +1136,37 @@
     // ─── DELETE ACTIONS ───
     async function archivePackage() {
         if (!pendingDeletePackage) return;
+        const pkg = pendingDeletePackage;
         closeDeleteModal();
         try {
             const { error } = await supabase
                 .from('vvip_packages')
                 .update({ status: 'inactive' })
-                .eq('id', pendingDeletePackage.id);
+                .eq('id', pkg.id);
             if (error) throw error;
-            showToast(`Package "${pendingDeletePackage.name}" archived`);
+            showToast(`Package "${pkg.name}" archived`);
             await loadPackages();
         } catch (error) { showToast('Error: ' + error.message, true); }
-        pendingDeletePackage = null;
     }
     async function permanentDeletePackage() {
         if (!pendingDeletePackage) return;
+        const pkg = pendingDeletePackage;
         closeDeleteModal();
         try {
             const { error } = await supabase
                 .from('vvip_packages')
                 .delete()
-                .eq('id', pendingDeletePackage.id);
+                .eq('id', pkg.id);
             if (error) throw error;
-            showToast(`Package "${pendingDeletePackage.name}" permanently deleted`);
+            showToast(`Package "${pkg.name}" permanently deleted`);
             await loadPackages();
         } catch (error) { showToast('Error: ' + error.message, true); }
-        pendingDeletePackage = null;
     }
 
     // ─── LOAD PACKAGES ───
     async function loadPackages() {
         try {
+            await loadEvents();
             const { data, error } = await supabase
                 .from('vvip_packages')
                 .select('*')
@@ -1148,6 +1212,7 @@
                     ? `${bookedCount}/${pkgTables.length} booked`
                     : `${tables}`;
                 const visibleChips = pkgTables.slice(0, 6);
+                const pkgEvent = events.find(e => e.id === pkg.event_id);
                 return `
                 <div class="package-card">
                     <div class="package-image">
@@ -1159,6 +1224,7 @@
                             <span class="package-price">${fmtR(totalPrice)}</span>
                         </div>
                         <div class="package-meta">
+                            <span><i class="fas fa-calendar"></i> ${pkgEvent ? `${escapeHtml(pkgEvent.name)} · ${fmtDate(pkgEvent.start_time)}` : 'No event set'}</span>
                             <span><i class="fas fa-table"></i> Tables: ${tablesLabel}</span>
                             <span><i class="fas fa-coins"></i> Tab Credit: ${fmtR(tabCredit)}</span>
                             <span><i class="fas fa-ticket-alt"></i> Sold: ${pkg.sold_count || 0}</span>
@@ -1195,7 +1261,7 @@
     function toggleDashboard() {
         const overlay = document.getElementById('dashboardOverlay');
         overlay.classList.toggle('open');
-        document.getElementById('toggleDashBtn').classList.toggle('active-toggle', overlay.classList.contains('open'));
+        document.getElementById('toggleDashBtn').classList.toggle('active', overlay.classList.contains('open'));
         if (overlay.classList.contains('open')) renderCharts();
     }
     window.toggleDashboard = toggleDashboard;
@@ -1350,6 +1416,7 @@
 
     // ─── INIT ───
     setupImageUpload();
+    loadEvents();
     loadPackages();
 
     // Real-time subscription
