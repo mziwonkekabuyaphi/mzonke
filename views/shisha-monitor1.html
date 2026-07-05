@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Rands Shisha Lounge — Live Status Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,800;1,9..144,500&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --obsidian:#0a0a0c;
+    --charcoal:#15161b;
+    --charcoal-2:#1c1e25;
+    --hairline: rgba(255,255,255,0.08);
+    --sand:#efe8da;
+    --muted:#888c98;
+    --muted-dim:#5b5e68;
+
+    --brass:#d8ae62;
+    --brass-dim: rgba(216,174,98,0.14);
+    --azure:#57b3d9;
+    --azure-dim: rgba(87,179,217,0.14);
+    --ember:#ff5a3c;
+    --ember-dim: rgba(255,90,60,0.16);
+    --plum:#a488c9;
+    --plum-dim: rgba(164,136,201,0.14);
+    --emerald:#4bab7c;
+    --emerald-dim: rgba(75,171,124,0.12);
+
+    --font-display: 'Fraunces', serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+  }
+
+  html, body{ height:100%; }
+
+  body{
+    font-family: var(--font-body);
+    background: var(--obsidian);
+    color: var(--sand);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+    padding: clamp(16px, 2.2vw, 40px);
+  }
+
+  /* ---------- ambient atmosphere ---------- */
+  .atmosphere{ position: fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+  .atmosphere::after{
+    content:''; position:absolute; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity:.5;
+  }
+  .ember-glow{
+    position:absolute; width:46vw; height:46vw; border-radius:50%;
+    filter: blur(90px); opacity:.16;
+    background: radial-gradient(circle, var(--ember), transparent 70%);
+    animation: drift1 34s ease-in-out infinite alternate;
+  }
+  .ember-glow.two{
+    background: radial-gradient(circle, var(--azure), transparent 70%);
+    width:38vw; height:38vw; opacity:.10;
+    animation: drift2 42s ease-in-out infinite alternate;
+  }
+  .ember-glow.three{
+    background: radial-gradient(circle, var(--brass), transparent 70%);
+    width:30vw; height:30vw; opacity:.10;
+    animation: drift3 50s ease-in-out infinite alternate;
+  }
+  @keyframes drift1{ from{ top:-10%; left:-8%; } to{ top:20%; left:8%; } }
+  @keyframes drift2{ from{ bottom:-15%; right:-10%; } to{ bottom:10%; right:12%; } }
+  @keyframes drift3{ from{ top:40%; right:20%; } to{ top:10%; right:38%; } }
+
+  .board{ position:relative; z-index:1; max-width:1920px; margin:0 auto; }
+
+  /* ---------- header ---------- */
+  .board-header{
+    display:flex; align-items:center; justify-content:space-between;
+    gap: 20px; flex-wrap: wrap;
+    padding-bottom: clamp(14px, 1.6vw, 26px);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: clamp(16px, 1.8vw, 28px);
+  }
+
+  .brand{ display:flex; align-items:center; gap: 16px; }
+
+  .brand-emblem{
+    width: clamp(44px, 4vw, 60px); height: clamp(44px, 4vw, 60px);
+    border-radius: 50%;
+    border: 1.5px solid var(--brass);
+    display:flex; align-items:center; justify-content:center;
+    position:relative; flex-shrink:0;
+    background: radial-gradient(circle at 30% 25%, rgba(216,174,98,0.18), transparent 70%);
+  }
+  .brand-emblem img{ width:68%; height:68%; object-fit:contain; border-radius:50%; }
+  .brand-emblem .flame-mark{
+    width: 40%; height:40%;
+    background: linear-gradient(160deg, var(--brass), var(--ember));
+    clip-path: polygon(50% 0%, 78% 35%, 68% 100%, 32% 100%, 22% 35%);
+    filter: drop-shadow(0 0 6px rgba(255,90,60,0.5));
+  }
+
+  .brand-text h1{
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(24px, 2.6vw, 42px);
+    letter-spacing: 0.5px;
+    color: var(--sand);
+    line-height:1.05;
+  }
+  .brand-text p{
+    font-size: clamp(10px, 0.85vw, 13px);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin-top: 4px;
+    font-weight:600;
+  }
+
+  .board-status{ display:flex; align-items:center; gap: clamp(16px,2vw,34px); flex-wrap:wrap; }
+
+  .live-tag{
+    display:flex; align-items:center; gap:8px;
+    font-size: clamp(10px, 0.8vw, 12px);
+    letter-spacing: 2px; font-weight:700; text-transform:uppercase;
+    color: var(--ember);
+    padding: 7px 14px;
+    border: 1px solid rgba(255,90,60,0.35);
+    border-radius: 30px;
+    background: var(--ember-dim);
+  }
+  .live-dot{ width:7px; height:7px; border-radius:50%; background: var(--ember); box-shadow: 0 0 8px var(--ember); animation: blink 1.4s infinite; }
+
+  .clock{ text-align:right; }
+  .clock .time{
+    font-family: var(--font-body); font-weight:800; font-variant-numeric: tabular-nums;
+    font-size: clamp(20px, 2vw, 32px); color: var(--sand); letter-spacing: 1px;
+  }
+  .clock .date{
+    font-size: clamp(10px, 0.75vw, 12px); color: var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-top:2px;
+  }
+
+  @keyframes blink{ 0%,100%{ opacity:1;} 50%{ opacity:.35; } }
+
+  /* ---------- metrics strip ---------- */
+  .metrics{
+    display:flex; align-items:stretch;
+    background: linear-gradient(180deg, var(--charcoal), var(--charcoal-2));
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    margin-bottom: clamp(18px, 2vw, 30px);
+    overflow:hidden;
+  }
+  .metric{
+    flex:1; text-align:center; padding: clamp(14px,1.6vw,22px) 10px;
+    position:relative;
+  }
+  .metric + .metric::before{
+    content:''; position:absolute; left:0; top:18%; bottom:18%; width:1px; background: var(--hairline);
+  }
+  .metric .num{
+    font-weight:800; font-variant-numeric: tabular-nums;
+    font-size: clamp(26px, 2.6vw, 44px); line-height:1;
+  }
+  .metric .lbl{
+    margin-top: 6px; font-size: clamp(9px, 0.72vw, 12px); letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted); font-weight:600;
+  }
+  .metric.active .num{ color: var(--azure); }
+  .metric.refill .num{ color: var(--brass); }
+  .metric.expired .num{ color: var(--ember); }
+  .metric.paused .num{ color: var(--plum); }
+  .metric.free .num{ color: var(--emerald); }
+
+  /* ---------- station grid ---------- */
+  .station-grid{
+    display:grid; gap: clamp(12px, 1.3vw, 20px);
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+  @media (min-width: 1400px){ .station-grid{ grid-template-columns: repeat(6, 1fr); } }
+  @media (min-width: 2100px){ .station-grid{ grid-template-columns: repeat(7, 1fr); } }
+
+  .station-card{
+    background: linear-gradient(165deg, var(--charcoal), var(--charcoal-2));
+    border: 1px solid var(--hairline);
+    border-radius: 20px;
+    padding: clamp(14px, 1.5vw, 22px) 12px clamp(12px,1.3vw,18px);
+    display:flex; flex-direction:column; align-items:center; text-align:center;
+    gap: 10px;
+    position:relative;
+    transition: border-color .3s ease;
+  }
+  .station-card.active{ border-color: rgba(87,179,217,0.28); }
+  .station-card.refill{ border-color: rgba(216,174,98,0.4); animation: cardPulse 1.8s infinite; }
+  .station-card.expired{ border-color: rgba(255,90,60,0.4); }
+  .station-card.paused{ border-color: rgba(164,136,201,0.32); }
+  @keyframes cardPulse{
+    0%,100%{ box-shadow: 0 0 0 rgba(216,174,98,0); }
+    50%{ box-shadow: 0 0 22px rgba(216,174,98,0.18); }
+  }
+
+  .station-code{
+    font-size: clamp(11px, 0.9vw, 14px); font-weight:700; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase;
+  }
+
+  /* the coal ring — signature element */
+  .coal-ring{
+    --pct: 0; --ring-color: var(--azure); --ring-glow: rgba(87,179,217,0.45);
+    width: clamp(96px, 8.6vw, 148px); aspect-ratio: 1;
+    border-radius: 50%;
+    background: conic-gradient(var(--ring-color) calc(var(--pct)*1%), rgba(255,255,255,0.055) 0);
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+    filter: drop-shadow(0 0 10px var(--ring-glow));
+  }
+  .coal-ring::before{
+    content:''; position:absolute; inset: 9%;
+    border-radius:50%;
+    background: var(--charcoal-2);
+  }
+  .ring-center{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; }
+  .ring-timer{
+    font-weight:800; font-variant-numeric: tabular-nums;
+    font-size: clamp(18px, 1.7vw, 27px); color: var(--sand); letter-spacing: 0.5px;
+  }
+  .ring-caption{
+    font-size: clamp(8px, 0.6vw, 10px); letter-spacing: 1.5px; text-transform:uppercase;
+    color: var(--muted-dim); margin-top: 2px; font-weight:600;
+  }
+  .ring-icon{ font-size: clamp(22px, 2vw, 32px); }
+
+  .station-card.free .coal-ring{
+    background: none; border: 1.5px solid rgba(216,174,98,0.4);
+  }
+  .station-card.free .coal-ring::before{ display:none; }
+  .station-card.free .ring-icon{
+    background: linear-gradient(160deg, var(--brass), var(--ember));
+    clip-path: polygon(50% 0%, 78% 35%, 68% 100%, 32% 100%, 22% 35%);
+    width: 26%; height:26%;
+    animation: flicker 2.6s ease-in-out infinite;
+  }
+  @keyframes flicker{ 0%,100%{ opacity:1; transform: scale(1); } 50%{ opacity:.75; transform: scale(0.94); } }
+
+  .station-card.expired .coal-ring{ animation: emberPulse 1.4s infinite; }
+  @keyframes emberPulse{
+    0%,100%{ filter: drop-shadow(0 0 8px rgba(255,90,60,0.35)); }
+    50%{ filter: drop-shadow(0 0 18px rgba(255,90,60,0.65)); }
+  }
+  .station-card.active .ring-timer{ color: var(--azure); }
+  .station-card.refill .ring-timer{ color: var(--brass); }
+  .station-card.expired .ring-timer{ color: var(--ember); }
+  .station-card.paused .ring-timer{ color: var(--plum); }
+
+  .station-card.active .coal-ring{ --ring-color: var(--azure); --ring-glow: rgba(87,179,217,0.45); }
+  .station-card.refill .coal-ring{ --ring-color: var(--brass); --ring-glow: rgba(216,174,98,0.5); }
+  .station-card.expired .coal-ring{ --ring-color: var(--ember); --ring-glow: rgba(255,90,60,0.5); }
+  .station-card.paused .coal-ring{ --ring-color: var(--plum); --ring-glow: rgba(164,136,201,0.45); }
+
+  .status-chip{
+    font-size: clamp(9px, 0.7vw, 12px); font-weight:700; letter-spacing: 1.5px;
+    text-transform: uppercase; padding: 5px 14px; border-radius: 30px;
+  }
+  .station-card.active .status-chip{ background: var(--azure-dim); color: var(--azure); }
+  .station-card.refill .status-chip{ background: var(--brass-dim); color: var(--brass); }
+  .station-card.expired .status-chip{ background: var(--ember-dim); color: var(--ember); }
+  .station-card.paused .status-chip{ background: var(--plum-dim); color: var(--plum); }
+  .station-card.free .status-chip{ background: var(--emerald-dim); color: var(--emerald); }
+
+  .station-meta{
+    font-size: clamp(9.5px, 0.72vw, 12px); color: var(--muted);
+    line-height: 1.5;
+  }
+  .station-meta b{ color: var(--sand); font-weight:600; }
+
+  .overdue-badge{
+    font-size: clamp(8.5px, 0.62vw, 10.5px); font-weight:700; letter-spacing: 1px;
+    color: var(--ember); background: rgba(255,90,60,0.12);
+    padding: 3px 10px; border-radius: 20px;
+  }
+
+  /* ---------- footer ---------- */
+  .board-footer{
+    margin-top: clamp(20px, 2.2vw, 34px);
+    padding-top: clamp(14px, 1.6vw, 22px);
+    border-top: 1px solid var(--hairline);
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  .ticker{
+    flex:1; overflow:hidden; white-space:nowrap; position:relative;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  }
+  .ticker-track{
+    display:inline-flex; gap: 60px; animation: scroll 28s linear infinite;
+    font-size: clamp(11px, 0.85vw, 14px); color: var(--muted); letter-spacing: 0.5px;
+  }
+  .ticker-track b{ color: var(--brass); font-weight:700; }
+  @keyframes scroll{ from{ transform: translateX(0); } to{ transform: translateX(-50%); } }
+
+  .sync-time{
+    font-size: clamp(9.5px, 0.7vw, 12px); color: var(--muted-dim); font-variant-numeric: tabular-nums;
+    letter-spacing: 0.5px; flex-shrink:0;
+  }
+
+  .no-data{
+    text-align:center; padding: 80px 20px; color: var(--muted);
+    font-size: clamp(14px, 1.1vw, 18px); grid-column: 1 / -1;
+  }
+  .no-data.error{ color: var(--ember); }
+
+  @media (max-width: 640px){
+    .board-header{ justify-content:center; text-align:center; }
+    .board-status{ justify-content:center; width:100%; }
+    .clock{ text-align:center; }
+    .station-grid{ grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="atmosphere">
+  <div class="ember-glow one"></div>
+  <div class="ember-glow two"></div>
+  <div class="ember-glow three"></div>
+</div>
+
+<div class="board">
+
+  <header class="board-header">
+    <div class="brand">
+      <div class="brand-emblem">
+        <img src="../assets/images/rands-logo.png" alt="" onerror="this.style.display='none'; this.parentElement.querySelector('.flame-mark').style.display='block';">
+        <div class="flame-mark" style="display:none;"></div>
+      </div>
+      <div class="brand-text">
+        <h1>Rands Lounge</h1>
+        <p>Shisha Status Board</p>
+      </div>
+    </div>
+    <div class="board-status">
+      <div class="live-tag"><span class="live-dot"></span> Live · Supabase Realtime</div>
+      <div class="clock">
+        <div class="time" id="liveClock">--:--:--</div>
+        <div class="date" id="liveDate">—</div>
+      </div>
+    </div>
+  </header>
+
+  <section class="metrics">
+    <div class="metric active"><div class="num" id="activeCount">0</div><div class="lbl">In Session</div></div>
+    <div class="metric refill"><div class="num" id="refillCount">0</div><div class="lbl">Refill Due</div></div>
+    <div class="metric expired"><div class="num" id="expiredCount">0</div><div class="lbl">Overdue</div></div>
+    <div class="metric paused"><div class="num" id="pausedCount">0</div><div class="lbl">On Hold</div></div>
+    <div class="metric free"><div class="num" id="freeCount">0</div><div class="lbl">Available</div></div>
+  </section>
+
+  <section id="hookahGrid" class="station-grid">
+    <div class="no-data">Syncing with Supabase…</div>
+  </section>
+
+  <footer class="board-footer">
+    <div class="ticker">
+      <div class="ticker-track">
+        <span>✦ See something you like? Ask our staff to book your session ✦</span>
+        <span><b>R250</b> per session · <b>60 minutes</b> · Premium flavours available</span>
+        <span>✦ See something you like? Ask our staff to book your session ✦</span>
+        <span><b>R250</b> per session · <b>60 minutes</b> · Premium flavours available</span>
+      </div>
+    </div>
+    <div class="sync-time" id="lastUpdated">Last updated —</div>
+  </footer>
+
+</div>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+  // Supabase initialization with fallback
+  let supabase;
+  try {
+      const configModule = await import('../config/supabase.js');
+      supabase = configModule.supabase;
+      if (!supabase) throw new Error('Supabase client not found in config');
+  } catch (err) {
+      console.warn('Could not load ../config/supabase.js, using fallback. Please configure Supabase credentials.');
+      const SUPABASE_URL = 'https://your-project.supabase.co';
+      const SUPABASE_ANON_KEY = 'your-anon-key';
+      supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+
+  // Constants
+  const COAL_DURATION = 60; // minutes
+  const REFILL_THRESHOLD = 15; // minutes
+  const DURATION_SECONDS = COAL_DURATION * 60;
+
+  // Global data
+  let devicesMap = new Map();
+  let activeSessionsMap = new Map();
+  let allStationCodes = [];
+  let timerInterval = null;
+  let clockInterval = null;
+  let realtimeSubscription = null;
+
+  // Helper: format time with negative support
+  function formatTime(seconds) {
+      const isNegative = seconds < 0;
+      const absSeconds = Math.abs(seconds);
+      const mins = Math.floor(absSeconds / 60);
+      const secs = Math.floor(absSeconds % 60);
+      const formatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      return isNegative ? `-${formatted}` : formatted;
+  }
+
+  // Get current remaining seconds (can be negative for overdue)
+  function getCurrentRemainingSeconds(session) {
+      if (!session) return null;
+      if (session.paused) {
+          return Math.max(0, session.remainingTimeSeconds);
+      }
+      const lastRefillTime = session.lastRefillTime ? new Date(session.lastRefillTime) : new Date(session.startTime);
+      const now = new Date();
+      const elapsedSeconds = (now - lastRefillTime) / 1000;
+      let remaining = session.remainingTimeSeconds - elapsedSeconds;
+      return remaining;
+  }
+
+  // Get minutes overdue (positive number for expired sessions)
+  function getMinutesOverdue(remainingSeconds) {
+      if (remainingSeconds >= 0) return 0;
+      return Math.abs(Math.floor(remainingSeconds / 60));
+  }
+
+  // Determine session status and priority
+  function getSessionStatus(session, currentRemaining) {
+      if (!session) {
+          return {
+              class: 'free', text: 'AVAILABLE', indicator: 'free',
+              timer: null, timerClass: '', priority: 4, sortValue: 0
+          };
+      }
+      if (session.paused) {
+          return {
+              class: 'paused', text: 'ON HOLD', indicator: 'paused',
+              timer: formatTime(currentRemaining), timerClass: 'paused',
+              priority: 3, sortValue: -currentRemaining
+          };
+      }
+      if (currentRemaining <= 0) {
+          const overdueMinutes = getMinutesOverdue(currentRemaining);
+          return {
+              class: 'expired', text: 'OVERDUE', indicator: 'expired',
+              timer: formatTime(currentRemaining), timerClass: 'expired',
+              priority: 2, sortValue: overdueMinutes
+          };
+      }
+      if (currentRemaining <= REFILL_THRESHOLD * 60) {
+          return {
+              class: 'refill', text: 'REFILL DUE', indicator: 'refill',
+              timer: formatTime(currentRemaining), timerClass: 'refill',
+              priority: 1, sortValue: currentRemaining
+          };
+      }
+      return {
+          class: 'active', text: 'IN SESSION', indicator: 'active',
+          timer: formatTime(currentRemaining), timerClass: 'active',
+          priority: 1, sortValue: currentRemaining
+      };
+  }
+
+  // Sort stations according to priority rules
+  function sortStations(stations) {
+      return stations.sort((a, b) => {
+          if (a.status.priority !== b.status.priority) {
+              return a.status.priority - b.status.priority;
+          }
+          if (a.status.priority === 1) return a.status.sortValue - b.status.sortValue;
+          if (a.status.priority === 2) return b.status.sortValue - a.status.sortValue;
+          if (a.status.priority === 3) return b.status.sortValue - a.status.sortValue;
+          return a.deviceCode.localeCompare(b.deviceCode);
+      });
+  }
+
+  function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
+  }
+
+  // Render full grid with priority sorting
+  function renderHookahGrid() {
+      const grid = document.getElementById('hookahGrid');
+      if (!allStationCodes.length) {
+          grid.innerHTML = '<div class="no-data">No hookah stations found in database</div>';
+          return;
+      }
+
+      const stations = allStationCodes.map(deviceCode => {
+          const session = activeSessionsMap.get(deviceCode) || null;
+          let currentRemaining = null;
+          if (session) currentRemaining = getCurrentRemainingSeconds(session);
+          const status = getSessionStatus(session, currentRemaining);
+          let flavour = session?.flavour_name || null;
+          let location = session?.location_name || null;
+          if (!flavour && session) flavour = 'Premium Blend';
+          if (!location && session) location = 'Main Lounge';
+          return { deviceCode, session, status, currentRemaining, flavour, location };
+      });
+
+      const sortedStations = sortStations(stations);
+
+      grid.innerHTML = sortedStations.map(({ deviceCode, session, status, flavour, location, currentRemaining }) => {
+          const overdueMinutes = currentRemaining !== null && currentRemaining <= 0 ? getMinutesOverdue(currentRemaining) : 0;
+          const overdueText = overdueMinutes > 0 ? `<div class="overdue-badge">+${overdueMinutes} min over</div>` : '';
+
+          let pct = 0;
+          if (session && status.class !== 'expired') {
+              pct = Math.max(0, Math.min(100, (currentRemaining / DURATION_SECONDS) * 100));
+          }
+
+          const ringInner = status.class === 'free'
+              ? `<div class="ring-icon flame-mark"></div>`
+              : `<div class="ring-center">
+                   <div class="ring-timer">${status.timer}</div>
+                   <div class="ring-caption">${status.class === 'expired' ? 'over' : 'remaining'}</div>
+                 </div>`;
+
+          const metaHtml = session
+              ? `<div class="station-meta"><b>${escapeHtml(flavour)}</b><br>${escapeHtml(location)}</div>`
+              : `<div class="station-meta">Ask staff to<br>book your session</div>`;
+
+          return `
+              <div class="station-card ${status.class}">
+                  <div class="station-code">${escapeHtml(deviceCode)}</div>
+                  <div class="coal-ring" style="--pct:${pct};">
+                      ${ringInner}
+                  </div>
+                  <div class="status-chip">${status.text}</div>
+                  ${metaHtml}
+                  ${overdueText}
+              </div>
+          `;
+      }).join('');
+  }
+
+  // Update statistics based on current state
+  function updateStatistics() {
+      let free = 0, active = 0, refill = 0, expired = 0, paused = 0;
+      for (const deviceCode of allStationCodes) {
+          const session = activeSessionsMap.get(deviceCode);
+          if (!session) { free++; continue; }
+          const currentRemaining = getCurrentRemainingSeconds(session);
+          if (session.paused) paused++;
+          else if (currentRemaining <= 0) expired++;
+          else if (currentRemaining <= REFILL_THRESHOLD * 60) refill++;
+          else active++;
+      }
+      document.getElementById('freeCount').innerText = free;
+      document.getElementById('activeCount').innerText = active;
+      document.getElementById('refillCount').innerText = refill;
+      document.getElementById('expiredCount').innerText = expired;
+      document.getElementById('pausedCount').innerText = paused;
+  }
+
+  function updateLastUpdatedUI() {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('en-ZA', { hour12: false });
+      document.getElementById('lastUpdated').innerHTML = `Last updated ${timeString}`;
+  }
+
+  function updateLiveClock() {
+      const now = new Date();
+      document.getElementById('liveClock').innerText = now.toLocaleTimeString('en-ZA', { hour12: false });
+      document.getElementById('liveDate').innerText = now.toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
+  // Fetch data from Supabase
+  async function fetchDataFromSupabase() {
+      try {
+          const { data: devices, error: devicesError } = await supabase
+              .from('hookah_devices')
+              .select('id, device_code, location_id, status')
+              .order('device_code', { ascending: true });
+
+          if (devicesError) throw devicesError;
+
+          if (!devices || devices.length === 0) {
+              console.warn('No hookah_devices found, generating fallback SH-001..SH-030');
+              const fallbackDevices = [];
+              for (let i = 1; i <= 30; i++) {
+                  const code = `SH-${String(i).padStart(3, '0')}`;
+                  fallbackDevices.push({ id: `fallback_${i}`, device_code: code, location_id: null });
+              }
+              devicesMap.clear();
+              fallbackDevices.forEach(d => devicesMap.set(d.device_code, d));
+              allStationCodes = fallbackDevices.map(d => d.device_code);
+          } else {
+              devicesMap.clear();
+              devices.forEach(dev => devicesMap.set(dev.device_code, dev));
+              allStationCodes = devices.map(dev => dev.device_code);
+
+              if (allStationCodes.length < 30) {
+                  for (let i = allStationCodes.length + 1; i <= 30; i++) {
+                      const virtualCode = `SH-${String(i).padStart(3, '0')}`;
+                      if (!allStationCodes.includes(virtualCode)) {
+                          allStationCodes.push(virtualCode);
+                          devicesMap.set(virtualCode, { id: `virtual_${i}`, device_code: virtualCode });
+                      }
+                  }
+                  allStationCodes.sort();
+              }
+          }
+
+          const { data: sessions, error: sessionsError } = await supabase
+              .from('shisha_sessions')
+              .select(`
+                  id, device_id, product_id, location_id, start_time, last_refill_time,
+                  remaining_time_seconds, paused, status, ended_at,
+                  hookah_devices!inner ( device_code ),
+                  shisha_products ( name ),
+                  shisha_locations ( name )
+              `)
+              .is('ended_at', null);
+
+          if (sessionsError) throw sessionsError;
+
+          activeSessionsMap.clear();
+
+          for (const sess of sessions || []) {
+              const deviceCode = sess.hookah_devices?.device_code;
+              if (!deviceCode) continue;
+
+              const sessionObj = {
+                  id: sess.id,
+                  deviceId: sess.device_id,
+                  remainingTimeSeconds: sess.remaining_time_seconds || DURATION_SECONDS,
+                  lastRefillTime: sess.last_refill_time || sess.start_time,
+                  paused: sess.paused || false,
+                  startTime: sess.start_time,
+                  flavour_name: sess.shisha_products?.name || 'Original Blend',
+                  location_name: sess.shisha_locations?.name || 'Main Area'
+              };
+              activeSessionsMap.set(deviceCode, sessionObj);
+          }
+
+          renderHookahGrid();
+          updateStatistics();
+          updateLastUpdatedUI();
+
+      } catch (err) {
+          console.error('Supabase fetch error:', err);
+          document.getElementById('hookahGrid').innerHTML = '<div class="no-data error">Unable to reach the database. Please check the connection.</div>';
+      }
+  }
+
+  // Setup realtime subscriptions
+  function setupRealtimeSubscriptions() {
+      if (realtimeSubscription) realtimeSubscription.unsubscribe();
+
+      realtimeSubscription = supabase
+          .channel('shisha-monitor-changes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'shisha_sessions' }, () => fetchDataFromSupabase())
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'hookah_devices' }, () => fetchDataFromSupabase())
+          .subscribe((status) => {
+              if (status === 'SUBSCRIBED') console.log('Realtime subscription active');
+          });
+  }
+
+  function startRealTimeTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+          if (allStationCodes.length > 0) {
+              renderHookahGrid();
+              updateStatistics();
+          }
+      }, 1000);
+  }
+
+  function startClock() {
+      updateLiveClock();
+      if (clockInterval) clearInterval(clockInterval);
+      clockInterval = setInterval(updateLiveClock, 1000);
+  }
+
+  async function init() {
+      document.getElementById('hookahGrid').innerHTML = '<div class="no-data">Syncing with Supabase…</div>';
+      startClock();
+      await fetchDataFromSupabase();
+      startRealTimeTimer();
+      setupRealtimeSubscriptions();
+      setInterval(() => fetchDataFromSupabase(), 15000);
+  }
+
+  window.addEventListener('beforeunload', () => {
+      if (timerInterval) clearInterval(timerInterval);
+      if (clockInterval) clearInterval(clockInterval);
+      if (realtimeSubscription) realtimeSubscription.unsubscribe();
+  });
+
+  init();
+</script>
+</body>
+</html>
