@@ -930,7 +930,18 @@
   async function setWalletStatus(walletId, newStatus) {
     try {
       const supabaseStatus = newStatus === 'Active' ? 'active' : 'blocked';
-      await supabase.from('wallets').update({ status: supabaseStatus }).eq('id', walletId);
+      const { data, error } = await supabase
+        .from('wallets')
+        .update({ status: supabaseStatus })
+        .eq('id', walletId)
+        .select('id, status');
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        // Update ran without a thrown error but touched 0 rows — almost always a
+        // Row Level Security policy silently blocking the write. Surface this
+        // instead of pretending it worked.
+        throw new Error('No rows updated — check RLS policy on "wallets" table for UPDATE permissions');
+      }
       return true;
     } catch(err) { showToast('Status update failed: '+err.message, 'error'); return false; }
   }
