@@ -899,6 +899,8 @@
         return groups ? groups.join(' ') : str;
     };
     
+    let currentWalletStatus = null; // 'blocked' | 'active' | null
+
     const showToast = (message, isError = false) => {
         const toast = DOM.toast();
         if (toast) {
@@ -1112,10 +1114,11 @@
             
             const { data: wallet, error: walletError } = await supabase
                 .from('wallets')
-                .select('id, balance')
+                .select('id, balance, status')
                 .eq('user_id', session.user.id)
                 .single();
             if (walletError || !wallet) throw new Error('Could not find passport');
+            if (wallet.status === 'blocked') throw new Error('This Passport is blocked. Contact support for assistance.');
             
             const { data: payment, error: paymentError } = await supabase
                 .from('payment_requests')
@@ -1357,11 +1360,16 @@
         
         const { data: wallet, error: wErr } = await supabase
             .from('wallets')
-            .select('id, balance')
+            .select('id, balance, status')
             .eq('user_id', session.user.id)
             .maybeSingle();
         if (wErr) console.warn('Wallet query error:', wErr);
         updateBalance((wallet && typeof wallet.balance === 'number') ? wallet.balance : 0);
+
+        currentWalletStatus = wallet?.status || null;
+        if (currentWalletStatus === 'blocked') {
+            showToast('Your Passport is blocked. Contact support for assistance.', true);
+        }
 
        // Show phone number on card back + draw barcode from wallet UUID
 if (wallet?.id) {
