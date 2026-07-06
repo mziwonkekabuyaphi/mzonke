@@ -301,6 +301,76 @@
             color: var(--green);
         }
 
+        /* Guest check-in tracker */
+        .guest-tracker {
+            margin: 10px 0;
+            padding: 10px 12px;
+            background: var(--surface2);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+        .guest-tracker-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            color: var(--text2);
+            font-weight: 600;
+        }
+        .guest-tracker-row .count { color: var(--text); font-size: 0.85rem; }
+        .guest-tracker-row .count strong { color: var(--green); }
+        .guest-progress-bar {
+            height: 6px;
+            background: var(--surface3);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .guest-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--red), var(--gold));
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        .guest-tracker-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .guest-btn {
+            flex: 1;
+            padding: 7px 6px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.68rem;
+            cursor: pointer;
+            border: none;
+            transition: 0.2s;
+        }
+        .guest-btn-add { background: var(--green); color: white; }
+        .guest-btn-remove { background: var(--surface3); color: var(--text2); border: 1px solid var(--border); }
+        .guest-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .guest-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
+        .waiting-note {
+            font-size: 0.68rem;
+            color: var(--amber);
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .seat-override-btn {
+            background: none;
+            border: none;
+            color: var(--text3);
+            font-size: 0.65rem;
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            margin-top: 4px;
+        }
+        .seat-override-btn:hover { color: var(--amber); }
+
         .booking-actions {
             padding: 14px 18px 18px;
             display: flex;
@@ -484,6 +554,7 @@
     let currentFilter = 'all';
     let currentSearch = '';
     let packagesCache = {};
+    let tablesCache = {};
 
     function showToast(message, isError = false) {
         const toast = document.getElementById('toast');
@@ -496,12 +567,23 @@
     async function loadPackages() {
         const { data, error } = await supabase
             .from('vvip_packages')
-            .select('id, name, price, capacity, image, benefits');
+            .select('id, name, price, tab_credit, benefits');
         if (!error && data) {
             packagesCache = {};
             data.forEach(pkg => { packagesCache[pkg.id] = pkg; });
         }
         return packagesCache;
+    }
+
+    async function loadTables() {
+        const { data, error } = await supabase
+            .from('vvip_tables')
+            .select('id, table_number, capacity');
+        tablesCache = {};
+        if (!error && data) {
+            data.forEach(t => { tablesCache[t.id] = t; });
+        }
+        return tablesCache;
     }
 
     async function loadStats() {
@@ -527,6 +609,7 @@
     async function loadBookings() {
         try {
             await loadPackages();
+            await loadTables();
             const { data: bookings, error } = await supabase
                 .from('vvip_bookings')
                 .select('*')
@@ -544,11 +627,15 @@
                     profiles.forEach(p => { customers[p.id] = p; });
                 }
             }
-            allBookings = bookings.map(booking => ({
-                ...booking,
-                packages: packagesCache[booking.package_id] || null,
-                customer: customers[booking.customer_id] || null
-            }));
+            allBookings = bookings
+                // If admin deleted the package this booking was for, don't show it here anymore
+                .filter(booking => packagesCache[booking.package_id])
+                .map(booking => ({
+                    ...booking,
+                    packages: packagesCache[booking.package_id],
+                    table: booking.table_id ? (tablesCache[booking.table_id] || null) : null,
+                    customer: customers[booking.customer_id] || null
+                }));
             renderBookings();
             loadStats();
         } catch (error) {
@@ -581,35 +668,53 @@
         container.innerHTML = filtered.map(booking => {
             const packageInfo = booking.packages || {};
             const packageName = packageInfo.name || 'VVIP Package';
-            const totalPrice = booking.total_amount;
-            const tableCount = packageInfo.capacity || 0;
-            const pricePerTable = tableCount > 0 ? (totalPrice / tableCount).toFixed(2) : 0;
+            const totalPrice = booking.total_amount || 0;
+            const tableInfo = booking.table; // real named table from vvip_tables, or null for legacy bookings
+            const partySize = tableInfo?.capacity || booking.quantity || 1;
+            const checkedInCount = Math.min(booking.checked_in_count || 0, partySize);
             const customerName = booking.customer_name || booking.customer?.name || 'Guest';
             const customerPhone = booking.customer_phone || booking.customer?.phone || '-';
-            const remainingBalance = booking.remaining_balance !== null && booking.remaining_balance !== undefined ? booking.remaining_balance : booking.total_amount;
+            const remainingBalance = booking.remaining_balance ?? 0;
             const usedAmount = booking.used_amount || 0;
+            const fullyArrived = checkedInCount >= partySize;
 
             const statusMap = {
                 'confirmed': 'Pending Check-in',
-                'checked_in': 'Checked In',
+                'checked_in': fullyArrived ? 'Checked In' : `Checking In (${checkedInCount}/${partySize})`,
                 'seated': 'Seated',
                 'completed': 'Completed',
                 'cancelled': 'Cancelled'
             };
             const statusClass = `status-${booking.status}`;
 
+            // Guest tracker: shown while the booking is still gathering its party, before seating
+            const guestTracker = (booking.status === 'confirmed' || booking.status === 'checked_in') ? `
+                <div class="guest-tracker">
+                    <div class="guest-tracker-row">
+                        <span><i class="fas fa-users"></i> Guests arrived</span>
+                        <span class="count"><strong>${checkedInCount}</strong> / ${partySize}</span>
+                    </div>
+                    <div class="guest-progress-bar"><div class="guest-progress-fill" style="width:${partySize > 0 ? (checkedInCount/partySize*100) : 0}%;"></div></div>
+                    <div class="guest-tracker-actions">
+                        <button class="guest-btn guest-btn-add" ${fullyArrived ? 'disabled' : ''} onclick="checkInGuest('${booking.id}')"><i class="fas fa-user-plus"></i> +1 Arrived</button>
+                        <button class="guest-btn guest-btn-remove" ${checkedInCount <= 0 ? 'disabled' : ''} onclick="undoGuestCheckIn('${booking.id}')"><i class="fas fa-user-minus"></i> Undo</button>
+                    </div>
+                    ${!fullyArrived ? `<div class="waiting-note"><i class="fas fa-hourglass-half"></i> Waiting for ${partySize - checkedInCount} more guest${(partySize - checkedInCount) !== 1 ? 's' : ''} before seating</div>` : ''}
+                </div>
+            ` : '';
+
             let actionButtons = '';
             if (booking.status === 'confirmed') {
                 actionButtons = `
-                    <button class="action-btn action-checkin" onclick="updateBookingStatus('${booking.id}', 'checked_in')"><i class="fas fa-check-circle"></i> Check In</button>
                     <button class="action-btn action-cancel" onclick="updateBookingStatus('${booking.id}', 'cancelled')"><i class="fas fa-times"></i> Cancel</button>
                     <button class="action-btn action-view" onclick="viewBookingDetails('${booking.id}')"><i class="fas fa-eye"></i> Details</button>
                 `;
             } else if (booking.status === 'checked_in') {
                 actionButtons = `
-                    <button class="action-btn action-seat" onclick="updateBookingStatus('${booking.id}', 'seated')"><i class="fas fa-chair"></i> Mark Seated</button>
+                    <button class="action-btn action-seat" ${!fullyArrived ? 'disabled title="Waiting for the full party to arrive"' : ''} onclick="updateBookingStatus('${booking.id}', 'seated')"><i class="fas fa-chair"></i> Mark Seated</button>
                     <button class="action-btn action-cancel" onclick="updateBookingStatus('${booking.id}', 'cancelled')"><i class="fas fa-times"></i> Cancel</button>
                     <button class="action-btn action-view" onclick="viewBookingDetails('${booking.id}')"><i class="fas fa-eye"></i> Details</button>
+                    ${!fullyArrived ? `<button class="seat-override-btn" style="flex-basis:100%;" onclick="seatPartialGroup('${booking.id}')">Seat this partial group now (staff override)</button>` : ''}
                 `;
             } else if (booking.status === 'seated') {
                 actionButtons = `
@@ -633,18 +738,17 @@
                             <strong>${escapeHtml(packageName)}</strong>
                             <span class="package-price">R${totalPrice.toFixed(2)}</span>
                         </div>
-                        ${tableCount > 0 ? `
-                            <div class="tables-info">
-                                <span><i class="fas fa-table"></i> ${tableCount} table${tableCount !== 1 ? 's' : ''}</span>
-                                <span><i class="fas fa-tag"></i> R${pricePerTable} / table</span>
-                            </div>
-                        ` : `<div class="tables-info"><span><i class="fas fa-table"></i> Tables info not set</span></div>`}
+                        <div class="tables-info">
+                            <span><i class="fas fa-chair"></i> Table: ${tableInfo ? escapeHtml(tableInfo.table_number) : 'Not assigned'}</span>
+                            <span><i class="fas fa-users"></i> Party of ${partySize}</span>
+                        </div>
                         <div class="booking-details">
                             <div><i class="fas fa-user"></i> ${escapeHtml(customerName)}</div>
                             <div><i class="fas fa-phone"></i> ${escapeHtml(customerPhone)}</div>
                             <div><i class="fas fa-calendar-alt"></i> ${new Date(booking.created_at).toLocaleDateString()}</div>
                             <div><i class="fas fa-clock"></i> ${new Date(booking.created_at).toLocaleTimeString()}</div>
                         </div>
+                        ${guestTracker}
                         ${remainingBalance !== booking.total_amount ? `
                             <div class="remaining-credit">
                                 <i class="fas fa-wallet"></i> Remaining credit: <strong>R${remainingBalance.toFixed(2)}</strong>
@@ -659,21 +763,60 @@
         }).join('');
     }
 
+    window.checkInGuest = async function(bookingId) {
+        const booking = allBookings.find(b => b.id === bookingId);
+        if (!booking) return;
+        const partySize = booking.table?.capacity || booking.quantity || 1;
+        const newCount = Math.min((booking.checked_in_count || 0) + 1, partySize);
+        const updateData = { checked_in_count: newCount };
+        if (booking.status === 'confirmed') {
+            updateData.status = 'checked_in';
+            updateData.check_in_time = new Date().toISOString();
+        }
+        const { error } = await supabase.from('vvip_bookings').update(updateData).eq('id', bookingId);
+        if (error) { showToast('Error: ' + error.message, true); return; }
+        showToast(newCount >= partySize ? 'Full party checked in' : `Guest checked in (${newCount}/${partySize})`);
+        await loadBookings();
+    };
+
+    window.undoGuestCheckIn = async function(bookingId) {
+        const booking = allBookings.find(b => b.id === bookingId);
+        if (!booking) return;
+        const newCount = Math.max((booking.checked_in_count || 0) - 1, 0);
+        const { error } = await supabase.from('vvip_bookings').update({ checked_in_count: newCount }).eq('id', bookingId);
+        if (error) { showToast('Error: ' + error.message, true); return; }
+        showToast('Guest check-in undone');
+        await loadBookings();
+    };
+
+    window.seatPartialGroup = async function(bookingId) {
+        const booking = allBookings.find(b => b.id === bookingId);
+        if (!booking) return;
+        const partySize = booking.table?.capacity || booking.quantity || 1;
+        const proceed = confirm(`Only ${booking.checked_in_count || 0} of ${partySize} guests have arrived. Seat this party now anyway?`);
+        if (!proceed) return;
+        await window.updateBookingStatus(bookingId, 'seated');
+    };
+
     window.viewBookingDetails = async function(bookingId) {
         const booking = allBookings.find(b => b.id === bookingId);
         if (!booking) return;
         const packageInfo = booking.packages || {};
-        const tableCount = packageInfo.capacity || 0;
-        const totalPrice = booking.total_amount;
-        const pricePerTable = tableCount > 0 ? (totalPrice / tableCount).toFixed(2) : 0;
-        const remainingBalance = booking.remaining_balance !== null && booking.remaining_balance !== undefined ? booking.remaining_balance : booking.total_amount;
+        const tableInfo = booking.table;
+        const partySize = tableInfo?.capacity || booking.quantity || 1;
+        const checkedInCount = Math.min(booking.checked_in_count || 0, partySize);
+        const totalPrice = booking.total_amount || 0;
+        const remainingBalance = booking.remaining_balance ?? 0;
         const usedAmount = booking.used_amount || 0;
         const modalBody = document.getElementById('modalDetails');
         modalBody.innerHTML = `
             <div class="detail-row"><div class="detail-label">Reference:</div><div class="detail-value"><strong>${escapeHtml(booking.booking_reference)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Package:</div><div class="detail-value">${escapeHtml(packageInfo.name || 'VVIP Package')}</div></div>
-            <div class="detail-row"><div class="detail-label">Tables / Qty:</div><div class="detail-value">${tableCount} table${tableCount !== 1 ? 's' : ''} @ R${pricePerTable}/table</div></div>
-            <div class="detail-row"><div class="detail-label">Total Price:</div><div class="detail-value"><strong style="color: var(--red);">R${totalPrice.toFixed(2)}</strong></div></div>
+            <div class="detail-row"><div class="detail-label">Table:</div><div class="detail-value">${tableInfo ? escapeHtml(tableInfo.table_number) : 'Not assigned'}</div></div>
+            <div class="detail-row"><div class="detail-label">Party Size:</div><div class="detail-value">${partySize} guest${partySize !== 1 ? 's' : ''}</div></div>
+            <div class="detail-row"><div class="detail-label">Arrived:</div><div class="detail-value">${checkedInCount} / ${partySize} checked in</div></div>
+            <div class="detail-row"><div class="detail-label">Price Paid:</div><div class="detail-value"><strong style="color: var(--red);">R${totalPrice.toFixed(2)}</strong></div></div>
+            <div class="detail-row"><div class="detail-label">Tab Credit:</div><div class="detail-value"><strong style="color: var(--green);">R${(remainingBalance + usedAmount).toFixed(2)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Remaining:</div><div class="detail-value"><strong style="color: var(--green);">R${remainingBalance.toFixed(2)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Used (tab):</div><div class="detail-value">R${usedAmount.toFixed(2)}</div></div>
             <div class="detail-row"><div class="detail-label">Customer:</div><div class="detail-value">${escapeHtml(booking.customer_name || booking.customer?.name || '-')}</div></div>
@@ -735,6 +878,11 @@
 
     supabase.channel('vvip_bookings_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => { loadBookings(); })
+        .subscribe();
+
+    // If admin deletes (or edits) a package, drop/refresh any bookings tied to it immediately
+    supabase.channel('vvip_packages_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_packages' }, () => { loadBookings(); })
         .subscribe();
 
     loadBookings();
