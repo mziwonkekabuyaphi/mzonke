@@ -54,31 +54,6 @@
             margin: 0 auto;
         }
 
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-bottom: 32px;
-            padding-bottom: 16px;
-            border-bottom: 2px solid var(--red);
-        }
-        .header h1 {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.6rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, var(--red), #a0010e);
-            background-clip: text;
-            -webkit-background-clip: text;
-            color: transparent;
-        }
-        .header h1 i {
-            background: none;
-            color: var(--red);
-            margin-right: 8px;
-        }
         .btn-refresh {
             background: var(--surface2);
             border: 1px solid var(--border);
@@ -371,6 +346,95 @@
         }
         .seat-override-btn:hover { color: var(--amber); }
 
+        /* Named guest list (share-a-table: scanned wallets + plain names) */
+        .guest-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .guest-pill {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background: var(--surface3);
+            border: 1px solid var(--border);
+            border-radius: 30px;
+            padding: 6px 6px 6px 12px;
+            font-size: 0.75rem;
+        }
+        .guest-pill.primary { border-color: var(--gold); background: rgba(251,191,36,0.08); }
+        .guest-pill-name { display: flex; align-items: center; gap: 7px; color: var(--text); font-weight: 600; }
+        .guest-pill-name i.fa-id-badge { color: var(--green); }
+        .guest-pill-name i.fa-user { color: var(--text3); }
+        .guest-pill-name i.fa-crown { color: var(--gold); }
+        .guest-pill-remove {
+            background: none;
+            border: none;
+            color: var(--text3);
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+        }
+        .guest-pill-remove:hover { background: var(--red-dim); color: var(--red); }
+        .empty-guest-note {
+            font-size: 0.7rem;
+            color: var(--text3);
+            padding: 4px 0 8px;
+        }
+        .add-guest-form {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .add-guest-form input {
+            flex: 1;
+            padding: 8px 12px;
+            background: var(--surface3);
+            border: 1px solid var(--border);
+            border-radius: 30px;
+            color: var(--text);
+            font-size: 0.72rem;
+        }
+        .add-guest-form input:focus { outline: none; border-color: var(--red); }
+        .add-guest-btn {
+            background: var(--red);
+            color: white;
+            border: none;
+            padding: 0 16px;
+            border-radius: 30px;
+            font-weight: 700;
+            font-size: 0.68rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .add-guest-btn:hover { background: var(--red-dark); }
+        .add-guest-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .add-guest-hint {
+            font-size: 0.62rem;
+            color: var(--text3);
+            margin-top: 4px;
+        }
+        .checkin-primary-btn {
+            width: 100%;
+            background: var(--surface3);
+            border: 1px dashed var(--border2);
+            color: var(--text);
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .checkin-primary-btn:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
         .booking-actions {
             padding: 14px 18px 18px;
             display: flex;
@@ -504,11 +568,6 @@
 </head>
 <body>
 <div class="container">
-    <div class="header">
-        <h1><i class="fas fa-crown"></i> VVIP Staff Console</h1>
-        <button class="btn-refresh" onclick="loadAllData()"><i class="fas fa-sync-alt"></i> Refresh</button>
-    </div>
-
     <div class="stats-row" id="statsRow">
         <div class="stat-card"><div class="stat-number" id="totalBookings">-</div><div class="stat-label">Total Bookings</div></div>
         <div class="stat-card"><div class="stat-number" id="checkedInCount">-</div><div class="stat-label">Checked In</div></div>
@@ -627,6 +686,21 @@
                     profiles.forEach(p => { customers[p.id] = p; });
                 }
             }
+
+            const bookingIds = bookings.map(b => b.id);
+            let guestsByBooking = {};
+            if (bookingIds.length > 0) {
+                const { data: guestRows } = await supabase
+                    .from('vvip_booking_guests')
+                    .select('id, booking_id, customer_id, guest_name, is_primary, checked_in_at')
+                    .in('booking_id', bookingIds)
+                    .order('checked_in_at', { ascending: true });
+                (guestRows || []).forEach(g => {
+                    if (!guestsByBooking[g.booking_id]) guestsByBooking[g.booking_id] = [];
+                    guestsByBooking[g.booking_id].push(g);
+                });
+            }
+
             allBookings = bookings
                 // If admin deleted the package this booking was for, don't show it here anymore
                 .filter(booking => packagesCache[booking.package_id])
@@ -634,7 +708,8 @@
                     ...booking,
                     packages: packagesCache[booking.package_id],
                     table: booking.table_id ? (tablesCache[booking.table_id] || null) : null,
-                    customer: customers[booking.customer_id] || null
+                    customer: customers[booking.customer_id] || null,
+                    guests: guestsByBooking[booking.id] || []
                 }));
             renderBookings();
             loadStats();
@@ -671,7 +746,8 @@
             const totalPrice = booking.total_amount || 0;
             const tableInfo = booking.table; // real named table from vvip_tables, or null for legacy bookings
             const partySize = tableInfo?.capacity || booking.quantity || 1;
-            const checkedInCount = Math.min(booking.checked_in_count || 0, partySize);
+            const guests = booking.guests || [];
+            const checkedInCount = Math.min(guests.length, partySize);
             const customerName = booking.customer_name || booking.customer?.name || 'Guest';
             const customerPhone = booking.customer_phone || booking.customer?.phone || '-';
             const remainingBalance = booking.remaining_balance ?? 0;
@@ -687,7 +763,9 @@
             };
             const statusClass = `status-${booking.status}`;
 
-            // Guest tracker: shown while the booking is still gathering its party, before seating
+            // Guest tracker: a real named guest list, not a bare counter. The buyer can be scanned in
+            // (phone/wallet lookup) along with friends sharing the table, or a plain name if a guest
+            // has no wallet — since not everyone arrives, or arrives, at the same time.
             const guestTracker = (booking.status === 'confirmed' || booking.status === 'checked_in') ? `
                 <div class="guest-tracker">
                     <div class="guest-tracker-row">
@@ -695,11 +773,26 @@
                         <span class="count"><strong>${checkedInCount}</strong> / ${partySize}</span>
                     </div>
                     <div class="guest-progress-bar"><div class="guest-progress-fill" style="width:${partySize > 0 ? (checkedInCount/partySize*100) : 0}%;"></div></div>
-                    <div class="guest-tracker-actions">
-                        <button class="guest-btn guest-btn-add" ${fullyArrived ? 'disabled' : ''} onclick="checkInGuest('${booking.id}')"><i class="fas fa-user-plus"></i> +1 Arrived</button>
-                        <button class="guest-btn guest-btn-remove" ${checkedInCount <= 0 ? 'disabled' : ''} onclick="undoGuestCheckIn('${booking.id}')"><i class="fas fa-user-minus"></i> Undo</button>
-                    </div>
-                    ${!fullyArrived ? `<div class="waiting-note"><i class="fas fa-hourglass-half"></i> Waiting for ${partySize - checkedInCount} more guest${(partySize - checkedInCount) !== 1 ? 's' : ''} before seating</div>` : ''}
+                    ${guests.length ? `
+                        <div class="guest-list">
+                            ${guests.map(g => `
+                                <div class="guest-pill ${g.is_primary ? 'primary' : ''}">
+                                    <span class="guest-pill-name"><i class="fas ${g.is_primary ? 'fa-crown' : (g.customer_id ? 'fa-id-badge' : 'fa-user')}"></i> ${escapeHtml(g.guest_name)}</span>
+                                    <button class="guest-pill-remove" onclick="removeGuestFromBooking('${booking.id}', '${g.id}')" title="Remove"><i class="fas fa-times"></i></button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `<div class="empty-guest-note">No one checked in yet — check in the buyer to start seating this table.</div>`}
+                    ${!guests.length ? `
+                        <button class="checkin-primary-btn" onclick="checkInPrimaryGuest('${booking.id}')"><i class="fas fa-id-badge"></i> Check In ${escapeHtml(customerName)} (Buyer)</button>
+                    ` : `
+                        <div class="add-guest-form">
+                            <input type="text" id="guestInput-${booking.id}" placeholder="Scan/type phone, wallet ID, or just a name" ${fullyArrived ? 'disabled' : ''}>
+                            <button class="add-guest-btn" ${fullyArrived ? 'disabled' : ''} onclick="addGuestToBooking('${booking.id}')"><i class="fas fa-user-plus"></i> Add</button>
+                        </div>
+                        <div class="add-guest-hint">Matches an existing wallet automatically, or adds them as a plain guest</div>
+                    `}
+                    ${!fullyArrived && guests.length ? `<div class="waiting-note"><i class="fas fa-hourglass-half"></i> Waiting for ${partySize - checkedInCount} more guest${(partySize - checkedInCount) !== 1 ? 's' : ''} before seating</div>` : ''}
                 </div>
             ` : '';
 
@@ -763,29 +856,76 @@
         }).join('');
     }
 
-    window.checkInGuest = async function(bookingId) {
+    // Check in the primary buyer — the first entry in the table's guest list, and what flips the
+    // booking from "Pending" to "Checking In".
+    window.checkInPrimaryGuest = async function(bookingId) {
         const booking = allBookings.find(b => b.id === bookingId);
         if (!booking) return;
-        const partySize = booking.table?.capacity || booking.quantity || 1;
-        const newCount = Math.min((booking.checked_in_count || 0) + 1, partySize);
-        const updateData = { checked_in_count: newCount };
+        const customerName = booking.customer_name || booking.customer?.name || 'Guest';
+        const { error: guestErr } = await supabase.from('vvip_booking_guests').insert([{
+            booking_id: bookingId,
+            customer_id: booking.customer_id || null,
+            guest_name: customerName,
+            is_primary: true
+        }]);
+        if (guestErr) { showToast('Error: ' + guestErr.message, true); return; }
+        const updateData = { checked_in_count: 1 };
         if (booking.status === 'confirmed') {
             updateData.status = 'checked_in';
             updateData.check_in_time = new Date().toISOString();
         }
-        const { error } = await supabase.from('vvip_bookings').update(updateData).eq('id', bookingId);
-        if (error) { showToast('Error: ' + error.message, true); return; }
-        showToast(newCount >= partySize ? 'Full party checked in' : `Guest checked in (${newCount}/${partySize})`);
+        await supabase.from('vvip_bookings').update(updateData).eq('id', bookingId);
+        showToast(`${customerName} checked in`);
         await loadBookings();
     };
 
-    window.undoGuestCheckIn = async function(bookingId) {
+    // Scan/add a guest sharing this table: tries to match an existing wallet by phone or wallet ID
+    // first (so a friend's own tab can be linked), and falls back to just recording their name.
+    window.addGuestToBooking = async function(bookingId) {
         const booking = allBookings.find(b => b.id === bookingId);
         if (!booking) return;
-        const newCount = Math.max((booking.checked_in_count || 0) - 1, 0);
-        const { error } = await supabase.from('vvip_bookings').update({ checked_in_count: newCount }).eq('id', bookingId);
+        const partySize = booking.table?.capacity || booking.quantity || 1;
+        const currentCount = (booking.guests || []).length;
+        if (currentCount >= partySize) { showToast('This table is already at full capacity', true); return; }
+
+        const input = document.getElementById(`guestInput-${bookingId}`);
+        const identifier = (input?.value || '').trim();
+        if (!identifier) { showToast('Type a phone number, wallet ID, or name first', true); return; }
+
+        let customerId = null;
+        let guestName = identifier;
+
+        // Try to resolve to a real wallet — phone number first, then wallet ID
+        const { data: byPhone } = await supabase.from('profiles').select('id, name').eq('phone', identifier).maybeSingle();
+        let matchedProfile = byPhone;
+        if (!matchedProfile) {
+            const { data: byWallet } = await supabase.from('profiles').select('id, name').eq('wallet_id', identifier).maybeSingle();
+            matchedProfile = byWallet;
+        }
+        if (matchedProfile) {
+            customerId = matchedProfile.id;
+            guestName = matchedProfile.name || identifier;
+        }
+
+        const { error } = await supabase.from('vvip_booking_guests').insert([{
+            booking_id: bookingId,
+            customer_id: customerId,
+            guest_name: guestName,
+            is_primary: false
+        }]);
         if (error) { showToast('Error: ' + error.message, true); return; }
-        showToast('Guest check-in undone');
+        await supabase.from('vvip_bookings').update({ checked_in_count: currentCount + 1 }).eq('id', bookingId);
+        showToast(matchedProfile ? `Linked ${guestName}'s wallet to this table` : `Added ${guestName} as a guest`);
+        await loadBookings();
+    };
+
+    window.removeGuestFromBooking = async function(bookingId, guestId) {
+        const { error } = await supabase.from('vvip_booking_guests').delete().eq('id', guestId);
+        if (error) { showToast('Error: ' + error.message, true); return; }
+        const booking = allBookings.find(b => b.id === bookingId);
+        const newCount = Math.max(((booking?.guests || []).length - 1), 0);
+        await supabase.from('vvip_bookings').update({ checked_in_count: newCount }).eq('id', bookingId);
+        showToast('Guest removed');
         await loadBookings();
     };
 
@@ -793,7 +933,8 @@
         const booking = allBookings.find(b => b.id === bookingId);
         if (!booking) return;
         const partySize = booking.table?.capacity || booking.quantity || 1;
-        const proceed = confirm(`Only ${booking.checked_in_count || 0} of ${partySize} guests have arrived. Seat this party now anyway?`);
+        const arrived = (booking.guests || []).length;
+        const proceed = confirm(`Only ${arrived} of ${partySize} guests have arrived. Seat this party now anyway?`);
         if (!proceed) return;
         await window.updateBookingStatus(bookingId, 'seated');
     };
@@ -804,7 +945,8 @@
         const packageInfo = booking.packages || {};
         const tableInfo = booking.table;
         const partySize = tableInfo?.capacity || booking.quantity || 1;
-        const checkedInCount = Math.min(booking.checked_in_count || 0, partySize);
+        const guests = booking.guests || [];
+        const checkedInCount = Math.min(guests.length, partySize);
         const totalPrice = booking.total_amount || 0;
         const remainingBalance = booking.remaining_balance ?? 0;
         const usedAmount = booking.used_amount || 0;
@@ -815,6 +957,7 @@
             <div class="detail-row"><div class="detail-label">Table:</div><div class="detail-value">${tableInfo ? escapeHtml(tableInfo.table_number) : 'Not assigned'}</div></div>
             <div class="detail-row"><div class="detail-label">Party Size:</div><div class="detail-value">${partySize} guest${partySize !== 1 ? 's' : ''}</div></div>
             <div class="detail-row"><div class="detail-label">Arrived:</div><div class="detail-value">${checkedInCount} / ${partySize} checked in</div></div>
+            ${guests.length ? `<div class="detail-row"><div class="detail-label">Guest List:</div><div class="detail-value">${guests.map(g => `<span style="background: var(--surface2); padding: 4px 10px; border-radius: 30px; font-size: 11px; margin: 2px; display: inline-block;">${g.is_primary ? '<i class="fas fa-crown" style="color:var(--gold);"></i> ' : (g.customer_id ? '<i class="fas fa-id-badge" style="color:var(--green);"></i> ' : '')}${escapeHtml(g.guest_name)}</span>`).join('')}</div></div>` : ''}
             <div class="detail-row"><div class="detail-label">Price Paid:</div><div class="detail-value"><strong style="color: var(--red);">R${totalPrice.toFixed(2)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Tab Credit:</div><div class="detail-value"><strong style="color: var(--green);">R${(remainingBalance + usedAmount).toFixed(2)}</strong></div></div>
             <div class="detail-row"><div class="detail-label">Remaining:</div><div class="detail-value"><strong style="color: var(--green);">R${remainingBalance.toFixed(2)}</strong></div></div>
@@ -876,6 +1019,14 @@
         if (e.target === document.getElementById('detailsModal')) closeDetailsModal();
     });
 
+    // Event delegation: cards re-render often, so listen once on the grid for Enter in any guest input
+    document.getElementById('bookingsGrid').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.id?.startsWith('guestInput-')) {
+            const bookingId = e.target.id.replace('guestInput-', '');
+            window.addGuestToBooking(bookingId);
+        }
+    });
+
     supabase.channel('vvip_bookings_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => { loadBookings(); })
         .subscribe();
@@ -883,6 +1034,11 @@
     // If admin deletes (or edits) a package, drop/refresh any bookings tied to it immediately
     supabase.channel('vvip_packages_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_packages' }, () => { loadBookings(); })
+        .subscribe();
+
+    // Keep the guest list (share-a-table check-ins) in sync across every staff terminal
+    supabase.channel('vvip_booking_guests_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_booking_guests' }, () => { loadBookings(); })
         .subscribe();
 
     loadBookings();
