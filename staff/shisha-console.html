@@ -17,34 +17,6 @@
       padding-bottom: env(safe-area-inset-bottom);
     }
 
-    /* ============ TOP BAR ============ */
-    .topbar {
-      position: sticky; top: 0; z-index: 500;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 24px;
-      padding-top: calc(14px + env(safe-area-inset-top));
-      background: rgba(13,15,18,0.85);
-      backdrop-filter: blur(14px);
-      border-bottom: 1px solid rgba(255,255,255,0.07);
-    }
-    .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.2px; }
-    .topbar-brand i { color: #E30613; font-size: 1.1rem; }
-    .topbar-brand span { color: #8B92A8; font-weight: 600; font-size: 0.85rem; margin-left: 4px; }
-    .topbar-right { display: flex; align-items: center; gap: 18px; }
-    .conn-pill {
-      display: flex; align-items: center; gap: 7px;
-      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-      color: #8B92A8; background: #141720; border: 1px solid rgba(255,255,255,0.07);
-      padding: 6px 12px; border-radius: 60px;
-    }
-    .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: #64748B; transition: background 0.2s; }
-    .conn-pill.live .conn-dot { background: #22C55E; box-shadow: 0 0 6px #22C55E; animation: dotPulse 1.6s infinite; }
-    .conn-pill.live { color: #22C55E; }
-    .conn-pill.down .conn-dot { background: #E30613; box-shadow: 0 0 6px #E30613; }
-    .conn-pill.down { color: #E30613; }
-    @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-    .topbar-clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.95rem; color: #F0F2F8; min-width: 68px; text-align: right; }
-
     .page { max-width: 1440px; margin: 0 auto; padding: 22px 24px 40px; }
 
     /* ============ LAYOUT ============ */
@@ -107,7 +79,6 @@
     }
     .request-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
     .request-type-label { font-weight: 800; font-size: 0.78rem; letter-spacing: 0.4px; color: #F0F2F8; }
-    .request-subtag { color: #F59E0B; font-weight: 700; }
     .request-time { font-size: 0.65rem; color: #626878; white-space: nowrap; }
     .request-meta { font-size: 0.75rem; color: #8B92A8; line-height: 1.6; margin-bottom: 12px; }
     .request-meta b { color: #C6CBDA; font-weight: 600; }
@@ -183,17 +154,19 @@
     .pipe-card.expired .coal-fill { background: #64748B; }
     .pipe-card.paused .coal-fill { background: #F97316; }
 
-    .pipe-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+    .pipe-actions { display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 2px; }
     .pipe-actions button {
-      flex: 1; min-width: 90px; min-height: 42px;
+      flex: 1 1 0; min-width: 0; min-height: 42px;
       border-radius: 60px; border: none;
-      font-weight: 700; font-size: 0.74rem;
-      display: flex; align-items: center; justify-content: center; gap: 6px;
+      font-weight: 700; font-size: 0.7rem;
+      padding: 0 6px;
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      white-space: nowrap; overflow: hidden;
       cursor: pointer;
       transition: transform 0.12s ease, filter 0.12s ease;
     }
     .pipe-actions button:active { transform: scale(0.95); filter: brightness(0.9); }
-    .btn-assign { background: #E30613; color: white; flex-basis: 100%; }
+    .btn-assign { background: #E30613; color: white; flex-basis: 100%; font-size: 0.78rem; }
     .btn-refill { background: #F59E0B; color: #241a00; }
     .btn-pause { background: rgba(249,115,22,0.16); color: #F97316; border: 1px solid rgba(249,115,22,0.35) !important; }
     .btn-resume { background: #22C55E; color: #06210F; }
@@ -269,19 +242,10 @@
       .page { padding: 16px 14px 32px; }
       .stats-grid { grid-template-columns: repeat(3, 1fr); }
       .pipes-grid { grid-template-columns: 1fr 1fr; }
-      .topbar { padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top)); }
     }
   </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="topbar-brand"><i class="fas fa-fire"></i>Rands <span>Staff Console</span></div>
-  <div class="topbar-right">
-    <div class="conn-pill" id="connPill"><span class="conn-dot"></span><span id="connText">Connecting</span></div>
-    <div class="topbar-clock" id="topClock">--:--:--</div>
-  </div>
-</div>
 
 <div class="page">
   <div class="shisha-dashboard">
@@ -323,7 +287,7 @@
 <script type="module">
   import { supabase } from '../config/supabase.js';
 
-  const SESSION_PRICE = 250, REFILL_PRICE = 250, EXTEND_PRICE = 120, COAL_DURATION = 60, REFILL_THRESHOLD = 15;
+  const SESSION_PRICE = 250, REFILL_PRICE = 250, COAL_DURATION = 60, REFILL_THRESHOLD = 15;
   let activeSessions = [], allDevices = [], countdownInterval = null, realtimeSub = null;
 
   // ============ Modal & Toast ============
@@ -420,12 +384,7 @@
   // Request type labels — matches the 4 consolidated types:
   // order_session | maintenance | issue_report | end_session
   function requestLabel(r) {
-    const base = (r.request_type || '').replace(/_/g,' ').toUpperCase();
-    if (r.request_type === 'maintenance') {
-      const isRefill = r.amount == null || r.amount >= 200;
-      return `${base} <span class="request-subtag">· ${isRefill ? 'COAL REFILL' : 'EXTEND TIME'}</span>`;
-    }
-    return base;
+    return (r.request_type || '').replace(/_/g,' ').toUpperCase();
   }
 
   async function loadRequests() {
@@ -473,8 +432,7 @@
     } catch (err) { showModal('error', 'Error', err.message); }
   }
 
-  // 'maintenance' covers both coal refill (R250, full reset) and extend time (R120, +30 min).
-  // The two are told apart via the request's stored amount.
+  // 'maintenance' requests are coal refills.
   async function handleMaintenance(req) {
     let session = activeSessions.find(s => s.id === req.session_id);
     if (!session) throw new Error('Session not found');
@@ -483,31 +441,17 @@
     const { data: cur } = await supabase.from('shisha_sessions').select('paused,status').eq('id', session.id).single();
     if (cur?.paused) throw new Error('Session no longer active');
 
-    const isRefill = req.amount == null || req.amount >= 200;
-    const price = req.amount || (isRefill ? REFILL_PRICE : EXTEND_PRICE);
+    const price = req.amount || REFILL_PRICE;
     const newTotal = session.total_amount + price;
     const newCount = (session.refill_count || 0) + 1;
 
-    if (isRefill) {
-      const { error } = await supabase.from('shisha_sessions').update({
-        last_refill_time: new Date().toISOString(),
-        remaining_time_seconds: COAL_DURATION * 60,
-        status: 'active', total_amount: newTotal, refill_count: newCount
-      }).eq('id', session.id);
-      if (error) throw new Error('Refill failed: ' + error.message);
-      showToast(`Refilled ${session.device_code}`);
-    } else {
-      const rem = remainingSec(session);
-      const newRemaining = rem + 30 * 60;
-      const newLastRefill = new Date(Date.now() - (COAL_DURATION * 60 - newRemaining) * 1000).toISOString();
-      const { error } = await supabase.from('shisha_sessions').update({
-        last_refill_time: newLastRefill,
-        status: newRemaining <= REFILL_THRESHOLD * 60 ? 'refill' : 'active',
-        total_amount: newTotal, refill_count: newCount
-      }).eq('id', session.id);
-      if (error) throw new Error('Extend failed: ' + error.message);
-      showToast(`Extended ${session.device_code} by 30 min`);
-    }
+    const { error } = await supabase.from('shisha_sessions').update({
+      last_refill_time: new Date().toISOString(),
+      remaining_time_seconds: COAL_DURATION * 60,
+      status: 'active', total_amount: newTotal, refill_count: newCount
+    }).eq('id', session.id);
+    if (error) throw new Error('Refill failed: ' + error.message);
+    showToast(`Refilled ${session.device_code}`);
   }
 
   async function handleEndSessionRequest(req) {
@@ -640,11 +584,6 @@
   }
   function startTimer() { if(countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(updateAllTimers, 1000); }
 
-  function updateClock() {
-    const now = new Date();
-    document.getElementById('topClock').innerText = now.toLocaleTimeString('en-ZA', { hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
-  }
-
   // ============ Actions ============
   async function openAssignModal(deviceId, deviceCode) {
     if(!(await isHookahFree(deviceId))) { showModal('error', 'Not Available', 'This hookah is no longer free'); await loadSessions(); return; }
@@ -695,7 +634,7 @@
     if(!s || s.paused) return showModal('warning', 'Cannot Pause', 'Session not active or already paused');
     showModal('confirm', 'Pause Session', `Pause ${s.device_code}?`, async () => {
       let rem = remainingSec(s);
-      const { error } = await supabase.from('shisha_sessions').update({ paused: true, status: 'paused', remaining_time_seconds: Math.max(0,rem) }).eq('id', sessionId);
+      const { error } = await supabase.from('shisha_sessions').update({ paused: true, status: 'paused', remaining_time_seconds: Math.round(Math.max(0,rem)) }).eq('id', sessionId);
       if(error) showModal('error', 'Error', error.message);
       else { showToast(`Paused ${s.device_code}`); await loadSessions(); }
     });
@@ -726,29 +665,15 @@
     });
   }
 
-  function setConnStatus(state) {
-    const pill = document.getElementById('connPill');
-    const text = document.getElementById('connText');
-    pill.classList.remove('live','down');
-    if (state === 'live') { pill.classList.add('live'); text.innerText = 'Live'; }
-    else if (state === 'down') { pill.classList.add('down'); text.innerText = 'Reconnecting'; }
-    else { text.innerText = 'Connecting'; }
-  }
-
   function setupRealtime() {
     if(realtimeSub) realtimeSub.unsubscribe();
     realtimeSub = supabase.channel('shisha-console')
       .on('postgres_changes', { event:'*', schema:'public', table:'shisha_sessions' }, () => { loadSessions(); loadDevices(); })
       .on('postgres_changes', { event:'*', schema:'public', table:'shisha_requests' }, () => loadRequests())
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setConnStatus('live');
-        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setConnStatus('down');
-      });
+      .subscribe();
   }
 
   async function init() {
-    updateClock();
-    setInterval(updateClock, 1000);
     await loadDevices(); await loadSessions(); await loadRequests();
     startTimer(); setupRealtime();
     setInterval(async () => { await loadSessions(); await loadRequests(); await loadDevices(); }, 8000);
