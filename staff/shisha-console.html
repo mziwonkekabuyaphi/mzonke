@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Shisha Console · Rands Staff</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { height: 100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0D0F12;
+      min-height: 100vh;
+      color: #F0F2F8;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* ============ TOP BAR ============ */
+    .topbar {
+      position: sticky; top: 0; z-index: 500;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px;
+      padding-top: calc(14px + env(safe-area-inset-top));
+      background: rgba(13,15,18,0.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.2px; }
+    .topbar-brand i { color: #E30613; font-size: 1.1rem; }
+    .topbar-brand span { color: #8B92A8; font-weight: 600; font-size: 0.85rem; margin-left: 4px; }
+    .topbar-right { display: flex; align-items: center; gap: 18px; }
+    .conn-pill {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+      color: #8B92A8; background: #141720; border: 1px solid rgba(255,255,255,0.07);
+      padding: 6px 12px; border-radius: 60px;
+    }
+    .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: #64748B; transition: background 0.2s; }
+    .conn-pill.live .conn-dot { background: #22C55E; box-shadow: 0 0 6px #22C55E; animation: dotPulse 1.6s infinite; }
+    .conn-pill.live { color: #22C55E; }
+    .conn-pill.down .conn-dot { background: #E30613; box-shadow: 0 0 6px #E30613; }
+    .conn-pill.down { color: #E30613; }
+    @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .topbar-clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.95rem; color: #F0F2F8; min-width: 68px; text-align: right; }
+
+    .page { max-width: 1440px; margin: 0 auto; padding: 22px 24px 40px; }
+
+    /* ============ LAYOUT ============ */
+    .shisha-dashboard { display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+
+    .card {
+      background: #141720;
+      border-radius: 22px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 10px 24px -8px rgba(0,0,0,0.45);
+    }
+    .card-header {
+      padding: 16px 20px;
+      background: #1C2030;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.2px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #F0F2F8;
+    }
+    .card-header .card-title { display: flex; align-items: center; gap: 9px; }
+    .card-header i { color: #E30613; }
+    .card-header .subtle { color: #8B92A8; font-weight: 600; font-size: 0.78rem; }
+    .card-body { padding: 18px 20px; }
+
+    .badge-red {
+      background: #E30613; color: white;
+      min-width: 24px; height: 24px; padding: 0 8px;
+      border-radius: 60px; font-size: 0.72rem; font-weight: 800;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    /* ============ STATS ============ */
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    .stat-item { background: #1C2030; border-radius: 16px; padding: 12px 6px; text-align: center; }
+    .stat-number { font-size: 1.5rem; font-weight: 800; color: #F0F2F8; font-variant-numeric: tabular-nums; }
+    .stat-item.avail .stat-number { color: #22C55E; }
+    .stat-item.inuse .stat-number { color: #E30613; }
+    .stat-item.refill .stat-number { color: #F59E0B; }
+    .stat-item.expired .stat-number { color: #94A3B8; }
+    .stat-item.paused .stat-number { color: #F97316; }
+    .stat-label { font-size: 0.62rem; color: #8B92A8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+
+    /* ============ REQUESTS ============ */
+    .requests-container { max-height: 420px; overflow-y: auto; margin-top: 4px; }
+    .requests-container::-webkit-scrollbar { width: 6px; }
+    .requests-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 6px; }
+
+    .request-item {
+      background: #1C2030;
+      border-radius: 18px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-left: 3px solid #E30613;
+    }
+    .request-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .request-type-label { font-weight: 800; font-size: 0.78rem; letter-spacing: 0.4px; color: #F0F2F8; }
+    .request-subtag { color: #F59E0B; font-weight: 700; }
+    .request-time { font-size: 0.65rem; color: #626878; white-space: nowrap; }
+    .request-meta { font-size: 0.75rem; color: #8B92A8; line-height: 1.6; margin-bottom: 12px; }
+    .request-meta b { color: #C6CBDA; font-weight: 600; }
+    .request-buttons { display: flex; gap: 8px; }
+    .request-buttons button {
+      flex: 1;
+      min-height: 40px;
+      border: none; border-radius: 60px;
+      font-weight: 700; font-size: 0.78rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: transform 0.12s ease, filter 0.12s ease;
+    }
+    .request-buttons button:active { transform: scale(0.96); filter: brightness(0.92); }
+    .btn-approve { background: #22C55E; color: #06210F; }
+    .btn-reject { background: rgba(227,6,19,0.14); color: #FF6B6B; border: 1px solid rgba(227,6,19,0.3) !important; }
+
+    .empty-note { text-align: center; padding: 30px 10px; color: #626878; font-size: 0.85rem; }
+    .empty-note i { display: block; font-size: 1.5rem; color: #22C55E; margin-bottom: 8px; }
+
+    /* ============ HOOKAH STATIONS ============ */
+    .pipes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 4px;
+    }
+    .pipe-card {
+      background: #1C2030;
+      border-radius: 20px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-left: 4px solid #64748B;
+      transition: border-color 0.2s, transform 0.15s;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .pipe-card.available { border-left-color: #22C55E; }
+    .pipe-card.inuse { border-left-color: #E30613; }
+    .pipe-card.refill { border-left-color: #F59E0B; background: #241B0D; animation: refillGlow 1.8s infinite; }
+    .pipe-card.expired { border-left-color: #64748B; background: #191B21; }
+    .pipe-card.paused { border-left-color: #F97316; background: #221A0F; }
+    @keyframes refillGlow {
+      0%,100% { box-shadow: 0 0 0 rgba(245,158,11,0); }
+      50% { box-shadow: 0 0 16px rgba(245,158,11,0.16); }
+    }
+
+    .pipe-header { display: flex; justify-content: space-between; align-items: center; }
+    .pipe-code { font-weight: 800; font-size: 1.05rem; color: #F0F2F8; letter-spacing: 0.3px; }
+    .pipe-status {
+      font-size: 0.64rem; padding: 4px 10px; border-radius: 60px; font-weight: 700;
+      letter-spacing: 0.4px; text-transform: uppercase;
+    }
+    .pipe-status.available { background: rgba(34,197,94,0.15); color: #22C55E; }
+    .pipe-status.inuse { background: rgba(227,6,19,0.15); color: #E30613; }
+    .pipe-status.refill { background: rgba(245,158,11,0.15); color: #F59E0B; }
+    .pipe-status.expired { background: rgba(100,116,139,0.2); color: #94A3B8; }
+    .pipe-status.paused { background: rgba(249,115,22,0.15); color: #F97316; }
+
+    .pipe-meta { font-size: 0.76rem; color: #8B92A8; display: flex; flex-direction: column; gap: 2px; }
+    .pipe-meta b { color: #D6DAE6; font-weight: 600; }
+
+    .timer-row { display: flex; align-items: baseline; gap: 8px; }
+    .timer { font-variant-numeric: tabular-nums; font-size: 1.5rem; font-weight: 800; color: #F0F2F8; }
+    .timer.expired { color: #94A3B8; }
+    .timer.refill { color: #F59E0B; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
+    .timer-caption { font-size: 0.62rem; color: #626878; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+
+    .coal-track { height: 5px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
+    .coal-fill { height: 100%; border-radius: 4px; transition: width 1s linear; background: #64748B; }
+    .pipe-card.inuse .coal-fill { background: #E30613; }
+    .pipe-card.refill .coal-fill { background: #F59E0B; }
+    .pipe-card.expired .coal-fill { background: #64748B; }
+    .pipe-card.paused .coal-fill { background: #F97316; }
+
+    .pipe-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+    .pipe-actions button {
+      flex: 1; min-width: 90px; min-height: 42px;
+      border-radius: 60px; border: none;
+      font-weight: 700; font-size: 0.74rem;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer;
+      transition: transform 0.12s ease, filter 0.12s ease;
+    }
+    .pipe-actions button:active { transform: scale(0.95); filter: brightness(0.9); }
+    .btn-assign { background: #E30613; color: white; flex-basis: 100%; }
+    .btn-refill { background: #F59E0B; color: #241a00; }
+    .btn-pause { background: rgba(249,115,22,0.16); color: #F97316; border: 1px solid rgba(249,115,22,0.35) !important; }
+    .btn-resume { background: #22C55E; color: #06210F; }
+    .btn-end { background: rgba(100,116,139,0.16); color: #C6CBDA; border: 1px solid rgba(100,116,139,0.3) !important; }
+
+    /* ============ MODAL ============ */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.82);
+      backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 10000;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.2s ease;
+      padding: 20px;
+    }
+    .modal-overlay.active { opacity: 1; visibility: visible; }
+    .modal-container {
+      background: #141720;
+      border-radius: 26px;
+      max-width: 420px; width: 100%;
+      padding: 30px 26px;
+      text-align: center;
+      border: 1px solid rgba(227,6,19,0.35);
+      box-shadow: 0 24px 48px -16px rgba(0,0,0,0.6);
+      transform: scale(0.94) translateY(8px);
+      transition: transform 0.2s ease;
+    }
+    .modal-overlay.active .modal-container { transform: scale(1) translateY(0); }
+    .modal-icon {
+      width: 60px; height: 60px; margin: 0 auto 16px;
+      border-radius: 50%; background: rgba(227,6,19,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.7rem;
+    }
+    .modal-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 10px; color: #F0F2F8; }
+    .modal-message { color: #8B92A8; margin-bottom: 24px; line-height: 1.6; font-size: 0.9rem; }
+    .modal-buttons { display: flex; gap: 10px; }
+    .modal-btn { flex: 1; min-height: 46px; border-radius: 60px; border: none; font-weight: 700; font-size: 0.92rem; cursor: pointer; }
+    .modal-btn.confirm { background: #E30613; color: white; }
+    .modal-btn.cancel { background: #1C2030; color: #8B92A8; border: 1px solid rgba(255,255,255,0.1); }
+
+    .toast-pos {
+      position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1C2030; border-left: 3px solid #22C55E;
+      color: white; padding: 12px 22px; border-radius: 60px;
+      font-weight: 600; font-size: 0.88rem;
+      z-index: 10002; transition: transform 0.25s ease, opacity 0.25s ease;
+      opacity: 0; pointer-events: none;
+      box-shadow: 0 10px 26px -8px rgba(0,0,0,0.5);
+    }
+    .toast-pos.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    select, input {
+      background: #0D0F12;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 12px 14px;
+      color: #F0F2F8;
+      font-family: inherit;
+      font-size: 0.9rem;
+      width: 100%;
+    }
+    .field-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: #8B92A8; font-weight: 700; margin-bottom: 6px; margin-top: 12px; }
+    .field-label:first-child { margin-top: 0; }
+
+    @media (max-width: 980px) {
+      .shisha-dashboard { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(5, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .page { padding: 16px 14px 32px; }
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+      .pipes-grid { grid-template-columns: 1fr 1fr; }
+      .topbar { padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top)); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand"><i class="fas fa-fire"></i>Rands <span>Staff Console</span></div>
+  <div class="topbar-right">
+    <div class="conn-pill" id="connPill"><span class="conn-dot"></span><span id="connText">Connecting</span></div>
+    <div class="topbar-clock" id="topClock">--:--:--</div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="shisha-dashboard">
+    <div>
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header">
+          <span class="card-title"><i class="fas fa-concierge-bell"></i> Service requests</span>
+          <span id="requestBadge" class="badge-red">0</span>
+        </div>
+        <div class="card-body">
+          <div class="requests-container" id="requestsList"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="fas fa-chart-simple"></i> Live status</span></div>
+        <div class="card-body"><div class="stats-grid" id="statsContainer"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title"><i class="fas fa-smoking"></i> Hookah stations</span>
+        <span class="subtle">R250 · 60 min session</span>
+      </div>
+      <div class="card-body"><div id="pipesGrid" class="pipes-grid"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="modalOverlay" class="modal-overlay">
+  <div class="modal-container">
+    <div id="modalIcon" class="modal-icon"></div>
+    <div id="modalTitle" class="modal-title"></div>
+    <div id="modalMessage" class="modal-message"></div>
+    <div id="modalButtons" class="modal-buttons"></div>
+  </div>
+</div>
+<div id="toastMsg" class="toast-pos"></div>
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  const SESSION_PRICE = 250, REFILL_PRICE = 250, EXTEND_PRICE = 120, COAL_DURATION = 60, REFILL_THRESHOLD = 15;
+  let activeSessions = [], allDevices = [], countdownInterval = null, realtimeSub = null;
+
+  // ============ Modal & Toast ============
+  function showModal(type, title, message, onConfirm = null, onCancel = null) {
+    const overlay = document.getElementById('modalOverlay');
+    const iconMap = { success:'✅', error:'❌', warning:'⚠️', confirm:'❓' };
+    document.getElementById('modalIcon').innerHTML = iconMap[type] || '⚠️';
+    document.getElementById('modalTitle').innerText = title;
+    document.getElementById('modalMessage').innerHTML = message;
+    const btns = document.getElementById('modalButtons');
+    btns.innerHTML = '';
+    if (type === 'confirm' && onConfirm) {
+      const c = document.createElement('button'); c.className = 'modal-btn confirm'; c.innerText = 'Confirm';
+      c.onclick = () => { closeModal(); onConfirm(); };
+      const d = document.createElement('button'); d.className = 'modal-btn cancel'; d.innerText = 'Cancel';
+      d.onclick = () => { closeModal(); if(onCancel) onCancel(); };
+      btns.append(c, d);
+    } else {
+      const ok = document.createElement('button'); ok.className = 'modal-btn confirm'; ok.innerText = 'OK';
+      ok.onclick = closeModal;
+      btns.append(ok);
+    }
+    overlay.classList.add('active');
+  }
+  function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+  function showToast(msg, isErr = false) {
+    const t = document.getElementById('toastMsg');
+    t.innerText = msg;
+    t.style.borderLeftColor = isErr ? '#E30613' : '#22C55E';
+    t.classList.add('show');
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  // ============ Helpers ============
+  function remainingSec(session) {
+    if (!session) return 0;
+    if (session.paused) return session.remaining_time_seconds || 0;
+    const ref = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
+    const elapsed = (new Date() - ref) / 1000;
+    let rem = COAL_DURATION * 60 - elapsed;
+    return rem > 0 ? rem : 0;
+  }
+  function formatTime(sec) {
+    if (sec <= 0) return "00:00";
+    let m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+  }
+  function sessionStatus(s) {
+    if (s.paused) return 'paused';
+    if (s.status === 'expired') return 'expired';
+    let rem = remainingSec(s);
+    if (rem <= 0) return 'expired';
+    if (rem <= REFILL_THRESHOLD * 60) return 'refill';
+    return 'active';
+  }
+  async function isHookahFree(deviceId) {
+    const { data } = await supabase.from('shisha_sessions').select('id').eq('device_id', deviceId).in('status', ['active','refill','paused']).maybeSingle();
+    return !data;
+  }
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    return `${Math.floor(diff/3600)}h ago`;
+  }
+
+  // ============ Data loading ============
+  async function loadDevices() {
+    const { data } = await supabase.from('hookah_devices').select('*').order('device_code');
+    allDevices = data || [];
+  }
+  async function loadSessions() {
+    const { data } = await supabase.from('shisha_sessions').select(`
+      id, device_id, product_id, location_id, start_time, last_refill_time,
+      remaining_time_seconds, total_amount, refill_count, status, paused,
+      payment_method, customer_phone,
+      hookah_devices(device_code), shisha_products(name), shisha_locations(name)
+    `).in('status', ['active','refill','paused']);
+    if (data) {
+      activeSessions = data.map(s => ({
+        id: s.id, deviceId: s.device_id, device_code: s.hookah_devices?.device_code,
+        flavour_name: s.shisha_products?.name, location_name: s.shisha_locations?.name,
+        start_time: s.start_time, last_refill_time: s.last_refill_time,
+        remaining_time_seconds: s.remaining_time_seconds, total_amount: s.total_amount,
+        refill_count: s.refill_count || 0, paused: s.paused,
+        status: sessionStatus({ paused: s.paused, status: s.status, last_refill_time: s.last_refill_time, start_time: s.start_time, remaining_time_seconds: s.remaining_time_seconds })
+      }));
+    }
+    renderPipes(); updateStats();
+  }
+
+  // Request type labels — matches the 4 consolidated types:
+  // order_session | maintenance | issue_report | end_session
+  function requestLabel(r) {
+    const base = (r.request_type || '').replace(/_/g,' ').toUpperCase();
+    if (r.request_type === 'maintenance') {
+      const isRefill = r.amount == null || r.amount >= 200;
+      return `${base} <span class="request-subtag">· ${isRefill ? 'COAL REFILL' : 'EXTEND TIME'}</span>`;
+    }
+    return base;
+  }
+
+  async function loadRequests() {
+    const { data } = await supabase.from('shisha_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+    const pending = data || [];
+    document.getElementById('requestBadge').innerText = pending.length;
+    const container = document.getElementById('requestsList');
+    if (!pending.length) {
+      container.innerHTML = '<div class="empty-note"><i class="fas fa-circle-check"></i>No pending requests</div>';
+      return;
+    }
+    container.innerHTML = pending.map(r => `
+      <div class="request-item" data-id="${r.id}">
+        <div class="request-top">
+          <div class="request-type-label">${requestLabel(r)}</div>
+          <div class="request-time">${timeAgo(r.created_at)}</div>
+        </div>
+        <div class="request-meta">
+          📍 <b>${r.location_name || 'Lounge'}</b> &nbsp;·&nbsp; 🍃 <b>${r.flavour_name || '—'}</b><br>
+          👤 ${r.customer_phone || 'Guest'} &nbsp;·&nbsp; ${r.device_code || 'New station'}
+        </div>
+        <div class="request-buttons">
+          <button class="btn-approve" data-id="${r.id}"><i class="fas fa-check"></i> Approve</button>
+          <button class="btn-reject" data-id="${r.id}"><i class="fas fa-xmark"></i> Reject</button>
+        </div>
+      </div>
+    `).join('');
+    document.querySelectorAll('.btn-approve').forEach(btn => btn.addEventListener('click', () => approveRequest(btn.dataset.id)));
+    document.querySelectorAll('.btn-reject').forEach(btn => btn.addEventListener('click', () => rejectRequest(btn.dataset.id)));
+  }
+
+  // ============ Approve / reject ============
+  async function approveRequest(id) {
+    const { data: req } = await supabase.from('shisha_requests').select('*').eq('id', id).single();
+    if (!req) return showModal('error', 'Error', 'Request not found');
+    try {
+      if (req.request_type === 'order_session') await handleNewOrder(req);
+      else if (req.request_type === 'maintenance') await handleMaintenance(req);
+      else if (req.request_type === 'end_session') await handleEndSessionRequest(req);
+      else if (req.request_type === 'issue_report') showToast('Issue acknowledged');
+      else throw new Error('Unknown request type: ' + req.request_type);
+
+      await supabase.from('shisha_requests').update({ status: 'approved', responded_at: new Date().toISOString() }).eq('id', id);
+      await Promise.all([loadSessions(), loadRequests(), loadDevices()]);
+    } catch (err) { showModal('error', 'Error', err.message); }
+  }
+
+  // 'maintenance' covers both coal refill (R250, full reset) and extend time (R120, +30 min).
+  // The two are told apart via the request's stored amount.
+  async function handleMaintenance(req) {
+    let session = activeSessions.find(s => s.id === req.session_id);
+    if (!session) throw new Error('Session not found');
+    if (session.paused) throw new Error('Session is paused — resume it first');
+
+    const { data: cur } = await supabase.from('shisha_sessions').select('paused,status').eq('id', session.id).single();
+    if (cur?.paused) throw new Error('Session no longer active');
+
+    const isRefill = req.amount == null || req.amount >= 200;
+    const price = req.amount || (isRefill ? REFILL_PRICE : EXTEND_PRICE);
+    const newTotal = session.total_amount + price;
+    const newCount = (session.refill_count || 0) + 1;
+
+    if (isRefill) {
+      const { error } = await supabase.from('shisha_sessions').update({
+        last_refill_time: new Date().toISOString(),
+        remaining_time_seconds: COAL_DURATION * 60,
+        status: 'active', total_amount: newTotal, refill_count: newCount
+      }).eq('id', session.id);
+      if (error) throw new Error('Refill failed: ' + error.message);
+      showToast(`Refilled ${session.device_code}`);
+    } else {
+      const rem = remainingSec(session);
+      const newRemaining = rem + 30 * 60;
+      const newLastRefill = new Date(Date.now() - (COAL_DURATION * 60 - newRemaining) * 1000).toISOString();
+      const { error } = await supabase.from('shisha_sessions').update({
+        last_refill_time: newLastRefill,
+        status: newRemaining <= REFILL_THRESHOLD * 60 ? 'refill' : 'active',
+        total_amount: newTotal, refill_count: newCount
+      }).eq('id', session.id);
+      if (error) throw new Error('Extend failed: ' + error.message);
+      showToast(`Extended ${session.device_code} by 30 min`);
+    }
+  }
+
+  async function handleEndSessionRequest(req) {
+    const session = activeSessions.find(s => s.id === req.session_id);
+    const sid = req.session_id || session?.id;
+    if (!sid) throw new Error('Session not found');
+    const { error } = await supabase.from('shisha_sessions').update({ status: 'expired', ended_at: new Date().toISOString() }).eq('id', sid);
+    if (error) throw new Error('Ending session failed: ' + error.message);
+    showToast(`Ended session${session ? ' on ' + session.device_code : ''}`);
+  }
+
+  async function handleNewOrder(req) {
+    const { data: free } = await supabase.from('hookah_devices').select('id,device_code').eq('status', 'available').limit(1);
+    if (!free?.length) throw new Error('No available hookah');
+    const avail = await isHookahFree(free[0].id);
+    if (!avail) throw new Error('Hookah just taken');
+    const { data: prod } = await supabase.from('shisha_products').select('id').eq('name', req.flavour_name).limit(1);
+    const { data: loc } = await supabase.from('shisha_locations').select('id').eq('name', req.location_name).limit(1);
+    if (!prod?.length || !loc?.length) throw new Error('Invalid flavour/location');
+    const { error } = await supabase.from('shisha_sessions').insert({
+      device_id: free[0].id,
+      product_id: prod[0].id,
+      location_id: loc[0].id,
+      start_time: new Date().toISOString(),
+      last_refill_time: new Date().toISOString(),
+      remaining_time_seconds: COAL_DURATION * 60,
+      total_amount: SESSION_PRICE,
+      refill_count: 0,
+      status: 'active',
+      customer_phone: req.customer_phone || 'walkin_customer',
+      payment_method: 'cash'
+    });
+    if (error) throw new Error('Session creation failed');
+    showToast(`Started on ${free[0].device_code}`);
+  }
+
+  async function rejectRequest(id) {
+    await supabase.from('shisha_requests').update({ status: 'rejected', responded_at: new Date().toISOString() }).eq('id', id);
+    showToast('Request rejected');
+    await loadRequests();
+  }
+
+  // ============ Render stations ============
+  function renderPipes() {
+    if (!allDevices.length) return;
+    const container = document.getElementById('pipesGrid');
+    container.innerHTML = allDevices.map(dev => {
+      const sess = activeSessions.find(s => s.deviceId === dev.id);
+      let statusClass = "available", statusText = "Free", flavour = "—", loc = "—", timerVal = "—", timerClass = "", pct = 0, caption = "no active session";
+      if (sess) {
+        flavour = sess.flavour_name || "—"; loc = sess.location_name || "—";
+        const rem = remainingSec(sess);
+        const stat = sessionStatus(sess);
+        pct = Math.max(0, Math.min(100, (rem / (COAL_DURATION*60)) * 100));
+        if (sess.paused) { statusClass = "paused"; statusText = "Paused"; timerVal = formatTime(rem); caption = "on hold"; }
+        else if (stat === 'expired') { statusClass = "expired"; statusText = "Expired"; timerVal = "00:00"; timerClass = "expired"; caption = "needs attention"; pct = 0; }
+        else if (stat === 'refill') { statusClass = "refill"; statusText = "Refill soon"; timerVal = formatTime(rem); timerClass = "refill"; caption = "remaining"; }
+        else { statusClass = "inuse"; statusText = "In use"; timerVal = formatTime(rem); caption = "remaining"; }
+      }
+      return `<div class="pipe-card ${statusClass}" data-device-id="${dev.id}">
+        <div class="pipe-header">
+          <span class="pipe-code">${dev.device_code}</span>
+          <span class="pipe-status ${statusClass}">${statusText}</span>
+        </div>
+        <div class="pipe-meta">📍 <b>${loc}</b>&nbsp;&nbsp;🍃 <b>${flavour}</b></div>
+        <div class="timer-row">
+          <span class="timer ${timerClass}" data-session-id="${sess ? sess.id : ''}">${timerVal}</span>
+          <span class="timer-caption">${caption}</span>
+        </div>
+        <div class="coal-track"><div class="coal-fill" style="width:${pct}%"></div></div>
+        <div class="pipe-actions">
+          ${!sess ? `<button class="btn-assign" data-device-id="${dev.id}" data-device-code="${dev.device_code}"><i class="fas fa-plus"></i> Assign · R250</button>` :
+            `<button class="btn-refill" data-session-id="${sess.id}"><i class="fas fa-fire"></i> Refill</button>
+             ${sess.paused
+               ? `<button class="btn-resume" data-session-id="${sess.id}"><i class="fas fa-play"></i> Resume</button>`
+               : `<button class="btn-pause" data-session-id="${sess.id}"><i class="fas fa-pause"></i> Pause</button>`}
+             <button class="btn-end" data-session-id="${sess.id}"><i class="fas fa-stop"></i> End</button>`}
+        </div>
+      </div>`;
+    }).join('');
+    document.querySelectorAll('.btn-assign').forEach(btn => btn.addEventListener('click', () => openAssignModal(btn.dataset.deviceId, btn.dataset.deviceCode)));
+    document.querySelectorAll('.btn-refill').forEach(btn => btn.addEventListener('click', () => openRefillModal(btn.dataset.sessionId)));
+    document.querySelectorAll('.btn-pause').forEach(btn => btn.addEventListener('click', () => openPauseModal(btn.dataset.sessionId)));
+    document.querySelectorAll('.btn-resume').forEach(btn => btn.addEventListener('click', () => resumeSession(btn.dataset.sessionId)));
+    document.querySelectorAll('.btn-end').forEach(btn => btn.addEventListener('click', () => endSession(btn.dataset.sessionId)));
+  }
+
+  function updateStats() {
+    let avail=0, inuse=0, refill=0, expired=0, paused=0;
+    for(let dev of allDevices) {
+      let s = activeSessions.find(s => s.deviceId === dev.id);
+      if(!s) avail++;
+      else if(s.paused) paused++;
+      else {
+        let st = sessionStatus(s);
+        if(st === 'expired') expired++;
+        else if(st === 'refill') refill++;
+        else inuse++;
+      }
+    }
+    document.getElementById('statsContainer').innerHTML = `
+      <div class="stat-item avail"><div class="stat-number">${avail}</div><div class="stat-label">Free</div></div>
+      <div class="stat-item inuse"><div class="stat-number">${inuse}</div><div class="stat-label">In use</div></div>
+      <div class="stat-item refill"><div class="stat-number">${refill}</div><div class="stat-label">Refill</div></div>
+      <div class="stat-item expired"><div class="stat-number">${expired}</div><div class="stat-label">Expired</div></div>
+      <div class="stat-item paused"><div class="stat-number">${paused}</div><div class="stat-label">Paused</div></div>
+    `;
+  }
+
+  function updateAllTimers() {
+    document.querySelectorAll('.timer[data-session-id]').forEach(el => {
+      let sid = el.dataset.sessionId;
+      if(!sid) return;
+      let s = activeSessions.find(s => s.id === sid);
+      if(!s) return;
+      if (s.paused) return; // frozen while paused, no need to tick
+      let rem = remainingSec(s), st = sessionStatus(s);
+      const track = el.closest('.pipe-card')?.querySelector('.coal-fill');
+      if(rem <= 0 || st === 'expired') {
+        el.innerText = "00:00"; el.classList.add('expired'); el.classList.remove('refill');
+        if (track) track.style.width = '0%';
+      } else if(st === 'refill') {
+        el.innerText = formatTime(rem); el.classList.add('refill'); el.classList.remove('expired');
+        if (track) track.style.width = Math.max(0, Math.min(100,(rem/(COAL_DURATION*60))*100)) + '%';
+      } else {
+        el.innerText = formatTime(rem); el.classList.remove('expired','refill');
+        if (track) track.style.width = Math.max(0, Math.min(100,(rem/(COAL_DURATION*60))*100)) + '%';
+      }
+    });
+  }
+  function startTimer() { if(countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(updateAllTimers, 1000); }
+
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('topClock').innerText = now.toLocaleTimeString('en-ZA', { hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  }
+
+  // ============ Actions ============
+  async function openAssignModal(deviceId, deviceCode) {
+    if(!(await isHookahFree(deviceId))) { showModal('error', 'Not Available', 'This hookah is no longer free'); await loadSessions(); return; }
+    const { data: locs } = await supabase.from('shisha_locations').select('name').eq('is_active', true);
+    const { data: flavours } = await supabase.from('shisha_products').select('name').eq('is_available', true);
+    const html = `<div style="text-align:left">
+      <label class="field-label">Location</label>
+      <select id="assignLoc">${(locs||[]).map(l=>`<option>${l.name}</option>`).join('')}</select>
+      <label class="field-label">Flavour</label>
+      <select id="assignFlav">${(flavours||[]).map(f=>`<option>${f.name}</option>`).join('')}</select>
+    </div>`;
+    showModal('confirm', `Assign ${deviceCode}`, html, async () => {
+      const loc = document.getElementById('assignLoc')?.value, flav = document.getElementById('assignFlav')?.value;
+      if(!(await isHookahFree(deviceId))) { showModal('error', 'Not Available', 'Hookah taken'); return; }
+      const { data: prod } = await supabase.from('shisha_products').select('id').eq('name', flav).limit(1);
+      const { data: locObj } = await supabase.from('shisha_locations').select('id').eq('name', loc).limit(1);
+      if(!prod?.length || !locObj?.length) { showModal('error', 'Error', 'Invalid selection'); return; }
+      const { error } = await supabase.from('shisha_sessions').insert({
+        device_id: deviceId, product_id: prod[0].id, location_id: locObj[0].id,
+        start_time: new Date().toISOString(), last_refill_time: new Date().toISOString(),
+        remaining_time_seconds: COAL_DURATION*60, total_amount: SESSION_PRICE,
+        refill_count: 0, status: 'active', customer_phone: 'walkin_customer', payment_method: 'cash'
+      });
+      if(error) showModal('error', 'Error', error.message);
+      else { showToast(`Started ${deviceCode}`); await loadSessions(); await loadDevices(); }
+    });
+  }
+
+  async function openRefillModal(sessionId) {
+    let s = activeSessions.find(s => s.id === sessionId);
+    if(!s) return;
+    if(s.paused) return showModal('warning', 'Cannot Refill', 'Resume before refilling');
+    showModal('confirm', 'Confirm Refill', `Refill ${s.device_code} for R${REFILL_PRICE}? Total becomes R${s.total_amount + REFILL_PRICE}`, async () => {
+      const { data: cur } = await supabase.from('shisha_sessions').select('paused,status').eq('id', sessionId).single();
+      if(cur?.paused) { showModal('error', 'Error', 'Session no longer active'); await loadSessions(); return; }
+      const newTotal = s.total_amount + REFILL_PRICE, newCount = (s.refill_count||0)+1;
+      const { error } = await supabase.from('shisha_sessions').update({
+        last_refill_time: new Date().toISOString(), remaining_time_seconds: COAL_DURATION*60,
+        status: 'active', total_amount: newTotal, refill_count: newCount
+      }).eq('id', sessionId);
+      if(error) showModal('error', 'Error', error.message);
+      else { showToast(`Refilled ${s.device_code}`); await loadSessions(); }
+    });
+  }
+
+  async function openPauseModal(sessionId) {
+    let s = activeSessions.find(s => s.id === sessionId);
+    if(!s || s.paused) return showModal('warning', 'Cannot Pause', 'Session not active or already paused');
+    showModal('confirm', 'Pause Session', `Pause ${s.device_code}?`, async () => {
+      let rem = remainingSec(s);
+      const { error } = await supabase.from('shisha_sessions').update({ paused: true, status: 'paused', remaining_time_seconds: Math.max(0,rem) }).eq('id', sessionId);
+      if(error) showModal('error', 'Error', error.message);
+      else { showToast(`Paused ${s.device_code}`); await loadSessions(); }
+    });
+  }
+
+  // FIX: resuming must shift last_refill_time back by the time already elapsed
+  // before the pause, otherwise the frozen remaining time is ignored and the
+  // session's clock effectively keeps running through the entire pause.
+  async function resumeSession(sessionId) {
+    let s = activeSessions.find(s => s.id === sessionId);
+    if(!s?.paused) return showModal('warning', 'Cannot Resume', 'Session not paused');
+    let rem = s.remaining_time_seconds || 0;
+    let elapsedBeforePause = COAL_DURATION * 60 - rem;
+    let newLastRefill = new Date(Date.now() - elapsedBeforePause * 1000).toISOString();
+    let newStat = rem <= 0 ? 'expired' : (rem <= REFILL_THRESHOLD*60 ? 'refill' : 'active');
+    const { error } = await supabase.from('shisha_sessions').update({ paused: false, status: newStat, last_refill_time: newLastRefill }).eq('id', sessionId);
+    if(error) showModal('error', 'Error', error.message);
+    else { showToast(`Resumed ${s.device_code}`); await loadSessions(); }
+  }
+
+  async function endSession(sessionId) {
+    let s = activeSessions.find(s => s.id === sessionId);
+    if(!s) return;
+    showModal('confirm', 'End Session', `End ${s.device_code}? Total due: R${s.total_amount}`, async () => {
+      const { error } = await supabase.from('shisha_sessions').update({ status: 'expired', ended_at: new Date().toISOString() }).eq('id', sessionId);
+      if(error) showModal('error', 'Error', error.message);
+      else { showToast(`Ended ${s.device_code}`); await loadSessions(); await loadDevices(); }
+    });
+  }
+
+  function setConnStatus(state) {
+    const pill = document.getElementById('connPill');
+    const text = document.getElementById('connText');
+    pill.classList.remove('live','down');
+    if (state === 'live') { pill.classList.add('live'); text.innerText = 'Live'; }
+    else if (state === 'down') { pill.classList.add('down'); text.innerText = 'Reconnecting'; }
+    else { text.innerText = 'Connecting'; }
+  }
+
+  function setupRealtime() {
+    if(realtimeSub) realtimeSub.unsubscribe();
+    realtimeSub = supabase.channel('shisha-console')
+      .on('postgres_changes', { event:'*', schema:'public', table:'shisha_sessions' }, () => { loadSessions(); loadDevices(); })
+      .on('postgres_changes', { event:'*', schema:'public', table:'shisha_requests' }, () => loadRequests())
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setConnStatus('live');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setConnStatus('down');
+      });
+  }
+
+  async function init() {
+    updateClock();
+    setInterval(updateClock, 1000);
+    await loadDevices(); await loadSessions(); await loadRequests();
+    startTimer(); setupRealtime();
+    setInterval(async () => { await loadSessions(); await loadRequests(); await loadDevices(); }, 8000);
+  }
+  init();
+</script>
+</body>
+</html>
