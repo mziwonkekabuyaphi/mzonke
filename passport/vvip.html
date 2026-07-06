@@ -651,6 +651,45 @@
             color: var(--ink);
         }
 
+        /* Table selection chips (purchase modal) */
+        .table-selection-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+        .table-select-chip {
+            padding: 8px 16px;
+            border-radius: var(--radius-full);
+            border: 1.5px solid var(--border-strong);
+            background: var(--bone);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--ink);
+            cursor: pointer;
+            transition: var(--transition);
+            font-family: 'Inter', sans-serif;
+        }
+        .table-select-chip:active { transform: scale(0.95); }
+        .table-select-chip.selected {
+            background: linear-gradient(135deg, var(--red), var(--red-dark));
+            border-color: var(--red);
+            color: white;
+        }
+        .table-select-chip.taken {
+            opacity: 0.4;
+            text-decoration: line-through;
+            cursor: not-allowed;
+        }
+        .table-select-label {
+            font-size: 0.7rem;
+            color: var(--mist);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 8px;
+        }
+
         .request-modal-overlay {
             position: fixed;
             top: 0;
@@ -871,6 +910,8 @@
     <div class="vvip-modal" style="max-width:400px;">
         <div class="vvip-modal-icon crown-gold"><i class="fas fa-crown"></i></div>
         <div id="purchaseModalTitle" class="vvip-modal-title">Confirm Purchase</div>
+        <div id="tableSelectionLabel" class="table-select-label" style="display:none;">Choose your table</div>
+        <div id="tableSelectionGrid" class="table-selection-grid" style="display:none;"></div>
         <div id="purchaseModalMessage" class="vvip-modal-message"></div>
         <div class="vvip-modal-buttons">
             <button id="purchaseModalCancelBtn" class="vvip-modal-btn secondary">Cancel</button>
@@ -922,6 +963,10 @@
     let currentTabCredit = 0;
     let activePackage = null;
     let selectedPackage = null;
+    let selectedTableId = null;
+    let selectedTableLabel = null;
+    let availableTablesForSelection = []; // tables (with .taken flag) for the package open in the purchase modal
+    let eventsById = {}; // cached events, keyed by id, for showing each package's date
 
     function showToastMsg(msg, isError = false) {
         const t = document.getElementById('globalToast');
@@ -959,7 +1004,7 @@
         if (!currentProfile?.id) return;
         const { data: booking } = await supabase
             .from('vvip_bookings')
-            .select(`id, booking_reference, total_amount, remaining_balance, status, packages:vvip_packages(name, price, description, capacity, benefits)`)
+            .select(`id, booking_reference, total_amount, remaining_balance, status, table_id, packages:vvip_packages(name, price, description, capacity, benefits), table:vvip_tables(table_number)`)
             .eq('customer_id', currentProfile.id)
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
@@ -973,7 +1018,8 @@
                 totalAmount: booking.total_amount,
                 remainingAmount: booking.remaining_balance,
                 status: booking.status,
-                package: booking.packages
+                package: booking.packages,
+                tableLabel: booking.table?.table_number || null
             };
             currentTabCredit = booking.remaining_balance;
         } else if (booking && booking.total_amount) {
@@ -983,7 +1029,8 @@
                 totalAmount: booking.total_amount,
                 remainingAmount: booking.total_amount,
                 status: booking.status,
-                package: booking.packages
+                package: booking.packages,
+                tableLabel: booking.table?.table_number || null
             };
             currentTabCredit = booking.total_amount;
         } else {
@@ -1035,8 +1082,8 @@
                     <div class="value">${escapeHtml(pkg.name)}</div>
                 </div>
                 <div class="package-info-item">
-                    <div class="label">Tables</div>
-                    <div class="value">${pkg.capacity || 0}</div>
+                    <div class="label">Your Table</div>
+                    <div class="value highlight">${escapeHtml(activePackage.tableLabel || 'Not yet assigned')}</div>
                 </div>
                 <div class="package-info-item">
                     <div class="label">Total Value</div>
@@ -1108,15 +1155,40 @@
         const { data } = await supabase.from('vvip_packages').select('*').eq('status', 'active').order('price');
         const container = document.getElementById('packagesGrid');
         if (!data?.length) { container.innerHTML = '<div class="loading-state"><i class="fas fa-crown"></i><p>No VVIP Tables available</p></div>'; return; }
+
+        // Real table + booking data so availability reflects actual named tables, not just a stored count
+        const packageIds = data.map(p => p.id);
+        const { data: allTables } = await supabase.from('vvip_tables').select('id, package_id, table_number').in('package_id', packageIds);
+        const { data: activeBookings } = await supabase.from('vvip_bookings').select('table_id').not('status', 'in', '(cancelled,no_show)').not('table_id', 'is', null);
+        const bookedTableIds = new Set((activeBookings || []).map(b => b.table_id));
+        const tablesByPackage = {};
+        (allTables || []).forEach(t => { (tablesByPackage[t.package_id] = tablesByPackage[t.package_id] || []).push(t); });
+
+        // Event dates, since packages are tied to a specific event
+        const eventIds = [...new Set(data.map(p => p.event_id).filter(Boolean))];
+        if (eventIds.length) {
+            const { data: eventsData } = await supabase.from('events').select('id, name, start_time').in('id', eventIds);
+            eventsById = {};
+            (eventsData || []).forEach(ev => { eventsById[ev.id] = ev; });
+        }
+
         container.innerHTML = data.map(pkg => {
-            const tablesTotal = pkg.capacity || 0;
-            const tablesSold = pkg.sold_count || 0;
-            const tablesAvailable = tablesTotal - tablesSold;
+            const pkgTables = tablesByPackage[pkg.id] || [];
+            const usesRealTables = pkgTables.length > 0;
+            const tablesTotal = usesRealTables ? pkgTables.length : (pkg.capacity || 0);
+            const tablesAvailable = usesRealTables
+                ? pkgTables.filter(t => !bookedTableIds.has(t.id)).length
+                : Math.max(0, (pkg.capacity || 0) - (pkg.sold_count || 0));
             const pricePerTable = tablesTotal > 0 ? (pkg.price / tablesTotal).toFixed(2) : 0;
+            const ev = pkg.event_id ? eventsById[pkg.event_id] : null;
+            const eventLine = ev
+                ? `<div style="font-size:0.7rem;color:var(--mist);margin-bottom:8px;"><i class="fas fa-calendar"></i> ${escapeHtml(ev.name)} · ${ev.start_time ? new Date(ev.start_time).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}) : 'Date TBC'}</div>`
+                : '';
             return `<div class="package-card" onclick="window.selectPackage(${JSON.stringify(pkg).replace(/"/g, '&quot;')})">
                 <div class="package-image">${pkg.image ? `<img src="${pkg.image}" style="width:100%;height:100%;object-fit:cover;">` : '<i class="fas fa-crown"></i>'}</div>
                 <div class="package-content">
                     <div class="package-header"><span class="package-name">${escapeHtml(pkg.name)}</span><span class="package-price">R${pkg.price}</span></div>
+                    ${eventLine}
                     <div class="package-description">${escapeHtml(pkg.description || 'Premium VVIP experience')}</div>
                     <div class="benefits-list">${(pkg.benefits || []).slice(0,2).map(b => `<span class="benefit-tag">${escapeHtml(b)}</span>`).join('')}</div>
                     <div class="availability"><i class="fas fa-table"></i> ${tablesAvailable} of ${tablesTotal} tables available (R${pricePerTable}/table)</div>
@@ -1126,27 +1198,95 @@
         }).join('');
     }
 
-    window.selectPackage = function(pkg) {
+    window.selectPackage = async function(pkg) {
         if (currentTabCredit > 0) { 
             showToastMsg(`Cannot purchase - you already have an active package with R${currentTabCredit} remaining. Use that first.`, true); 
             return;
         }
         selectedPackage = pkg;
-        const tablesCount = pkg.capacity || 0;
-        const pricePerTable = tablesCount > 0 ? (pkg.price / tablesCount).toFixed(2) : 0;
+        selectedTableId = null;
+        selectedTableLabel = null;
+
+        // Pull this package's tables fresh (right at click time) so the list is as current as possible
+        const { data: tables } = await supabase.from('vvip_tables').select('id, table_number').eq('package_id', pkg.id).order('table_number');
+        const { data: activeBookings } = await supabase.from('vvip_bookings').select('table_id').not('status', 'in', '(cancelled,no_show)').not('table_id', 'is', null);
+        const bookedTableIds = new Set((activeBookings || []).map(b => b.table_id));
+        availableTablesForSelection = (tables || []).map(t => ({ ...t, taken: bookedTableIds.has(t.id) }));
+
         document.getElementById('purchaseModalTitle').innerText = pkg.name;
+
+        const label = document.getElementById('tableSelectionLabel');
+        const grid = document.getElementById('tableSelectionGrid');
+        if (availableTablesForSelection.length > 0) {
+            const anyAvailable = availableTablesForSelection.some(t => !t.taken);
+            label.style.display = 'block';
+            grid.style.display = 'flex';
+            if (!anyAvailable) {
+                grid.innerHTML = '<div style="color:var(--mist);font-size:0.75rem;">No tables available right now</div>';
+            } else {
+                grid.innerHTML = availableTablesForSelection.map(t => `
+                    <button type="button" class="table-select-chip ${t.taken ? 'taken' : ''}" data-id="${t.id}" data-label="${escapeHtml(t.table_number)}" ${t.taken ? 'disabled' : ''}>${escapeHtml(t.table_number)}</button>
+                `).join('');
+                grid.querySelectorAll('.table-select-chip:not(.taken)').forEach(chip => {
+                    chip.addEventListener('click', () => {
+                        grid.querySelectorAll('.table-select-chip').forEach(c => c.classList.remove('selected'));
+                        chip.classList.add('selected');
+                        selectedTableId = chip.dataset.id;
+                        selectedTableLabel = chip.dataset.label;
+                        updatePurchaseSummary();
+                    });
+                });
+            }
+        } else {
+            label.style.display = 'none';
+            grid.style.display = 'none';
+            grid.innerHTML = '';
+        }
+
+        updatePurchaseSummary();
+        document.getElementById('purchaseModal').classList.add('active');
+    };
+
+    function updatePurchaseSummary() {
+        const pkg = selectedPackage;
+        if (!pkg) return;
+        const tablesCount = availableTablesForSelection.length || pkg.capacity || 0;
+        const pricePerTable = tablesCount > 0 ? (pkg.price / tablesCount).toFixed(2) : 0;
+        const tableLine = availableTablesForSelection.length
+            ? (selectedTableLabel
+                ? `<div style="margin-top:8px;">Your table: <strong>${escapeHtml(selectedTableLabel)}</strong></div>`
+                : `<div style="margin-top:8px;color:var(--red);font-weight:600;">Please select a table above</div>`)
+            : '';
         document.getElementById('purchaseModalMessage').innerHTML = `
             <div style="background:var(--bone);padding:16px;border-radius:16px;">
                 <div><strong>${tablesCount} tables</strong> @ R${pricePerTable}/table</div>
                 <div style="margin-top:8px;">Package Price: <strong>R${pkg.price}</strong></div>
+                ${tableLine}
                 <div style="margin-top:8px;">After purchase you will have <strong>R${pkg.price}</strong> tab credit.</div>
             </div>
         `;
-        document.getElementById('purchaseModal').classList.add('active');
-    };
+    }
 
     async function confirmPurchase() {
         if (!selectedPackage) return;
+        if (availableTablesForSelection.length > 0 && !selectedTableId) {
+            showToastMsg('Please select a table first', true);
+            return;
+        }
+        // Guard against two people booking the same table at the same moment
+        if (selectedTableId) {
+            const { data: clash } = await supabase
+                .from('vvip_bookings')
+                .select('id')
+                .eq('table_id', selectedTableId)
+                .not('status', 'in', '(cancelled,no_show)')
+                .limit(1);
+            if (clash && clash.length) {
+                showToastMsg('That table was just booked by someone else — pick another', true);
+                await window.selectPackage(selectedPackage);
+                return;
+            }
+        }
         const bookingRef = `VVIP-${Date.now()}`;
         const { error: bookingErr } = await supabase.from('vvip_bookings').insert([{ 
             package_id: selectedPackage.id, 
@@ -1157,15 +1297,19 @@
             quantity: 1, 
             total_amount: selectedPackage.price,
             remaining_balance: selectedPackage.price,
-            status: 'confirmed' 
+            status: 'confirmed',
+            table_id: selectedTableId || null
         }]);
         if (bookingErr) { showToastMsg('Booking failed: ' + bookingErr.message, true); return; }
         await supabase.from('vvip_packages').update({ sold_count: (selectedPackage.sold_count || 0) + 1 }).eq('id', selectedPackage.id);
-        showToastMsg(`Package purchased! Ref: ${bookingRef} | Credit: R${selectedPackage.price}`);
+        showToastMsg(`Package purchased! Ref: ${bookingRef}${selectedTableLabel ? ' | Table: ' + selectedTableLabel : ''} | Credit: R${selectedPackage.price}`);
         document.getElementById('purchaseModal').classList.remove('active');
         await loadActivePackageAndCredit();
         await loadPackages();
         selectedPackage = null;
+        selectedTableId = null;
+        selectedTableLabel = null;
+        availableTablesForSelection = [];
     }
 
     async function sendServiceRequest() {
