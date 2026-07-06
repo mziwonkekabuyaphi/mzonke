@@ -79,10 +79,15 @@
     flex-shrink: 0;
   }
   .main-header h2 i { color: var(--red); }
+  .header-center {
+    flex: 1;
+    max-width: 380px;
+  }
   .header-actions {
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-shrink: 0;
   }
   .icon-btn {
     background: transparent;
@@ -646,6 +651,9 @@
   <!-- Header -->
   <div class="main-header">
     <h2><span class="dot"></span><i class="fas fa-wallet"></i> Passport Wallet</h2>
+    <div class="header-center">
+      <div class="search-box"><input type="text" id="globalSearch" placeholder="Search name, email, phone, wallet, UID..."><i class="fas fa-search"></i></div>
+    </div>
     <div class="header-actions">
       <button class="icon-btn" onclick="toggleDashboard()" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
       <button class="icon-btn" id="refreshBtnHeader" title="Refresh"><i class="fas fa-sync-alt"></i></button>
@@ -661,7 +669,6 @@
       <div class="dashboard-card">
         <div class="card-header">
           <h3><i class="fas fa-address-card"></i> Accounts</h3>
-          <div class="search-box"><input type="text" id="globalSearch" placeholder="Search name, email, phone, wallet, UID..."><i class="fas fa-search"></i></div>
         </div>
         <div class="card-body">
           <div class="account-list" id="accountList"></div>
@@ -1151,7 +1158,12 @@
       }));
       renderRefundRequests();
       updateStats();
-    } catch(err) { refundRequests=[]; renderRefundRequests(); }
+    } catch(err) {
+      console.error('loadRefundRequests failed:', err);
+      refundRequests = [];
+      renderRefundRequests();
+      showToast('Could not load refund requests: ' + (err.message || err), 'error');
+    }
   }
 
   function renderRefundRequests() {
@@ -1347,8 +1359,18 @@
       // Remove dependent rows first so the wallet delete doesn't hit FK constraints.
       await supabase.from('wallet_transactions').delete().eq('wallet_id', walletId);
       await supabase.from('wristbands').delete().eq('wallet_id', walletId);
-      const { error } = await supabase.from('wallets').delete().eq('id', walletId);
+      const { data, error } = await supabase
+        .from('wallets')
+        .delete()
+        .eq('id', walletId)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        // Delete ran without a thrown error but touched 0 rows — almost always a
+        // Row Level Security policy silently blocking the write. Surface this
+        // instead of pretending it worked.
+        throw new Error('No rows deleted — check RLS policy on "wallets" table for DELETE permissions');
+      }
       if (selectedAccountId === walletId) {
         selectedAccountId = null;
         document.getElementById('selectedAccountInfo').style.display = 'none';
