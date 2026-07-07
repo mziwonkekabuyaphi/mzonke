@@ -918,6 +918,9 @@
 <div class="no-event-banner" id="noEventBanner" style="display:none">
     <i class="fas fa-calendar-times"></i>
     <span>No active event right now — scanning is disabled</span>
+    <button id="forceEnableBtn" style="margin-left:12px;padding:4px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;font-size:0.85em;">
+        Enable Anyway
+    </button>
 </div>
 
 <div class="main-container">
@@ -1148,6 +1151,7 @@ const scannerBadgeText  = $('scannerBadgeText');
 const offlineBanner     = $('offlineBanner');
 const sheetOverlay      = $('sheetOverlay');
 const noEventBanner     = $('noEventBanner');
+const forceEnableBtn    = $('forceEnableBtn');
 const eventActiveBadge  = $('eventActiveBadge');
 const scanBtn           = $('scanBtn');
 const manualOpenBtn     = $('manualOpenBtn');
@@ -1346,15 +1350,46 @@ function subscribeRealtime() {
 /* ============================================================
    ACTIVE EVENT DETECTION
 ============================================================ */
+// Supabase/Postgres timestamps often look like "2026-07-07 14:00:00"
+// or "2026-07-07 14:00:00+00". Some browsers (notably Safari/iOS)
+// fail to parse the space-separated form and silently return an
+// Invalid Date, which makes every comparison below false. This
+// normalizes the string to a form every browser parses reliably.
+function parseSupaDate(ts) {
+    if (!ts) return null;
+    let s = String(ts).trim();
+    s = s.replace(' ', 'T');                    // "YYYY-MM-DD HH:MM:SS" -> ISO form
+    if (!/[Zz]|[+-]\d{2}:?\d{2}$/.test(s)) {
+        s += 'Z';                                // no timezone marker -> assume UTC
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 function findActiveEvent(events) {
     const now = new Date();
-    return events.find(ev => {
-        const start = ev.start_time ? new Date(ev.start_time) : null;
-        const end   = ev.end_time   ? new Date(ev.end_time)   : null;
+    const match = events.find(ev => {
+        const start = parseSupaDate(ev.start_time);
+        const end   = parseSupaDate(ev.end_time);
         if (!start) return false;
         if (end) return now >= start && now <= end;
         return now >= start; // no end_time → open-ended
     }) || null;
+
+    // Debug: open your browser console (F12) to see exactly why an
+    // event is/isn't matching — this is the fastest way to spot a
+    // timezone offset if events still don't show as active.
+    console.log('[findActiveEvent] now =', now.toISOString());
+    events.forEach(ev => {
+        const start = parseSupaDate(ev.start_time);
+        const end   = parseSupaDate(ev.end_time);
+        console.log(
+            `[findActiveEvent] "${ev.name}" start_time(raw)=${ev.start_time} -> ${start ? start.toISOString() : 'INVALID/NULL'}`,
+            `end_time(raw)=${ev.end_time} -> ${end ? end.toISOString() : 'INVALID/NULL'}`
+        );
+    });
+
+    return match;
 }
 
 function setScanEnabled(enabled) {
@@ -1418,6 +1453,17 @@ async function loadEvents() {
     await loadStats();
     await loadRecentScans();
     subscribeRealtime();
+
+    // Manual override: if detection is wrong (e.g. a timezone mismatch),
+    // staff can unblock scanning immediately without waiting on a fix.
+    forceEnableBtn.onclick = () => {
+        activeEventLocked = false;
+        eventSelect.disabled = false;
+        setScanEnabled(true);
+        noEventBanner.classList.remove('show');
+        noEventBanner.style.display = 'none';
+        showToast(`Scanning manually enabled for: ${currentEvent?.name || 'selected event'}`, false);
+    };
 
     // Only allow switching events if not locked
     eventSelect.onchange = async (e) => {
