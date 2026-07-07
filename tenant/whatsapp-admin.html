@@ -992,34 +992,83 @@
     // ─── LOADERS ───
     // Loads conversations along with their messages (used for previews + dashboard stats).
     async function loadConversations() {
-        try {
-            const { data, error } = await supabase
-                .from('conversations')
-                .select(`*, messages ( id, message_text, direction, created_at, status, message_type )`)
-                .order('last_message_at', { ascending: false })
-                .limit(100);
-            if (error) throw error;
-            allConversations = data || [];
-            allMessagesFlat = [];
-            allConversations.forEach(c => {
-                const msgs = Array.isArray(c.messages) ? [...c.messages].sort((a,b) => new Date(a.created_at) - new Date(b.created_at)) : [];
-                allMessagesFlat.push(...msgs);
-                // Don't clobber a full message set already loaded for an open conversation
-                if (!messagesCache.has(c.id) || messagesCache.get(c.id).length <= msgs.length) {
-                    if (!messagesCache.has(c.id)) messagesCache.set(c.id, msgs);
+    try {
+        console.log('[loadConversations] Starting...');
+        
+        // Fetch all conversations
+        const { data: conversations, error: convError } = await supabase
+            .from('conversations')
+            .select('*')
+            .order('last_message_at', { ascending: false })
+            .limit(100);
+            
+        if (convError) {
+            console.error('[loadConversations] Error:', convError);
+            throw convError;
+        }
+        
+        console.log(`[loadConversations] Found ${conversations?.length || 0} conversations`);
+        allConversations = conversations || [];
+        allMessagesFlat = [];
+        
+        // For each conversation, fetch messages separately
+        for (const conv of allConversations) {
+            try {
+                const { data: msgs, error: msgError } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('conversation_id', conv.id)
+                    .order('created_at', { ascending: true });
+                    
+                if (msgError) {
+                    console.error(`[loadConversations] Error fetching messages for ${conv.id}:`, msgError);
+                    conv.messages = [];
+                    messagesCache.set(conv.id, []);
+                } else {
+                    const messageList = msgs || [];
+                    conv.messages = messageList;
+                    allMessagesFlat.push(...messageList);
+                    messagesCache.set(conv.id, messageList);
+                    console.log(`[loadConversations] Loaded ${messageList.length} messages for ${conv.id}`);
                 }
-                delete c.messages;
-            });
-            // Batch-fetch profiles for every profile_id we saw, so displayName() can resolve synchronously.
-            const customerIds = [...new Set(allConversations.map(c => c.profile_id).filter(Boolean))];
-            if (customerIds.length) {
-                try {
-                    const { data: profiles, error: profErr } = await supabase.from('profiles').select('*').in('id', customerIds);
-                    if (!profErr && profiles) profiles.forEach(p => profilesCache.set(p.id, p));
-                } catch (e) { /* profiles are optional — fall back to phone-based display names */ }
+            } catch (e) {
+                console.error(`[loadConversations] Error processing ${conv.id}:`, e);
+                conv.messages = [];
+                messagesCache.set(conv.id, []);
             }
-        } catch (e) { allConversations = []; allMessagesFlat = []; }
+        }
+        
+        // Remove messages property from stored conversations
+        allConversations.forEach(c => {
+            delete c.messages;
+        });
+        
+        // Fetch profiles for display names
+        const customerIds = [...new Set(allConversations.map(c => c.profile_id).filter(Boolean))];
+        if (customerIds.length) {
+            try {
+                const { data: profiles, error: profErr } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .in('id', customerIds);
+                    
+                if (!profErr && profiles) {
+                    profiles.forEach(p => profilesCache.set(p.id, p));
+                    console.log(`[loadConversations] Loaded ${profiles.length} profiles`);
+                }
+            } catch (e) {
+                console.warn('[loadConversations] Profile fetch error:', e);
+            }
+        }
+        
+        console.log('[loadConversations] Complete!');
+        
+    } catch (e) { 
+        console.error('[loadConversations] Fatal error:', e);
+        allConversations = []; 
+        allMessagesFlat = []; 
     }
+}
 
     // Loads the full message row set (all columns) for a single conversation.
     async function loadMessages(conversationId) {
