@@ -844,12 +844,29 @@
 
   async function deleteEventWithFullCascade(eventId) {
     try {
-      const { data: tickets } = await supabase.from('tickets').select('id').eq('event_id', eventId);
+      const { data: tickets, error: ticketsFetchError } = await supabase.from('tickets').select('id').eq('event_id', eventId);
+      if (ticketsFetchError) throw ticketsFetchError;
       const ticketIds = tickets.map(t=>t.id);
-      if (ticketIds.length) await supabase.from('checkins').delete().in('ticket_id', ticketIds);
-      await supabase.from('tickets').delete().eq('event_id', eventId);
-      await supabase.from('ticket_types').delete().eq('event_id', eventId);
-      await supabase.from('events').delete().eq('id', eventId);
+
+      if (ticketIds.length) {
+        const { error: checkinsError } = await supabase.from('checkins').delete().in('ticket_id', ticketIds);
+        if (checkinsError) throw new Error(`Failed to delete check-ins: ${checkinsError.message}`);
+      }
+
+      const { error: ticketsError } = await supabase.from('tickets').delete().eq('event_id', eventId);
+      if (ticketsError) throw new Error(`Failed to delete tickets: ${ticketsError.message}`);
+
+      const { error: ticketTypesError } = await supabase.from('ticket_types').delete().eq('event_id', eventId);
+      if (ticketTypesError) throw new Error(`Failed to delete ticket types: ${ticketTypesError.message}`);
+
+      // If this fails (most likely cause: a foreign key from another table —
+      // e.g. vvip_packages.event_id — still references this event, or an
+      // RLS DELETE policy blocks it), the error must surface here rather
+      // than be silently ignored, or the UI ends up claiming success on an
+      // event that's still fully intact in the database.
+      const { error: eventError } = await supabase.from('events').delete().eq('id', eventId);
+      if (eventError) throw new Error(`Failed to delete event: ${eventError.message}`);
+
       return { success: true };
     } catch(err) { return { success: false, error: err.message }; }
   }
@@ -1130,19 +1147,28 @@
     try {
       let eventId;
       if (editingEventId) {
-        await supabase.from('events').update({
+        const { error: updateError } = await supabase.from('events').update({
           name, location, start_time: startTime, end_time: endTime,
           base_price: genPrice || 0, vip_price: vipPrice || 0
         }).eq('id', editingEventId);
+        if (updateError) throw new Error(`Failed to update event: ${updateError.message}`);
         eventId = editingEventId;
-        const { data: existingTypes } = await supabase.from('ticket_types').select('id').eq('event_id', eventId);
-        for (const et of existingTypes) await supabase.from('ticket_types').delete().eq('id', et.id);
+        // Previously: fetched existing rows, then deleted them one-by-one
+        // in a loop whose errors were never checked. If a per-row delete
+        // silently failed (e.g. RLS), the old rows survived and the insert
+        // below added new ones on top — 3 types in became 6 out, each
+        // duplicated. Doing it as a single checked bulk delete means a
+        // failure throws immediately instead of silently letting stale
+        // rows survive.
+        const { error: deleteTypesError } = await supabase.from('ticket_types').delete().eq('event_id', eventId);
+        if (deleteTypesError) throw new Error(`Failed to clear old ticket types: ${deleteTypesError.message}`);
         const types = [];
         if (ebPrice && ebCap && ebPrice>0 && ebCap>0) types.push({ event_id:eventId, name:'Early Bird', price:ebPrice, capacity:ebCap, sold:0 });
         if (genPrice && genCap && genPrice>0 && genCap>0) types.push({ event_id:eventId, name:'General Admission', price:genPrice, capacity:genCap, sold:0 });
         if (vipPrice && vipCap && vipPrice>0 && vipCap>0) types.push({ event_id:eventId, name:'VIP Experience', price:vipPrice, capacity:vipCap, sold:0 });
         if (!types.length) types.push({ event_id:eventId, name:'General Admission', price:genPrice||100, capacity:genCap||100, sold:0 });
-        await supabase.from('ticket_types').insert(types);
+        const { error: insertTypesError } = await supabase.from('ticket_types').insert(types);
+        if (insertTypesError) throw new Error(`Failed to save ticket types: ${insertTypesError.message}`);
         if (selectedBannerFile) {
           const url = await uploadEventBanner(eventId, selectedBannerFile);
           if (url) {
@@ -1170,7 +1196,8 @@
         if (genPrice && genCap && genPrice>0 && genCap>0) types.push({ event_id:eventId, name:'General Admission', price:genPrice, capacity:genCap, sold:0 });
         if (vipPrice && vipCap && vipPrice>0 && vipCap>0) types.push({ event_id:eventId, name:'VIP Experience', price:vipPrice, capacity:vipCap, sold:0 });
         if (!types.length) types.push({ event_id:eventId, name:'General Admission', price:genPrice||100, capacity:genCap||100, sold:0 });
-        await supabase.from('ticket_types').insert(types);
+        const { error: insertTypesError } = await supabase.from('ticket_types').insert(types);
+        if (insertTypesError) throw new Error(`Failed to save ticket types: ${insertTypesError.message}`);
         showToast(`Event "${name}" created`, 'success');
       }
       document.getElementById('eventModal').classList.remove('active');
