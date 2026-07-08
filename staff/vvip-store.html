@@ -51,47 +51,6 @@
             max-width: 1400px;
             margin: 0 auto;
         }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-bottom: 32px;
-            padding-bottom: 16px;
-            border-bottom: 2px solid var(--red);
-        }
-        .header h1 {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.6rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, var(--red), var(--red-dark));
-            background-clip: text;
-            -webkit-background-clip: text;
-            color: transparent;
-        }
-        .header h1 i {
-            background: none;
-            color: var(--red);
-            margin-right: 8px;
-        }
-        .back-btn {
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            padding: 8px 20px;
-            border-radius: 60px;
-            font-weight: 600;
-            font-size: 0.8rem;
-            color: var(--text2);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-        .back-btn:hover {
-            background: var(--red-dim);
-            border-color: var(--red);
-            color: var(--red);
-            transform: translateY(-2px);
-        }
 
         /* Customer lookup card – dark */
         .lookup-card {
@@ -346,6 +305,59 @@
             cursor: not-allowed;
         }
 
+        /* Table selection (per package, before payment) */
+        .table-select-wrap {
+            margin: 14px 0;
+            padding: 12px;
+            background: var(--surface3);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+        }
+        .table-select-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text2);
+            margin-bottom: 8px;
+        }
+        .table-select-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .table-select-chip {
+            padding: 6px 14px;
+            border-radius: var(--radius-full);
+            border: 1px solid var(--border2);
+            background: var(--surface2);
+            color: var(--text);
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .table-select-chip:hover:not(.taken) { border-color: var(--red); }
+        .table-select-chip.selected {
+            background: var(--red);
+            border-color: var(--red);
+            color: white;
+        }
+        .table-select-chip.taken {
+            opacity: 0.35;
+            text-decoration: line-through;
+            cursor: not-allowed;
+        }
+        .table-select-empty {
+            font-size: 0.7rem;
+            color: var(--amber);
+        }
+        .no-tables-fallback {
+            font-size: 0.68rem;
+            color: var(--text3);
+            font-style: italic;
+        }
+
         /* Top‑up form */
         .topup-form {
             display: flex;
@@ -461,19 +473,25 @@
 </head>
 <body>
 <div class="container">
-    <div class="header">
-        <h1><i class="fas fa-crown"></i> VVIP Store</h1>
-        <button class="back-btn" onclick="window.location.href='home.html'"><i class="fas fa-arrow-left"></i> Back to Home</button>
-    </div>
-
-    <!-- Customer Lookup (No Login Required) -->
+    <!-- Customer Details (finds an existing account by phone/wallet, or registers a new one on the spot) -->
     <div class="lookup-card">
         <div class="lookup-field">
-            <label><i class="fas fa-mobile-alt"></i> Phone Number or Wallet ID</label>
-            <input type="text" id="customerIdentifier" placeholder="e.g., 0712345678 or 16-digit Wallet ID">
+            <label><i class="fas fa-user"></i> Full Name</label>
+            <input type="text" id="customerNameInput" placeholder="e.g., Thabo Mokoena">
         </div>
-        <button class="lookup-btn" id="loadCustomerBtn"><i class="fas fa-search"></i> Load Customer</button>
+        <div class="lookup-field">
+            <label><i class="fas fa-mobile-alt"></i> Phone Number *</label>
+            <input type="text" id="customerPhone" placeholder="e.g., 0712345678">
+        </div>
+        <div class="lookup-field">
+            <label><i class="fas fa-id-card"></i> Wallet ID <span style="text-transform:none;font-weight:400;">(optional, if already a member)</span></label>
+            <input type="text" id="customerWalletId" placeholder="16-digit Wallet ID">
+        </div>
+        <button class="lookup-btn" id="loadCustomerBtn"><i class="fas fa-user-check"></i> Find / Register Customer</button>
         <button class="clear-btn" id="clearCustomerBtn"><i class="fas fa-times"></i> Clear</button>
+    </div>
+    <div id="customerLookupHint" style="margin: -20px 0 28px 4px; font-size: 0.7rem; color: var(--text2);">
+        <i class="fas fa-info-circle"></i> Enter a phone number to book for anyone, even over the phone — existing members are found automatically, new customers are registered on the spot.
     </div>
 
     <!-- Customer Tab Credit Section (visible after loading) -->
@@ -481,7 +499,7 @@
         <div class="credit-info">
             <div class="credit-icon"><i class="fas fa-wallet"></i></div>
             <div class="credit-details">
-                <h3>Tab Credit for <span id="customerName">-</span></h3>
+                <h3>Tab Credit for <span id="customerNameDisplay">-</span></h3>
                 <div class="credit-amount" id="tabCreditAmount">R0.00</div>
             </div>
         </div>
@@ -540,6 +558,9 @@
     let currentCreditSource = null;
     let packages = [];
     let selectedTopupMethod = 'card';
+    let tablesByPackage = {};   // package_id -> [{id, table_number}]
+    let bookedTableIds = new Set();
+    let selectedTableByPackage = {}; // package_id -> table_id
 
     function showToast(msg, isError = false) {
         const toast = document.getElementById('toastMessage');
@@ -561,37 +582,47 @@
         return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
     }
 
-    // Load customer by phone or wallet_id, get their current tab credit
-    async function loadCustomer() {
-        const identifier = document.getElementById('customerIdentifier').value.trim();
-        if (!identifier) {
-            showToast('Please enter a phone number or wallet ID', true);
+    // Find an existing customer by wallet ID or phone, or register a brand new one on the spot —
+    // so staff can book a table for someone who has never signed up (e.g. over the phone).
+    async function findOrRegisterCustomer() {
+        const name = document.getElementById('customerNameInput').value.trim();
+        const phone = document.getElementById('customerPhone').value.trim();
+        const walletId = document.getElementById('customerWalletId').value.trim();
+
+        if (!walletId && !phone) {
+            showToast('Enter at least a phone number (or a Wallet ID for existing members)', true);
             return;
         }
+
         let profile = null;
-        const isPhone = /^[\+]?[0-9]{9,15}$/.test(identifier);
-        if (isPhone) {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id, name, phone, wallet_id')
-                .eq('phone', identifier)
-                .maybeSingle();
-            if (!error && data) profile = data;
+
+        if (walletId) {
+            const { data } = await supabase.from('profiles').select('id, name, phone, wallet_id').eq('wallet_id', walletId).maybeSingle();
+            profile = data || null;
+            if (!profile) { showToast('No member found with that Wallet ID', true); return; }
         } else {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id, name, phone, wallet_id')
-                .eq('wallet_id', identifier)
-                .maybeSingle();
-            if (!error && data) profile = data;
+            const { data } = await supabase.from('profiles').select('id, name, phone, wallet_id').eq('phone', phone).maybeSingle();
+            profile = data || null;
         }
+
         if (!profile) {
-            showToast('Customer not found. Please check the phone number or wallet ID.', true);
-            return;
+            // Nobody on file with this number — register them right now so the table can still be booked
+            if (!name) { showToast('New customer — please enter their name to register them', true); return; }
+            const { data: created, error: createErr } = await supabase
+                .from('profiles')
+                .insert([{ name, phone }])
+                .select('id, name, phone, wallet_id')
+                .single();
+            if (createErr) { showToast('Could not register customer: ' + createErr.message, true); return; }
+            profile = created;
+            showToast(`New customer registered: ${profile.name}`);
         }
+
         currentProfile = profile;
-        document.getElementById('customerName').innerText = profile.name || profile.phone || 'Guest';
-        
+        document.getElementById('customerNameInput').value = profile.name || '';
+        document.getElementById('customerPhone').value = profile.phone || '';
+        document.getElementById('customerNameDisplay').innerText = profile.name || profile.phone || 'Guest';
+
         // Fetch current tab credit – first from active VVIP booking, then from vvip_tab_accounts
         const { data: booking } = await supabase
             .from('vvip_bookings')
@@ -600,10 +631,10 @@
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
             .maybeSingle();
-        
-        if (booking && booking.remaining_balance > 0) {
-            currentActiveBooking = { id: booking.id, remaining: booking.remaining_balance };
-            currentTabCredit = booking.remaining_balance;
+
+        if (booking) {
+            currentActiveBooking = { id: booking.id, remaining: booking.remaining_balance ?? 0 };
+            currentTabCredit = booking.remaining_balance ?? 0;
             currentCreditSource = 'booking';
         } else {
             const { data: tabAcc } = await supabase
@@ -621,7 +652,7 @@
                 currentActiveBooking = null;
             }
         }
-        
+
         document.getElementById('tabCreditAmount').innerHTML = `R${currentTabCredit.toFixed(2)}`;
         document.getElementById('creditSection').style.display = 'flex';
         document.getElementById('packagesSection').style.display = 'block';
@@ -629,6 +660,7 @@
         showToast(`Loaded ${profile.name || profile.phone} | Tab credit: R${currentTabCredit.toFixed(2)}`);
         setupRealtime();
     }
+    window.loadCustomer = findOrRegisterCustomer;
 
     async function loadPackages() {
         const { data, error } = await supabase
@@ -641,6 +673,20 @@
             return;
         }
         packages = data || [];
+
+        // Real per-table availability, same source of truth as the customer app and POS
+        const packageIds = packages.map(p => p.id);
+        tablesByPackage = {};
+        bookedTableIds = new Set();
+        if (packageIds.length) {
+            const { data: allTables } = await supabase.from('vvip_tables').select('id, package_id, table_number').in('package_id', packageIds);
+            const { data: activeBookings } = await supabase.from('vvip_bookings').select('table_id').not('status', 'in', '(cancelled,no_show)').not('table_id', 'is', null);
+            bookedTableIds = new Set((activeBookings || []).map(b => b.table_id));
+            (allTables || []).forEach(t => {
+                if (!tablesByPackage[t.package_id]) tablesByPackage[t.package_id] = [];
+                tablesByPackage[t.package_id].push(t);
+            });
+        }
         renderPackages();
     }
 
@@ -651,9 +697,30 @@
             return;
         }
         container.innerHTML = packages.map(pkg => {
-            const tables = pkg.capacity || 0;
             const tabCredit = pkg.tab_credit || 0;
             const benefits = pkg.benefits || [];
+            const pkgTables = tablesByPackage[pkg.id] || [];
+            const availableCount = pkgTables.filter(t => !bookedTableIds.has(t.id)).length;
+            const selectedTableId = selectedTableByPackage[pkg.id] || null;
+
+            const tableSelectBlock = pkgTables.length ? `
+                <div class="table-select-wrap">
+                    <div class="table-select-label"><i class="fas fa-chair"></i> Choose a table (${availableCount} available)</div>
+                    ${availableCount ? `
+                        <div class="table-select-grid">
+                            ${pkgTables.map(t => {
+                                const taken = bookedTableIds.has(t.id);
+                                const isSelected = selectedTableId === t.id;
+                                return `<button type="button" class="table-select-chip ${taken ? 'taken' : ''} ${isSelected ? 'selected' : ''}" data-package-id="${pkg.id}" data-table-id="${t.id}" data-table-label="${escapeHtml(t.table_number)}" ${taken ? 'disabled' : ''}>${escapeHtml(t.table_number)}</button>`;
+                            }).join('')}
+                        </div>
+                    ` : `<div class="table-select-empty"><i class="fas fa-exclamation-triangle"></i> All tables in this package are currently booked</div>`}
+                </div>
+            ` : `<div class="table-select-wrap"><div class="no-tables-fallback"><i class="fas fa-info-circle"></i> No named tables set up for this package yet — purchase will not be tied to a specific table.</div></div>`;
+
+            const canPurchase = pkgTables.length ? (!!selectedTableId) : true;
+            const noTablesLeft = pkgTables.length > 0 && availableCount === 0;
+
             return `
                 <div class="package-card">
                     <div class="package-image">
@@ -665,38 +732,69 @@
                             <span class="package-price">R${pkg.price}</span>
                         </div>
                         <div class="package-meta">
-                            <span><i class="fas fa-table"></i> ${tables} tables</span>
+                            <span><i class="fas fa-table"></i> ${pkgTables.length || pkg.capacity || 0} tables</span>
                             <span><i class="fas fa-coins"></i> Tab credit: R${tabCredit}</span>
                         </div>
                         <div class="benefits-list">
                             ${benefits.slice(0, 3).map(b => `<span class="benefit-tag"><i class="fas fa-check"></i> ${escapeHtml(b)}</span>`).join('')}
                             ${benefits.length > 3 ? `<span class="benefit-tag">+${benefits.length-3} more</span>` : ''}
                         </div>
+                        ${tableSelectBlock}
                         <div class="payment-options">
-                            <button class="pay-btn pay-tab" data-package='${JSON.stringify(pkg)}' data-method="tab"><i class="fas fa-wallet"></i> Tab Credit</button>
-                            <button class="pay-btn pay-cash" data-package='${JSON.stringify(pkg)}' data-method="cash"><i class="fas fa-money-bill"></i> Cash</button>
-                            <button class="pay-btn pay-card" data-package='${JSON.stringify(pkg)}' data-method="card"><i class="fas fa-credit-card"></i> Card (Yoco)</button>
+                            <button class="pay-btn pay-tab" data-package='${JSON.stringify(pkg)}' data-method="tab" ${(!canPurchase || noTablesLeft) ? 'disabled' : ''}><i class="fas fa-wallet"></i> Tab Credit</button>
+                            <button class="pay-btn pay-cash" data-package='${JSON.stringify(pkg)}' data-method="cash" ${(!canPurchase || noTablesLeft) ? 'disabled' : ''}><i class="fas fa-money-bill"></i> Cash</button>
+                            <button class="pay-btn pay-card" data-package='${JSON.stringify(pkg)}' data-method="card" ${(!canPurchase || noTablesLeft) ? 'disabled' : ''}><i class="fas fa-credit-card"></i> Card (Yoco)</button>
                         </div>
                     </div>
                 </div>
             `;
         }).join('');
-        
+
+        document.querySelectorAll('.table-select-chip:not(.taken)').forEach(chip => {
+            chip.addEventListener('click', () => {
+                selectedTableByPackage[chip.dataset.packageId] = chip.dataset.tableId;
+                renderPackages();
+            });
+        });
+
         document.querySelectorAll('.pay-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const packageData = JSON.parse(btn.dataset.package);
                 const method = btn.dataset.method;
-                await handlePackagePurchase(packageData, method);
+                const tableId = selectedTableByPackage[packageData.id] || null;
+                await handlePackagePurchase(packageData, method, tableId);
             });
         });
     }
 
-    async function handlePackagePurchase(pkg, method) {
+    async function handlePackagePurchase(pkg, method, tableId) {
         if (!currentProfile) {
             showModal('No Customer', 'Please load a customer first.');
             return;
         }
-        
+        const pkgTables = tablesByPackage[pkg.id] || [];
+        if (pkgTables.length && !tableId) {
+            showToast('Select a table for this package first', true);
+            return;
+        }
+        let tableLabel = null;
+        if (tableId) {
+            // Re-check right before charging — someone else may have just taken this table
+            const { data: clash } = await supabase
+                .from('vvip_bookings')
+                .select('id')
+                .eq('table_id', tableId)
+                .not('status', 'in', '(cancelled,no_show)')
+                .limit(1);
+            if (clash && clash.length) {
+                showToast('That table was just taken — pick another', true);
+                delete selectedTableByPackage[pkg.id];
+                await loadPackages();
+                return;
+            }
+            tableLabel = pkgTables.find(t => t.id === tableId)?.table_number || null;
+        }
+
         if (method === 'tab') {
             if (currentTabCredit < pkg.price) {
                 showModal('Insufficient Tab Credit', `You need R${pkg.price} but have only R${currentTabCredit.toFixed(2)}. Please top up or use another payment method.`);
@@ -740,12 +838,14 @@
                 total_amount: pkg.price,
                 remaining_balance: pkg.tab_credit || 0,
                 status: 'confirmed',
+                table_id: tableId || null,
                 created_at: new Date().toISOString()
             }]);
             if (insertErr) throw insertErr;
             await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+            delete selectedTableByPackage[pkg.id];
             await loadCustomer();
-            showToast(`Package purchased using Tab Credit! New tab credit: R${newBalance.toFixed(2)}`);
+            showToast(`Package purchased using Tab Credit${tableLabel ? ' · ' + tableLabel : ''}! New tab credit: R${newBalance.toFixed(2)}`);
         } 
         else if (method === 'cash') {
             const bookingRef = `VVIP-${Date.now()}-${Math.floor(Math.random()*10000)}`;
@@ -759,12 +859,14 @@
                 total_amount: pkg.price,
                 remaining_balance: pkg.tab_credit || 0,
                 status: 'confirmed',
+                table_id: tableId || null,
                 created_at: new Date().toISOString()
             }]);
             if (insertErr) throw insertErr;
             await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+            delete selectedTableByPackage[pkg.id];
             await loadCustomer();
-            showToast(`Package reserved for cash payment. Booking ref: ${bookingRef}`);
+            showToast(`Package reserved for cash payment${tableLabel ? ' · ' + tableLabel : ''}. Booking ref: ${bookingRef}`);
         }
         else if (method === 'card') {
             if (confirm(`Pay R${pkg.price} with Yoco card? (Demo – no actual charge)`)) {
@@ -779,12 +881,14 @@
                     total_amount: pkg.price,
                     remaining_balance: pkg.tab_credit || 0,
                     status: 'confirmed',
+                    table_id: tableId || null,
                     created_at: new Date().toISOString()
                 }]);
                 if (insertErr) throw insertErr;
                 await supabase.from('vvip_packages').update({ sold_count: (pkg.sold_count || 0) + 1 }).eq('id', pkg.id);
+                delete selectedTableByPackage[pkg.id];
                 await loadCustomer();
-                showToast(`Package purchased with Card! Booking ref: ${bookingRef}`);
+                showToast(`Package purchased with Card${tableLabel ? ' · ' + tableLabel : ''}! Booking ref: ${bookingRef}`);
             }
         }
     }
@@ -924,9 +1028,12 @@
         currentActiveBooking = null;
         currentTabCredit = 0;
         currentCreditSource = null;
+        selectedTableByPackage = {};
         document.getElementById('creditSection').style.display = 'none';
         document.getElementById('packagesSection').style.display = 'none';
-        document.getElementById('customerIdentifier').value = '';
+        document.getElementById('customerNameInput').value = '';
+        document.getElementById('customerPhone').value = '';
+        document.getElementById('customerWalletId').value = '';
         showToast('Customer cleared');
     });
     document.getElementById('openTopupBtn').addEventListener('click', () => {
