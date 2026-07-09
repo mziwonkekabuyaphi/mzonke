@@ -624,6 +624,66 @@
   .dash-activity-item .details { flex: 1; }
   .dash-activity-item .amount { font-weight: 700; color: var(--red); }
 
+  /* Refund requests */
+  .refund-filter-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .refund-filter-tab {
+    flex: 1;
+    background: var(--s2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refund-filter-tab:hover { color: var(--text); }
+  .refund-filter-tab.active { background: var(--red-dim); border-color: var(--red-border); color: var(--red); }
+  .refund-item {
+    background: var(--s2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .refund-item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .refund-amount {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+  }
+  .refund-meta { font-size: 0.65rem; color: var(--muted); margin-bottom: 6px; }
+  .refund-reason { font-size: 0.72rem; color: var(--text); margin-bottom: 10px; line-height: 1.4; }
+  .refund-badge {
+    font-size: 0.55rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 9px;
+    border-radius: 60px;
+    white-space: nowrap;
+  }
+  .refund-badge.pending { background: rgba(245,158,11,0.15); color: var(--gold); }
+  .refund-badge.approved { background: rgba(34,197,94,0.15); color: var(--green); }
+  .refund-badge.rejected { background: rgba(220,38,38,0.15); color: #f87171; }
+  .refund-actions { display: flex; gap: 8px; }
+  .refund-actions .btn { flex: 1; padding: 6px 10px; }
+  .refund-empty { color: var(--muted); font-size: 0.75rem; text-align: center; padding: 30px 10px; }
+
   ::-webkit-scrollbar { width: 3px; }
   ::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 99px; }
 
@@ -642,6 +702,7 @@
     <h2><i class="fas fa-calendar-alt"></i> Event Manager</h2>
     <div class="header-actions">
       <button class="icon-btn" onclick="toggleDashboard()" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
+      <button class="icon-btn" onclick="toggleRefunds()" id="toggleRefundsBtn" title="Refund Requests" style="position:relative;"><i class="fas fa-money-bill-transfer"></i><span id="refundPendingDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--red);"></span></button>
       <button class="icon-btn" onclick="refreshAllEvents()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
     </div>
   </div>
@@ -733,6 +794,21 @@
     </div>
   </div>
 
+  <!-- ─── REFUND REQUESTS OVERLAY ─── -->
+  <div class="dashboard-overlay" id="refundsOverlay">
+    <div class="dash-header">
+      <h2><i class="fas fa-money-bill-transfer"></i> Refund Requests</h2>
+      <button class="dash-close" onclick="toggleRefunds()">&times;</button>
+    </div>
+    <div class="refund-filter-tabs">
+      <button class="refund-filter-tab active" data-status="pending" onclick="setRefundFilter('pending')">Pending</button>
+      <button class="refund-filter-tab" data-status="approved" onclick="setRefundFilter('approved')">Approved</button>
+      <button class="refund-filter-tab" data-status="rejected" onclick="setRefundFilter('rejected')">Rejected</button>
+      <button class="refund-filter-tab" data-status="all" onclick="setRefundFilter('all')">All</button>
+    </div>
+    <div id="refundsList"></div>
+  </div>
+
   <!-- Event Modal -->
   <div class="modal" id="eventModal">
     <div class="modal-content">
@@ -790,6 +866,9 @@
   let selectedBannerFile = null;
   let editingEventId = null;
   let charts = {};
+  let refundRequests = [];
+  let refundFilter = 'pending';
+  let processingRefundId = null;
 
   // ─── HELPERS ───
   function escapeHtml(text) { if (!text) return ''; const d=document.createElement('div'); d.textContent=text; return d.innerHTML; }
@@ -838,8 +917,9 @@
         const { count } = await supabase.from('checkins').select('*', { count:'exact', head:true }).in('ticket_id', ticketIds);
         checkins = count || 0;
       }
-      return { ticketsCount: tickets.length, checkinsCount: checkins };
-    } catch(e) { return { ticketsCount:0, checkinsCount:0 }; }
+      const { count: paymentRequests } = await supabase.from('payment_requests').select('*', { count:'exact', head:true }).eq('event_id', eventId);
+      return { ticketsCount: tickets.length, checkinsCount: checkins, paymentRequestsCount: paymentRequests || 0 };
+    } catch(e) { return { ticketsCount:0, checkinsCount:0, paymentRequestsCount:0 }; }
   }
 
   async function deleteEventWithFullCascade(eventId) {
@@ -859,11 +939,17 @@
       const { error: ticketTypesError } = await supabase.from('ticket_types').delete().eq('event_id', eventId);
       if (ticketTypesError) throw new Error(`Failed to delete ticket types: ${ticketTypesError.message}`);
 
-      // If this fails (most likely cause: a foreign key from another table —
-      // e.g. vvip_packages.event_id — still references this event, or an
-      // RLS DELETE policy blocks it), the error must surface here rather
-      // than be silently ignored, or the UI ends up claiming success on an
-      // event that's still fully intact in the database.
+      // payment_requests.event_id has a NO ACTION foreign key to events, so any
+      // pending/approved/rejected payment requests tied to this event will block
+      // the events delete below unless we clear them first.
+      const { error: paymentRequestsError } = await supabase.from('payment_requests').delete().eq('event_id', eventId);
+      if (paymentRequestsError) throw new Error(`Failed to delete payment requests: ${paymentRequestsError.message}`);
+
+      // If this fails (most likely cause: an RLS DELETE policy blocks it, or
+      // another table's foreign key we haven't accounted for still references
+      // this event), the error must surface here rather than be silently
+      // ignored, or the UI ends up claiming success on an event that's still
+      // fully intact in the database.
       const { error: eventError } = await supabase.from('events').delete().eq('id', eventId);
       if (eventError) throw new Error(`Failed to delete event: ${eventError.message}`);
 
@@ -1217,9 +1303,9 @@
     if (!ev) return;
     const counts = await getRelatedCounts(selectedEventId);
     document.getElementById('deleteEventName').innerText = ev.name;
-    if (counts.ticketsCount > 0) {
-      document.getElementById('deleteWarningMsg').innerHTML = `Warning: This event has ${counts.ticketsCount} ticket(s) associated.`;
-      document.getElementById('relatedDataMsg').innerHTML = `Related data:\n• ${counts.ticketsCount} ticket(s)\n• ${counts.checkinsCount} check-in record(s)\n\nAll related data will be permanently deleted.`;
+    if (counts.ticketsCount > 0 || counts.paymentRequestsCount > 0) {
+      document.getElementById('deleteWarningMsg').innerHTML = `Warning: This event has ${counts.ticketsCount} ticket(s) and ${counts.paymentRequestsCount} payment request(s) associated.`;
+      document.getElementById('relatedDataMsg').innerHTML = `Related data:\n• ${counts.ticketsCount} ticket(s)\n• ${counts.checkinsCount} check-in record(s)\n• ${counts.paymentRequestsCount} payment request(s)\n\nAll related data will be permanently deleted.`;
     } else {
       document.getElementById('deleteWarningMsg').innerHTML = `No tickets sold for this event yet.`;
       document.getElementById('relatedDataMsg').innerHTML = `The event will be permanently removed.`;
@@ -1310,6 +1396,108 @@
     }
   }
   window.toggleDashboard = toggleDashboard;
+
+  // ─── REFUND REQUESTS ───
+  function toggleRefunds() {
+    const overlay = document.getElementById('refundsOverlay');
+    overlay.classList.toggle('open');
+    document.getElementById('toggleRefundsBtn').classList.toggle('active-toggle', overlay.classList.contains('open'));
+    if (overlay.classList.contains('open')) loadRefundRequests();
+  }
+  window.toggleRefunds = toggleRefunds;
+
+  function setRefundFilter(status) {
+    refundFilter = status;
+    document.querySelectorAll('.refund-filter-tab').forEach(el => el.classList.toggle('active', el.dataset.status === status));
+    renderRefunds();
+  }
+  window.setRefundFilter = setRefundFilter;
+
+  async function loadRefundRequests() {
+    const listEl = document.getElementById('refundsList');
+    listEl.innerHTML = '<div class="refund-empty">Loading…</div>';
+    try {
+      const { data, error } = await supabase
+        .from('refund_requests')
+        .select('*, profiles:customer_id(name, surname, phone)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      refundRequests = data || [];
+      updateRefundPendingDot();
+      renderRefunds();
+    } catch (err) {
+      listEl.innerHTML = `<div class="refund-empty">Failed to load refund requests: ${escapeHtml(err.message)}</div>`;
+      showToast('Failed to load refund requests: ' + err.message, 'error');
+    }
+  }
+
+  function updateRefundPendingDot() {
+    const pendingCount = refundRequests.filter(r => r.status === 'pending').length;
+    document.getElementById('refundPendingDot').style.display = pendingCount > 0 ? 'block' : 'none';
+  }
+
+  function renderRefunds() {
+    const listEl = document.getElementById('refundsList');
+    const filtered = refundFilter === 'all' ? refundRequests : refundRequests.filter(r => r.status === refundFilter);
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="refund-empty">No ${refundFilter === 'all' ? '' : refundFilter} refund requests</div>`;
+      return;
+    }
+    listEl.innerHTML = filtered.map(r => {
+      const customer = r.profiles ? `${r.profiles.name||''} ${r.profiles.surname||''}`.trim() : '';
+      const customerLabel = customer || r.customer_phone || 'Unknown customer';
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const actions = r.status === 'pending' ? `
+        <div class="refund-actions">
+          <button class="btn btn-success" onclick="approveRefund('${r.id}')"><i class="fas fa-check"></i> Approve</button>
+          <button class="btn btn-danger" onclick="rejectRefund('${r.id}')"><i class="fas fa-times"></i> Reject</button>
+        </div>` : '';
+      return `
+        <div class="refund-item">
+          <div class="refund-item-top">
+            <div>
+              <div class="refund-amount">${fmtR(r.amount)}</div>
+              <div class="refund-meta">${escapeHtml(customerLabel)} · ${when}${r.order_id ? ' · Order ' + escapeHtml(r.order_id) : ''}</div>
+            </div>
+            <span class="refund-badge ${r.status}">${r.status}</span>
+          </div>
+          ${r.reason ? `<div class="refund-reason">${escapeHtml(r.reason)}</div>` : ''}
+          ${actions}
+        </div>`;
+    }).join('');
+  }
+
+  async function processRefund(id, newStatus) {
+    if (processingRefundId) return;
+    processingRefundId = id;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('refund_requests').update({
+        status: newStatus,
+        processed_at: new Date().toISOString(),
+        processed_by: user ? user.id : null
+      }).eq('id', id).eq('status', 'pending');
+      if (error) throw error;
+      showToast(`Refund request ${newStatus}`, 'success');
+      await loadRefundRequests();
+    } catch (err) {
+      showToast('Failed to update refund request: ' + err.message, 'error');
+    } finally {
+      processingRefundId = null;
+    }
+  }
+  window.approveRefund = (id) => processRefund(id, 'approved');
+  window.rejectRefund = (id) => processRefund(id, 'rejected');
+
+  async function checkPendingRefunds() {
+    try {
+      const { count, error } = await supabase.from('refund_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      if (error) throw error;
+      document.getElementById('refundPendingDot').style.display = (count || 0) > 0 ? 'block' : 'none';
+    } catch (err) {
+      // Non-critical — leave the indicator as-is if this check fails.
+    }
+  }
 
   // ─── CHART RENDERING ───
   function renderCharts() {
@@ -1448,10 +1636,14 @@
   async function init() {
     await refreshAllEvents();
     setInterval(refreshAllEvents, 30000);
+    checkPendingRefunds();
+    setInterval(checkPendingRefunds, 30000);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         const overlay = document.getElementById('dashboardOverlay');
         if (overlay.classList.contains('open')) toggleDashboard();
+        const refundsOverlay = document.getElementById('refundsOverlay');
+        if (refundsOverlay.classList.contains('open')) toggleRefunds();
       }
     });
   }
