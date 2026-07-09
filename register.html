@@ -1661,6 +1661,10 @@
     </div>
 
     <!-- ===== SCRIPTS ===== -->
+    <script type="module">
+        import { supabase } from './config/supabase.js';
+        window.supabase = supabase;
+    </script>
     <script>
         (function() {
             'use strict';
@@ -1735,7 +1739,7 @@
 
                 // Update CTA text for step 3 based on type
                 if (n === 3) {
-                    const isVip = selectedType === 'vvip';
+                    const isVip = selectedType === 'vip';
                     s3CtaText.textContent = isVip ? 'Pay R1500 & Activate' : 'Confirm & Activate';
                     s3CtaNote.textContent = isVip ? 'One-time payment of R1500 secures your VvIP Passport' :
                         'One tap to lock in your Rands Passport';
@@ -1940,16 +1944,101 @@
 
                 showConfirmModal(msg, function(confirmed) {
                     if (confirmed) {
-                        // Simulate activation
-                        const fn = firstName.value.trim() || 'Mziwonke';
-                        const ln = lastName.value.trim() || 'Kabuyaphi';
-                        userNamePlaceholder.textContent = fn + ' ' + ln;
-                        const label = isVip ? 'Rands VIP Passport' : 'Rands Passport';
-                        passportTypePlaceholder.textContent = label;
-                        goToStep(4);
+                        activateAccount(isVip);
                     }
                 });
             });
+
+            async function activateAccount(isVip) {
+                if (!window.supabase) {
+                    showModal({ title: 'Error', message: 'Could not connect to the server. Please refresh and try again.', type: 'error' });
+                    return;
+                }
+
+                s3Cta.disabled = true;
+                const originalCtaText = s3CtaText.textContent;
+                s3CtaText.textContent = 'Activating...';
+
+                const fn = firstName.value.trim();
+                const ln = lastName.value.trim();
+                const em = email.value.trim();
+                const ph = phone.value.trim();
+                const pw = password.value;
+
+                try {
+                    // 1. Create the auth user
+                    const { data: signUpData, error: signUpError } = await window.supabase.auth.signUp({
+                        email: em,
+                        password: pw,
+                        options: {
+                            data: { full_name: fn + ' ' + ln, phone: ph }
+                        }
+                    });
+
+                    if (signUpError) throw signUpError;
+
+                    let userId = signUpData?.user?.id;
+                    let session = signUpData?.session;
+
+                    // If signUp didn't return a session, sign in explicitly
+                    if (!session) {
+                        const { data: signInData, error: signInError } = await window.supabase.auth.signInWithPassword({
+                            email: em,
+                            password: pw
+                        });
+                        if (signInError) throw signInError;
+                        session = signInData?.session;
+                        userId = signInData?.user?.id || userId;
+                    }
+
+                    if (!userId) throw new Error('Account created but no user ID was returned.');
+
+                    // 2. Create the profile row
+                    const { error: profileError } = await window.supabase
+                        .from('profiles')
+                        .insert({
+                            id: userId,
+                            name: fn,
+                            surname: ln,
+                            email: em,
+                            phone: ph,
+                            role: 'customer',
+                            account_type: isVip ? 'vip' : 'general',
+                            registration_complete: true
+                        });
+
+                    if (profileError) throw profileError;
+
+                    // 3. Create the wallet row
+                    const { error: walletError } = await window.supabase
+                        .from('wallets')
+                        .insert({
+                            user_id: userId,
+                            balance: 0,
+                            currency: 'ZAR',
+                            status: 'active'
+                        });
+
+                    if (walletError) throw walletError;
+
+                    // Populate success screen
+                    userNamePlaceholder.textContent = (fn || 'Mziwonke') + ' ' + (ln || 'Kabuyaphi');
+                    const label = isVip ? 'Rands VIP Passport' : 'Rands Passport';
+                    passportTypePlaceholder.textContent = label;
+                    goToStep(4);
+
+                } catch (err) {
+                    console.error('Activation error:', err);
+                    showModal({
+                        title: 'Activation Failed',
+                        message: err?.message || 'Something went wrong creating your Passport. Please try again.',
+                        type: 'error'
+                    });
+                } finally {
+                    s3Cta.disabled = false;
+                    s3CtaText.textContent = originalCtaText;
+                }
+            }
 
             // Back buttons
             s2Back.addEventListener('click', () => goToStep(1));
