@@ -1993,10 +1993,10 @@
 
                     if (!userId) throw new Error('Account created but no user ID was returned.');
 
-                    // 2. Create the profile row
+                    // 2. Create (or update) the profile row
                     const { error: profileError } = await window.supabase
                         .from('profiles')
-                        .insert({
+                        .upsert({
                             id: userId,
                             name: fn,
                             surname: ln,
@@ -2005,19 +2005,20 @@
                             role: 'customer',
                             account_type: isVip ? 'vip' : 'general',
                             registration_complete: true
-                        });
+                        }, { onConflict: 'id' });
 
                     if (profileError) throw profileError;
 
-                    // 3. Create the wallet row
+                    // 3. Create the wallet row if one doesn't already exist
+                    // (ignoreDuplicates so we never overwrite an existing balance)
                     const { error: walletError } = await window.supabase
                         .from('wallets')
-                        .insert({
+                        .upsert({
                             user_id: userId,
                             balance: 0,
                             currency: 'ZAR',
                             status: 'active'
-                        });
+                        }, { onConflict: 'user_id', ignoreDuplicates: true });
 
                     if (walletError) throw walletError;
 
