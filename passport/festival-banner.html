@@ -906,13 +906,17 @@
                 fsMsgText.style.textShadow = `0 0 20px ${currentColor}, 0 0 40px ${currentColor}`;
                 
                 // Only update if message changed (prevent flicker)
-                const currentFsText = (currentMode === 'wave') ? fsMsgText.innerHTML : fsMsgText.innerText;
-                if (currentMode !== 'wave' && currentFsText !== currentMessage) {
-                    fsMsgText.innerText = currentMessage;
-                } else if (currentMode === 'wave') {
-                    // For wave, we need to rebuild only if message changed
-                    const waveContentMatches = fsMsgText.innerHTML.includes(currentMessage);
-                    if (!waveContentMatches) {
+                if (currentMode !== 'wave') {
+                    if (fsMsgText.innerText !== currentMessage) {
+                        fsMsgText.innerText = currentMessage;
+                        fsMsgText.dataset.renderedMessage = currentMessage;
+                    }
+                } else {
+                    // For wave, rebuild only if the message actually changed
+                    // (compare against the tracked plain-text value, not innerHTML,
+                    // since innerHTML contains per-letter <span> markup and will
+                    // never equal/contain the plain message string)
+                    if (fsMsgText.dataset.renderedMessage !== currentMessage) {
                         updateFullscreenWaveContent(fsMsgText);
                     } else {
                         // Update animation durations for wave letters based on speed
@@ -938,6 +942,7 @@
                 return `<span class="fullscreen-wave-letter" style="--i: ${index}">${char}</span>`;
             }).join('');
             element.innerHTML = spannedHtml;
+            element.dataset.renderedMessage = currentMessage;
             const letters = element.querySelectorAll('.fullscreen-wave-letter');
             letters.forEach((letter, idx) => {
                 letter.style.animationDelay = `${idx * 0.04}s`;
@@ -945,6 +950,7 @@
             });
         } else {
             element.innerText = currentMessage;
+            element.dataset.renderedMessage = currentMessage;
         }
     }
     
