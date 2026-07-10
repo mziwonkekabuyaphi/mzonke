@@ -642,7 +642,7 @@
     </div>
     <div class="passport-details">
       <span><i class="fas fa-id-card"></i> <span id="passportWalletId">—</span></span>
-      <span><i class="fas fa-calendar-alt"></i> Member since 2024</span>
+      <span><i class="fas fa-calendar-alt"></i> <span id="passportMemberSince">Member since —</span></span>
     </div>
     <div class="passport-balance">
       <span><small>Balance</small> <span id="passportBalanceDisplay">R0.00</span></span>
@@ -824,11 +824,13 @@
       }
     }
 
-    // Load profile for display (name + wallet id)
+    // Load profile for display (name + wallet id + join date).
+    // Note: profiles.id is the same UUID as the auth user's session id in this schema —
+    // profiles.auth_user_id exists but is unused/always null, so we must NOT filter by it.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('name, surname, wallet_id')
-      .eq('auth_user_id', session.user.id)
+      .select('name, surname, wallet_id, created_at')
+      .eq('id', session.user.id)
       .maybeSingle();
 
     // Populate the page with real data
@@ -838,6 +840,10 @@
     const fullName = profile ? [profile.name, profile.surname].filter(Boolean).join(' ') : '';
     document.getElementById('passportName').textContent = fullName || 'Wallet Holder';
     document.getElementById('passportWalletId').textContent = profile?.wallet_id ? `ID-${profile.wallet_id}` : '—';
+    if (profile?.created_at) {
+      const joinYear = new Date(profile.created_at).getFullYear();
+      document.getElementById('passportMemberSince').textContent = `Member since ${joinYear}`;
+    }
 
     document.getElementById('amountAdded').innerHTML = `<span class="currency">R</span>${formatCurrency(tx.amount).replace('R','')}`;
 
