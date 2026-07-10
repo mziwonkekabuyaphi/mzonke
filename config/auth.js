@@ -1,22 +1,26 @@
 /**
  * config/auth.js — Rands Vibe Auth System
  *
- * Roles: admin | staff | customer  (from profiles.role — single source of truth)
+ * Roles: admin | staff | customer | mobile_scanner  (from profiles.role — single source of truth)
  * Job titles: stored in staff_profiles.job_title — NOT used for access control
+ * Note: mobile_scanner is a standalone role — it does NOT carry a job title and
+ * is routed straight to the scanner app instead of the staff console.
  */
 
 import { supabase } from './supabase.js';
 
 /* =========================
    ROLE ROUTES
-   admin   → /admin/dashboard.html
-   staff   → /staff/dashboard.html
-   customer → /app/home.html
+   admin           → /admin/dashboard.html
+   staff           → /staff/dashboard.html
+   customer        → /app/home.html
+   mobile_scanner  → /staff/scanner.html   (standalone — bypasses the staff console)
 ========================= */
 export const ROLE_ROUTES = {
-  admin:    '/tenant/dashboard.html',
-  staff:    '/staff/console.html',
-  customer: '/passport/home.html',
+  admin:           '/tenant/dashboard.html',
+  staff:           '/staff/console.html',
+  customer:        '/passport/home.html',
+  mobile_scanner:  '/staff/scanner.html',
 };
 
 /* =========================
