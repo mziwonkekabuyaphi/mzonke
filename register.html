@@ -1966,7 +1966,10 @@
                 const pw = password.value;
 
                 try {
-                    // 1. Create the auth user
+                    let userId;
+                    let session;
+
+                    // 1. Create the auth user.
                     const { data: signUpData, error: signUpError } = await window.supabase.auth.signUp({
                         email: em,
                         password: pw,
@@ -1975,25 +1978,48 @@
                         }
                     });
 
-                    if (signUpError) throw signUpError;
+                    if (signUpError) {
+                        // SELF-HEALING: "already registered" here almost always means a
+                        // PREVIOUS attempt got this far (auth user created) and then
+                        // failed on the profile or wallet step below — e.g. a dropped
+                        // connection — leaving the account stuck. There's no way to
+                        // retry signUp() with the same email, so instead of failing
+                        // forever, sign in with what was just typed and continue the
+                        // flow from wherever it left off.
+                        const alreadyRegistered = /already registered|already exists/i.test(signUpError.message || '');
+                        if (!alreadyRegistered) throw signUpError;
 
-                    let userId = signUpData?.user?.id;
-                    let session = signUpData?.session;
-
-                    // If signUp didn't return a session, sign in explicitly
-                    if (!session) {
-                        const { data: signInData, error: signInError } = await window.supabase.auth.signInWithPassword({
-                            email: em,
-                            password: pw
-                        });
-                        if (signInError) throw signInError;
+                        const { data: signInData, error: signInError } = await window.supabase.auth.signInWithPassword({ email: em, password: pw });
+                        if (signInError) {
+                            throw new Error('An account with this email already exists, but that password doesn\'t match it. Try logging in instead, or use "Forgot password".');
+                        }
+                        userId = signInData?.user?.id;
                         session = signInData?.session;
-                        userId = signInData?.user?.id || userId;
+                    } else {
+                        userId = signUpData?.user?.id;
+                        session = signUpData?.session;
+
+                        // If signUp didn't return a session, sign in explicitly.
+                        if (!session) {
+                            const { data: signInData, error: signInError } = await window.supabase.auth.signInWithPassword({
+                                email: em,
+                                password: pw
+                            });
+                            if (signInError) throw signInError;
+                            session = signInData?.session;
+                            userId = signInData?.user?.id || userId;
+                        }
                     }
 
                     if (!userId) throw new Error('Account created but no user ID was returned.');
 
-                    // 2. Create (or update) the profile row
+                    // 2. Create (or update) the profile row.
+                    //
+                    // NOTE: registration_complete is deliberately NOT set here.
+                    // It's only set in step 4, after the wallet is confirmed to
+                    // exist — otherwise a wallet-creation failure below would
+                    // leave a profile marked "fully registered" with no wallet
+                    // at all, which is worse than being stuck mid-registration.
                     const { error: profileError } = await window.supabase
                         .from('profiles')
                         .upsert({
@@ -2003,8 +2029,7 @@
                             email: em,
                             phone: ph,
                             role: 'customer',
-                            account_type: isVip ? 'vip' : 'general',
-                            registration_complete: true
+                            account_type: isVip ? 'vip' : 'general'
                         }, { onConflict: 'id' });
 
                     if (profileError) throw profileError;
@@ -2021,6 +2046,15 @@
                         }, { onConflict: 'user_id', ignoreDuplicates: true });
 
                     if (walletError) throw walletError;
+
+                    // 4. Wallet confirmed to exist — NOW, and only now, mark
+                    // registration complete.
+                    const { error: completeError } = await window.supabase
+                        .from('profiles')
+                        .update({ registration_complete: true })
+                        .eq('id', userId);
+
+                    if (completeError) throw completeError;
 
                     // Populate success screen
                     userNamePlaceholder.textContent = (fn || 'Mziwonke') + ' ' + (ln || 'Kabuyaphi');
