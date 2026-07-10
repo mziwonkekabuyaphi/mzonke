@@ -671,7 +671,7 @@
                     <i class="fas fa-search" style="color:var(--muted);"></i>
                     <input type="text" id="search-staff" placeholder="Search name, email, phone...">
                 </div>
-                <select id="filter-role"><option value="">All Roles</option><option value="Event Manager">Event Manager</option><option value="Event Host">Event Host</option><option value="Shisha Attendant">Shisha Attendant</option><option value="Butcher Crew">Butcher Crew</option><option value="Smart Host">Smart Host</option><option value="VVIP Concierge">VVIP Concierge</option></select>
+                <select id="filter-role"><option value="">All Roles</option><option value="Event Manager">Event Manager</option><option value="Event Host">Event Host</option><option value="Shisha Attendant">Shisha Attendant</option><option value="Butcher Crew">Butcher Crew</option><option value="Smart Host">Smart Host</option><option value="VVIP Concierge">VVIP Concierge</option><option value="Mobile Scanner">Mobile Scanner</option></select>
                 <select id="filter-status"><option value="">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
                 <button class="btn-primary" onclick="openStaffForm()"><i class="fas fa-plus"></i> Add Staff</button>
                 <button class="btn-secondary" onclick="exportStaffList()"><i class="fas fa-download"></i> Export</button>
@@ -849,10 +849,18 @@
         'Event Manager':{name:'Event Manager'},'Event Host':{name:'Event Host'},'Shisha Attendant':{name:'Shisha Attendant'},
         'Butcher Crew':{name:'Butcher Crew'},'Smart Host':{name:'Smart Host'},'VVIP Concierge':{name:'VVIP Concierge'}
     };
+    // Mobile Scanner is a standalone ROLE (profiles.role), not a job title.
+    // It has no module permissions and is routed straight to /staff/scanner.html
+    // instead of the staff console — see config/auth.js ROLE_ROUTES.
+    const MOBILE_SCANNER_ROLE = 'mobile_scanner';
     const roleDisplay = {
         'staff':'General Staff','security':'Security','cleaner':'Cleaner','scanner':'Scanner',
-        'shisha':'Shisha Master','cashier':'Cashier','vvip':'VVIP Concierge'
+        'shisha':'Shisha Master','cashier':'Cashier','vvip':'VVIP Concierge','mobile_scanner':'Mobile Scanner'
     };
+    function roleLabel(s) {
+        if (s.role === MOBILE_SCANNER_ROLE) return 'Mobile Scanner';
+        return s.staff_role || s.role || 'N/A';
+    }
 
     // ─── HELPERS ───
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
@@ -896,7 +904,7 @@
             const { data: staffData, error: staffErr } = await supabase
                 .from('profiles')
                 .select('*')
-                .in('role', ['staff','security','cleaner','scanner','shisha','cashier','vvip'])
+                .in('role', ['staff','security','cleaner','scanner','shisha','cashier','vvip','mobile_scanner'])
                 .order('created_at', { ascending: false });
             if (staffErr) throw staffErr;
             staffList = staffData || [];
@@ -953,9 +961,10 @@
     async function renderStaffTable() {
         const tbody = document.getElementById('staff-table-body');
         try {
-            let query = supabase.from('profiles').select('*', { count: 'exact' }).in('role', ['staff','security','cleaner','scanner','shisha','cashier','vvip']);
+            let query = supabase.from('profiles').select('*', { count: 'exact' }).in('role', ['staff','security','cleaner','scanner','shisha','cashier','vvip','mobile_scanner']);
             if (currentFilters.search) query = query.or(`name.ilike.%${currentFilters.search}%,surname.ilike.%${currentFilters.search}%,email.ilike.%${currentFilters.search}%,phone.ilike.%${currentFilters.search}%`);
-            if (currentFilters.role) query = query.eq('staff_role', currentFilters.role);
+            if (currentFilters.role === 'Mobile Scanner') query = query.eq('role', MOBILE_SCANNER_ROLE);
+            else if (currentFilters.role) query = query.eq('staff_role', currentFilters.role);
             if (currentFilters.status) query = query.eq('status', currentFilters.status);
             const from = (currentPage - 1) * pageSize;
             const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, from + pageSize - 1);
@@ -971,6 +980,7 @@
             // Count modules per role
             const moduleCounts = {};
             for (const s of staff) {
+                if (s.role === MOBILE_SCANNER_ROLE) continue; // no job-title modules for this role
                 const role = s.staff_role || s.role;
                 if (role && !moduleCounts[role]) {
                     const { data: mods } = await supabase.from('job_title_modules').select('module_id').eq('job_title', role);
@@ -979,8 +989,8 @@
             }
 
             tbody.innerHTML = staff.map(s => {
-                const role = s.staff_role || s.role || 'N/A';
-                const modCount = moduleCounts[role] || 0;
+                const role = roleLabel(s);
+                const modCount = s.role === MOBILE_SCANNER_ROLE ? '—' : (moduleCounts[role] || 0);
                 const statusClass = s.status === 'Active' ? 'status-active' : 'status-inactive';
                 const hourly = s.hourly_rate ? `R${parseFloat(s.hourly_rate).toFixed(2)}` : '—';
                 return `
@@ -1052,9 +1062,18 @@
         const jobOptions = Object.keys(JOB_TITLES).map(key =>
             `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${key}</option>`
         ).join('');
+        const isMobileScanner = staffData?.role === MOBILE_SCANNER_ROLE;
 
         container.innerHTML = `
             <form id="staff-form" class="space-y-4">
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label>Account Type *</label>
+                    <select name="${staffId ? 'account_type_display' : 'account_type'}" id="account-type-select" ${staffId ? 'disabled' : ''}>
+                        <option value="standard" ${!isMobileScanner ? 'selected' : ''}>Standard Staff (Console access)</option>
+                        <option value="mobile_scanner" ${isMobileScanner ? 'selected' : ''}>Mobile Scanner (standalone — scanner app only)</option>
+                    </select>
+                    ${staffId ? `<input type="hidden" name="account_type" value="${isMobileScanner ? 'mobile_scanner' : 'standard'}"><div style="font-size:0.65rem;color:var(--muted);margin-top:4px;">Account type can't be changed after creation.</div>` : ''}
+                </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                     <div class="form-group"><label>First Name *</label><input type="text" name="name" required value="${escapeHtml(staffData?.name||'')}"></div>
                     <div class="form-group"><label>Surname *</label><input type="text" name="surname" required value="${escapeHtml(staffData?.surname||'')}"></div>
@@ -1063,12 +1082,15 @@
                     ${!staffId ? `<div class="form-group"><label>Password *</label><input type="password" name="password" required></div>` : ''}
                     <div class="form-group"><label>Clock PIN (4-6 digits)</label><input type="password" name="clock_in_pin" maxlength="6" value="${escapeHtml(staffData?.clock_in_pin||'')}"></div>
                     <div class="form-group"><label>Hourly Rate (ZAR) *</label><input type="number" step="0.5" name="hourly_rate" required value="${staffData?.hourly_rate||''}"></div>
-                    <div class="form-group"><label>Job Title *</label><select name="staff_role" required>${jobOptions}</select></div>
+                    <div class="form-group" id="job-title-group"><label>Job Title *</label><select name="staff_role" ${isMobileScanner ? 'disabled' : 'required'}>${jobOptions}</select></div>
                     <div class="form-group"><label>Status</label><select name="status"><option value="Active" ${staffData?.status==='Active'?'selected':''}>Active</option><option value="Inactive" ${staffData?.status==='Inactive'?'selected':''}>Inactive</option></select></div>
                 </div>
-                <div style="background:var(--s2);border-radius:12px;padding:12px;border:1px solid var(--border);">
+                <div id="module-preview-section" style="background:var(--s2);border-radius:12px;padding:12px;border:1px solid var(--border);">
                     <h4 style="font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:8px;"><i class="fas fa-desktop" style="color:var(--red);"></i> Module Access (auto-assigned by job title)</h4>
                     <div id="screens-preview" style="font-size:0.75rem;color:var(--muted);">Select a job title to see available modules.</div>
+                </div>
+                <div id="mobile-scanner-note" style="display:none;background:var(--s2);border-radius:12px;padding:12px;border:1px solid var(--border);font-size:0.75rem;color:var(--muted);">
+                    <i class="fas fa-qrcode" style="color:var(--red);"></i> Mobile Scanner is a standalone role — no job title, no dashboard modules. This account logs in straight into <strong>/staff/scanner.html</strong>, separate from the regular staff console.
                 </div>
                 <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
                     <button type="button" class="btn-secondary" onclick="closeStaffForm()">Cancel</button>
@@ -1076,6 +1098,30 @@
                 </div>
             </form>
         `;
+
+        function applyAccountTypeUI(accountType) {
+            const jobGroup = document.getElementById('job-title-group');
+            const modSection = document.getElementById('module-preview-section');
+            const scannerNote = document.getElementById('mobile-scanner-note');
+            const staffRoleSelect = container.querySelector('select[name="staff_role"]');
+            if (accountType === 'mobile_scanner') {
+                jobGroup.style.display = 'none';
+                modSection.style.display = 'none';
+                scannerNote.style.display = 'block';
+                staffRoleSelect.disabled = true;
+                staffRoleSelect.required = false;
+            } else {
+                jobGroup.style.display = '';
+                modSection.style.display = '';
+                scannerNote.style.display = 'none';
+                staffRoleSelect.disabled = false;
+                staffRoleSelect.required = true;
+            }
+        }
+
+        const accountTypeSelect = container.querySelector('#account-type-select');
+        accountTypeSelect.addEventListener('change', () => applyAccountTypeUI(accountTypeSelect.value));
+        applyAccountTypeUI(accountTypeSelect.value);
 
         const roleSelect = container.querySelector('select[name="staff_role"]');
         roleSelect.addEventListener('change', () => updateModulePreview(roleSelect.value));
@@ -1116,11 +1162,14 @@
         const name = data.get('name')?.trim();
         const surname = data.get('surname')?.trim();
         const email = data.get('email')?.trim();
-        const staffRole = data.get('staff_role');
+        const accountType = data.get('account_type') || 'standard';
+        const isMobileScanner = accountType === 'mobile_scanner';
+        const staffRole = isMobileScanner ? null : data.get('staff_role');
         const hourlyRate = data.get('hourly_rate');
         const password = data.get('password');
+        const targetRole = isMobileScanner ? MOBILE_SCANNER_ROLE : 'staff';
 
-        if (!name || !surname || !email || !staffRole || !hourlyRate) {
+        if (!name || !surname || !email || !hourlyRate || (!isMobileScanner && !staffRole)) {
             showToast('Please fill in all required fields', true);
             return;
         }
@@ -1131,7 +1180,7 @@
 
         try {
             if (staffId) {
-                // Update
+                // Update — account type is fixed at creation, so role is left untouched here.
                 const updatePayload = {
                     name, surname,
                     phone: data.get('phone') || null,
@@ -1153,7 +1202,7 @@
                 // Create auth user
                 const { data: auth, error: authError } = await supabase.auth.signUp({
                     email, password,
-                    options: { data: { name, surname, role: 'staff' } }
+                    options: { data: { name, surname, role: targetRole } }
                 });
                 if (authError) {
                     if (authError.message.includes('already registered')) {
@@ -1167,6 +1216,8 @@
 
                 // Create/repair profile via atomic RPC — this can be safely retried and
                 // will NEVER leave the profile without a staff_role, unlike a raw insert.
+                // p_role picks which role the profile gets: 'staff' (console + job title)
+                // or 'mobile_scanner' (standalone, routes straight to the scanner app).
                 const finalizeProfile = () => supabase.rpc('upsert_staff_profile', {
                     p_id: auth.user.id,
                     p_name: name,
@@ -1176,7 +1227,8 @@
                     p_staff_role: staffRole,
                     p_clock_in_pin: data.get('clock_in_pin') || null,
                     p_status: data.get('status') || 'Active',
-                    p_hourly_rate: parseFloat(hourlyRate)
+                    p_hourly_rate: parseFloat(hourlyRate),
+                    p_role: targetRole
                 });
 
                 let { error: profError } = await finalizeProfile();
@@ -1193,7 +1245,7 @@
                     console.error('upsert_staff_profile failed after retry:', profError);
                     return;
                 }
-                showToast('Staff created with role assigned!', 'success');
+                showToast(isMobileScanner ? 'Mobile Scanner account created!' : 'Staff created with role assigned!', 'success');
             }
             closeStaffForm();
             await loadWorkforceData();
@@ -1214,8 +1266,8 @@
     window.viewStaffProfile = async (id) => {
         const staff = staffList.find(s => s.id === id);
         if (!staff) return;
-        const { data: modules } = await supabase.from('job_title_modules').select('module_id').eq('job_title', staff.staff_role || staff.role);
-        const modList = (modules||[]).map(d => d.module_id);
+        const isMobileScanner = staff.role === MOBILE_SCANNER_ROLE;
+        const modList = isMobileScanner ? [] : (await supabase.from('job_title_modules').select('module_id').eq('job_title', staff.staff_role || staff.role)).data?.map(d => d.module_id) || [];
         const container = document.getElementById('staff-profile-container');
         container.innerHTML = `
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
@@ -1223,12 +1275,15 @@
                 <div><div style="font-size:1rem;font-weight:700;">${escapeHtml(staff.name||'')} ${escapeHtml(staff.surname||'')}</div><div style="color:var(--muted);font-size:0.8rem;">${escapeHtml(staff.email||'')}</div></div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                <div><span style="color:var(--muted);font-size:0.6rem;">Job Title</span><div style="font-weight:600;">${staff.staff_role||staff.role||'N/A'}</div></div>
+                <div><span style="color:var(--muted);font-size:0.6rem;">${isMobileScanner ? 'Account Type' : 'Job Title'}</span><div style="font-weight:600;">${roleLabel(staff)}</div></div>
                 <div><span style="color:var(--muted);font-size:0.6rem;">Hourly Rate</span><div style="font-weight:600;">${staff.hourly_rate ? fmtR(staff.hourly_rate) : '—'}</div></div>
                 <div><span style="color:var(--muted);font-size:0.6rem;">Status</span><div><span class="status-badge ${staff.status==='Active'?'status-active':'status-inactive'}">${staff.status||'Active'}</span></div></div>
                 <div><span style="color:var(--muted);font-size:0.6rem;">Last Seen</span><div style="font-weight:600;">${staff.last_seen ? formatDateTime(staff.last_seen) : 'Never'}</div></div>
             </div>
-            <div><span style="color:var(--muted);font-size:0.6rem;">Assigned Modules (${modList.length})</span><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${modList.length ? modList.map(m => `<span class="role-badge"><i class="fas ${MODULE_ICONS[m]||'fa-cube'}"></i> ${MODULE_NAMES[m]||m}</span>`).join('') : '<span style="color:var(--muted);font-size:0.7rem;">No modules assigned</span>'}</div></div>
+            ${isMobileScanner
+                ? `<div style="color:var(--muted);font-size:0.75rem;"><i class="fas fa-qrcode" style="color:var(--red);"></i> Mobile Scanner accounts skip the module system entirely — they log in straight into the scanner app.</div>`
+                : `<div><span style="color:var(--muted);font-size:0.6rem;">Assigned Modules (${modList.length})</span><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${modList.length ? modList.map(m => `<span class="role-badge"><i class="fas ${MODULE_ICONS[m]||'fa-cube'}"></i> ${MODULE_NAMES[m]||m}</span>`).join('') : '<span style="color:var(--muted);font-size:0.7rem;">No modules assigned</span>'}</div></div>`
+            }
         `;
         document.getElementById('staff-profile-modal').classList.add('active');
     };
@@ -1301,7 +1356,7 @@
         container.innerHTML = active.map(s => {
             const staff = staffList.find(st => st.id === s.staff_id);
             const name = staff ? `${staff.name} ${staff.surname}` : 'Unknown';
-            return `<div class="activity-item"><div class="activity-badge"><i class="fas fa-clock"></i></div><div class="activity-detail"><strong>${escapeHtml(name)}</strong> clocked in at ${formatDateTime(s.login_time)}<br><small>${staff?.staff_role||'Staff'}</small></div></div>`;
+            return `<div class="activity-item"><div class="activity-badge"><i class="fas fa-clock"></i></div><div class="activity-detail"><strong>${escapeHtml(name)}</strong> clocked in at ${formatDateTime(s.login_time)}<br><small>${staff ? roleLabel(staff) : 'Staff'}</small></div></div>`;
         }).join('');
     }
 
@@ -1446,7 +1501,7 @@
         // Role Distribution
         const roleCount = {};
         staffList.forEach(s => {
-            const role = s.staff_role || s.role || 'staff';
+            const role = roleLabel(s);
             roleCount[role] = (roleCount[role] || 0) + 1;
         });
         const roleLabels = Object.keys(roleCount);
