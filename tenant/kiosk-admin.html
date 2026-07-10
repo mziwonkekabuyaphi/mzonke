@@ -1111,7 +1111,11 @@
       <div class="form-group">
         <label>CPM Rate (R) <span class="text-muted" style="font-weight:400;">— optional</span></label>
         <input type="number" id="slideCpm" placeholder="e.g. 50" step="0.01" min="0">
-        <div class="hint">Cost Per Mille (per 1000 impressions). Leave empty to inherit from campaign.</div>
+        <div class="hint">Cost Per Mille (per 1000 impressions). Leave empty to inherit from tier, then campaign.</div>
+      </div>
+      <div class="form-group">
+        <label>Tier <span class="text-muted" style="font-weight:400;">— optional fallback</span></label>
+        <select id="slideTierId"><option value="">None</option></select>
       </div>
       <div class="form-group">
         <label>Campaign</label>
@@ -1143,7 +1147,7 @@
 <div id="campaignModal" class="modal-overlay">
   <div class="modal">
     <h3 id="campaignModalTitle">New Campaign</h3>
-    <input type="hidden" id="campaignId">
+    <input type="hidden" id="campaignEditId">
     <div class="form-grid">
       <div class="form-group full">
         <label>Campaign Name *</label>
@@ -1154,8 +1158,13 @@
         <input type="text" id="campaignAdvertiser" placeholder="e.g. Acme Corp">
       </div>
       <div class="form-group">
-        <label>CPM Rate (R)</label>
+        <label>CPM Rate (R) <span class="text-muted" style="font-weight:400;">— optional</span></label>
         <input type="number" id="campaignCpm" placeholder="e.g. 50" step="0.01" min="0">
+        <div class="hint">Leave empty to inherit from tier below.</div>
+      </div>
+      <div class="form-group">
+        <label>Tier <span class="text-muted" style="font-weight:400;">— optional fallback</span></label>
+        <select id="campaignTierId"><option value="">None</option></select>
       </div>
       <div class="form-group">
         <label>Budget (R)</label>
@@ -1322,6 +1331,25 @@
   let editSlideId = null;
   let deleteTarget = null;
 
+  // Effective CPM fallback chain, mirrors the DB function get_effective_cpm():
+  // slide.cpm_rate -> slide.tier -> campaign.cpm_rate -> campaign.tier -> 0
+  function effectiveCpm(s) {
+    if (s.cpm_rate && s.cpm_rate > 0) return parseFloat(s.cpm_rate);
+    if (s.tier_id) {
+      const tier = allTiers.find(t => t.id === s.tier_id);
+      if (tier?.cpm_rate && tier.cpm_rate > 0) return parseFloat(tier.cpm_rate);
+    }
+    if (s.campaign_id) {
+      const camp = campaigns.find(c => c.id === s.campaign_id);
+      if (camp?.cpm_rate && camp.cpm_rate > 0) return parseFloat(camp.cpm_rate);
+      if (camp?.tier_id) {
+        const ctier = allTiers.find(t => t.id === camp.tier_id);
+        if (ctier?.cpm_rate && ctier.cpm_rate > 0) return parseFloat(ctier.cpm_rate);
+      }
+    }
+    return 0;
+  }
+
   async function loadSlides() {
     const { data, error } = await supabase.from('kiosk_idle_ads').select('*').order('display_order', { ascending: true });
     if (error) { toast('Error loading slides', 'err'); return []; }
@@ -1355,11 +1383,7 @@
 
     let totalRevenue = 0;
     allSlides.forEach(s => {
-      let cpm = s.cpm_rate || 0;
-      if (cpm === 0 && s.campaign_id) {
-        const camp = campaigns.find(c => c.id === s.campaign_id);
-        cpm = camp?.cpm_rate || 0;
-      }
+      const cpm = effectiveCpm(s);
       const cnt = impCounts[s.id] || 0;
       totalRevenue += (cnt / 1000) * cpm;
     });
@@ -1377,13 +1401,16 @@
         : (s.image_url ? `<img class="thumb" src="${esc(s.image_url)}" onclick="window.open('${esc(s.image_url)}')">` : '—');
       const isActive = !!s.is_active;
 
-      // CPM display with effective rate fallback
+      // CPM display with effective rate fallback (slide -> tier -> campaign -> campaign tier)
       let cpmDisplay = '—';
       if (s.cpm_rate && s.cpm_rate > 0) {
         cpmDisplay = `<span style="color:var(--green);font-weight:600;">${fmtR(s.cpm_rate)}</span>`;
-      } else if (s.campaign_id) {
-        const camp = campaigns.find(c => c.id === s.campaign_id);
-        if (camp?.cpm_rate) cpmDisplay = `<span style="color:var(--muted);font-size:0.68rem;">${fmtR(camp.cpm_rate)} <span style="opacity:0.6;">(campaign)</span></span>`;
+      } else {
+        const eff = effectiveCpm(s);
+        if (eff > 0) {
+          const src = s.tier_id ? '(tier)' : '(campaign)';
+          cpmDisplay = `<span style="color:var(--muted);font-size:0.68rem;">${fmtR(eff)} <span style="opacity:0.6;">${src}</span></span>`;
+        }
       }
 
       return `<tr data-id="${s.id}">
@@ -1462,6 +1489,7 @@
     document.getElementById('startsAt').value = '';
     document.getElementById('endsAt').value = '';
     document.getElementById('campaignId').innerHTML = '<option value="">None</option>';
+    document.getElementById('slideTierId').innerHTML = '<option value="">None</option>';
     document.getElementById('slideModalTitle').textContent = id ? 'Edit Slide' : 'Add Slide';
 
     const hasCamp = await checkTable('kiosk_ad_campaigns');
@@ -1471,6 +1499,17 @@
         opt.value = c.id;
         opt.textContent = c.name || c.campaign_name || c.id;
         document.getElementById('campaignId').appendChild(opt);
+      });
+    }
+
+    const hasTiers = await checkTable('ad_tiers');
+    if (hasTiers) {
+      const { data: tierData } = await supabase.from('ad_tiers').select('*').order('priority', { ascending: true });
+      (tierData || []).forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `${t.name} (R${t.cpm_rate})`;
+        document.getElementById('slideTierId').appendChild(opt);
       });
     }
 
@@ -1488,6 +1527,7 @@
       document.getElementById('startsAt').value = data.starts_at ? data.starts_at.slice(0,16) : '';
       document.getElementById('endsAt').value = data.ends_at ? data.ends_at.slice(0,16) : '';
       if (data.campaign_id) document.getElementById('campaignId').value = data.campaign_id;
+      if (data.tier_id) document.getElementById('slideTierId').value = data.tier_id;
 
       const isVid = data.media_type === 'video' || !!data.video_url;
       setMediaType(isVid ? 'video' : 'image');
@@ -1571,6 +1611,7 @@
       starts_at: document.getElementById('startsAt').value ? new Date(document.getElementById('startsAt').value).toISOString() : null,
       ends_at: document.getElementById('endsAt').value ? new Date(document.getElementById('endsAt').value).toISOString() : null,
       campaign_id: document.getElementById('campaignId').value || null,
+      tier_id: document.getElementById('slideTierId').value || null,
       cpm_rate: parseFloat(document.getElementById('slideCpm').value) || null,
       updated_at: new Date()
     };
@@ -1659,21 +1700,35 @@
   }
 
   async function openCampaignModal(id = null) {
-    document.getElementById('campaignId').value = '';
+    document.getElementById('campaignEditId').value = '';
     document.getElementById('campaignName').value = '';
     document.getElementById('campaignAdvertiser').value = '';
     document.getElementById('campaignCpm').value = '';
+    document.getElementById('campaignTierId').innerHTML = '<option value="">None</option>';
     document.getElementById('campaignBudget').value = '';
     document.getElementById('campaignStart').value = '';
     document.getElementById('campaignEnd').value = '';
     document.getElementById('campaignModalTitle').textContent = id ? 'Edit Campaign' : 'New Campaign';
+
+    const hasTiers = await checkTable('ad_tiers');
+    if (hasTiers) {
+      const { data: tierData } = await supabase.from('ad_tiers').select('*').order('priority', { ascending: true });
+      (tierData || []).forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `${t.name} (R${t.cpm_rate})`;
+        document.getElementById('campaignTierId').appendChild(opt);
+      });
+    }
+
     if (id) {
       const c = campaigns.find(c => c.id === id);
       if (c) {
-        document.getElementById('campaignId').value = c.id;
+        document.getElementById('campaignEditId').value = c.id;
         document.getElementById('campaignName').value = c.name || c.campaign_name || '';
         document.getElementById('campaignAdvertiser').value = c.advertiser_name || c.advertiser || '';
         document.getElementById('campaignCpm').value = c.cpm_rate != null ? c.cpm_rate : '';
+        if (c.tier_id) document.getElementById('campaignTierId').value = c.tier_id;
         document.getElementById('campaignBudget').value = c.budget != null ? c.budget : '';
         document.getElementById('campaignStart').value = c.starts_at ? c.starts_at.slice(0,16) : '';
         document.getElementById('campaignEnd').value = c.ends_at ? c.ends_at.slice(0,16) : '';
@@ -1688,11 +1743,12 @@
   document.getElementById('saveCampaignBtn').addEventListener('click', async () => {
     const name = document.getElementById('campaignName').value.trim();
     if (!name) { toast('Campaign name is required', 'err'); return; }
-    const id = document.getElementById('campaignId').value;
+    const id = document.getElementById('campaignEditId').value;
     const payload = {
       name, campaign_name: name,
       advertiser_name: document.getElementById('campaignAdvertiser').value.trim() || null,
       cpm_rate: parseFloat(document.getElementById('campaignCpm').value) || null,
+      tier_id: document.getElementById('campaignTierId').value || null,
       budget: parseFloat(document.getElementById('campaignBudget').value) || null,
       starts_at: document.getElementById('campaignStart').value ? new Date(document.getElementById('campaignStart').value).toISOString() : null,
       ends_at: document.getElementById('campaignEnd').value ? new Date(document.getElementById('campaignEnd').value).toISOString() : null,
@@ -2005,15 +2061,10 @@
 
     const slides = allSlides.length ? allSlides : await loadSlides();
 
-    // Build slide map with effective CPM (slide CPM → campaign CPM fallback)
+    // Build slide map with effective CPM (slide → slide tier → campaign → campaign tier)
     const slideMap = {};
     slides.forEach(s => {
-      let cpm = s.cpm_rate || 0;
-      if (cpm === 0 && s.campaign_id) {
-        const campaign = campaigns.find(c => c.id === s.campaign_id);
-        cpm = campaign?.cpm_rate || 0;
-      }
-      slideMap[s.id] = { ...s, effective_cpm: cpm };
+      slideMap[s.id] = { ...s, effective_cpm: effectiveCpm(s) };
     });
 
     const countByAd = {};
@@ -2134,9 +2185,9 @@
   // ═══════════════════════════════════════════
   async function init() {
     await ensureBucket();
-    await renderSlides();
     await loadCampaigns();
     await loadTiers();
+    await renderSlides();
     setupRealtime();
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
