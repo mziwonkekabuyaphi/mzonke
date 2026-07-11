@@ -20,6 +20,7 @@ import {
   isPasskeySupported,
   getProfile,
   getRoleRedirectUrl,
+  getSessionWithProfile,
 } from '../../config/auth.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
@@ -182,6 +183,36 @@ registerLink?.addEventListener('click', (e) => {
 
 googleBtn?.addEventListener('click', handleGoogleLogin);
 passkeyBtn?.addEventListener('click', handlePasskeyLogin);
+
+// ── Handle return from an OAuth redirect (e.g. Google) ─────────────────────
+// signInWithGoogle() sends the browser to Google, which redirects back here
+// with the session tokens appended as a URL fragment (#access_token=...).
+// The Supabase client consumes that fragment and establishes a session
+// automatically, but nothing was checking for that on page load — so the
+// user ended up authenticated yet stuck staring at the login page. This
+// runs once on load, and if a session already exists (OAuth just completed,
+// or the user still has a valid session from earlier), it finishes the
+// login the same way handleLogin()/handlePasskeyLogin() do.
+(async () => {
+  const result = await getSessionWithProfile();
+  if (!result) return; // no session yet — normal case, let the user log in
+
+  const { profile } = result;
+
+  if (profile.status !== 'Active') {
+    showAuthError('Your account is inactive. Please contact support team at info@rands.co.za.');
+    return;
+  }
+
+  const redirectUrl = getRoleRedirectUrl(profile.role);
+  if (!redirectUrl) {
+    showAuthError(`Unknown role "${profile.role}". Please contact Rands support team at info@rands.co.za.`);
+    return;
+  }
+
+  console.log(`✅ Existing session found on load — role: ${profile.role} → ${redirectUrl}`);
+  window.location.href = redirectUrl;
+})();
 
 // ── Show passkey button only when device supports it ───────────────────────
 (async () => {
