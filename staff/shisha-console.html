@@ -471,6 +471,92 @@
     const { data: prod } = await supabase.from('shisha_products').select('id').eq('name', req.flavour_name).limit(1);
     const { data: loc } = await supabase.from('shisha_locations').select('id').eq('name', req.location_name).limit(1);
     if (!prod?.length || !loc?.length) throw new Error('Invalid flavour/location');
+
+    // req.request_data.paymentMethod is what the customer actually chose in
+    // WhatsApp (always 'wallet' for a WhatsApp-originated order_session
+    // request per shisha.ts — 'cash' only applies to walk-ins staff add
+    // directly here, who have no request_data at all). This used to be
+    // hardcoded to 'cash' below regardless of what the customer picked,
+    // and no wallet debit ever ran — meaning "wallet" orders were marked
+    // paid without ever being charged.
+    const price = req.amount || SESSION_PRICE;
+    const paymentMethod = req.request_data?.paymentMethod || 'cash';
+    let walletAccountId = null;
+
+    if (paymentMethod === 'wallet') {
+      const phone = req.customer_phone || req.request_data?.accountId;
+      if (!phone) throw new Error('No phone on file to charge for this wallet order');
+
+      // findExistingTransaction's idempotency check in wallet.ts's
+      // debitWallet keys on referenceId — mirror that here using the
+      // request id, so re-clicking Approve (or a real-time refresh firing
+      // the handler twice) can't double-charge the same request.
+      const { data: already } = await supabase
+        .from('wallet_transactions')
+        .select('id')
+        .eq('provider_reference', req.id)
+        .eq('status', 'completed')
+        .maybeSingle();
+
+      if (!already) {
+        const { data: walletRow, error: lookupError } = await supabase
+          .rpc('lookup_wallet_by_phone', { p_phone: phone })
+          .maybeSingle();
+        // lookup_wallet_by_phone LEFT JOINs wallets onto profiles, so a
+        // profile with no wallet still returns a row — just with
+        // wallet_id/balance/wallet_status all null. Must check wallet_id
+        // specifically, not just whether a row came back at all.
+        if (lookupError || !walletRow?.wallet_id) throw new Error('No Passport wallet found for ' + phone);
+        if (walletRow.wallet_status !== 'active') throw new Error(`Passport wallet for ${phone} is ${walletRow.wallet_status}, not active`);
+
+        // deduct_wallet is a single atomic UPDATE ... WHERE balance >=
+        // amount, so this is safe against a double-click racing itself in
+        // a way a plain client-side select-then-update wouldn't be. It
+        // raises (surfaced here as `error`) on insufficient balance or a
+        // missing wallet, which we deliberately let abort the whole
+        // approval — see the comment on the throw below.
+        const { error: deductError } = await supabase.rpc('deduct_wallet', {
+          p_user_id: walletRow.user_id,
+          p_amount: price,
+        });
+        if (deductError) {
+          throw new Error(
+            deductError.message?.includes('Insufficient')
+              ? `Insufficient Passport balance for ${phone} (needs R${price})`
+              : 'Wallet debit failed: ' + deductError.message
+          );
+        }
+
+        const { error: txError } = await supabase.from('wallet_transactions').insert({
+          wallet_id: walletRow.wallet_id,
+          user_id: walletRow.user_id,
+          amount: -price, // negative for debit, matching debitWallet's convention in wallet.ts
+          type: 'debit',
+          description: `Shisha - ${req.flavour_name} @ ${req.location_name}`,
+          provider_reference: req.id,
+          provider: 'shisha_console',
+          status: 'completed',
+          direction: 'debit',
+          metadata: { shishaRequestId: req.id },
+          created_at: new Date().toISOString(),
+        });
+        // Note: if this insert fails after the balance was already
+        // deducted above, the balance change has no audit row — the same
+        // known gap wallet.ts's own debitWallet has (its update and its
+        // transaction insert aren't wrapped in one DB transaction either),
+        // so this isn't introducing a new class of risk, just not fixing
+        // a pre-existing one. Surfacing it as an error rather than
+        // swallowing it at least gets it into the staff-facing modal.
+        if (txError) throw new Error('Wallet charged but failed to record transaction: ' + txError.message);
+      }
+
+      walletAccountId = phone;
+    }
+    // If this ever needs to support other request_data.paymentMethod
+    // values (e.g. 'vvip_tab', seen elsewhere in shisha_sessions data),
+    // add another branch above rather than falling through — falling
+    // through silently would recreate exactly this bug for that method.
+
     const { error } = await supabase.from('shisha_sessions').insert({
       device_id: free[0].id,
       product_id: prod[0].id,
@@ -478,11 +564,12 @@
       start_time: new Date().toISOString(),
       last_refill_time: new Date().toISOString(),
       remaining_time_seconds: COAL_DURATION * 60,
-      total_amount: SESSION_PRICE,
+      total_amount: price,
       refill_count: 0,
       status: 'active',
       customer_phone: req.customer_phone || 'walkin_customer',
-      payment_method: 'cash'
+      payment_method: paymentMethod,
+      account_id: walletAccountId
     });
     if (error) throw new Error('Session creation failed');
     showToast(`Started on ${free[0].device_code}`);
