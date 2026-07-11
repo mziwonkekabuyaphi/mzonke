@@ -1,4 +1,5 @@
 import { supabase } from '../../config/supabase.js';
+import { ROLE_ROUTES } from '../../config/auth.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -260,7 +261,12 @@ el('s3Cta')?.addEventListener('click', async () => {
 
 // ========== EXPLORE ==========
 el('exploreBtn')?.addEventListener('click', () => {
-  window.location.href = 'passport/home.html';
+  // BUG FIX: this was a relative path ('passport/home.html'), which only
+  // resolves correctly if register.html happens to be served from the
+  // site root. Every other redirect in the app (login.js, auth.js's
+  // ROLE_ROUTES) uses the absolute path — use the same source of truth
+  // here instead of a hardcoded, easy-to-break relative one.
+  window.location.href = ROLE_ROUTES.customer;
 });
 
 });
