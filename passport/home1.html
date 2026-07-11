@@ -1270,17 +1270,22 @@
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error('Not authenticated');
             
-            const { data: userProfile, error: profileError } = await supabase
+            let { data: userProfile, error: profileError } = await supabase
                 .from('profiles')
                 .select('id')
-                .eq('id', session.user.id)
-                .single();
-            if (profileError) throw new Error('Could not find user profile');
-            
+                .eq('auth_user_id', session.user.id)
+                .maybeSingle();
+            if (!userProfile) {
+                const fb = await supabase.from('profiles').select('id').eq('id', session.user.id).maybeSingle();
+                userProfile = fb.data;
+                profileError = fb.error;
+            }
+            if (profileError || !userProfile) throw new Error('Could not find user profile');
+
             const { data: wallet, error: walletError } = await supabase
                 .from('wallets')
                 .select('id, balance, status')
-                .eq('user_id', session.user.id)
+                .eq('user_id', userProfile.id)
                 .single();
             if (walletError || !wallet) throw new Error('Could not find passport');
             if (wallet.status === 'blocked') throw new Error('This Passport is blocked. Contact support for assistance.');
@@ -1301,14 +1306,14 @@
                 .from('wallets')
                 .update({ balance: newBalance })
                 .eq('id', wallet.id)
-                .eq('user_id', session.user.id);
+                .eq('user_id', userProfile.id);
             if (updateWalletError) throw new Error('Failed to update Rands Passport Credit');
             
             const { error: transactionError } = await supabase
                 .from('wallet_transactions')
                 .insert({
                     wallet_id: wallet.id,
-                    user_id: session.user.id,
+                    user_id: userProfile.id,
                     amount: -payment.total_amount,
                     type: 'payment',
                     direction: 'debit',
@@ -1350,7 +1355,7 @@
             const { data: newWalletData } = await supabase
                 .from('wallets')
                 .select('balance')
-                .eq('user_id', session.user.id)
+                .eq('user_id', userProfile.id)
                 .single();
             updateBalance(newWalletData?.balance || 0);
             
