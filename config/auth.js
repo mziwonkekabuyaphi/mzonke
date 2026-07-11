@@ -68,11 +68,29 @@ export async function signOutUser() {
 ========================= */
 export async function getProfile(userId) {
   try {
-    const { data, error } = await supabase
+    // Customers registered via WhatsApp get their `profiles` row created
+    // (with a DB-generated id) before any auth user exists; the auth user
+    // is linked afterwards via `profiles.auth_user_id`, and `profiles.id`
+    // is deliberately never changed to match it (see lib/services/customer.ts).
+    // Customers registered through the web flow have `profiles.id === auth.users.id`.
+    // Looking up by auth_user_id first — with an id-based fallback for that
+    // web-flow case — covers both, and stops WhatsApp customers from being
+    // told their account "isn't configured" on their very first web login.
+    let { data, error } = await supabase
       .from('profiles')
-      .select('id, email, role, status, wallet_id, account_type')
-      .eq('id', userId)
+      .select('id, email, role, status, wallet_id, account_type, auth_user_id')
+      .eq('auth_user_id', userId)
       .maybeSingle();
+
+    if (!error && !data) {
+      const fallback = await supabase
+        .from('profiles')
+        .select('id, email, role, status, wallet_id, account_type, auth_user_id')
+        .eq('id', userId)
+        .maybeSingle();
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) {
       console.error('❌ Profile fetch error:', error.message);
