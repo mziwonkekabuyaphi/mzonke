@@ -1970,14 +1970,17 @@
                     let session;
 
                     // 1. Create the auth user. The DB trigger `handle_new_auth_user`
-                    // creates the profile row (and, via create_wallet_for_new_profile,
-                    // the wallet row) atomically in the same transaction as the auth
-                    // user — driven entirely by this metadata. Do NOT also write to
-                    // `profiles` or `wallets` from the client below: profiles.id is
-                    // a separate DB-generated id linked via auth_user_id, not equal
-                    // to the auth uid, so a client-side upsert keyed on `id: userId`
-                    // creates a second, orphaned profile+wallet instead of updating
-                    // the real one. (Also: RLS only allows customers to
+                    // creates (or links, for a WhatsApp-started signup) the profile
+                    // row in the same transaction as the auth user. The wallet is
+                    // NOT created by that trigger — it's created explicitly below,
+                    // after we confirm the profile exists, via ensure_customer_wallet(),
+                    // the same function/ordering the WhatsApp flow's
+                    // completeRegistration() uses. Do NOT insert/upsert into
+                    // `profiles` or `wallets` directly from the client: profiles.id
+                    // is a separate DB-generated id linked via auth_user_id, not
+                    // equal to the auth uid, so a client-side upsert keyed on
+                    // `id: userId` creates a second, orphaned profile+wallet instead
+                    // of updating the real one. (Also: RLS only allows customers to
                     // select/update their own row, not insert — inserts are the
                     // trigger's job.)
                     const { data: signUpData, error: signUpError } = await window.supabase.auth.signUp({
@@ -2025,11 +2028,11 @@
 
                     if (!userId) throw new Error('Account created but no user ID was returned.');
 
-                    // 2. Confirm the trigger actually created the profile (and thus
-                    // the wallet). This is a read-your-own-write sanity check, not
-                    // a fallback path — if this is missing, something is wrong with
-                    // the trigger itself and we should surface that rather than
-                    // silently patch over it client-side.
+                    // 2. Confirm the trigger actually created (or linked) the
+                    // profile. This is a read-your-own-write sanity check, not
+                    // a fallback path — if this is missing, something is wrong
+                    // with the trigger itself and we should surface that rather
+                    // than silently patch over it client-side.
                     const { data: createdProfile, error: profileCheckError } = await window.supabase
                         .from('profiles')
                         .select('id, registration_complete')
@@ -2039,6 +2042,22 @@
                     if (profileCheckError) throw profileCheckError;
                     if (!createdProfile) {
                         throw new Error('Account created, but your profile could not be found. Please contact support.');
+                    }
+
+                    // 3. Create the wallet (idempotent — safe even if this
+                    // account was started on WhatsApp and already has one).
+                    // Mirrors the WhatsApp flow's completeRegistration(): wallet
+                    // first, registration_complete flipped strictly after.
+                    if (!createdProfile.registration_complete) {
+                        const { error: walletError } = await window.supabase
+                            .rpc('ensure_customer_wallet', { p_profile_id: createdProfile.id });
+                        if (walletError) throw walletError;
+
+                        const { error: completeError } = await window.supabase
+                            .from('profiles')
+                            .update({ registration_complete: true })
+                            .eq('id', createdProfile.id);
+                        if (completeError) throw completeError;
                     }
 
                     // Populate success screen
