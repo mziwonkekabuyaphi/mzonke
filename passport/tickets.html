@@ -540,10 +540,31 @@
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) { showToast('Please log in first', true); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return false; }
         currentUser = session.user;
-        let { data: profile } = await supabase.from('profiles').select('phone, name').eq('id', currentUser.id).maybeSingle();
-        if (!profile) { const { data: newProfile } = await supabase.from('profiles').insert({ id: currentUser.id, name: currentUser.user_metadata?.full_name || 'User', email: currentUser.email, phone: currentUser.user_metadata?.phone || '', role: 'customer' }).select('phone, name').single(); profile = newProfile; }
-        const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', currentUser.id).maybeSingle();
-        userProfile = { phone: profile.phone, name: profile.name, wallet_balance: wallet?.balance ?? 0 };
+        // profiles.id is NOT guaranteed to equal the auth user id —
+        // WhatsApp-registered customers get a DB-generated profiles.id,
+        // linked to auth only via auth_user_id (see home.html for the
+        // same pattern). Looking this up by id=currentUser.id silently
+        // failed to find those profiles, which then made the fallback
+        // insert below collide (and get blocked by RLS, since there's no
+        // INSERT policy for a user's own profile row), leaving `profile`
+        // null and crashing on `profile.phone` — which is why nothing on
+        // this page loaded at all.
+        let { data: profile } = await supabase.from('profiles').select('id, phone, name').eq('auth_user_id', currentUser.id).maybeSingle();
+        if (!profile) {
+            const fallback = await supabase.from('profiles').select('id, phone, name').eq('id', currentUser.id).maybeSingle();
+            profile = fallback.data;
+        }
+        if (!profile) {
+            const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({ id: currentUser.id, auth_user_id: currentUser.id, name: currentUser.user_metadata?.full_name || 'User', email: currentUser.email, phone: currentUser.user_metadata?.phone || '', role: 'customer' }).select('id, phone, name').single();
+            if (insertError) console.error('Profile creation failed:', insertError);
+            profile = newProfile;
+        }
+        if (!profile) {
+            showToast('Could not load your account. Please contact support.', true);
+            return false;
+        }
+        const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', profile.id).maybeSingle();
+        userProfile = { id: profile.id, phone: profile.phone, name: profile.name, wallet_balance: wallet?.balance ?? 0 };
         isWalletBlocked = (wallet?.status || '').toLowerCase() === 'blocked';
         walletBlockReason = wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
         document.getElementById('walletBalance').innerText = `R${userProfile.wallet_balance.toLocaleString(undefined, {minimumFractionDigits:2})}`;
@@ -561,7 +582,7 @@
         if (myPanel) myPanel.insertAdjacentHTML('afterbegin', bannerHtml);
     }
     async function updateMyTicketsCount() { if (!userProfile?.phone) return; const { count } = await supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('customer_phone', userProfile.phone).eq('status', 'issued'); if(count !== undefined) document.getElementById('myTicketsCountStat').textContent = count || 0; }
-    async function refreshUserBalance() { const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', currentUser.id).maybeSingle(); if(wallet) { userProfile.wallet_balance = wallet.balance; document.getElementById('walletBalance').innerText = `R${wallet.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }
+    async function refreshUserBalance() { const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userProfile.id).maybeSingle(); if(wallet) { userProfile.wallet_balance = wallet.balance; document.getElementById('walletBalance').innerText = `R${wallet.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }
 
     async function loadEvents() {
         const { data, error } = await supabase.from('events').select('*').order('start_time', { ascending: true });
@@ -600,7 +621,7 @@
         const btn = document.querySelector(`.purchase-btn[data-type-id="${ticketTypeId}"]`);
         if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
         isPurchasing = true;
-        const { error } = await supabase.rpc('purchase_ticket', { p_user_id: currentUser.id, p_ticket_type_id: ticketTypeId });
+        const { error } = await supabase.rpc('purchase_ticket', { p_user_id: userProfile.id, p_ticket_type_id: ticketTypeId });
         if(error) showToast(error.message.includes('Insufficient') ? 'Insufficient wallet balance' : error.message.includes('sold out') ? 'Sold out' : 'Purchase failed', true);
         else { showToast('✅ Ticket purchased!'); await refreshUserBalance(); await renderStoreTickets(); await updateMyTicketsCount(); if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull(); }
         isPurchasing = false;
@@ -677,7 +698,7 @@
         else if(finalPhone.startsWith('0')) finalPhone = '+27' + finalPhone.slice(1);
         else finalPhone = '+' + finalPhone;
         if(finalPhone === userProfile.phone) { showToast('Cannot transfer to yourself', true); return false; }
-        const { error } = await supabase.rpc('transfer_ticket', { p_ticket_id: ticketId, p_from_user_id: currentUser.id, p_to_phone: finalPhone });
+        const { error } = await supabase.rpc('transfer_ticket', { p_ticket_id: ticketId, p_from_user_id: userProfile.id, p_to_phone: finalPhone });
         if(error) { showToast(error.message, true); return false; }
         showToast('Ticket transferred'); await renderMyTicketsFull(); await updateMyTicketsCount(); return true;
     }
@@ -701,7 +722,7 @@
         document.getElementById('closeConfirmModal').addEventListener('click', () => closeConfirmModal(false)); 
         document.getElementById('confirmModalCancelBtn').addEventListener('click', () => closeConfirmModal(false)); 
         document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => closeConfirmModal(true)); 
-        supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentUser.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe(); 
+        supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe(); 
     }
     init();
 </script>
