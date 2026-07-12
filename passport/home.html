@@ -1521,7 +1521,7 @@
         // auth_user_id (with an id-based fallback for older rows) covers both.
         let { data: profile, error: pErr } = await supabase
             .from('profiles')
-            .select('id, full_name, name, surname, phone, card_number, card_cvv')
+            .select('id, name, surname, phone, card_number, card_cvv')
             .eq('auth_user_id', session.user.id)
             .maybeSingle();
 
@@ -1531,20 +1531,21 @@
             // Fallback for profiles where id === auth id (legacy/web-registered rows).
             const fallback = await supabase
                 .from('profiles')
-                .select('id, full_name, name, surname, phone, card_number, card_cvv')
+                .select('id, name, surname, phone, card_number, card_cvv')
                 .eq('id', session.user.id)
                 .maybeSingle();
             if (fallback.error) console.error('Profile fetch fallback error:', fallback.error);
             profile = fallback.data;
         }
 
-        // WhatsApp-registered profiles store name/surname separately rather
-        // than a combined full_name column.
+        // Profiles store name/surname separately — there is no full_name
+        // column on this table (selecting one used to 400 the whole query
+        // and silently break the balance lookup below — see profileId).
         const derivedFullName = profile && (profile.name || profile.surname)
             ? [profile.name, profile.surname].filter(Boolean).join(' ')
             : null;
 
-        const fullName = profile?.full_name || derivedFullName || session.user.user_metadata?.full_name ||
+        const fullName = derivedFullName || session.user.user_metadata?.full_name ||
             [session.user.user_metadata?.name, session.user.user_metadata?.surname].filter(Boolean).join(' ') ||
             'Member';
 
