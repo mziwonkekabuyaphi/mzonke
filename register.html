@@ -1969,23 +1969,35 @@
                     let userId;
                     let session;
 
-                    // 1. Create the auth user.
+                    // 1. Create the auth user. The DB trigger `handle_new_auth_user`
+                    // creates the profile row (and, via create_wallet_for_new_profile,
+                    // the wallet row) atomically in the same transaction as the auth
+                    // user — driven entirely by this metadata. Do NOT also write to
+                    // `profiles` or `wallets` from the client below: profiles.id is
+                    // a separate DB-generated id linked via auth_user_id, not equal
+                    // to the auth uid, so a client-side upsert keyed on `id: userId`
+                    // creates a second, orphaned profile+wallet instead of updating
+                    // the real one. (Also: RLS only allows customers to
+                    // select/update their own row, not insert — inserts are the
+                    // trigger's job.)
                     const { data: signUpData, error: signUpError } = await window.supabase.auth.signUp({
                         email: em,
                         password: pw,
                         options: {
-                            data: { full_name: fn + ' ' + ln, phone: ph }
+                            data: {
+                                full_name: fn + ' ' + ln,
+                                phone: ph,
+                                account_type: isVip ? 'vip' : 'general'
+                            }
                         }
                     });
 
                     if (signUpError) {
                         // SELF-HEALING: "already registered" here almost always means a
                         // PREVIOUS attempt got this far (auth user created) and then
-                        // failed on the profile or wallet step below — e.g. a dropped
-                        // connection — leaving the account stuck. There's no way to
-                        // retry signUp() with the same email, so instead of failing
-                        // forever, sign in with what was just typed and continue the
-                        // flow from wherever it left off.
+                        // the connection dropped before we could confirm it below.
+                        // There's no way to retry signUp() with the same email, so
+                        // instead of failing forever, sign in with what was just typed.
                         const alreadyRegistered = /already registered|already exists/i.test(signUpError.message || '');
                         if (!alreadyRegistered) throw signUpError;
 
@@ -2013,48 +2025,21 @@
 
                     if (!userId) throw new Error('Account created but no user ID was returned.');
 
-                    // 2. Create (or update) the profile row.
-                    //
-                    // NOTE: registration_complete is deliberately NOT set here.
-                    // It's only set in step 4, after the wallet is confirmed to
-                    // exist — otherwise a wallet-creation failure below would
-                    // leave a profile marked "fully registered" with no wallet
-                    // at all, which is worse than being stuck mid-registration.
-                    const { error: profileError } = await window.supabase
+                    // 2. Confirm the trigger actually created the profile (and thus
+                    // the wallet). This is a read-your-own-write sanity check, not
+                    // a fallback path — if this is missing, something is wrong with
+                    // the trigger itself and we should surface that rather than
+                    // silently patch over it client-side.
+                    const { data: createdProfile, error: profileCheckError } = await window.supabase
                         .from('profiles')
-                        .upsert({
-                            id: userId,
-                            name: fn,
-                            surname: ln,
-                            email: em,
-                            phone: ph,
-                            role: 'customer',
-                            account_type: isVip ? 'vip' : 'general'
-                        }, { onConflict: 'id' });
+                        .select('id, registration_complete')
+                        .eq('auth_user_id', userId)
+                        .maybeSingle();
 
-                    if (profileError) throw profileError;
-
-                    // 3. Create the wallet row if one doesn't already exist
-                    // (ignoreDuplicates so we never overwrite an existing balance)
-                    const { error: walletError } = await window.supabase
-                        .from('wallets')
-                        .upsert({
-                            user_id: userId,
-                            balance: 0,
-                            currency: 'ZAR',
-                            status: 'active'
-                        }, { onConflict: 'user_id', ignoreDuplicates: true });
-
-                    if (walletError) throw walletError;
-
-                    // 4. Wallet confirmed to exist — NOW, and only now, mark
-                    // registration complete.
-                    const { error: completeError } = await window.supabase
-                        .from('profiles')
-                        .update({ registration_complete: true })
-                        .eq('id', userId);
-
-                    if (completeError) throw completeError;
+                    if (profileCheckError) throw profileCheckError;
+                    if (!createdProfile) {
+                        throw new Error('Account created, but your profile could not be found. Please contact support.');
+                    }
 
                     // Populate success screen
                     userNamePlaceholder.textContent = (fn || 'Mziwonke') + ' ' + (ln || 'Kabuyaphi');
