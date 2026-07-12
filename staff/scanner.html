@@ -1219,17 +1219,29 @@ function showToast(msg, isErr = false) {
 async function loadStats() {
     if (!currentEvent) return;
     try {
-        const { data } = await supabase
-            .from('tickets')
-            .select('checked_in')
-            .eq('event_id', currentEvent.id);
-        if (!data) return;
-        const total   = data.length;
-        const checked = data.filter(r => r.checked_in).length;
-        const pct     = total > 0 ? Math.round((checked / total) * 100) : 0;
+        // Count-only queries (head: true) — Postgres returns just the row
+        // count via a header, not the rows themselves, so payload stays
+        // tiny and constant no matter how many tickets the event has sold.
+        // (Previously this fetched every ticket row and filtered in JS,
+        // which got slower and slower as ticket volume grew.)
+        const [{ count: total, error: totalErr }, { count: checked, error: checkedErr }] = await Promise.all([
+            supabase
+                .from('tickets')
+                .select('*', { count: 'exact', head: true })
+                .eq('event_id', currentEvent.id),
+            supabase
+                .from('tickets')
+                .select('*', { count: 'exact', head: true })
+                .eq('event_id', currentEvent.id)
+                .eq('checked_in', true),
+        ]);
+        if (totalErr || checkedErr) return;
+        const totalCount   = total ?? 0;
+        const checkedCount = checked ?? 0;
+        const pct = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
         // Animate number changes
-        animateNum(totalSpan,     checked);
-        animateNum(remainingSpan, total - checked);
+        animateNum(totalSpan,     checkedCount);
+        animateNum(remainingSpan, totalCount - checkedCount);
         percentSpan.textContent = pct + '%';
         progressFill.style.width = pct + '%';
     } catch(e) { /* network error — keep stale values */ }
@@ -1617,7 +1629,7 @@ function setScannerStatus(state) {
 /* ============================================================
    RESULT DISPLAY
 ============================================================ */
-const RESULT_DURATION = 1800; // ms before auto-dismiss (fast scan cycle)
+const RESULT_DURATION = 3000; // ms before auto-dismiss (min 3s so staff can actually read it)
 
 /**
  * Show a full-screen result card.
@@ -1731,7 +1743,9 @@ async function processTicket(scannedData) {
             };
             showResult('success', 'ACCESS GRANTED', result.message, meta);
             prependScanRow(classified.value, meta.ticketType, gate, true);
-            loadStats();
+            // Stats refresh via the realtime subscription on the
+            // checkins INSERT (see subscribeRealtime) — calling
+            // loadStats() here too just doubled the query for no benefit.
 
         } else {
             // ── QR / token single-ticket check-in (original path) ──
@@ -1752,7 +1766,9 @@ async function processTicket(scannedData) {
 
             showResult('success', 'ACCESS GRANTED', result.message || 'Welcome!', meta);
             prependScanRow(qrToken, meta.ticketType, gate, true);
-            loadStats();
+            // Stats refresh via the realtime subscription on the
+            // checkins INSERT (see subscribeRealtime) — calling
+            // loadStats() here too just doubled the query for no benefit.
 
             if (window.printWristband && result.wristband_data) {
                 window.printWristband(result.wristband_data).catch(() => {});
