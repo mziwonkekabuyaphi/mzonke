@@ -502,7 +502,23 @@
     function formatDate(dateStr) { if (!dateStr) return 'TBA'; const d = new Date(dateStr); return d.toLocaleDateString('en-ZA', { weekday:'short', day:'numeric', month:'short', year:'numeric' }); }
     function formatTime(dateStr) { if (!dateStr) return ''; const d = new Date(dateStr); return d.toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }); }
     function isVipTicket(ticketName) { return ticketName && ticketName.toLowerCase().includes('vip'); }
-    function isEventExpired(eventDateStr) { if (!eventDateStr) return true; return new Date(eventDateStr) < new Date(); }
+    // Matches the "is this event over" logic already used in scanner.html /
+    // home.html: an event with an end_time is only expired once end_time
+    // has passed (so it stays visible while live). Only events with no
+    // end_time at all fall back to expiring at start_time.
+    // Previously this only checked start_time, so any event that had
+    // already started — even one still in progress — was hidden here.
+    function isEventExpired(event) {
+        if (!event || !event.start_time) return true;
+        const start = new Date(event.start_time);
+        if (isNaN(start.getTime())) return true;
+        const now = new Date();
+        if (event.end_time) {
+            const end = new Date(event.end_time);
+            if (!isNaN(end.getTime())) return now > end;
+        }
+        return now > start;
+    }
     function getEventBannerUrl(event) {
         if (!event || !event.image_url) return null;
         if (/^https?:\/\//i.test(event.image_url)) return event.image_url;
@@ -553,7 +569,7 @@
         document.getElementById('eventsCountStat').textContent = events.length;
         const eventSelect = document.getElementById('eventSelectStore');
         if (!events.length) { eventSelect.innerHTML = '<option>No events</option>'; document.getElementById('ticketsContainerStore').innerHTML = '<div class="empty-state">No upcoming events</div>'; return; }
-        const activeEvents = events.filter(ev => !isEventExpired(ev.start_time));
+        const activeEvents = events.filter(ev => !isEventExpired(ev));
         if(activeEvents.length === 0) { eventSelect.innerHTML = '<option>No upcoming events</option>'; document.getElementById('ticketsContainerStore').innerHTML = '<div class="empty-state">All events have ended</div>'; return; }
         eventSelect.innerHTML = activeEvents.map(ev => `<option value="${ev.id}">${escapeHtml(ev.name)} — ${formatDate(ev.start_time)}</option>`).join('');
         eventSelect.disabled = false;
