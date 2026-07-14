@@ -21,6 +21,8 @@
       userId: null,
       userEmail: '',
       walletBalance: 0,
+      isWalletBlocked: false,
+      walletBlockReason: '',
       collectModalVisible: false,
       cartModalVisible: false,
       pendingTotal: 0,
@@ -150,9 +152,15 @@
       },
       async fetchWalletBalance() {
         if (!this.userId) return 0;
-        const { data, error } = await supabase.from('wallets').select('balance').eq('user_id', this.userId).maybeSingle();
+        const { data, error } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', this.userId).maybeSingle();
         if (error) console.error(error);
         this.walletBalance = data?.balance ?? 0;
+        // Same check as tickets.js's initAuth: a wallet with status
+        // 'blocked' (set by admin) must stop purchases here too — this
+        // page previously never looked at status/block_reason at all, so a
+        // blocked wallet could still buy, defeating the block entirely.
+        this.isWalletBlocked = (data?.status || '').toLowerCase() === 'blocked';
+        this.walletBlockReason = data?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
         return this.walletBalance;
       },
 
@@ -176,6 +184,7 @@
         if (this.cartItemCount === 0) return;
         if (!this.loggedInUser) { this.showToast('Session expired'); window.location.href = 'login.html'; return; }
         await this.fetchWalletBalance();
+        if (this.isWalletBlocked) { this.showToast(this.walletBlockReason); return; }
         const total = this.cartTotal;
         if (this.walletBalance < total) { this.showToast(`Insufficient balance. Available: R${this.formatPrice(this.walletBalance)}`); return; }
         this.pendingTotal = total;
