@@ -22,6 +22,7 @@
       userEmail: '',
       walletBalance: 0,
       collectModalVisible: false,
+      cartModalVisible: false,
       pendingTotal: 0,
       pendingCartSnapshot: [],
       timeSlots: [],
@@ -87,6 +88,26 @@
         else this.cart.push({ ...p, quantity: qty, vendor, product_type });
         this.$set(this.pendingQtys, p.id, 0);
         this.showToast(`${p.name} added`);
+      },
+
+      // --- cart editing (view / remove / adjust quantity before checkout) ---
+      openCartModal() { this.cartModalVisible = true; },
+      closeCartModal() { this.cartModalVisible = false; },
+      incrementCartItem(item) { item.quantity += 1; },
+      decrementCartItem(item) {
+        if (item.quantity > 1) { item.quantity -= 1; return; }
+        // Quantity would drop to 0 — same as removing the line entirely.
+        this.removeCartItem(item);
+      },
+      removeCartItem(item) {
+        const idx = this.cart.findIndex(i => i === item);
+        if (idx === -1) return;
+        this.cart.splice(idx, 1);
+        this.showToast(`${item.name} removed`);
+      },
+      checkoutFromCartModal() {
+        this.cartModalVisible = false;
+        this.startCheckout();
       },
       
       selectCategory(id) { this.activeCategory = id; this.searchQuery = ''; },
