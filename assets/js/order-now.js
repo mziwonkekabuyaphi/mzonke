@@ -195,6 +195,7 @@
             order_id: orderData.id,
             product_type: item.product_type,
             product_id: String(item.id),
+            product_name: item.name,
             quantity: Number(item.quantity),
             unit_price: Number(item.price),
             subtotal: Number(item.price) * Number(item.quantity)
@@ -262,7 +263,7 @@
           ];
           let activeIdx = order.status === 'pending' ? 0 : (order.status === 'preparing' ? 1 : 2);
           const itemsList = order.order_items?.map(it => `${it.quantity}x ${it.product_name}`).join(', ') || '';
-          ordersHtml += `<div class="order-card ${order.status === 'ready' ? 'ready-glow' : ''}"><div class="card-header"><span>#${order.order_number}</span><span><i class="fas ${order.vendor === 'Rands Smart Counter' ? 'fa-beer-mug-empty' : 'fa-utensils'}"></i> ${order.vendor === 'Rands Smart Counter' ? 'Bar' : 'Kitchen'}</span><span>${order.status.toUpperCase()}</span></div><div class="timeline"><div class="step-row">${steps.map((s,idx) => `<div class="step ${idx<activeIdx ? 'completed' : (idx===activeIdx ? 'active' : '')}"><div class="step-icon"><i class="${s.icon}"></i></div><div>${s.label}</div></div>`).join('')}</div></div><div style="padding:12px;">${itemsList}<div style="font-weight:bold; margin-top:8px; color:var(--red);">R${order.total.toFixed(2)}</div></div></div>`;
+          ordersHtml += `<div class="order-card ${order.status === 'ready' ? 'ready-glow' : ''}"><div class="card-header"><span>#${order.order_number}</span><span><i class="fas ${order.vendor === 'Rands Smart Counter' ? 'fa-beer-mug-empty' : 'fa-utensils'}"></i> ${order.vendor === 'Rands Smart Counter' ? 'Smart Counter' : 'Kitchen'}</span><span>${order.status.toUpperCase()}</span></div><div class="timeline"><div class="step-row">${steps.map((s,idx) => `<div class="step ${idx<activeIdx ? 'completed' : (idx===activeIdx ? 'active' : '')}"><div class="step-icon"><i class="${s.icon}"></i></div><div>${s.label}</div></div>`).join('')}</div></div><div style="padding:12px;">${itemsList}<div style="font-weight:bold; margin-top:8px; color:var(--red);">R${order.total.toFixed(2)}</div></div></div>`;
         }
         if (activeOrders.length === 0) ordersHtml = '<div class="empty-state">No active orders</div>';
         document.getElementById('trackOrdersGrid').innerHTML = ordersHtml;
