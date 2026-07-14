@@ -701,10 +701,13 @@
 
     async function transferTicketToPhone(ticketId, targetPhone) {
         if(isWalletBlocked) { showToast(walletBlockReason, true); return false; }
-        let finalPhone = targetPhone.replace(/\D/g, '');
-        if(finalPhone.startsWith('27')) finalPhone = '+' + finalPhone;
-        else if(finalPhone.startsWith('0')) finalPhone = '+27' + finalPhone.slice(1);
-        else finalPhone = '+' + finalPhone;
+        let digits = targetPhone.replace(/\D/g, '');
+        if(digits.startsWith('0')) digits = '27' + digits.slice(1);
+        // Canonical form matches what profiles.phone / tickets.customer_phone
+        // store in the DB (no leading '+') and what transfer_ticket's own
+        // normalisation produces — see that function's comment for why the
+        // '+' prefix was removed here too.
+        const finalPhone = digits;
         if(finalPhone === userProfile.phone) { showToast('Cannot transfer to yourself', true); return false; }
         const { error } = await supabase.rpc('transfer_ticket', { p_ticket_id: ticketId, p_from_user_id: userProfile.id, p_to_phone: finalPhone });
         if(error) { showToast(error.message, true); return false; }
