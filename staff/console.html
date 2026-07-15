@@ -1350,7 +1350,9 @@ async function fetchWalletsWithProfiles() {
 }
 
 async function fetchRefundRequests() {
-  const { data, error } = await supabaseClient.from('refund_requests').select('*, profiles(name)').order('created_at', { ascending: false });
+  // refund_requests has TWO fkeys to profiles (customer_id, processed_by) —
+  // must name the constraint or PostgREST throws "more than one relationship found".
+  const { data, error } = await supabaseClient.from('refund_requests').select('*, profiles!refund_requests_customer_id_fkey(name)').order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(r => ({
     id: r.id,
@@ -1363,9 +1365,12 @@ async function fetchRefundRequests() {
 }
 
 async function fetchRecentTopups(limit = 8) {
+  // wallet_transactions has NO foreign key to wallets (wallet_id is just a
+  // plain column, not an FK) — only user_id -> profiles.id is a real FK,
+  // so join profiles directly instead of trying to embed via wallets.
   const { data, error } = await supabaseClient
     .from('wallet_transactions')
-    .select('*, wallets(user_id, profiles(name))')
+    .select('*, profiles!wallet_transactions_user_id_fkey(name)')
     .eq('type', 'topup')
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -1373,15 +1378,17 @@ async function fetchRecentTopups(limit = 8) {
   return (data || []).map(tx => ({
     id: tx.id,
     amount: parseFloat(tx.amount),
-    customer_name: tx.wallets?.profiles?.name || 'Customer',
+    customer_name: tx.profiles?.name || 'Customer',
     time: new Date(tx.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
   }));
 }
 
 async function fetchRecentTickets(limit = 5) {
+  // support_tickets has TWO fkeys to profiles (customer_id, assigned_to) —
+  // must name the constraint or PostgREST throws "more than one relationship found".
   const { data, error } = await supabaseClient
     .from('support_tickets')
-    .select('*, profiles(name)')
+    .select('*, profiles!support_tickets_customer_id_fkey(name)')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) return [];
