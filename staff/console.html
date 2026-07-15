@@ -1291,11 +1291,13 @@ const FALLBACK_MODULES = {
 // ========================
 async function fetchStaffModulesFromDB(staffId) {
   try {
-    // Get staff profile with job title (staff_role column in profiles)
+    // Get staff profile with job title (staff_role column in profiles).
+    // profiles.id is its own generated PK — auth_user_id is what links the
+    // row back to the logged-in auth user, so we must filter on that.
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('staff_role')
-      .eq('id', staffId)
+      .eq('auth_user_id', staffId)
       .single();
     
     if (profileError || !profile || !profile.staff_role) {
@@ -1489,10 +1491,12 @@ createApp({
           return;
         }
 
+        // profiles.id is its own generated PK — auth_user_id links the row
+        // back to the logged-in auth user, so filter on that, not id.
         const { data: profile, error: profileError } = await supabaseClient
           .from('profiles')
           .select('name, role, staff_role')
-          .eq('id', user.id)
+          .eq('auth_user_id', user.id)
           .single();
 
         if (profileError || !profile) {
@@ -1517,9 +1521,14 @@ createApp({
         if (modulesFromDB.length > 0) {
           perms = modulesFromDB;
           console.log('📦 Using modules from database:', perms);
-        } else if (profile.staff_role && FALLBACK_MODULES[profile.staff_role]) {
-          perms = FALLBACK_MODULES[profile.staff_role];
-          console.log('⚠️ Using fallback modules for', profile.staff_role, ':', perms);
+        } else if (profile.staff_role) {
+          // Normalize "Event Manager" -> "event_manager" so the fallback map
+          // matches regardless of how staff_role is capitalized/spaced.
+          const normalizedRole = profile.staff_role.trim().toLowerCase().replace(/\s+/g, '_');
+          if (FALLBACK_MODULES[normalizedRole]) {
+            perms = FALLBACK_MODULES[normalizedRole];
+            console.log('⚠️ Using fallback modules for', profile.staff_role, ':', perms);
+          }
         }
 
         if (!profile.staff_role || perms.length === 0) {
