@@ -58,7 +58,7 @@ export async function signOutUser() {
 /* =========================
    GET PROFILE
    Fetches the full profile row from `profiles` for a given auth user ID.
-   Returns: { profile: { id, email, role, status, wallet_id, account_type } | null, error }
+   Returns: { profile: { id, email, role, status, wallet_id, account_type, registration_complete } | null, error }
 
    Error values:
      null         → success
@@ -78,14 +78,14 @@ export async function getProfile(userId) {
     // told their account "isn't configured" on their very first web login.
     let { data, error } = await supabase
       .from('profiles')
-      .select('id, email, role, status, wallet_id, account_type, auth_user_id')
+      .select('id, email, role, status, wallet_id, account_type, auth_user_id, registration_complete')
       .eq('auth_user_id', userId)
       .maybeSingle();
 
     if (!error && !data) {
       const fallback = await supabase
         .from('profiles')
-        .select('id, email, role, status, wallet_id, account_type, auth_user_id')
+        .select('id, email, role, status, wallet_id, account_type, auth_user_id, registration_complete')
         .eq('id', userId)
         .maybeSingle();
       data = fallback.data;
@@ -169,7 +169,7 @@ export async function getCurrentUser() {
    Returns the combined session object expected by the app:
    {
      user:    { id, email },
-     profile: { id, email, role, status, wallet_id, account_type }
+     profile: { id, email, role, status, wallet_id, account_type, registration_complete }
    }
    Returns null if there is no active session.
 ========================= */
@@ -190,6 +190,45 @@ export async function getSessionWithProfile() {
   } catch (err) {
     console.error('❌ getSessionWithProfile crash:', err);
     return null;
+  }
+}
+
+/* =========================
+   COMPLETE CUSTOMER REGISTRATION
+   Mirrors register.html's activateAccount(): wallet first, then flip
+   registration_complete strictly after — never the other order. Any login
+   path (email, Google, passkey) can hit a profile that was created by the
+   `handle_new_auth_user` DB trigger but never finished this step — e.g. an
+   OAuth user whose provider redirect skipped register.html entirely — so
+   this lives here rather than being duplicated per auth method.
+
+   No-ops (returns immediately) if the profile is already complete.
+========================= */
+export async function completeCustomerRegistration(profile) {
+  if (profile.registration_complete) return { error: null };
+
+  try {
+    const { error: walletError } = await supabase
+      .rpc('ensure_customer_wallet', { p_profile_id: profile.id });
+    if (walletError) {
+      console.error('❌ Wallet creation failed:', walletError.message);
+      return { error: walletError };
+    }
+
+    const { error: completeError } = await supabase
+      .from('profiles')
+      .update({ registration_complete: true })
+      .eq('id', profile.id);
+    if (completeError) {
+      console.error('❌ Failed to flag registration complete:', completeError.message);
+      return { error: completeError };
+    }
+
+    console.log('✅ Registration completed (wallet created) for profile:', profile.id);
+    return { error: null };
+  } catch (err) {
+    console.error('❌ completeCustomerRegistration crash:', err);
+    return { error: err };
   }
 }
 
