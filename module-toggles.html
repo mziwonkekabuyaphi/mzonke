@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rands — Module Toggles</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --border: #2a2e38;
+    --text: #eaecef;
+    --muted: #8a8f9a;
+    --accent: #7c5cff;
+    --on: #35c47a;
+    --off: #4a4f5a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 4px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 14px;
+    border-bottom: 1px solid var(--border);
+    transition: opacity .15s;
+  }
+  .row:last-child { border-bottom: none; }
+  .row.saving { opacity: 0.5; }
+  .left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: #23262f;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+  .meta { min-width: 0; }
+  .name { font-size: 15px; font-weight: 500; }
+  .path { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .switch {
+    position: relative;
+    width: 46px; height: 27px;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .switch input { display: none; }
+  .slider {
+    position: absolute; inset: 0;
+    background: var(--off);
+    border-radius: 999px;
+    transition: background .2s;
+  }
+  .slider::before {
+    content: "";
+    position: absolute;
+    width: 21px; height: 21px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  input:checked + .slider { background: var(--on); }
+  input:checked + .slider::before { transform: translateX(19px); }
+  .status {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 16px;
+    min-height: 18px;
+  }
+  .status.err { color: #ff6b6b; }
+  .loading { text-align: center; color: var(--muted); padding: 40px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Module Toggles</h1>
+  <div class="sub">Turn modules on or off for your Rands system.</div>
+  <div id="content" class="loading">Loading modules…</div>
+  <div id="status" class="status"></div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://odpugxrihfspaucsdqjj.supabase.co";
+const API_KEY = "sb_publishable_fCsjtPGF2zFngK_5DiUKag_tkJk_xo2";
+
+const headers = {
+  "apikey": API_KEY,
+  "Authorization": "Bearer " + API_KEY,
+  "Content-Type": "application/json"
+};
+
+const content = document.getElementById("content");
+const statusEl = document.getElementById("status");
+
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = "status" + (isErr ? " err" : "");
+  if (msg && !isErr) setTimeout(() => { statusEl.textContent = ""; }, 2000);
+}
+
+async function loadModules() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/modules?select=*&order=display_order.asc`, { headers });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const modules = await res.json();
+    render(modules);
+  } catch (err) {
+    content.innerHTML = `<div class="loading">Couldn't load modules.<br>${err.message}</div>`;
+  }
+}
+
+function render(modules) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  modules.forEach(m => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.id = "row-" + m.id;
+
+    row.innerHTML = `
+      <div class="left">
+        <div class="icon">${iconFor(m.icon)}</div>
+        <div class="meta">
+          <div class="name">${escapeHtml(m.name)}</div>
+          <div class="path">${escapeHtml(m.path || "")}</div>
+        </div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" ${m.is_active ? "checked" : ""} data-id="${m.id}">
+        <span class="slider"></span>
+      </label>
+    `;
+
+    card.appendChild(row);
+  });
+
+  content.innerHTML = "";
+  content.appendChild(card);
+
+  card.querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener("change", onToggle);
+  });
+}
+
+function iconFor(faClass) {
+  // Simple emoji fallback since Font Awesome isn't loaded
+  const map = {
+    "fas fa-chart-line": "📊",
+    "fas fa-smoking": "💨",
+    "fas fa-users": "👥",
+    "fas fa-cart-shopping": "🛒",
+    "fas fa-calendar-alt": "📅",
+    "fas fa-wallet": "💳",
+    "fas fa-crown": "👑",
+    "fas fa-lock": "🔒",
+    "fab fa-whatsapp": "💬",
+    "fas fa-tv": "📺"
+  };
+  return map[faClass] || "⚙️";
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+async function onToggle(e) {
+  const input = e.target;
+  const id = input.dataset.id;
+  const newVal = input.checked;
+  const row = document.getElementById("row-" + id);
+  row.classList.add("saving");
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/modules?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ is_active: newVal })
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    setStatus(`${id} ${newVal ? "enabled" : "disabled"}`, false);
+  } catch (err) {
+    input.checked = !newVal; // revert
+    setStatus("Failed to save — reverted", true);
+  } finally {
+    row.classList.remove("saving");
+  }
+}
+
+loadModules();
+</script>
+</body>
+</html>
