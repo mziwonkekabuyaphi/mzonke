@@ -5,7 +5,9 @@
  *   1. Authenticate with Supabase (email/password, Google, or Passkey)
  *   2. Fetch profile from `profiles` table via getProfile(user.id)
  *   3. Validate: profile exists + role is set + status === 'Active'
- *   4. Redirect to role dashboard
+ *   4. If registration isn't finished yet (no wallet), finish it —
+ *      see completeCustomerRegistration() in config/auth.js
+ *   5. Redirect to role dashboard
  *
  * "Account not fully configured" is shown ONLY when:
  *   • profile row is NULL, OR
@@ -21,6 +23,7 @@ import {
   getProfile,
   getRoleRedirectUrl,
   getSessionWithProfile,
+  completeCustomerRegistration,
 } from '../../config/auth.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
@@ -61,7 +64,9 @@ function setLoading(state, btn, labelEl, loadingText, defaultText) {
 // ── Core post-auth handler ─────────────────────────────────────────────────
 /**
  * Called after any successful Supabase auth method returns a user.
- * Fetches the profile, validates it, and redirects to the correct dashboard.
+ * Fetches the profile, validates it, finishes registration if it was left
+ * incomplete (e.g. an OAuth signup that never reached register.html's wallet
+ * step), and redirects to the correct dashboard.
  * Throws a user-friendly Error on any failure so callers can show authError.
  */
 async function finishLogin(user) {
@@ -88,6 +93,16 @@ async function finishLogin(user) {
     throw new Error('Your account is inactive. Please contact support team at info@rands.co.za.');
   }
 
+  // Registration started (profile exists, role/status are fine) but never
+  // finished — no wallet yet. Finish it here rather than bouncing the user
+  // to register.html, whose form assumes a fresh email/password signup.
+  if (profile.role === 'customer' && !profile.registration_complete) {
+    const { error: completeError } = await completeCustomerRegistration(profile);
+    if (completeError) {
+      throw new Error('Almost there — we could not finish setting up your wallet. Please try again in a moment.');
+    }
+  }
+
   // Unrecognised role (shouldn't happen, but guard anyway)
   const redirectUrl = getRoleRedirectUrl(profile.role);
   if (!redirectUrl) {
@@ -97,6 +112,11 @@ async function finishLogin(user) {
   console.log(`✅ Login complete — role: ${profile.role} → ${redirectUrl}`);
   window.location.href = redirectUrl;
 }
+
+// Exposed so the inline OAuth-callback handler in login.html (which waits
+// for window.finishLogin) can actually find it — it was previously calling
+// a name that was never attached to window, so that handler was dead code.
+window.finishLogin = finishLogin;
 
 // ── EMAIL / PASSWORD ───────────────────────────────────────────────────────
 async function handleLogin() {
@@ -188,11 +208,10 @@ passkeyBtn?.addEventListener('click', handlePasskeyLogin);
 // signInWithGoogle() sends the browser to Google, which redirects back here
 // with the session tokens appended as a URL fragment (#access_token=...).
 // The Supabase client consumes that fragment and establishes a session
-// automatically, but nothing was checking for that on page load — so the
-// user ended up authenticated yet stuck staring at the login page. This
-// runs once on load, and if a session already exists (OAuth just completed,
-// or the user still has a valid session from earlier), it finishes the
-// login the same way handleLogin()/handlePasskeyLogin() do.
+// automatically. This runs once on load and finishes the login the same way
+// handleLogin()/handlePasskeyLogin() do — including completing registration
+// (wallet creation) if this session belongs to a profile that was created by
+// the DB trigger but never finished register.html's activation step.
 (async () => {
   const result = await getSessionWithProfile();
   if (!result) return; // no session yet — normal case, let the user log in
@@ -202,6 +221,14 @@ passkeyBtn?.addEventListener('click', handlePasskeyLogin);
   if (profile.status !== 'Active') {
     showAuthError('Your account is inactive. Please contact support team at info@rands.co.za.');
     return;
+  }
+
+  if (profile.role === 'customer' && !profile.registration_complete) {
+    const { error: completeError } = await completeCustomerRegistration(profile);
+    if (completeError) {
+      showAuthError('Almost there — we could not finish setting up your wallet. Please try again in a moment.');
+      return;
+    }
   }
 
   const redirectUrl = getRoleRedirectUrl(profile.role);
