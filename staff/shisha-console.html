@@ -420,10 +420,17 @@
   async function approveRequest(id) {
     const { data: req } = await supabase.from('shisha_requests').select('*').eq('id', id).single();
     if (!req) return showModal('error', 'Error', 'Request not found');
+
+    // end_session needs a coal check + possible staff override *before* we
+    // touch anything, so it's handled separately rather than in the
+    // try/catch below — see approveEndSessionRequest.
+    if (req.request_type === 'end_session') return approveEndSessionRequest(req);
+
     try {
       if (req.request_type === 'order_session') await handleNewOrder(req);
       else if (req.request_type === 'maintenance') await handleMaintenance(req);
-      else if (req.request_type === 'end_session') await handleEndSessionRequest(req);
+      // issue_report is acknowledgement only — deliberately no wallet or
+      // session side-effects, on purpose, don't add any here.
       else if (req.request_type === 'issue_report') showToast('Issue acknowledged');
       else throw new Error('Unknown request type: ' + req.request_type);
 
@@ -432,16 +439,107 @@
     } catch (err) { showModal('error', 'Error', err.message); }
   }
 
+  // end_session requests: if the coal still has time left, warn staff and
+  // require an explicit override instead of silently ending. Declining the
+  // warning leaves the request pending (untouched) so staff can revisit it.
+  async function approveEndSessionRequest(req) {
+    let session = activeSessions.find(s => s.id === req.session_id);
+    if (!session) {
+      const { data } = await supabase.from('shisha_sessions').select('*').eq('id', req.session_id).single();
+      session = data;
+    }
+    if (!session) return showModal('error', 'Error', 'Session not found');
+
+    const finish = async () => {
+      try {
+        await handleEndSessionRequest(req);
+        await supabase.from('shisha_requests').update({ status: 'approved', responded_at: new Date().toISOString() }).eq('id', req.id);
+        await Promise.all([loadSessions(), loadRequests(), loadDevices()]);
+      } catch (err) { showModal('error', 'Error', err.message); }
+    };
+
+    const secsLeft = remainingSec(session);
+    const hasCoal = session.status !== 'expired' && !session.paused && secsLeft > 0;
+
+    if (hasCoal) {
+      const mins = Math.ceil(secsLeft / 60);
+      showModal('confirm', 'Coal still burning',
+        `${session.device_code || 'This hookah'} still has ~${mins} min of coal left. End the session anyway?`,
+        finish
+      );
+    } else {
+      await finish();
+    }
+  }
+
   // 'maintenance' requests are coal refills.
   async function handleMaintenance(req) {
     let session = activeSessions.find(s => s.id === req.session_id);
     if (!session) throw new Error('Session not found');
     if (session.paused) throw new Error('Session is paused — resume it first');
 
-    const { data: cur } = await supabase.from('shisha_sessions').select('paused,status').eq('id', session.id).single();
+    const { data: cur } = await supabase.from('shisha_sessions')
+      .select('paused,status,payment_method,account_id,customer_phone').eq('id', session.id).single();
     if (cur?.paused) throw new Error('Session no longer active');
 
     const price = req.amount || REFILL_PRICE;
+
+    // Charge the wallet for this refill before touching the session, using
+    // the exact same idempotent pattern as handleNewOrder's wallet debit:
+    // keyed on provider_reference = req.id, so re-clicking Approve (or a
+    // realtime refresh firing this twice) can't double-charge. If the
+    // debit throws, the session is left un-refilled — no free coal.
+    const paymentMethod = cur?.payment_method || session.payment_method;
+    if (paymentMethod === 'wallet') {
+      const phone = cur?.account_id || cur?.customer_phone || session.account_id || session.customer_phone;
+      if (!phone) throw new Error('No phone on file to charge for this refill');
+
+      const { data: already } = await supabase
+        .from('wallet_transactions')
+        .select('id')
+        .eq('provider_reference', req.id)
+        .eq('status', 'completed')
+        .maybeSingle();
+
+      if (!already) {
+        const { data: walletRow, error: lookupError } = await supabase
+          .rpc('lookup_wallet_by_phone', { p_phone: phone })
+          .maybeSingle();
+        if (lookupError || !walletRow?.wallet_id) throw new Error('No Passport wallet found for ' + phone);
+        if (walletRow.wallet_status !== 'active') throw new Error(`Passport wallet for ${phone} is ${walletRow.wallet_status}, not active`);
+
+        const { error: deductError } = await supabase.rpc('deduct_wallet', {
+          p_user_id: walletRow.user_id,
+          p_amount: price,
+        });
+        if (deductError) {
+          throw new Error(
+            deductError.message?.includes('Insufficient')
+              ? `Insufficient Passport balance for ${phone} (needs R${price} refill)`
+              : 'Wallet debit failed: ' + deductError.message
+          );
+        }
+
+        const { error: txError } = await supabase.from('wallet_transactions').insert({
+          wallet_id: walletRow.wallet_id,
+          user_id: walletRow.user_id,
+          amount: -price,
+          type: 'debit',
+          description: `Shisha refill - ${session.device_code}`,
+          provider_reference: req.id,
+          provider: 'shisha_console',
+          status: 'completed',
+          direction: 'debit',
+          metadata: { shishaRequestId: req.id, refill: true },
+          created_at: new Date().toISOString(),
+        });
+        // Same known gap as handleNewOrder: if this insert fails after the
+        // balance was already deducted, there's no audit row for it. Not a
+        // new risk, just surfaced as an error instead of swallowed.
+        if (txError) throw new Error('Wallet charged but failed to record transaction: ' + txError.message);
+      }
+    }
+
     const newTotal = session.total_amount + price;
     const newCount = (session.refill_count || 0) + 1;
 
