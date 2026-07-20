@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+    <title>Rands Vibe Passport · Phone Sign In</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <style>
+        /* ============================================================
+           PHONE LOGIN — Rands Vibe Passport
+           Same tokens/layout as login.html, swapped email+password
+           for phone+PIN. No OAuth/passkey/install banner — just the
+           quick path.
+           ============================================================ */
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+        :root {
+            --red: #E30613;
+            --red-glow: rgba(227, 6, 19, 0.4);
+            --red-dim: rgba(227, 6, 19, 0.15);
+            --bg: #09090b;
+            --surface: #111114;
+            --surface-2: #18181c;
+            --surface-3: #1e1e24;
+            --border: rgba(255, 255, 255, 0.06);
+            --text: #f4f4f5;
+            --text-muted: #a1a1aa;
+            --text-dim: #52525b;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        html, body { height: 100%; min-height: 100dvh; background: var(--bg); font-family: 'Inter', sans-serif; color: var(--text); }
+
+        body {
+            display: flex; align-items: flex-start; justify-content: center; padding: 0;
+            overflow-y: auto; overflow-x: hidden; min-height: 100dvh; scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .bg {
+            position: fixed; inset: 0; z-index: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(120, 0, 200, 0.2) 0%, transparent 70%),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(200, 0, 60, 0.15) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 50% at 20% 60%, rgba(60, 0, 120, 0.12) 0%, transparent 60%),
+                var(--bg);
+        }
+
+        .bg-noise {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+            opacity: 0.4;
+        }
+
+        .red-edge {
+            position: fixed; left: 0; top: 0; bottom: 0; width: 3px; z-index: 10;
+            background: linear-gradient(180deg, transparent 5%, var(--red) 30%, var(--red) 70%, transparent 95%);
+            box-shadow: 0 0 20px var(--red-glow), 0 0 60px rgba(227, 6, 19, 0.15);
+            pointer-events: none;
+        }
+
+        .login-wrapper {
+            position: relative; z-index: 1; width: 100%; max-width: 560px;
+            padding: 28px 28px 48px 48px; animation: fadeUp 0.6s var(--ease) both;
+            min-height: 100dvh; display: flex; flex-direction: column; justify-content: center;
+        }
+
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+
+        .login-content { width: 100%; padding: 0; background: transparent; }
+
+        .vibe-tag {
+            display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 20px;
+            font-size: 0.85rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase;
+            color: var(--red); text-shadow: 0 0 20px var(--red-glow);
+        }
+        .vibe-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); box-shadow: 0 0 10px var(--red); flex-shrink: 0; }
+
+        .brand { display: flex; flex-direction: column; align-items: center; margin-bottom: 32px; width: 100%; }
+        .logo-wrapper { width: 100%; display: flex; justify-content: center; margin-bottom: 18px; }
+        .logo-mark {
+            width: 64px; height: 64px; border-radius: 16px; overflow: hidden; flex-shrink: 0;
+            box-shadow: 0 0 40px var(--red-glow); transition: box-shadow 0.3s; background: var(--surface-3);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .logo-mark:hover { box-shadow: 0 0 60px var(--red-glow), 0 0 120px rgba(227, 6, 19, 0.15); }
+        .logo-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .logo-mark .fallback-icon { color: var(--red); font-size: 2rem; font-family: 'Space Grotesk', sans-serif; font-weight: 800; display: none; }
+        .logo-mark img:not([src]), .logo-mark img[src=""] { display: none; }
+        .logo-mark img:not([src])+.fallback-icon, .logo-mark img[src=""]+.fallback-icon { display: block; }
+
+        .brand-text { width: 100%; text-align: left; }
+        .brand-heading { font-family: 'Bebas Neue', sans-serif; font-size: clamp(52px, 13vw, 72px); line-height: 0.92; letter-spacing: 1px; color: var(--text); font-weight: 400; }
+        .brand-heading .top { display: block; }
+        .brand-heading .bottom { display: block; color: var(--red); text-shadow: 0 0 40px rgba(227, 6, 19, 0.6), 0 0 80px rgba(227, 6, 19, 0.3); }
+        .normal-r, .normal-nd { display: inline-block; }
+        .brand-sub { font-size: 1rem; color: var(--text-muted); font-weight: 400; margin-top: 8px; letter-spacing: 0.02em; }
+
+        .form-wrap { display: flex; flex-direction: column; gap: 18px; margin-top: 6px; }
+        .field-group { display: flex; flex-direction: column; gap: 5px; }
+        .field-label { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; padding-left: 2px; }
+        .input-wrap { position: relative; }
+        .field-input {
+            width: 100%; background: var(--surface-3); border: 1.5px solid var(--border); border-radius: 10px;
+            padding: 14px 18px; font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 500; color: var(--text);
+            outline: none; transition: border-color 0.25s, box-shadow 0.25s, background 0.25s; -webkit-appearance: none;
+        }
+        .field-input::placeholder { color: var(--text-dim); font-weight: 400; }
+        .field-input:focus { border-color: var(--red); box-shadow: 0 0 0 4px var(--red-dim); background: var(--surface-2); }
+        .field-input.has-error { border-color: var(--red); box-shadow: 0 0 0 4px rgba(227, 6, 19, 0.15); }
+        .field-input.pin-input { letter-spacing: 0.5em; font-variant-numeric: tabular-nums; }
+
+        .field-error { font-size: 0.8rem; font-weight: 600; color: var(--red); padding-left: 4px; display: none; }
+        .field-error.visible { display: block; }
+
+        .password-wrap .field-input { padding-right: 52px; }
+        .toggle-pw {
+            position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px;
+            border: none; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            padding: 0; color: var(--text-muted); transition: color 0.2s; border-radius: 50%;
+        }
+        .toggle-pw:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+        .toggle-pw svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+        .auth-error {
+            display: none; padding: 14px 18px; border-radius: 10px; background: rgba(227, 6, 19, 0.1);
+            border: 1px solid rgba(227, 6, 19, 0.3); color: rgba(255, 160, 168, 0.95); font-size: 0.9rem;
+            font-weight: 500; line-height: 1.5; margin-top: 2px;
+        }
+        .auth-error.visible { display: block; animation: fadeSlide 0.3s var(--ease) both; }
+        @keyframes fadeSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+        .cta-wrap { margin-top: 24px; }
+        .cta-btn {
+            width: 100%; padding: 18px 28px; border-radius: 10px; border: none; font-family: 'Inter', sans-serif;
+            font-size: 1.05rem; font-weight: 700; cursor: pointer; position: relative; overflow: hidden;
+            transition: transform 0.15s var(--ease), box-shadow 0.3s, background 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 12px; letter-spacing: 0.02em;
+        }
+        .cta-btn:active { transform: scale(0.97); }
+        .cta-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none !important; }
+        .red-cta { background: var(--red); color: white; box-shadow: 0 0 24px var(--red-glow); }
+        .red-cta:hover:not(:disabled) { background: #c8050f; box-shadow: 0 0 40px var(--red-glow); }
+        .cta-btn::before {
+            content: ''; position: absolute; top: 0; left: -110%; width: 60%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent); transform: skewX(-20deg);
+        }
+        .cta-btn:not(:disabled):hover::before { animation: sheen 0.6s forwards; }
+        @keyframes sheen { to { left: 160%; } }
+        .btn-spinner { width: 22px; height: 22px; display: none; animation: spinIcon 0.75s linear infinite; flex-shrink: 0; }
+        .cta-btn.loading .btn-spinner { display: block; }
+        .cta-btn.loading .btn-label { opacity: 0.7; }
+        @keyframes spinIcon { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .signup-link { text-align: center; margin-top: 26px; font-size: 0.95rem; color: var(--text-muted); }
+        .signup-link a { color: var(--red); font-weight: 700; text-decoration: none; transition: opacity 0.2s; }
+        .signup-link a:hover { opacity: 0.8; }
+
+        .switch-method { text-align: center; margin-top: 14px; font-size: 0.85rem; }
+        .switch-method a { color: var(--text-muted); text-decoration: none; border-bottom: 1px solid var(--border); transition: color 0.2s; }
+        .switch-method a:hover { color: var(--text); }
+
+        @media (max-width: 600px) {
+            .login-wrapper { padding: 20px 18px 40px 36px; }
+            .brand-heading { font-size: clamp(44px, 11vw, 56px); }
+            .logo-mark { width: 54px; height: 54px; }
+            .field-input { font-size: 0.95rem; padding: 12px 16px; }
+            .cta-btn { font-size: 0.95rem; padding: 16px 24px; }
+            .vibe-tag { font-size: 0.75rem; }
+        }
+        @media (max-width: 420px) {
+            .login-wrapper { padding: 16px 14px 32px 28px; }
+            .brand-heading { font-size: clamp(36px, 9vw, 44px); }
+            .logo-mark { width: 48px; height: 48px; border-radius: 12px; }
+            .brand-sub { font-size: 0.85rem; }
+            .field-input { font-size: 0.9rem; padding: 11px 14px; }
+            .cta-btn { font-size: 0.9rem; padding: 14px 20px; }
+            .signup-link { font-size: 0.85rem; }
+            .vibe-tag { font-size: 0.7rem; gap: 6px; }
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-bright, rgba(255,255,255,0.13)); border-radius: 99px; }
+    </style>
+</head>
+
+<body>
+    <div class="red-edge"></div>
+    <div class="bg"></div>
+    <div class="bg-noise"></div>
+
+    <div class="login-wrapper">
+        <div class="login-content">
+
+            <div class="vibe-tag">
+                <span class="dot"></span>
+                <span>#SeeYourVibe</span>
+            </div>
+
+            <div class="brand">
+                <div class="logo-wrapper">
+                    <div class="logo-mark">
+                        <img src="assets/images/rands-logo.png" alt="Rands Vibe Passport" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'" />
+                        <span class="fallback-icon">R</span>
+                    </div>
+                </div>
+                <div class="brand-text">
+                    <h1 class="brand-heading">
+                        <span class="top"><span class="normal-r">R</span>a<span class="normal-nd">n</span>d<span class="normal-nd">s</span></span>
+                        <span class="bottom">Vibe Passport</span>
+                    </h1>
+                    <div class="brand-sub">Log in with your phone number</div>
+                </div>
+            </div>
+
+            <form class="form-wrap" id="phoneLoginForm" novalidate>
+                <div class="field-group">
+                    <label class="field-label" for="phone">Phone Number</label>
+                    <div class="input-wrap">
+                        <input class="field-input" type="tel" id="phone" name="phone" placeholder="0821234567" autocomplete="tel" inputmode="numeric" maxlength="10" />
+                    </div>
+                    <span class="field-error" id="err-phone">Enter a valid Mzansi mobile number</span>
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label" for="pin">PIN</label>
+                    <div class="input-wrap password-wrap">
+                        <input class="field-input pin-input" type="password" id="pin" name="pin" placeholder="••••••" autocomplete="current-password" inputmode="numeric" maxlength="10" />
+                        <button type="button" class="toggle-pw" id="togglePw" aria-label="Show PIN">
+                            <svg id="eyeIcon" viewBox="0 0 24 24">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" fill="none" stroke-width="1.8" />
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" fill="none" stroke-width="1.8" />
+                            </svg>
+                            <svg id="eyeOffIcon" viewBox="0 0 24 24" style="display:none">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" stroke="currentColor" fill="none" stroke-width="1.8" />
+                                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" stroke="currentColor" fill="none" stroke-width="1.8" />
+                                <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.8" />
+                            </svg>
+                        </button>
+                    </div>
+                    <span class="field-error" id="err-pin">Enter your 6-digit PIN</span>
+                </div>
+
+                <div class="auth-error" id="authError" role="alert" aria-live="polite"></div>
+            </form>
+
+            <div class="cta-wrap">
+                <button class="cta-btn red-cta" id="loginBtn" type="button">
+                    <span class="btn-label" id="loginBtnLabel">Enter Rands Vibe</span>
+                    <svg class="btn-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="switch-method">Prefer email? <a href="login.html">Sign in with email instead</a></div>
+
+            <div class="signup-link">
+                New to Rands? <a href="customer-phone-signup.html">Create Your Rands Passport</a>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module">
+        import { supabase } from './config/supabase.js';
+        window.supabase = supabase;
+    </script>
+    <script>
+        (function () {
+            'use strict';
+
+            const phoneInput = document.getElementById('phone');
+            const pinInput = document.getElementById('pin');
+            const errPhone = document.getElementById('err-phone');
+            const errPin = document.getElementById('err-pin');
+            const authError = document.getElementById('authError');
+            const loginBtn = document.getElementById('loginBtn');
+            const loginBtnLabel = document.getElementById('loginBtnLabel');
+            const togglePw = document.getElementById('togglePw');
+            const eyeIcon = document.getElementById('eyeIcon');
+            const eyeOffIcon = document.getElementById('eyeOffIcon');
+
+            togglePw.addEventListener('click', function () {
+                const showing = pinInput.type === 'text';
+                pinInput.type = showing ? 'password' : 'text';
+                eyeIcon.style.display = showing ? 'block' : 'none';
+                eyeOffIcon.style.display = showing ? 'none' : 'block';
+            });
+
+            // Mirrors the DB's own normalization: local "0XXXXXXXXX" -> "27XXXXXXXXX".
+            function canonicalPhone(raw) {
+                const digits = String(raw || '').replace(/[^\d]/g, '');
+                if (/^0[0-9]{9}$/.test(digits)) return '27' + digits.slice(1);
+                if (/^27[0-9]{9}$/.test(digits)) return digits;
+                return null;
+            }
+
+            function setFieldError(input, errEl, show) {
+                input.classList.toggle('has-error', show);
+                errEl.classList.toggle('visible', show);
+            }
+
+            function clearAuthError() {
+                authError.classList.remove('visible');
+                authError.textContent = '';
+            }
+
+            function showAuthError(message) {
+                authError.textContent = message;
+                authError.classList.add('visible');
+            }
+
+            async function handleLogin() {
+                clearAuthError();
+                const phoneCanon = canonicalPhone(phoneInput.value);
+                const pin = pinInput.value.trim();
+
+                let hasError = false;
+                if (!phoneCanon) { setFieldError(phoneInput, errPhone, true); hasError = true; }
+                else setFieldError(phoneInput, errPhone, false);
+
+                if (!/^[0-9]{6,10}$/.test(pin)) { setFieldError(pinInput, errPin, true); hasError = true; }
+                else setFieldError(pinInput, errPin, false);
+
+                if (hasError) return;
+
+                loginBtn.disabled = true;
+                loginBtn.classList.add('loading');
+                loginBtnLabel.textContent = 'Signing in…';
+
+                try {
+                    // Same signInWithPassword() your email flow uses — just
+                    // with `phone` instead of `email`. Produces an identical
+                    // Supabase session.
+                    const { data, error } = await window.supabase.auth.signInWithPassword({
+                        phone: phoneCanon,
+                        password: pin
+                    });
+
+                    if (error) {
+                        const msg = /invalid login credentials/i.test(error.message || '')
+                            ? 'Wrong phone number or PIN.'
+                            : (error.message || 'Something went wrong.');
+                        throw new Error(msg);
+                    }
+
+                    if (typeof window.finishLogin === 'function') {
+                        await window.finishLogin(data.user);
+                    } else {
+                        window.location.href = 'passport/home.html';
+                    }
+                } catch (err) {
+                    showAuthError(err.message || 'Could not sign in. Please try again.');
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.classList.remove('loading');
+                    loginBtnLabel.textContent = 'Enter Rands Vibe';
+                }
+            }
+
+            loginBtn.addEventListener('click', handleLogin);
+            document.getElementById('phoneLoginForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                handleLogin();
+            });
+        })();
+    </script>
+</body>
+</html>
