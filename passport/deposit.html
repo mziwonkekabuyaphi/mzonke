@@ -763,7 +763,9 @@
         toastIcon: '',
         toastTimer: null,
         realtimeChannel: null,
-        yocoProcessing: false
+        yocoProcessing: false,
+        profileId: null,
+        walletId: null
       };
     },
     async mounted() {
@@ -802,16 +804,49 @@
         this.toastVisible=true;
         this.toastTimer=setTimeout(()=>{ this.toastVisible=false; },3500);
       },
-      async loadUserBalance() {
+      // Resolves the current auth session into the profiles.id that
+      // wallets.user_id / wallet_transactions.user_id actually reference.
+      // Do NOT use session.user.id directly anywhere else in this file —
+      // for accounts that linked a second auth method (e.g. Google), the
+      // auth ID and the profile ID are different values.
+      async resolveIdentity() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session) {
           this.showToast("Please log in first", "error");
           setTimeout(()=> window.location.href='../login.html',1500);
-          return;
+          return null;
         }
-        const { data: wallet, error: walletErr } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).maybeSingle();
-        if (!walletErr && wallet) this.walletBalance = wallet.balance;
-        else this.walletBalance = 0;
+        if (this.profileId && this.walletId) return session;
+
+        let { data: profile, error: profileErr } = await supabase
+          .from('profiles').select('id').eq('auth_user_id', session.user.id).maybeSingle();
+        if (!profile) {
+          // fallback for accounts where profiles.id was never split from the auth id
+          ({ data: profile, error: profileErr } = await supabase
+            .from('profiles').select('id').eq('id', session.user.id).maybeSingle());
+        }
+        if (profileErr || !profile) {
+          this.showToast('Could not load your account. Please log in again.', 'error');
+          return null;
+        }
+        this.profileId = profile.id;
+
+        const { data: wallet, error: walletErr } = await supabase
+          .from('wallets').select('id, balance').eq('user_id', this.profileId).maybeSingle();
+        if (walletErr || !wallet) {
+          this.showToast('Could not load your wallet.', 'error');
+          return null;
+        }
+        this.walletId = wallet.id;
+        this.walletBalance = wallet.balance;
+        return session;
+      },
+      async loadUserBalance() {
+        this.profileId = null; this.walletId = null; // force a fresh read of balance
+        const session = await this.resolveIdentity();
+        if (!session) return;
+        const { data: wallet } = await supabase.from('wallets').select('balance').eq('id', this.walletId).maybeSingle();
+        this.walletBalance = wallet ? wallet.balance : 0;
       },
       selectPreset(amount) { this.topupAmount = amount; this.customAmount = null; this.customMode = false; },
       onCustomAmount() { if(this.customAmount > 0) { this.topupAmount = this.customAmount; this.customMode = true; } },
@@ -821,11 +856,10 @@
         if(!this.requestTargetId) { this.showToast('Please enter a wallet ID','error'); return; }
         this.sending = true;
         try {
-          const { data: { session } } = await supabase.auth.getSession();
+          const session = await this.resolveIdentity();
           if (!session) throw new Error('Not authenticated');
-          const { data: myWallet } = await supabase.from('wallets').select('id').eq('user_id', session.user.id).single();
           const { error } = await supabase.from('topup_requests').insert({
-            requester_wallet_id: myWallet.id,
+            requester_wallet_id: this.walletId,
             target_identifier: this.requestTargetId,
             amount: this.topupAmount,
             note: this.requestNote || null,
@@ -850,48 +884,57 @@
         this.waitingModalOpen = false;
         this.showToast('Request cancelled or expired', 'error');
       },
-      async completeTopup(amount) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        const { data: wallet, error: fetchErr } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
-        if(fetchErr) return;
-        const newBalance = wallet.balance + amount;
-        await supabase.from('wallets').update({ balance: newBalance }).eq('user_id', session.user.id);
-        await supabase.from('wallet_transactions').insert({
-          wallet_id: session.user.id,
+      // IMPORTANT: 1Voucher and CapitecPay have no real verification
+      // integration yet (the old code accepted any 8+ character string,
+      // or a coin flip, and credited the wallet straight from the browser).
+      // Customers have no write access to wallets/wallet_transactions
+      // balances, so that code was already non-functional under RLS —
+      // but it was also a live fraud vector if RLS were ever loosened.
+      // Until you wire up real 1Voucher/CapitecPay verification (an Edge
+      // Function that calls their API and then calls a DB function, the
+      // same pattern as yoco_mark_wallet_transaction_paid), this submits
+      // a 'pending' transaction for staff to verify and approve manually.
+      async submitForManualReview(amount, method, details) {
+        const session = await this.resolveIdentity();
+        if (!session) return false;
+        const { error } = await supabase.from('wallet_transactions').insert({
+          user_id: this.profileId,
+          wallet_id: this.walletId,
           amount: amount,
-          type: 'deposit',
-          description: `Top-up via ${this.selectedPayMethod === '1voucher' ? '1Voucher' : 'CapitecPay'}`,
-          status: 'completed',
+          type: 'topup',
+          direction: 'credit',
+          payment_method: method,
+          description: `Top-up via ${method}${details ? ' — ' + details : ''}`,
+          status: 'pending',
           created_at: new Date().toISOString()
         });
-        this.walletBalance = newBalance;
-        this.showToast(`R${amount.toFixed(2)} added!`, 'success');
-        setTimeout(() => window.location.href = 'home.html', 2000);
+        return !error;
       },
       async processVoucherPayment() {
         if(!this.voucherCode.trim()) { this.showToast('Enter voucher code','error'); return; }
         if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
         this.processing = true;
-        try {
-          await new Promise(r => setTimeout(r, 1200));
-          const valid = this.voucherCode.length >= 8;
-          if(!valid) throw new Error('Invalid voucher');
-          await this.completeTopup(this.topupAmount);
-        } catch(err) { this.showToast('Invalid voucher code','error'); }
+        const ok = await this.submitForManualReview(this.topupAmount, '1voucher', `code ending ${this.voucherCode.slice(-4)}`);
         this.processing = false;
+        if (ok) {
+          this.showToast('Voucher submitted — funds will be added once verified.', 'success');
+          setTimeout(() => window.location.href = 'home.html', 2000);
+        } else {
+          this.showToast('Could not submit voucher. Please try again.', 'error');
+        }
       },
       async processCapitecPay() {
         if(!this.capitecNumber.trim()) { this.showToast('Enter Capitec number','error'); return; }
         if(this.topupAmount <= 0) { this.showToast('Select an amount first','error'); return; }
         this.processing = true;
-        try {
-          await new Promise(r => setTimeout(r, 1500));
-          const accepted = Math.random() > 0.1;
-          if(!accepted) throw new Error('Payment declined by bank');
-          await this.completeTopup(this.topupAmount);
-        } catch(err) { this.showToast('CapitecPay failed','error'); }
+        const ok = await this.submitForManualReview(this.topupAmount, 'capitecpay', this.capitecNumber);
         this.processing = false;
+        if (ok) {
+          this.showToast('Request submitted — funds will be added once payment is confirmed.', 'success');
+          setTimeout(() => window.location.href = 'home.html', 2000);
+        } else {
+          this.showToast('Could not submit request. Please try again.', 'error');
+        }
       },
       setupRealtimeListener() {
         this.realtimeChannel = supabase.channel('topup-approvals').on('postgres_changes', {
@@ -901,19 +944,15 @@
           if (approved.reference === `TU-${this.previewRef}` && this.waitingModalOpen) {
             clearInterval(this.approvalTimer);
             this.waitingModalOpen = false;
-            const { data: { session } } = await supabase.auth.getSession();
-            if(session) {
-              const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
-              const newBal = wallet.balance + approved.amount;
-              await supabase.from('wallets').update({ balance: newBal }).eq('user_id', session.user.id);
-              await supabase.from('wallet_transactions').insert({
-                wallet_id: session.user.id, amount: approved.amount, type: 'deposit',
-                description: `Top-up from wallet request (${approved.reference})`, status: 'completed', created_at: new Date().toISOString()
-              });
-              this.walletBalance = newBal;
-              this.showToast(`R${approved.amount.toFixed(2)} added from wallet request!`, 'success');
-              setTimeout(() => window.location.href = 'home.html', 2000);
-            }
+            // NOTE: crediting the wallet here has been removed — customers
+            // have no write access to wallets/wallet_transactions (by design),
+            // and it was targeting the wrong id anyway. Approving a request
+            // needs a proper server-side transfer function (debit the
+            // approver, credit the requester) — see note below. For now we
+            // just reflect whatever balance is actually in the database.
+            await this.loadUserBalance();
+            this.showToast(`Request approved! Refreshing your balance...`, 'success');
+            setTimeout(() => window.location.href = 'home.html', 2000);
           }
         }).subscribe();
       },
@@ -924,14 +963,14 @@
         }
         this.yocoProcessing = true;
         try {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError || !session) throw new Error('You must be logged in to make a payment');
-          const userId = session.user.id;
+          const session = await this.resolveIdentity();
+          if (!session) throw new Error('You must be logged in to make a payment');
 
           const { data: pendingTx, error: insertError } = await supabase
             .from('wallet_transactions')
             .insert({
-              user_id: userId,
+              user_id: this.profileId,
+              wallet_id: this.walletId,
               amount: this.topupAmount,
               type: 'topup',
               status: 'pending',
@@ -966,7 +1005,9 @@
 
           if (edgeError) {
             console.error('Edge function error:', edgeError);
-            await supabase.from('wallet_transactions').update({ status: 'failed', metadata: { error: edgeError.message } }).eq('id', transactionId);
+            // Note: this pending transaction is left as-is; only staff/the
+            // Yoco webhook can mark it failed (customers have no UPDATE
+            // rights on wallet_transactions). It'll just sit unpaid.
             throw new Error(edgeError.message || 'Payment gateway error');
           }
 
@@ -979,36 +1020,42 @@
           this.yocoProcessing = false;
         }
       },
+      // Yoco redirects the browser back here as soon as checkout finishes —
+      // that can beat the Yoco webhook (which is what actually verifies
+      // payment and credits the wallet via yoco_mark_wallet_transaction_paid).
+      // So this just polls the transaction status instead of crediting
+      // anything itself. Customers have no write access to wallet_transactions
+      // or wallets, by design — only the verified webhook does.
       async completeYocoTopUp(transactionId) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) throw new Error('Not logged in');
+        const session = await this.resolveIdentity();
+        if (!session) return;
 
+        this.showToast('Confirming your payment...', 'info');
+        const maxAttempts = 10; // ~20s
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const { data: tx, error: txError } = await supabase
             .from('wallet_transactions')
-            .select('*')
+            .select('status, amount')
             .eq('id', transactionId)
-            .single();
+            .maybeSingle();
 
-          if (txError || !tx) throw new Error('Transaction not found');
-          if (tx.status === 'completed') {
-            await this.loadUserBalance();
+          if (txError || !tx) {
+            this.showToast('Could not find that transaction. Contact support if you were charged.', 'error');
             return;
           }
-
-          await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', transactionId);
-
-          const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', session.user.id).single();
-          const newBalance = (wallet?.balance || 0) + tx.amount;
-          await supabase.from('wallets').update({ balance: newBalance }).eq('user_id', session.user.id);
-
-          this.walletBalance = newBalance;
-          this.showToast(`R${tx.amount.toFixed(2)} added to your wallet!`, 'success');
-          setTimeout(() => window.location.href = 'home.html', 2000);
-        } catch (err) {
-          console.error('Complete top-up error:', err);
-          this.showToast('Payment verified but failed to update wallet. Contact support.', 'error');
+          if (tx.status === 'completed') {
+            await this.loadUserBalance();
+            this.showToast(`R${Number(tx.amount).toFixed(2)} added to your wallet!`, 'success');
+            setTimeout(() => window.location.href = 'home.html', 2000);
+            return;
+          }
+          if (tx.status === 'failed') {
+            this.showToast('Payment did not go through.', 'error');
+            return;
+          }
+          await new Promise(r => setTimeout(r, 2000));
         }
+        this.showToast("Payment is still confirming — check your balance shortly. We'll credit it automatically once confirmed.", 'info');
       }
     }
   });
