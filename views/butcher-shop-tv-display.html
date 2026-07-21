@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Butcher Shop — Live Order Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --charcoal: #17130f;
+    --charcoal-2: #211a15;
+    --charcoal-3: #2a221b;
+    --paper: #f4ecdc;
+    --paper-shadow: #d8c9a8;
+    --blood: #8f1420;
+    --blood-bright: #d8303f;
+    --brass: #c79a45;
+    --brass-dim: #8a6c33;
+    --bone: #faf7f0;
+    --ink: #241c15;
+    --ink-soft: #5a4d3d;
+    --amber: #d98e2b;
+    --green: #5c8a4a;
+    line-height: 1.2;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background: var(--charcoal);
+    color: var(--bone);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+  }
+
+  /* ambient wood-grain / vignette texture */
+  body::before{
+    content:"";
+    position: fixed; inset:0;
+    background:
+      radial-gradient(ellipse at 50% -10%, rgba(216,48,63,0.08), transparent 45%),
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at 50% 110%, rgba(0,0,0,0.5), transparent 60%);
+    pointer-events:none;
+    z-index: 0;
+  }
+
+  .app{ position:relative; z-index:1; display:flex; flex-direction:column; height:100vh; }
+
+  /* ===== HEADER ===== */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 18px 36px;
+    background: linear-gradient(180deg, var(--charcoal-3), var(--charcoal-2));
+    border-bottom: 3px solid var(--brass-dim);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+  }
+  .brand{ display:flex; align-items:center; gap:18px; }
+  .brand .logo-slot{
+    width:56px; height:56px; border-radius:10px;
+    background: var(--paper);
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 2px var(--brass);
+    flex-shrink:0;
+  }
+  .brand .logo-slot img{ width:100%; height:100%; object-fit:contain; }
+  .brand .logo-slot span{ font-family:'Oswald'; font-weight:700; color: var(--blood); font-size:22px; }
+  .brand-text .eyebrow{
+    font-family:'IBM Plex Mono'; font-size:12px; letter-spacing:0.18em;
+    color: var(--brass); text-transform:uppercase; margin-bottom:2px;
+  }
+  .brand-text h1{
+    font-family:'Oswald'; font-weight:700; font-size:30px; letter-spacing:0.02em;
+    margin:0; color: var(--bone);
+    text-transform:uppercase;
+  }
+  .brand-text h1 span{ color: var(--blood-bright); }
+
+  .header-right{ display:flex; align-items:center; gap:28px; }
+  .clock{ text-align:right; font-family:'IBM Plex Mono'; }
+  .clock .time{ font-size:26px; font-weight:600; color:var(--bone); letter-spacing:0.02em; }
+  .clock .date{ font-size:12px; color:var(--ink-soft); color:#a9998a; letter-spacing:0.05em; text-transform:uppercase; }
+  .status-pill{
+    display:flex; align-items:center; gap:8px;
+    font-family:'IBM Plex Mono'; font-size:12px; letter-spacing:0.05em;
+    padding:7px 14px; border-radius:999px;
+    background: rgba(92,138,74,0.12); border:1px solid rgba(92,138,74,0.4); color:#9fd486;
+    text-transform:uppercase;
+  }
+  .status-pill.offline{ background: rgba(216,48,63,0.12); border-color: rgba(216,48,63,0.5); color:#ff8a90; }
+  .status-dot{ width:8px; height:8px; border-radius:50%; background:#7ee06b; box-shadow:0 0 8px #7ee06b; animation: pulse-dot 2s infinite; }
+  .status-pill.offline .status-dot{ background:#ff5b64; box-shadow:0 0 8px #ff5b64; }
+  @keyframes pulse-dot{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  /* ===== BOARD ===== */
+  .board{
+    flex:1; display:grid; grid-template-columns: 1fr 1fr 1.15fr;
+    gap: 0; min-height:0;
+  }
+  .column{
+    display:flex; flex-direction:column; min-height:0;
+    border-right: 1px solid rgba(199,154,69,0.15);
+    position:relative;
+  }
+  .column:last-child{ border-right:none; }
+
+  .col-head{
+    padding: 20px 28px 14px;
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom: 2px solid rgba(199,154,69,0.25);
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  }
+  .col-head h2{
+    font-family:'Oswald'; text-transform:uppercase; letter-spacing:0.04em;
+    font-size:20px; margin:0; font-weight:600; color:var(--bone);
+    display:flex; align-items:center; gap:10px;
+  }
+  .col-head .rail-icon{ font-size:18px; }
+  .col-count{
+    font-family:'IBM Plex Mono'; font-size:15px; font-weight:600;
+    background: rgba(199,154,69,0.15); color:var(--brass);
+    padding:3px 11px; border-radius:999px; min-width:30px; text-align:center;
+  }
+  .col-new .col-count{ background: rgba(216,48,63,0.18); color:#ff9098; }
+  .col-ready .col-head{ border-bottom-color: rgba(92,138,74,0.5); }
+  .col-ready .col-count{ background: rgba(92,138,74,0.2); color:#9fd486; }
+
+  .rail{
+    flex:1; overflow-y:auto; overflow-x:hidden;
+    padding: 22px 22px 30px;
+    display:flex; flex-direction:column; gap:20px;
+    scrollbar-width:none;
+  }
+  .rail::-webkit-scrollbar{ display:none; }
+
+  .empty-state{
+    margin-top:40px; text-align:center; color:#6e6154;
+    font-family:'Inter'; font-size:14px; padding:0 30px;
+  }
+  .empty-state .glyph{ font-size:34px; display:block; margin-bottom:10px; opacity:0.5; }
+
+  /* ===== TICKET ===== */
+  .ticket{
+    position:relative;
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 3px 3px 0 0;
+    padding: 16px 18px 20px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.35), 0 2px 0 rgba(0,0,0,0.15);
+    transform: rotate(var(--tilt, -0.4deg));
+    animation: drop-in 0.45s cubic-bezier(.2,.8,.3,1);
+  }
+  .ticket:nth-child(3n+1){ --tilt: -0.6deg; }
+  .ticket:nth-child(3n+2){ --tilt: 0.5deg; }
+  .ticket:nth-child(3n){ --tilt: -0.2deg; }
+
+  @keyframes drop-in{
+    from{ opacity:0; transform: translateY(-14px) rotate(var(--tilt,0)); }
+    to{ opacity:1; transform: translateY(0) rotate(var(--tilt,0)); }
+  }
+
+  /* torn paper bottom edge */
+  .ticket::after{
+    content:"";
+    position:absolute; left:0; right:0; bottom:-9px; height:12px;
+    background:
+      linear-gradient(135deg, var(--paper) 50%, transparent 50%) 0 0/10px 10px repeat-x,
+      linear-gradient(-135deg, var(--paper) 50%, transparent 50%) 0 0/10px 10px repeat-x;
+    filter: drop-shadow(0 3px 2px rgba(0,0,0,0.25));
+  }
+
+  /* brass clip */
+  .clip{
+    position:absolute; top:-11px; left:50%; transform:translateX(-50%);
+    width:34px; height:16px; border-radius:3px;
+    background: linear-gradient(180deg, #e3c073, var(--brass-dim));
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .clip::after{
+    content:""; position:absolute; left:50%; top:100%; transform:translateX(-50%);
+    width:3px; height:9px; background: var(--brass-dim);
+  }
+
+  .ticket-top{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:6px; }
+  .order-num{ font-family:'Oswald'; font-size:25px; font-weight:700; letter-spacing:0.01em; color:var(--blood); }
+  .channel-badge{
+    font-family:'IBM Plex Mono'; font-size:10px; text-transform:uppercase; letter-spacing:0.06em;
+    padding:4px 8px; border-radius:4px; border:1.5px solid var(--ink); color:var(--ink);
+    transform: rotate(2deg);
+    white-space:nowrap;
+  }
+  .channel-badge.kiosk{ border-color:#5c4a2e; color:#5c4a2e; }
+  .channel-badge.web{ border-color:#2e5c6b; color:#2e5c6b; }
+  .channel-badge.whatsapp{ border-color:#2e6b3c; color:#2e6b3c; }
+
+  .customer{ font-family:'Inter'; font-weight:600; font-size:15px; color:var(--ink); margin-bottom:10px; }
+  .customer .sub{ font-weight:400; color:var(--ink-soft); font-size:12px; }
+
+  .items{ list-style:none; margin:0 0 14px; padding:0; border-top:1px dashed rgba(36,28,21,0.3); padding-top:8px; }
+  .items li{
+    display:flex; justify-content:space-between; gap:10px;
+    font-size:14px; padding:3px 0; color:var(--ink);
+  }
+  .items li .qty{ font-family:'IBM Plex Mono'; font-weight:600; color:var(--blood); min-width:24px; }
+  .items li .name{ flex:1; }
+
+  .ticket-foot{ display:flex; align-items:center; justify-content:space-between; }
+  .timer{
+    font-family:'IBM Plex Mono'; font-weight:600; font-size:13px;
+    display:flex; align-items:center; gap:6px;
+    padding:4px 9px; border-radius:5px;
+  }
+  .timer.calm{ background: rgba(92,138,74,0.15); color:#3d6b2c; }
+  .timer.warn{ background: rgba(217,142,43,0.18); color:#a3620f; }
+  .timer.hot{ background: rgba(216,48,63,0.18); color:var(--blood); animation: hot-pulse 1.2s infinite; }
+  @keyframes hot-pulse{ 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+
+  .action-tag{
+    font-family:'Oswald'; font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--ink-soft);
+  }
+
+  /* ready column special glow */
+  .col-ready .ticket{ box-shadow: 0 8px 20px rgba(92,138,74,0.25), 0 2px 0 rgba(0,0,0,0.15); }
+  .col-ready .ticket .order-num{ color:#3d6b2c; }
+
+  /* ===== FOOTER TICKER ===== */
+  footer{
+    height:56px; flex-shrink:0;
+    background: var(--charcoal-2);
+    border-top: 2px solid rgba(199,154,69,0.25);
+    display:flex; align-items:center;
+    overflow:hidden;
+    position:relative;
+  }
+  footer .label{
+    font-family:'Oswald'; font-size:12px; text-transform:uppercase; letter-spacing:0.08em;
+    color:var(--brass); background:var(--charcoal-3); padding:0 18px; height:100%;
+    display:flex; align-items:center; flex-shrink:0; z-index:2;
+    border-right:2px solid rgba(199,154,69,0.25);
+  }
+  .ticker-track{
+    display:flex; gap:44px; white-space:nowrap;
+    animation: scroll-left 28s linear infinite;
+    padding-left: 100%;
+    align-items:center;
+    font-family:'IBM Plex Mono'; font-size:13px; color:#c9bca8;
+  }
+  .ticker-track span.tag{ color:#9fd486; margin-right:6px; }
+  @keyframes scroll-left{ from{ transform: translateX(0); } to{ transform: translateX(-100%); } }
+  footer .empty-ticker{ padding-left:24px; color:#6e6154; font-family:'Inter'; font-size:13px; }
+
+  @media (max-width: 1100px){
+    .board{ grid-template-columns: 1fr; }
+    .column{ border-right:none; border-bottom:1px solid rgba(199,154,69,0.15); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="logo-slot" id="logoSlot"><span>R</span></div>
+      <div class="brand-text">
+        <div class="eyebrow">Rands · Kitchen Display</div>
+        <h1>The Butcher <span>Shop</span></h1>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-pill" id="statusPill"><span class="status-dot"></span><span id="statusText">Connecting…</span></div>
+      <div class="clock">
+        <div class="time" id="clockTime">--:--:--</div>
+        <div class="date" id="clockDate">—</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="board">
+    <section class="column col-new">
+      <div class="col-head">
+        <h2><span class="rail-icon">🔔</span>New Orders</h2>
+        <span class="col-count" id="countNew">0</span>
+      </div>
+      <div class="rail" id="railNew"></div>
+    </section>
+
+    <section class="column col-prep">
+      <div class="col-head">
+        <h2><span class="rail-icon">🔪</span>On The Block</h2>
+        <span class="col-count" id="countPrep">0</span>
+      </div>
+      <div class="rail" id="railPrep"></div>
+    </section>
+
+    <section class="column col-ready">
+      <div class="col-head">
+        <h2><span class="rail-icon">✅</span>Ready for Collection</h2>
+        <span class="col-count" id="countReady">0</span>
+      </div>
+      <div class="rail" id="railReady"></div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="label">Collected</div>
+    <div id="tickerWrap" style="flex:1; overflow:hidden;">
+      <div class="empty-ticker" id="emptyTicker">No orders collected yet today.</div>
+      <div class="ticker-track" id="tickerTrack" style="display:none;"></div>
+    </div>
+  </footer>
+</div>
+
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+  const SUPABASE_URL = 'https://odpugxrihfspaucsdqjj.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_fCsjtPGF2zFngK_5DiUKag_tkJk_xo2';
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const TIMEZONE = 'Africa/Johannesburg';
+
+  // ---- Clock ----
+  function tickClock(){
+    const now = new Date();
+    document.getElementById('clockTime').textContent = now.toLocaleTimeString('en-ZA', { timeZone: TIMEZONE, hour12:false });
+    document.getElementById('clockDate').textContent = now.toLocaleDateString('en-ZA', { timeZone: TIMEZONE, weekday:'long', day:'numeric', month:'long' });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // ---- Connection status ----
+  function setStatus(online){
+    const pill = document.getElementById('statusPill');
+    const text = document.getElementById('statusText');
+    if(online){
+      pill.classList.remove('offline');
+      text.textContent = 'Live';
+    } else {
+      pill.classList.add('offline');
+      text.textContent = 'Reconnecting…';
+    }
+  }
+
+  // ---- Helpers ----
+  function channelLabel(source){
+    const s = (source || 'kiosk').toLowerCase();
+    if(s.includes('whatsapp')) return { cls:'whatsapp', label:'WhatsApp' };
+    if(s.includes('web')) return { cls:'web', label:'Web App' };
+    return { cls:'kiosk', label:'Kiosk' };
+  }
+
+  function elapsedMinutes(fromMs){
+    return Math.max(0, Math.floor((Date.now() - fromMs) / 60000));
+  }
+
+  function formatElapsed(mins){
+    if(mins < 1) return 'just now';
+    if(mins === 1) return '1 min';
+    return `${mins} min`;
+  }
+
+  function timerClass(mins, thresholds){
+    if(mins >= thresholds.hot) return 'hot';
+    if(mins >= thresholds.warn) return 'warn';
+    return 'calm';
+  }
+
+  function escapeHtml(str){
+    return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---- Rendering ----
+  let ORDERS = [];
+
+  function render(){
+    const now = Date.now();
+    const newOrders = ORDERS.filter(o => o.status === 'pending' || o.status === 'placed');
+    const prepOrders = ORDERS.filter(o => o.status === 'preparing');
+    const readyOrders = ORDERS.filter(o => o.status === 'ready');
+    const collected = ORDERS.filter(o => o.status === 'collected' || o.status === 'completed')
+      .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at))
+      .slice(0, 12);
+
+    document.getElementById('countNew').textContent = newOrders.length;
+    document.getElementById('countPrep').textContent = prepOrders.length;
+    document.getElementById('countReady').textContent = readyOrders.length;
+
+    renderRail('railNew', newOrders, {
+      timeBasis: o => new Date(o.created_at).getTime(),
+      thresholds: { warn: 2, hot: 5 },
+      emptyIcon: '📋', emptyText: 'No new orders. The board is clear.'
+    });
+
+    renderRail('railPrep', prepOrders, {
+      timeBasis: o => o.prep_start_time || new Date(o.updated_at).getTime(),
+      thresholds: { warn: 8, hot: 15 },
+      emptyIcon: '🔥', emptyText: 'Nothing on the block right now.'
+    });
+
+    renderRail('railReady', readyOrders, {
+      timeBasis: o => new Date(o.updated_at).getTime(),
+      thresholds: { warn: 5, hot: 10 },
+      emptyIcon: '🛎️', emptyText: 'Nothing waiting for collection.'
+    });
+
+    renderTicker(collected);
+  }
+
+  function ticketHtml(o, opts){
+    const ch = channelLabel(o.source);
+    const mins = elapsedMinutes(opts.timeBasis(o));
+    const tClass = timerClass(mins, opts.thresholds);
+    const items = (o.butcher_items || []);
+    const itemsHtml = items.map(it => `
+      <li><span class="qty">${escapeHtml(it.quantity)}×</span><span class="name">${escapeHtml(it.name)}</span></li>
+    `).join('');
+
+    return `
+      <div class="ticket" data-order-id="${o.order_id}">
+        <div class="clip"></div>
+        <div class="ticket-top">
+          <div class="order-num">${escapeHtml(o.order_number || '—')}</div>
+          <div class="channel-badge ${ch.cls}">${ch.label}</div>
+        </div>
+        <div class="customer">${escapeHtml(o.customer_name || 'Walk-in')}
+          <span class="sub">${o.customer_phone ? '· ' + escapeHtml(o.customer_phone) : ''}</span>
+        </div>
+        <ul class="items">${itemsHtml}</ul>
+        <div class="ticket-foot">
+          <div class="timer ${tClass}">⏱ ${formatElapsed(mins)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderRail(elId, list, opts){
+    const el = document.getElementById(elId);
+    if(list.length === 0){
+      el.innerHTML = `<div class="empty-state"><span class="glyph">${opts.emptyIcon}</span>${opts.emptyText}</div>`;
+      return;
+    }
+    // sort oldest first so longest-waiting appears at top
+    const sorted = [...list].sort((a,b) => opts.timeBasis(a) - opts.timeBasis(b));
+    el.innerHTML = sorted.map(o => ticketHtml(o, opts)).join('');
+  }
+
+  function renderTicker(collected){
+    const track = document.getElementById('tickerTrack');
+    const empty = document.getElementById('emptyTicker');
+    if(collected.length === 0){
+      track.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    track.style.display = 'flex';
+    track.innerHTML = collected.map(o => {
+      const items = (o.butcher_items || []).map(it => it.name).join(', ');
+      return `<div><span class="tag">✓</span>${escapeHtml(o.order_number)} — ${escapeHtml(o.customer_name || 'Walk-in')} · ${escapeHtml(items)}</div>`;
+    }).join('');
+  }
+
+  // re-render every 15s so elapsed timers stay fresh even without new events
+  setInterval(render, 15000);
+
+  // ---- Data fetching ----
+  async function fetchOrders(){
+    const { data, error } = await supabase
+      .from('butcher_shop_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if(error){
+      console.error('Fetch error', error);
+      setStatus(false);
+      return;
+    }
+    setStatus(true);
+    ORDERS = data || [];
+    render();
+  }
+
+  // initial load
+  fetchOrders();
+
+  // ---- Realtime: listen for any order change, refetch the flattened view ----
+  const channel = supabase
+    .channel('butcher-shop-orders-feed')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+      fetchOrders();
+    })
+    .subscribe((status) => {
+      if(status === 'SUBSCRIBED'){ setStatus(true); }
+      if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){ setStatus(false); }
+    });
+
+  // fallback poll in case realtime drops silently
+  setInterval(fetchOrders, 30000);
+</script>
+</body>
+</html>
