@@ -287,6 +287,9 @@
 <script type="module">
   import { supabase } from '../config/supabase.js';
 
+  // Fallback only — actual price now always comes from the flavour's own
+  // shisha_products.price (editable in admin), used everywhere a session
+  // or refill is charged. These only kick in if a price lookup fails.
   const SESSION_PRICE = 250, REFILL_PRICE = 250, COAL_DURATION = 60, REFILL_THRESHOLD = 15;
   let activeSessions = [], allDevices = [], countdownInterval = null, realtimeSub = null;
 
@@ -323,18 +326,21 @@
   }
 
   // ============ Helpers ============
+  // Kept unclamped on purpose: once a session runs out, staff still need to
+  // see how long it's been sitting expired, so this returns a raw signed
+  // value (negative once time is up) instead of floor-ing at 0.
   function remainingSec(session) {
     if (!session) return 0;
     if (session.paused) return session.remaining_time_seconds || 0;
     const ref = session.last_refill_time ? new Date(session.last_refill_time) : new Date(session.start_time);
     const elapsed = (new Date() - ref) / 1000;
-    let rem = COAL_DURATION * 60 - elapsed;
-    return rem > 0 ? rem : 0;
+    return COAL_DURATION * 60 - elapsed;
   }
   function formatTime(sec) {
-    if (sec <= 0) return "00:00";
+    const neg = sec < 0;
+    sec = Math.abs(sec);
     let m = Math.floor(sec / 60), s = Math.floor(sec % 60);
-    return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+    return `${neg ? '-' : ''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
   }
   function sessionStatus(s) {
     if (s.paused) return 'paused';
@@ -384,6 +390,10 @@
   // Request type labels — matches the 4 consolidated types:
   // order_session | maintenance | issue_report | end_session
   function requestLabel(r) {
+    // 'maintenance' is the DB/request_type value for a coal refill (see
+    // handleMaintenance) — shown to staff as "Refill", not "Maintenance",
+    // which is a different concept (hookah_devices.status for broken units).
+    if (r.request_type === 'maintenance') return 'REFILL';
     return (r.request_type || '').replace(/_/g,' ').toUpperCase();
   }
 
@@ -482,7 +492,12 @@
       .select('paused,status,payment_method,account_id,customer_phone').eq('id', session.id).single();
     if (cur?.paused) throw new Error('Session no longer active');
 
-    const price = req.amount || REFILL_PRICE;
+    // Refill price = the flavour's own price (same as a session — no
+    // separate refill price), looked up live so a price change in admin
+    // takes effect immediately rather than trusting a possibly-stale
+    // req.amount captured whenever the customer originally ordered.
+    const { data: flavProd } = await supabase.from('shisha_products').select('price').eq('name', session.flavour_name).limit(1).maybeSingle();
+    const price = flavProd?.price ?? (req.amount || REFILL_PRICE);
 
     // Charge the wallet for this refill before touching the session, using
     // the exact same idempotent pattern as handleNewOrder's wallet debit:
@@ -562,11 +577,28 @@
   }
 
   async function handleNewOrder(req) {
-    const { data: free } = await supabase.from('hookah_devices').select('id,device_code').eq('status', 'available').limit(1);
-    if (!free?.length) throw new Error('No available hookah');
-    const avail = await isHookahFree(free[0].id);
+    // Previously this queried hookah_devices with no ORDER BY and took
+    // row #1 — Postgres returns unordered queries in physical storage
+    // order, not intent order, which is why this always landed on the
+    // same device (SH-003) regardless of which ones were actually free.
+    // Also: admin's own device-status dropdown only ever writes 'available',
+    // 'maintenance', or 'deleted' — never back to 'available' once a device
+    // has drifted to some other stray value (confirmed live: a device sat
+    // at status='in_use' despite having no open session). Requiring
+    // status==='available' exactly was silently skipping genuinely free
+    // devices like that. Only exclude what staff can actually flag down
+    // (maintenance/deleted); everything else is judged by real occupancy.
+    const { data: candidates } = await supabase.from('hookah_devices')
+      .select('id,device_code').not('status', 'in', '(maintenance,deleted)').order('device_code');
+    if (!candidates?.length) throw new Error('No available hookah');
+    const { data: occupied } = await supabase.from('shisha_sessions')
+      .select('device_id').in('status', ['active', 'refill', 'paused']);
+    const occupiedIds = new Set((occupied || []).map(o => o.device_id));
+    const free = candidates.find(d => !occupiedIds.has(d.id));
+    if (!free) throw new Error('No available hookah');
+    const avail = await isHookahFree(free.id);
     if (!avail) throw new Error('Hookah just taken');
-    const { data: prod } = await supabase.from('shisha_products').select('id').eq('name', req.flavour_name).limit(1);
+    const { data: prod } = await supabase.from('shisha_products').select('id,price').eq('name', req.flavour_name).limit(1);
     const { data: loc } = await supabase.from('shisha_locations').select('id').eq('name', req.location_name).limit(1);
     if (!prod?.length || !loc?.length) throw new Error('Invalid flavour/location');
 
@@ -577,7 +609,10 @@
     // hardcoded to 'cash' below regardless of what the customer picked,
     // and no wallet debit ever ran — meaning "wallet" orders were marked
     // paid without ever being charged.
-    const price = req.amount || SESSION_PRICE;
+    // Live flavour price (set in admin) takes precedence over req.amount,
+    // which was only ever a snapshot from whenever the customer ordered —
+    // if the price changed since, staff should charge what's current.
+    const price = prod[0].price ?? (req.amount || SESSION_PRICE);
     const paymentMethod = req.request_data?.paymentMethod || 'cash';
     let walletAccountId = null;
 
@@ -656,7 +691,7 @@
     // through silently would recreate exactly this bug for that method.
 
     const { error } = await supabase.from('shisha_sessions').insert({
-      device_id: free[0].id,
+      device_id: free.id,
       product_id: prod[0].id,
       location_id: loc[0].id,
       start_time: new Date().toISOString(),
@@ -670,7 +705,7 @@
       account_id: walletAccountId
     });
     if (error) throw new Error('Session creation failed');
-    showToast(`Started on ${free[0].device_code}`);
+    showToast(`Started on ${free.device_code}`);
   }
 
   async function rejectRequest(id) {
@@ -683,7 +718,20 @@
   function renderPipes() {
     if (!allDevices.length) return;
     const container = document.getElementById('pipesGrid');
-    container.innerHTML = allDevices.map(dev => {
+    // A device with a live session (active/refill/paused — anything still
+    // returned by loadSessions) moves to the front and stays there. It
+    // only drops back once staff actually ends the session, since that's
+    // the only thing that removes it from activeSessions — the coal
+    // simply running out (status 'expired' computed client-side) does not.
+    const sortedDevices = [...allDevices].sort((a, b) => {
+      const sa = activeSessions.find(s => s.deviceId === a.id);
+      const sb = activeSessions.find(s => s.deviceId === b.id);
+      if (sa && !sb) return -1;
+      if (!sa && sb) return 1;
+      if (sa && sb) return new Date(sa.start_time) - new Date(sb.start_time);
+      return a.device_code.localeCompare(b.device_code, undefined, { numeric: true });
+    });
+    container.innerHTML = sortedDevices.map(dev => {
       const sess = activeSessions.find(s => s.deviceId === dev.id);
       let statusClass = "available", statusText = "Free", flavour = "—", loc = "—", timerVal = "—", timerClass = "", pct = 0, caption = "no active session";
       if (sess) {
@@ -692,7 +740,7 @@
         const stat = sessionStatus(sess);
         pct = Math.max(0, Math.min(100, (rem / (COAL_DURATION*60)) * 100));
         if (sess.paused) { statusClass = "paused"; statusText = "Paused"; timerVal = formatTime(rem); caption = "on hold"; }
-        else if (stat === 'expired') { statusClass = "expired"; statusText = "Expired"; timerVal = "00:00"; timerClass = "expired"; caption = "needs attention"; pct = 0; }
+        else if (stat === 'expired') { statusClass = "expired"; statusText = "Expired"; timerVal = formatTime(rem); timerClass = "expired"; caption = "overdue"; pct = 0; }
         else if (stat === 'refill') { statusClass = "refill"; statusText = "Refill soon"; timerVal = formatTime(rem); timerClass = "refill"; caption = "remaining"; }
         else { statusClass = "inuse"; statusText = "In use"; timerVal = formatTime(rem); caption = "remaining"; }
       }
@@ -756,7 +804,7 @@
       let rem = remainingSec(s), st = sessionStatus(s);
       const track = el.closest('.pipe-card')?.querySelector('.coal-fill');
       if(rem <= 0 || st === 'expired') {
-        el.innerText = "00:00"; el.classList.add('expired'); el.classList.remove('refill');
+        el.innerText = formatTime(rem); el.classList.add('expired'); el.classList.remove('refill');
         if (track) track.style.width = '0%';
       } else if(st === 'refill') {
         el.innerText = formatTime(rem); el.classList.add('refill'); el.classList.remove('expired');
@@ -773,23 +821,23 @@
   async function openAssignModal(deviceId, deviceCode) {
     if(!(await isHookahFree(deviceId))) { showModal('error', 'Not Available', 'This hookah is no longer free'); await loadSessions(); return; }
     const { data: locs } = await supabase.from('shisha_locations').select('name').eq('is_active', true);
-    const { data: flavours } = await supabase.from('shisha_products').select('name').eq('is_available', true);
+    const { data: flavours } = await supabase.from('shisha_products').select('name,price').eq('is_available', true);
     const html = `<div style="text-align:left">
       <label class="field-label">Location</label>
       <select id="assignLoc">${(locs||[]).map(l=>`<option>${l.name}</option>`).join('')}</select>
       <label class="field-label">Flavour</label>
-      <select id="assignFlav">${(flavours||[]).map(f=>`<option>${f.name}</option>`).join('')}</select>
+      <select id="assignFlav">${(flavours||[]).map(f=>`<option value="${f.name}">${f.name} (R${f.price})</option>`).join('')}</select>
     </div>`;
     showModal('confirm', `Assign ${deviceCode}`, html, async () => {
       const loc = document.getElementById('assignLoc')?.value, flav = document.getElementById('assignFlav')?.value;
       if(!(await isHookahFree(deviceId))) { showModal('error', 'Not Available', 'Hookah taken'); return; }
-      const { data: prod } = await supabase.from('shisha_products').select('id').eq('name', flav).limit(1);
+      const { data: prod } = await supabase.from('shisha_products').select('id,price').eq('name', flav).limit(1);
       const { data: locObj } = await supabase.from('shisha_locations').select('id').eq('name', loc).limit(1);
       if(!prod?.length || !locObj?.length) { showModal('error', 'Error', 'Invalid selection'); return; }
       const { error } = await supabase.from('shisha_sessions').insert({
         device_id: deviceId, product_id: prod[0].id, location_id: locObj[0].id,
         start_time: new Date().toISOString(), last_refill_time: new Date().toISOString(),
-        remaining_time_seconds: COAL_DURATION*60, total_amount: SESSION_PRICE,
+        remaining_time_seconds: COAL_DURATION*60, total_amount: prod[0].price ?? SESSION_PRICE,
         refill_count: 0, status: 'active', customer_phone: 'walkin_customer', payment_method: 'cash'
       });
       if(error) showModal('error', 'Error', error.message);
@@ -801,10 +849,12 @@
     let s = activeSessions.find(s => s.id === sessionId);
     if(!s) return;
     if(s.paused) return showModal('warning', 'Cannot Refill', 'Resume before refilling');
-    showModal('confirm', 'Confirm Refill', `Refill ${s.device_code} for R${REFILL_PRICE}? Total becomes R${s.total_amount + REFILL_PRICE}`, async () => {
+    const { data: flavProd } = await supabase.from('shisha_products').select('price').eq('name', s.flavour_name).limit(1).maybeSingle();
+    const refillPrice = flavProd?.price ?? REFILL_PRICE;
+    showModal('confirm', 'Confirm Refill', `Refill ${s.device_code} for R${refillPrice}? Total becomes R${s.total_amount + refillPrice}`, async () => {
       const { data: cur } = await supabase.from('shisha_sessions').select('paused,status').eq('id', sessionId).single();
       if(cur?.paused) { showModal('error', 'Error', 'Session no longer active'); await loadSessions(); return; }
-      const newTotal = s.total_amount + REFILL_PRICE, newCount = (s.refill_count||0)+1;
+      const newTotal = s.total_amount + refillPrice, newCount = (s.refill_count||0)+1;
       const { error } = await supabase.from('shisha_sessions').update({
         last_refill_time: new Date().toISOString(), remaining_time_seconds: COAL_DURATION*60,
         status: 'active', total_amount: newTotal, refill_count: newCount

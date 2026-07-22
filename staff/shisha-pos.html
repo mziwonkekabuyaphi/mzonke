@@ -416,7 +416,7 @@
 
         <div class="price-card">
           <div class="price-label">Session price (incl. coal &amp; flavour)</div>
-          <div class="price-amount">250.00</div>
+          <div class="price-amount" id="priceAmount">250.00</div>
         </div>
 
         <button class="btn-primary" id="requestPaymentBtn" disabled>⚠️ Select payment method first</button>
@@ -474,6 +474,9 @@
     throw e;
   }
 
+  // Fallback only — actual price now comes from the selected flavour's own
+  // shisha_products.price (editable in admin) via getSelectedPrice()/
+  // flavour_price. These only kick in if a price lookup fails.
   const SESSION_PRICE = 250;
   const REFILL_PRICE = 250;
   const COAL_DURATION = 60;
@@ -539,6 +542,16 @@
   function needsRefillSoon(sec) { return sec > 0 && sec <= 15 * 60; }
   function isTimeUp(sec, s) { return sec <= 0 && !s.paused; }
 
+  let flavourPrices = {};
+  function getSelectedPrice() {
+    const id = document.getElementById('flavourSelect').value;
+    return flavourPrices[id] ?? SESSION_PRICE;
+  }
+  function updatePriceDisplay() {
+    const el = document.getElementById('priceAmount');
+    if (el) el.innerText = getSelectedPrice().toFixed(2);
+  }
+
   async function loadDropdowns() {
     const { data: locs } = await supabase.from('shisha_locations').select('id,name').eq('is_active', true);
     const locSelect = document.getElementById('locationSelect');
@@ -547,7 +560,11 @@
     const { data: flavours } = await supabase.from('shisha_products').select('id,name,price').eq('is_available', true);
     const flavSelect = document.getElementById('flavourSelect');
     flavSelect.innerHTML = (flavours || []).map(f => `<option value="${f.id}">${f.name} (R${f.price})</option>`).join('');
+    flavourPrices = {};
+    (flavours || []).forEach(f => { flavourPrices[f.id] = f.price; });
     if (flavours?.length) flavSelect.value = flavours[0].id;
+    flavSelect.addEventListener('change', updatePriceDisplay);
+    updatePriceDisplay();
   }
 
   async function loadAvailableHookahs(preserveSelection = true) {
@@ -575,14 +592,14 @@
 
   async function loadActiveSessions() {
     const { data, error } = await supabase.from('shisha_sessions')
-      .select(`id,device_id,hookah_devices!inner(device_code),product_id,shisha_products!inner(name),location_id,shisha_locations!inner(name),start_time,last_refill_time,total_amount,refill_count,status,paused,remaining_time_seconds`)
+      .select(`id,device_id,hookah_devices!inner(device_code),product_id,shisha_products!inner(name,price),location_id,shisha_locations!inner(name),start_time,last_refill_time,total_amount,refill_count,status,paused,remaining_time_seconds`)
       .in('status', ['active','refill','paused']);
     if (error) { showToast('Could not load sessions: ' + error.message, true); return; }
     activeSessions = (data || []).map(s => {
       const rem = calculateRemainingSeconds(s);
       const refill = needsRefillSoon(rem);
       const timeUp = isTimeUp(rem, s);
-      return { ...s, device_code: s.hookah_devices?.device_code, flavour_name: s.shisha_products?.name, location_name: s.shisha_locations?.name, remaining_seconds: rem, needs_refill: refill, is_expired: timeUp, display_status: timeUp ? 'expired' : (refill ? 'refill' : s.status) };
+      return { ...s, device_code: s.hookah_devices?.device_code, flavour_name: s.shisha_products?.name, flavour_price: s.shisha_products?.price ?? REFILL_PRICE, location_name: s.shisha_locations?.name, remaining_seconds: rem, needs_refill: refill, is_expired: timeUp, display_status: timeUp ? 'expired' : (refill ? 'refill' : s.status) };
     });
     updateStats();
     renderSessions();
@@ -617,7 +634,7 @@
         <div class="session-header"><span class="session-device"><i class="fas fa-smoking"></i> ${s.device_code}</span><span class="status-badge ${statusClass}">${statusText}</span></div>
         <div class="session-meta">📍 ${s.location_name} &nbsp;·&nbsp; 🍃 ${s.flavour_name}</div>
         <div class="session-meta"><b>R${s.total_amount}</b> total &nbsp;·&nbsp; ♻️ ${s.refill_count || 0} refill${(s.refill_count||0)===1?'':'s'} &nbsp;·&nbsp; ${timeDisplay}</div>
-        <div class="session-actions"><button class="btn-refill" data-id="${s.id}">🔄 Refill (R${REFILL_PRICE})</button><button class="${endBtnClass}" data-id="${s.id}">✕ End session</button></div>
+        <div class="session-actions"><button class="btn-refill" data-id="${s.id}">🔄 Refill (R${s.flavour_price})</button><button class="${endBtnClass}" data-id="${s.id}">✕ End session</button></div>
       </div>`;
     }).join('');
     document.querySelectorAll('.btn-refill').forEach(btn => btn.addEventListener('click', () => refillSession(btn.dataset.id)));
@@ -628,8 +645,9 @@
     let s = activeSessions.find(s => s.id === id);
     if (!s) return;
     if (s.paused) { showToast("Session paused. Resume before refill.", true); return; }
-    showModal('confirm', 'Confirm Refill', `Refill ${s.device_code} for R${REFILL_PRICE}? Total becomes R${s.total_amount + REFILL_PRICE}`, async () => {
-      const newTotal = s.total_amount + REFILL_PRICE;
+    const refillPrice = s.flavour_price ?? REFILL_PRICE;
+    showModal('confirm', 'Confirm Refill', `Refill ${s.device_code} for R${refillPrice}? Total becomes R${s.total_amount + refillPrice}`, async () => {
+      const newTotal = s.total_amount + refillPrice;
       const newCount = (s.refill_count || 0) + 1;
       const { error } = await supabase.from('shisha_sessions').update({
         total_amount: newTotal, refill_count: newCount,
@@ -660,7 +678,7 @@
     const { error } = await supabase.from('shisha_sessions').insert({
       device_id: deviceId, product_id: prodId, location_id: locId,
       start_time: new Date().toISOString(), last_refill_time: new Date().toISOString(),
-      remaining_time_seconds: TOTAL_DURATION_SECONDS, total_amount: SESSION_PRICE,
+      remaining_time_seconds: TOTAL_DURATION_SECONDS, total_amount: getSelectedPrice(),
       refill_count: 0, status: 'active', paused: false,
       payment_method: paymentMethod, account_id: paymentMethod === 'wallet' ? walletPhone : null,
       customer_phone: 'walkin_customer'
@@ -678,7 +696,7 @@
     try {
       if (!(await validateHookahAvailability(document.getElementById('shishaSelect').value))) throw new Error("Hookah already occupied");
       await createShishaSession('cash', null);
-      await supabase.from('payment_requests').insert({ customer_phone: 'walkin_customer', total_amount: SESSION_PRICE, channel: 'shisha_pos', status: 'completed', payment_method: 'cash', metadata: { shisha_session: true } });
+      await supabase.from('payment_requests').insert({ customer_phone: 'walkin_customer', total_amount: getSelectedPrice(), channel: 'shisha_pos', status: 'completed', payment_method: 'cash', metadata: { shisha_session: true } });
       statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Session started.';
       statusDiv.className = 'status-panel success';
       showToast("Session started successfully!");
@@ -699,16 +717,16 @@
     btn.disabled = true; btn.innerHTML = '<span class="loading-spinner"></span> Initializing...';
     try {
       if (!(await validateHookahAvailability(document.getElementById('shishaSelect').value))) throw new Error("Hookah already occupied");
-      const totalAmount = SESSION_PRICE;
+      const totalAmount = getSelectedPrice();
       const amountCents = Math.round(totalAmount * 100);
       const { data: tx, error: txErr } = await supabase.from('wallet_transactions').insert({
         amount: totalAmount, type: 'topup', status: 'pending', provider: 'yoco', direction: 'credit',
-        description: `Shisha session - R${SESSION_PRICE}`, created_at: new Date().toISOString(),
+        description: `Shisha session - R${totalAmount}`, created_at: new Date().toISOString(),
         metadata: { payment_method: 'yoco_card', shisha_session: true }
       }).select('id').single();
       if (txErr) throw new Error('Payment init failed');
       const { data: edge, error: edgeErr } = await supabase.functions.invoke('yoco-create-checkout', {
-        body: { wallet_transaction_id: tx.id, amount_cents: amountCents, currency: 'ZAR', metadata: { shisha_pos: true, session_amount: SESSION_PRICE } }
+        body: { wallet_transaction_id: tx.id, amount_cents: amountCents, currency: 'ZAR', metadata: { shisha_pos: true, session_amount: totalAmount } }
       });
       if (edgeErr || !edge?.checkout_url) throw new Error('Payment gateway error');
       sessionStorage.setItem('pendingShishaPayment', JSON.stringify({
@@ -736,7 +754,7 @@
         await supabase.from('wallets').insert({ user_id: profile.id, balance: 0, currency: 'ZAR', status: 'active' });
       }
       const { data: req, error: reqErr } = await supabase.from('payment_requests').insert({
-        customer_phone: phone, customer_profile_id: profile.id, total_amount: SESSION_PRICE,
+        customer_phone: phone, customer_profile_id: profile.id, total_amount: getSelectedPrice(),
         channel: 'shisha_pos', status: 'pending', requested_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 2 * 60000).toISOString(),
         metadata: { payment_method: 'wallet', shisha_session: true, device_id: document.getElementById('shishaSelect').value }
