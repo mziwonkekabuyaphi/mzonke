@@ -905,18 +905,19 @@
                   <th style="width:90px;">Price</th>
                   <th style="width:130px;">Category</th>
                   <th style="width:80px;">Alcohol</th>
+                  <th style="width:90px;">Stock</th>
                   <th style="width:90px;">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="loading">
-                  <td colspan="8" style="text-align:center;padding:40px;color:var(--muted);">
+                  <td colspan="9" style="text-align:center;padding:40px;color:var(--muted);">
                     <span class="spinner" style="border-color:rgba(255,255,255,0.1);border-top-color:var(--muted);width:20px;height:20px;border-width:3px;"></span>
                     <span style="margin-left:10px;">Loading products…</span>
                   </td>
                 </tr>
                 <tr v-else-if="!filteredProducts.length && !loading">
-                  <td colspan="8">
+                  <td colspan="9">
                     <div class="empty-state">
                       <i class="fas fa-box-open"></i>
                       <p>No products found{{ searchQuery || filterCategory ? ' matching your filters' : '' }}.</p>
@@ -985,6 +986,14 @@
                       <input type="checkbox" v-model="product.alcohol" style="accent-color:var(--red);" />
                       <span class="alc-pill" :class="product.alcohol ? 'alc-yes' : 'alc-no'">
                         {{ product.alcohol ? 'Yes' : 'No' }}
+                      </span>
+                    </label>
+                  </td>
+                  <td>
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:6px;" @change="saveProduct(product)" title="Toggle whether this product can be ordered">
+                      <input type="checkbox" v-model="product.is_available" style="accent-color:var(--green);" />
+                      <span class="stock-badge" :class="product.is_available ? 'in-stock' : 'out-stock'">
+                        {{ product.is_available ? 'In Stock' : 'Out' }}
                       </span>
                     </label>
                   </td>
@@ -1068,19 +1077,19 @@
             </div>
             <div class="form-field">
               <label>Brand</label>
-              <input type="text" v-model="editingProduct.meta.brand" placeholder="Brand name" />
+              <input type="text" v-model="editingProduct.brand" placeholder="Brand name" />
             </div>
             <div class="form-field">
               <label>SKU</label>
-              <input type="text" v-model="editingProduct.meta.sku" placeholder="e.g. SKU-00231" />
+              <input type="text" v-model="editingProduct.sku" placeholder="e.g. SKU-00231" />
             </div>
             <div class="form-field">
               <label>Barcode</label>
-              <input type="text" v-model="editingProduct.meta.barcode" placeholder="e.g. 6001234567890" />
+              <input type="text" v-model="editingProduct.barcode" placeholder="e.g. 6001234567890" />
             </div>
             <div class="form-field">
               <label>Status</label>
-              <select v-model="editingProduct.meta.status">
+              <select v-model="editingProduct.status">
                 <option value="draft">Draft</option>
                 <option value="active">Active</option>
                 <option value="hidden">Hidden</option>
@@ -1089,7 +1098,7 @@
             </div>
           </div>
           <label class="toggle-row">
-            <input type="checkbox" v-model="editingProduct.meta.featured" />
+            <input type="checkbox" v-model="editingProduct.featured" />
             <i class="fas fa-star" style="color:var(--red);font-size:0.8rem;"></i>
             Featured Product
           </label>
@@ -1110,7 +1119,7 @@
             </div>
             <div class="form-field">
               <label>Cost Price (R)</label>
-              <input type="number" v-model.number="editingProduct.meta.cost_price" step="0.01" min="0" />
+              <input type="number" v-model.number="editingProduct.cost_price" step="0.01" min="0" />
             </div>
           </div>
           <!-- Live profit / margin, recalculated on every keystroke via computed getters -->
@@ -1135,29 +1144,34 @@
         </div>
         <div class="edit-section-body" v-show="editSections.inventory">
           <label class="toggle-row">
-            <input type="checkbox" v-model="editingProduct.meta.track_inventory" />
-            <i class="fas fa-warehouse" style="color:var(--red);font-size:0.8rem;"></i>
-            Track Inventory
+            <input type="checkbox" v-model="editingProduct.is_available" style="accent-color:var(--green);" />
+            <i class="fas fa-power-off" style="color:var(--red);font-size:0.8rem;"></i>
+            In Stock (uncheck to mark Out of Stock — always overrides quantity below)
           </label>
-          <div v-if="editingProduct.meta.track_inventory">
+          <label class="toggle-row">
+            <input type="checkbox" v-model="editingProduct.track_inventory" />
+            <i class="fas fa-warehouse" style="color:var(--red);font-size:0.8rem;"></i>
+            Track Inventory (auto-flip Out of Stock when quantity hits 0)
+          </label>
+          <div v-if="editingProduct.track_inventory">
             <div class="form-grid">
               <div class="form-field">
                 <label>Stock Quantity</label>
-                <input type="number" v-model.number="editingProduct.meta.stock_quantity" min="0" step="1" />
+                <input type="number" v-model.number="editingProduct.stock_quantity" min="0" step="1" />
               </div>
               <div class="form-field">
                 <label>Low Stock Threshold</label>
-                <input type="number" v-model.number="editingProduct.meta.low_stock_threshold" min="0" step="1" />
+                <input type="number" v-model.number="editingProduct.low_stock_threshold" min="0" step="1" />
               </div>
               <div class="form-field">
                 <label>Reserved Stock</label>
                 <input type="number" :value="editingProduct.meta.reserved_stock ?? '—'" readonly style="opacity:0.6;cursor:not-allowed;" />
               </div>
             </div>
-            <span class="stock-badge" :class="stockStatus.cls">
-              <i class="fas fa-circle" style="font-size:0.5rem;"></i> {{ stockStatus.label }}
-            </span>
           </div>
+          <span class="stock-badge" :class="stockStatus.cls">
+            <i class="fas fa-circle" style="font-size:0.5rem;"></i> {{ stockStatus.label }}
+          </span>
         </div>
       </div>
 
@@ -1243,7 +1257,7 @@
             <label class="toggle-row"><input type="checkbox" v-model="editingProduct.meta.visibility.website" /> <i class="fas fa-globe" style="color:var(--red);font-size:0.8rem;"></i> Website</label>
           </div>
           <label class="toggle-row">
-            <input type="checkbox" v-model="editingProduct.meta.featured" />
+            <input type="checkbox" v-model="editingProduct.featured" />
             <i class="fas fa-star" style="color:var(--red);font-size:0.8rem;"></i>
             Featured Product
           </label>
@@ -1449,24 +1463,29 @@ createApp({
 
     // ── Manage Product editor computeds (new) ──
     // Live profit/margin recompute automatically because Vue tracks the
-    // .price / .meta.cost_price fields used here.
+    // .price / .cost_price fields used here.
     profitValue() {
       if (!this.editingProduct) return 0;
       const sell = Number(this.editingProduct.price) || 0;
-      const cost = Number(this.editingProduct.meta.cost_price) || 0;
+      const cost = Number(this.editingProduct.cost_price) || 0;
       return sell - cost;
     },
     marginValue() {
       if (!this.editingProduct) return 0;
       const sell = Number(this.editingProduct.price) || 0;
       if (!sell) return 0;
-      const cost = Number(this.editingProduct.meta.cost_price) || 0;
+      const cost = Number(this.editingProduct.cost_price) || 0;
       return ((sell - cost) / sell) * 100;
     },
+    // Manual is_available override always wins — that's the point of the
+    // toggle. Quantity-based status only kicks in when tracking is on
+    // and the product hasn't been manually marked out of stock.
     stockStatus() {
       if (!this.editingProduct) return { label: '—', cls: '' };
-      const qty = Number(this.editingProduct.meta.stock_quantity) || 0;
-      const low = Number(this.editingProduct.meta.low_stock_threshold) || 0;
+      if (!this.editingProduct.is_available) return { label: 'Out of Stock', cls: 'out-stock' };
+      if (!this.editingProduct.track_inventory) return { label: 'In Stock', cls: 'in-stock' };
+      const qty = Number(this.editingProduct.stock_quantity) || 0;
+      const low = Number(this.editingProduct.low_stock_threshold) || 0;
       if (qty <= 0) return { label: 'Out of Stock', cls: 'out-stock' };
       if (qty <= low) return { label: 'Low Stock', cls: 'low-stock' };
       return { label: 'In Stock', cls: 'in-stock' };
@@ -1489,8 +1508,8 @@ createApp({
     },
     currentStockDisplay() {
       if (!this.editingProduct) return '—';
-      if (!this.editingProduct.meta.track_inventory) return 'No data yet';
-      const qty = this.editingProduct.meta.stock_quantity;
+      if (!this.editingProduct.track_inventory) return 'No data yet';
+      const qty = this.editingProduct.stock_quantity;
       return (qty === undefined || qty === null || qty === '') ? '—' : qty;
     },
     // All products except the one currently being edited, for the
@@ -1576,6 +1595,7 @@ createApp({
           category: product.category,
           alcohol: product.alcohol,
           image: product.image,
+          is_available: product.is_available,
         }).eq('id', product.id);
         if (error) throw error;
         this.showToast('Saved', 'success');
@@ -1677,15 +1697,15 @@ createApp({
 
     // ── Charts ──
     // ── Manage Product editor (new) ──────────────────────────────────
-    // Default shape for the JSONB "meta" column. Existing products won't
-    // have this yet, so every field is optional and merged in on open —
-    // nothing here ever overwrites or removes the original columns
-    // (name, description, price, category, alcohol, image).
+    // Default shape for the JSONB "meta" column — only for things that
+    // don't have a real column on products (images/variants/options/
+    // visibility/related/analytics/reserved_stock). Everything else
+    // (brand, sku, barcode, status, featured, cost_price, track_inventory,
+    // stock_quantity, low_stock_threshold, is_available) is a real column
+    // on the table and is read/written directly, not shadowed in here.
     defaultMeta() {
       return {
-        brand: '', sku: '', barcode: '', status: 'active', featured: false,
-        cost_price: 0,
-        track_inventory: false, stock_quantity: 0, low_stock_threshold: 0, reserved_stock: null,
+        reserved_stock: null,
         images: [],
         variants: [],
         options: [],
@@ -1710,6 +1730,16 @@ createApp({
         meta.images.push({ url: product.image, isMain: true });
       }
       this.editingProduct = { ...JSON.parse(JSON.stringify(product)), meta };
+      // Real columns fall back to sane defaults if a row was inserted
+      // manually (e.g. straight into Supabase) and left them null.
+      const ep = this.editingProduct;
+      if (ep.is_available === null || ep.is_available === undefined) ep.is_available = true;
+      if (ep.track_inventory === null || ep.track_inventory === undefined) ep.track_inventory = false;
+      if (ep.stock_quantity === null || ep.stock_quantity === undefined) ep.stock_quantity = 0;
+      if (ep.low_stock_threshold === null || ep.low_stock_threshold === undefined) ep.low_stock_threshold = 0;
+      if (ep.status === null || ep.status === undefined) ep.status = 'active';
+      if (ep.featured === null || ep.featured === undefined) ep.featured = false;
+      if (ep.cost_price === null || ep.cost_price === undefined) ep.cost_price = 0;
       this.editModalOpen = true;
     },
     closeManage() {
@@ -1738,6 +1768,16 @@ createApp({
           alcohol: ep.alcohol,
           image: ep.image,
           meta: ep.meta,
+          brand: ep.brand,
+          sku: ep.sku,
+          barcode: ep.barcode,
+          status: ep.status,
+          featured: ep.featured,
+          cost_price: ep.cost_price,
+          is_available: ep.is_available,
+          track_inventory: ep.track_inventory,
+          stock_quantity: ep.stock_quantity,
+          low_stock_threshold: ep.low_stock_threshold,
         };
         const { error } = await this.supabase.from('products').update(payload).eq('id', ep.id);
         if (error) throw error;
@@ -1754,6 +1794,8 @@ createApp({
             await this.supabase.from('products').update({
               name: ep.name, description: ep.description, price: ep.price,
               category: normalizeCategory(ep.category), alcohol: ep.alcohol, image: ep.image,
+              is_available: ep.is_available, stock_quantity: ep.stock_quantity,
+              track_inventory: ep.track_inventory, low_stock_threshold: ep.low_stock_threshold,
             }).eq('id', ep.id);
             this.showToast('Saved (add a "meta" jsonb column in Supabase to store the extra product details)', 'info');
             this.closeManage();
@@ -1841,7 +1883,7 @@ createApp({
     },
     archiveProduct() {
       if (!this.editingProduct) return;
-      this.editingProduct.meta.status = 'archived';
+      this.editingProduct.status = 'archived';
       this.showToast('Marked as Archived — click Save to confirm', 'info');
     },
     viewSales() {

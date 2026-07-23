@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -687,16 +688,19 @@
 
         <!-- PAYROLL TAB -->
         <div id="payroll-tab" class="tab-content hidden">
-            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;align-items:end;">
+            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;align-items:end;">
                 <div><label style="font-size:0.7rem;color:var(--muted);">Period Start</label><input type="date" id="payroll-start" style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;color:var(--text);"></div>
                 <div><label style="font-size:0.7rem;color:var(--muted);">Period End</label><input type="date" id="payroll-end" style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;color:var(--text);"></div>
                 <button class="btn-primary" onclick="calculatePayroll()">Calculate</button>
                 <button class="btn-secondary" onclick="exportPayrollCSV()">Export CSV</button>
                 <button class="btn-secondary" id="mark-all-paid-btn" onclick="markAllPayrollPaid()" style="display:none;">Mark All Paid</button>
             </div>
+            <div style="font-size:0.65rem;color:var(--muted);margin-bottom:12px;">
+                <i class="fas fa-circle-info"></i> PAYE is estimated using SARS 2026/27 brackets (annualised method) and UIF at 1% (capped). This is an estimate for payslip purposes — confirm final liabilities with your accountant / SARS before submission.
+            </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Staff</th><th>Job Title</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Deductions/Bonus</th><th>Net</th><th>Status</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Staff</th><th>Job Title</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody id="payroll-table-body"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted);">Select a date range and click Calculate</td></tr></tbody>
                 </table>
             </div>
@@ -795,6 +799,21 @@
         </div>
     </div>
 
+    <!-- Payslip Modal -->
+    <div id="payslip-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width:480px;">
+            <div class="modal-header">
+                <h2>Payslip</h2>
+                <button class="modal-close" onclick="closePayslip()">&times;</button>
+            </div>
+            <div class="modal-body" id="payslip-container"></div>
+            <div style="display:flex;gap:10px;padding:0 24px 20px;">
+                <button class="btn-secondary" onclick="closePayslip()" style="flex:1;">Close</button>
+                <button class="btn-primary" onclick="downloadCurrentPayslipPDF()" style="flex:1;"><i class="fas fa-download"></i> Download PDF</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom Confirmation Modal -->
     <div id="custom-modal" class="modal-overlay">
         <div class="modal-content" style="max-width:420px;text-align:center;">
@@ -822,8 +841,56 @@
     let shifts = [];
     let activityLogs = [];
     let payrollRecords = [];
+    let currentPayrollBatch = [];      // records currently shown in the Payroll tab
+    const payrollById = new Map();     // every payroll record we've seen, keyed by id (used by payslip view/download)
+    let venueInfo = { name: 'Rands', address: '' };
     let currentPage = 1;
     const pageSize = 10;
+
+    // ─── SARS PAYE / UIF (2026/27 tax year, 1 Mar 2026 – 28 Feb 2027) ───
+    // NOTE: this is an estimate for payslip purposes using the standard annualisation
+    // method for irregular/period-based pay. It assumes a single, under-65 taxpayer with
+    // no medical aid or retirement deductions. Confirm final liabilities with SARS / an
+    // accountant — this is not a certified payroll/tax filing calculation.
+    const SARS_BRACKETS_2026_27 = [
+        { upto: 245100,       rate: 0.18 },
+        { upto: 383100,       rate: 0.26 },
+        { upto: 530200,       rate: 0.31 },
+        { upto: 695800,       rate: 0.36 },
+        { upto: 887000,       rate: 0.39 },
+        { upto: 1878600,      rate: 0.41 },
+        { upto: Infinity,     rate: 0.45 },
+    ];
+    const SARS_PRIMARY_REBATE_2026_27 = 17820;
+    const UIF_RATE = 0.01;
+    const UIF_MONTHLY_CAP = 177.12; // per employee, based on the R17,712/month remuneration ceiling
+
+    function calcAnnualPAYE(annualTaxable) {
+        let tax = 0, floor = 0;
+        for (const b of SARS_BRACKETS_2026_27) {
+            if (annualTaxable <= floor) break;
+            const inBracket = Math.min(annualTaxable, b.upto) - floor;
+            tax += inBracket * b.rate;
+            floor = b.upto;
+        }
+        return Math.max(tax - SARS_PRIMARY_REBATE_2026_27, 0);
+    }
+
+    // Estimates PAYE + UIF for a single pay period by annualising the period's gross pay,
+    // taxing the annual equivalent, then bringing the tax back down to the period.
+    function calculatePeriodDeductions(grossForPeriod, periodDays) {
+        const days = Math.max(periodDays, 1);
+        const annualEquivalent = (grossForPeriod / days) * 365;
+        const annualPAYE = calcAnnualPAYE(annualEquivalent);
+        const periodPAYE = annualPAYE * (days / 365);
+        const uifCapForPeriod = UIF_MONTHLY_CAP * (days / 30);
+        const periodUIF = Math.min(grossForPeriod * UIF_RATE, uifCapForPeriod);
+        return { paye: periodPAYE, uif: periodUIF, total: periodPAYE + periodUIF };
+    }
+
+    function registerPayrollRecords(records) {
+        (records || []).forEach(r => payrollById.set(r.id, r));
+    }
     let totalStaff = 0;
     let currentFilters = { search: '', role: '', status: '' };
     let customModalResolve = null;
@@ -931,12 +998,14 @@
                 .order('created_at', { ascending: false })
                 .limit(50);
             payrollRecords = payrollData || [];
+            registerPayrollRecords(payrollRecords);
+            currentPayrollBatch = payrollRecords;
 
             updateStats();
             renderStaffTable();
             renderActivityFeed();
             renderActiveShifts();
-            renderPayrollTable();
+            renderPayrollTable(payrollRecords);
             await loadModulePermissions();
 
         } catch (err) {
@@ -1268,6 +1337,8 @@
         if (!staff) return;
         const isMobileScanner = staff.role === MOBILE_SCANNER_ROLE;
         const modList = isMobileScanner ? [] : (await supabase.from('job_title_modules').select('module_id').eq('job_title', staff.staff_role || staff.role)).data?.map(d => d.module_id) || [];
+        const { data: payslipHistory } = await supabase.from('staff_payroll').select('*').eq('staff_id', id).order('period_end', { ascending: false }).limit(12);
+        registerPayrollRecords(payslipHistory || []);
         const container = document.getElementById('staff-profile-container');
         container.innerHTML = `
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
@@ -1284,6 +1355,23 @@
                 ? `<div style="color:var(--muted);font-size:0.75rem;"><i class="fas fa-qrcode" style="color:var(--red);"></i> Mobile Scanner accounts skip the module system entirely — they log in straight into the scanner app.</div>`
                 : `<div><span style="color:var(--muted);font-size:0.6rem;">Assigned Modules (${modList.length})</span><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${modList.length ? modList.map(m => `<span class="role-badge"><i class="fas ${MODULE_ICONS[m]||'fa-cube'}"></i> ${MODULE_NAMES[m]||m}</span>`).join('') : '<span style="color:var(--muted);font-size:0.7rem;">No modules assigned</span>'}</div></div>`
             }
+            <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px;">
+                <span style="color:var(--muted);font-size:0.6rem;">Payslip History</span>
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                    ${(payslipHistory && payslipHistory.length) ? payslipHistory.map(r => `
+                        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:8px;padding:8px 12px;">
+                            <div>
+                                <div style="font-size:0.75rem;font-weight:600;">${formatDate(r.period_start)} – ${formatDate(r.period_end)}</div>
+                                <div style="font-size:0.65rem;color:var(--muted);">${fmtR(r.final_pay)} net · ${r.payment_status === 'paid' ? 'Paid' : 'Pending'}</div>
+                            </div>
+                            <div style="display:flex;gap:4px;">
+                                <button class="btn-sm" onclick="viewPayslip('${r.id}')"><i class="fas fa-eye"></i></button>
+                                <button class="btn-sm" onclick="downloadPayslipPDF('${r.id}')"><i class="fas fa-file-pdf"></i></button>
+                            </div>
+                        </div>
+                    `).join('') : '<span style="color:var(--muted);font-size:0.7rem;">No payslips generated yet</span>'}
+                </div>
+            </div>
         `;
         document.getElementById('staff-profile-modal').classList.add('active');
     };
@@ -1302,48 +1390,251 @@
     window.exportStaffList = () => { showToast('Export coming soon', 'info'); };
 
     // ─── OTHER TABS ───
+    function renderPayrollTable(records) {
+        currentPayrollBatch = records || [];
+        registerPayrollRecords(currentPayrollBatch);
+        const tbody = document.getElementById('payroll-table-body');
+        if (!currentPayrollBatch.length) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted);">No payroll records for this period yet — select a date range and click Calculate</td></tr>`;
+            document.getElementById('mark-all-paid-btn').style.display = 'none';
+            return;
+        }
+        tbody.innerHTML = currentPayrollBatch.map(r => {
+            const staff = staffList.find(s => s.id === r.staff_id);
+            const name = staff ? `${staff.name||''} ${staff.surname||''}`.trim() : 'Unknown staff';
+            const role = staff ? (staff.staff_role || staff.role || 'N/A') : 'N/A';
+            const isPaid = r.payment_status === 'paid';
+            return `
+                <tr>
+                    <td>${escapeHtml(name)}</td>
+                    <td>${escapeHtml(role)}</td>
+                    <td>${(parseFloat(r.hours_worked)||0).toFixed(1)}</td>
+                    <td>${fmtR(r.hourly_rate)}</td>
+                    <td>${fmtR(r.gross_pay)}</td>
+                    <td>-${fmtR(r.deductions)}</td>
+                    <td>${fmtR(r.final_pay)}</td>
+                    <td><span class="status-badge ${isPaid ? 'status-active' : 'status-inactive'}">${isPaid ? 'Paid' : 'Pending'}</span></td>
+                    <td style="display:flex;gap:4px;flex-wrap:wrap;">
+                        <button class="btn-sm" title="View payslip" onclick="viewPayslip('${r.id}')"><i class="fas fa-eye"></i></button>
+                        <button class="btn-sm" title="Download PDF" onclick="downloadPayslipPDF('${r.id}')"><i class="fas fa-file-pdf"></i></button>
+                        ${!isPaid ? `<button class="btn-sm success" title="Mark paid" onclick="markPayrollPaid('${r.id}')"><i class="fas fa-check"></i></button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        document.getElementById('mark-all-paid-btn').style.display = currentPayrollBatch.some(r => r.payment_status !== 'paid') ? 'inline-block' : 'none';
+    }
+    window.renderPayrollTable = renderPayrollTable;
+
     window.calculatePayroll = async () => {
         const start = document.getElementById('payroll-start').value;
         const end = document.getElementById('payroll-end').value;
         if (!start || !end) { showToast('Select both dates', true); return; }
-        // Simple mock: show all staff with estimated hours
+        if (new Date(end) < new Date(start)) { showToast('End date must be after start date', true); return; }
+        if (!staffList.length) { showToast('No staff data', true); return; }
+
+        const startDate = new Date(start + 'T00:00:00');
+        const endDate = new Date(end + 'T23:59:59');
+        const periodDays = Math.max(1, Math.round((endDate - startDate) / 86400000) + 1);
+
         const tbody = document.getElementById('payroll-table-body');
-        if (!staffList.length) { tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted);">No staff data</td></tr>`; return; }
-        tbody.innerHTML = staffList.map(s => {
-            const hours = shifts.filter(sh => sh.staff_id === s.id && sh.login_time >= start && sh.logout_time <= end)
-                .reduce((sum, sh) => sum + (sh.hours_worked||0), 0);
-            const rate = s.hourly_rate || 0;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted);"><i class="fas fa-spinner fa-spin"></i> Calculating payroll...</td></tr>`;
+
+        const rowsToInsert = [];
+        for (const s of staffList) {
+            const hours = shifts
+                .filter(sh => sh.staff_id === s.id && sh.logout_time && new Date(sh.login_time) >= startDate && new Date(sh.login_time) <= endDate)
+                .reduce((sum, sh) => sum + (parseFloat(sh.hours_worked) || 0), 0);
+            if (hours <= 0) continue;
+            const rate = parseFloat(s.hourly_rate) || 0;
             const gross = hours * rate;
-            const net = gross * 0.85; // rough estimate
-            return `
-                <tr>
-                    <td>${escapeHtml(s.name)} ${escapeHtml(s.surname)}</td>
-                    <td>${s.staff_role||s.role||'N/A'}</td>
-                    <td>${hours.toFixed(1)}</td>
-                    <td>${fmtR(rate)}</td>
-                    <td>${fmtR(gross)}</td>
-                    <td>—</td>
-                    <td>${fmtR(net)}</td>
-                    <td><span class="status-badge status-active">Pending</span></td>
-                    <td><button class="btn-sm success" onclick="markPayrollPaid('${s.id}')">Mark Paid</button></td>
-                </tr>
-            `;
-        }).join('');
-        document.getElementById('mark-all-paid-btn').style.display = 'inline-block';
+            const deductions = calculatePeriodDeductions(gross, periodDays);
+            const net = Math.max(gross - deductions.total, 0);
+            rowsToInsert.push({
+                staff_id: s.id,
+                hours_worked: Number(hours.toFixed(2)),
+                hourly_rate: rate,
+                gross_pay: Number(gross.toFixed(2)),
+                deductions: Number(deductions.total.toFixed(2)),
+                final_pay: Number(net.toFixed(2)),
+                payment_status: 'pending',
+                period_start: start,
+                period_end: end,
+            });
+        }
+
+        if (!rowsToInsert.length) {
+            renderPayrollTable([]);
+            showToast('No completed shifts found in that period', true);
+            return;
+        }
+
+        try {
+            // Clear out any not-yet-paid calculations for this exact period so recalculating doesn't duplicate rows
+            await supabase.from('staff_payroll').delete()
+                .eq('period_start', start).eq('period_end', end).eq('payment_status', 'pending');
+            const { data: inserted, error } = await supabase.from('staff_payroll').insert(rowsToInsert).select('*');
+            if (error) throw error;
+            payrollRecords = [...inserted, ...payrollRecords.filter(r => !(r.period_start === start && r.period_end === end))];
+            renderPayrollTable(inserted);
+            showToast('Payroll calculated', 'success');
+        } catch (err) {
+            console.error('Payroll calc error:', err);
+            showToast('Failed to save payroll: ' + err.message, true);
+            renderPayrollTable([]);
+        }
     };
 
-    window.markPayrollPaid = async (staffId) => {
-        const confirmed = await window.showCustomModal('Mark Paid', 'Mark this payroll as paid?', 'Confirm', 'primary');
+    window.markPayrollPaid = async (id) => {
+        const confirmed = await window.showCustomModal('Mark Paid', 'Mark this payslip as paid?', 'Confirm', 'primary');
         if (!confirmed) return;
-        showToast('Payroll marked paid (simulated)', 'success');
+        try {
+            const { error } = await supabase.from('staff_payroll')
+                .update({ payment_status: 'paid' }).eq('id', id);
+            if (error) throw error;
+            const rec = payrollById.get(id);
+            if (rec) rec.payment_status = 'paid';
+            renderPayrollTable(currentPayrollBatch);
+            showToast('Marked as paid', 'success');
+        } catch (err) {
+            showToast('Failed to update: ' + err.message, true);
+        }
     };
+
     window.markAllPayrollPaid = async () => {
-        const confirmed = await window.showCustomModal('Mark All Paid', 'Mark all shown payroll records as paid?', 'Confirm', 'primary');
+        const pendingIds = currentPayrollBatch.filter(r => r.payment_status !== 'paid').map(r => r.id);
+        if (!pendingIds.length) return;
+        const confirmed = await window.showCustomModal('Mark All Paid', `Mark all ${pendingIds.length} shown payslip(s) as paid?`, 'Confirm', 'primary');
         if (!confirmed) return;
-        showToast('All payroll marked paid (simulated)', 'success');
+        try {
+            const { error } = await supabase.from('staff_payroll')
+                .update({ payment_status: 'paid' }).in('id', pendingIds);
+            if (error) throw error;
+            pendingIds.forEach(id => { const rec = payrollById.get(id); if (rec) rec.payment_status = 'paid'; });
+            renderPayrollTable(currentPayrollBatch);
+            showToast('All marked as paid', 'success');
+        } catch (err) {
+            showToast('Failed to update: ' + err.message, true);
+        }
     };
-    window.exportPayrollCSV = () => { showToast('Export CSV coming soon', 'info'); };
+
+    window.exportPayrollCSV = () => {
+        if (!currentPayrollBatch.length) { showToast('Nothing to export', true); return; }
+        const header = ['Staff', 'Job Title', 'Hours', 'Rate', 'Gross', 'Deductions', 'Net', 'Status', 'Period Start', 'Period End'];
+        const rows = currentPayrollBatch.map(r => {
+            const staff = staffList.find(s => s.id === r.staff_id);
+            const name = staff ? `${staff.name || ''} ${staff.surname || ''}`.trim() : 'Unknown';
+            const role = staff ? (staff.staff_role || staff.role || 'N/A') : 'N/A';
+            return [name, role, r.hours_worked, r.hourly_rate, r.gross_pay, r.deductions, r.final_pay, r.payment_status, r.period_start, r.period_end];
+        });
+        const csv = [header, ...rows].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `payroll_${currentPayrollBatch[0].period_start}_to_${currentPayrollBatch[0].period_end}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV exported', 'success');
+    };
+
     window.forceLogout = async (shiftId) => { showToast('Force logout coming soon', 'info'); };
+
+    // ─── PAYSLIP VIEW / PDF ───
+    function payslipBreakdown(record, staff) {
+        const name = staff ? `${staff.name || ''} ${staff.surname || ''}`.trim() : 'Unknown staff';
+        const role = staff ? (staff.staff_role || staff.role || 'N/A') : 'N/A';
+        const gross = parseFloat(record.gross_pay) || 0;
+        const totalDeductions = parseFloat(record.deductions) || 0;
+        const periodDays = Math.max(1, Math.round((new Date(record.period_end) - new Date(record.period_start)) / 86400000) + 1);
+        const est = calculatePeriodDeductions(gross, periodDays); // recompute the PAYE/UIF split for display
+        return { name, role, gross, totalDeductions, paye: est.paye, uif: est.uif, net: parseFloat(record.final_pay) || 0, periodDays };
+    }
+
+    window.viewPayslip = (id) => {
+        const record = payrollById.get(id);
+        if (!record) { showToast('Payslip not found', true); return; }
+        const staff = staffList.find(s => s.id === record.staff_id);
+        const b = payslipBreakdown(record, staff);
+        document.getElementById('payslip-container').innerHTML = `
+            <div style="text-align:center;margin-bottom:16px;">
+                <div style="font-weight:700;font-size:1.1rem;">${escapeHtml(venueInfo.name)}</div>
+                ${venueInfo.address ? `<div style="color:var(--muted);font-size:0.7rem;">${escapeHtml(venueInfo.address)}</div>` : ''}
+                <div style="color:var(--muted);font-size:0.75rem;margin-top:4px;">Payslip · ${formatDate(record.period_start)} – ${formatDate(record.period_end)}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                <div><span style="color:var(--muted);font-size:0.6rem;">Employee</span><div style="font-weight:600;">${escapeHtml(b.name)}</div></div>
+                <div><span style="color:var(--muted);font-size:0.6rem;">Job Title</span><div style="font-weight:600;">${escapeHtml(b.role)}</div></div>
+                <div><span style="color:var(--muted);font-size:0.6rem;">Hours Worked</span><div style="font-weight:600;">${(parseFloat(record.hours_worked)||0).toFixed(1)}</div></div>
+                <div><span style="color:var(--muted);font-size:0.6rem;">Hourly Rate</span><div style="font-weight:600;">${fmtR(record.hourly_rate)}</div></div>
+            </div>
+            <div style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:12px 0;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;"><span>Gross Pay</span><span style="font-weight:600;">${fmtR(b.gross)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);"><span>PAYE (est.)</span><span>-${fmtR(b.paye)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);"><span>UIF (1%)</span><span>-${fmtR(b.uif)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;"><span>Total Deductions</span><span>-${fmtR(b.totalDeductions)}</span></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:1.05rem;font-weight:700;margin-bottom:12px;">
+                <span>Net Pay</span><span style="color:var(--red);">${fmtR(b.net)}</span>
+            </div>
+            <div style="text-align:center;"><span class="status-badge ${record.payment_status==='paid'?'status-active':'status-inactive'}">${record.payment_status==='paid'?'Paid':'Pending'}</span></div>
+            <div style="color:var(--muted);font-size:0.6rem;margin-top:16px;text-align:center;">PAYE estimated using SARS 2026/27 brackets (annualised method). Confirm with your accountant / SARS before final submission.</div>
+        `;
+        document.getElementById('payslip-modal').dataset.recordId = id;
+        document.getElementById('payslip-modal').classList.add('active');
+    };
+    window.closePayslip = () => { document.getElementById('payslip-modal').classList.remove('active'); };
+
+    function buildPayslipPDF(record, staff) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const b = payslipBreakdown(record, staff);
+        let y = 50;
+        doc.setFontSize(16); doc.setFont(undefined, 'bold');
+        doc.text(venueInfo.name || 'Payslip', 40, y);
+        doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(120);
+        if (venueInfo.address) { y += 16; doc.text(venueInfo.address, 40, y); }
+        y += 16; doc.text(`Payslip for period ${formatDate(record.period_start)} - ${formatDate(record.period_end)}`, 40, y);
+        doc.setTextColor(0);
+        y += 30; doc.setDrawColor(220); doc.line(40, y, 555, y);
+        y += 25; doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('Employee Details', 40, y);
+        doc.setFont(undefined, 'normal'); doc.setFontSize(10);
+        y += 20; doc.text(`Name: ${b.name}`, 40, y);
+        y += 16; doc.text(`Job Title: ${b.role}`, 40, y);
+        y += 16; doc.text(`Hours Worked: ${(parseFloat(record.hours_worked)||0).toFixed(1)}`, 40, y);
+        y += 16; doc.text(`Hourly Rate: ${fmtR(record.hourly_rate)}`, 40, y);
+        y += 30; doc.setDrawColor(220); doc.line(40, y, 555, y);
+        y += 25; doc.setFont(undefined, 'bold'); doc.setFontSize(11); doc.text('Pay Breakdown', 40, y);
+        doc.setFont(undefined, 'normal'); doc.setFontSize(10);
+        const line = (label, val) => { y += 18; doc.text(label, 40, y); doc.text(val, 515, y, { align: 'right' }); };
+        line('Gross Pay', fmtR(b.gross));
+        line('PAYE (estimate)', '-' + fmtR(b.paye));
+        line('UIF (1%)', '-' + fmtR(b.uif));
+        line('Total Deductions', '-' + fmtR(b.totalDeductions));
+        y += 10; doc.setDrawColor(220); doc.line(40, y, 555, y);
+        y += 25; doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+        doc.text('Net Pay', 40, y); doc.text(fmtR(b.net), 515, y, { align: 'right' });
+        y += 20; doc.setFont(undefined, 'normal'); doc.setFontSize(10);
+        doc.text(`Status: ${record.payment_status === 'paid' ? 'Paid' : 'Pending'}`, 40, y);
+        y += 40; doc.setFontSize(8); doc.setTextColor(140);
+        doc.text('PAYE estimated using SARS 2026/27 brackets (annualised method) and UIF at 1% (capped).', 40, y);
+        y += 12; doc.text('This is an estimate for payslip purposes — confirm final liabilities with your accountant / SARS.', 40, y);
+        return doc;
+    }
+
+    window.downloadPayslipPDF = (id) => {
+        const record = payrollById.get(id);
+        if (!record) { showToast('Payslip not found', true); return; }
+        const staff = staffList.find(s => s.id === record.staff_id);
+        const doc = buildPayslipPDF(record, staff);
+        const name = staff ? `${staff.name || ''}_${staff.surname || ''}`.replace(/\s+/g, '_') : 'staff';
+        doc.save(`payslip_${name}_${record.period_start}_to_${record.period_end}.pdf`);
+    };
+
+    window.downloadCurrentPayslipPDF = () => {
+        const id = document.getElementById('payslip-modal').dataset.recordId;
+        if (id) window.downloadPayslipPDF(id);
+    };
 
     // Attendance
     async function renderActiveShifts() {
@@ -1660,6 +1951,8 @@
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) { window.parent.location.href = '../login.html'; return; }
+            const { data: venueData } = await supabase.from('venue_settings').select('venue_name, venue_location').limit(1).maybeSingle();
+            if (venueData) venueInfo = { name: venueData.venue_name || 'Rands', address: venueData.venue_location || '' };
             await loadWorkforceData();
             setupListeners();
             initTabs();
