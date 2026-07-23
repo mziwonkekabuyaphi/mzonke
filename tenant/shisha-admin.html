@@ -675,11 +675,14 @@
                 <div class="item-card" data-id="${p.id}">
                     <div class="item-info">
                         <div class="name">${escapeHtml(p.name)}</div>
-                        <div class="meta">${fmtR(p.price)} • ${p.is_available ? 'Available' : 'Hidden'}</div>
+                        <div class="meta">${fmtR(p.price)} • ${p.is_available ? 'In Stock' : 'Out of Stock'}</div>
                     </div>
                     <div class="item-actions">
-                        <button class="toggle-availability" data-id="${p.id}" data-avail="${p.is_available}">
-                            <i class="fas ${p.is_available ? 'fa-eye-slash' : 'fa-eye'}"></i>
+                        <button class="edit-price" data-id="${p.id}" data-price="${p.price}" title="Edit price">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button class="toggle-availability" data-id="${p.id}" data-avail="${p.is_available}" title="${p.is_available ? 'Mark out of stock' : 'Mark in stock'}">
+                            <i class="fas ${p.is_available ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
                         </button>
                         <button class="delete-flavour danger" data-id="${p.id}">
                             <i class="fas fa-trash-alt"></i>
@@ -687,13 +690,26 @@
                     </div>
                 </div>
             `).join('');
+            document.querySelectorAll('.edit-price').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const currentPrice = parseFloat(btn.dataset.price);
+                    const input = window.prompt('New price (R):', currentPrice);
+                    if (input === null) return; // cancelled
+                    const newPrice = parseFloat(input);
+                    if (isNaN(newPrice) || newPrice < 0) { showToast('Enter a valid price', true); return; }
+                    const { error } = await supabase.from('shisha_products').update({ price: newPrice }).eq('id', id);
+                    if (error) showToast(error.message, true);
+                    else { await loadFlavours(); showToast('Price updated'); }
+                });
+            });
             document.querySelectorAll('.toggle-availability').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const id = btn.dataset.id;
                     const current = btn.dataset.avail === 'true';
                     const { error } = await supabase.from('shisha_products').update({ is_available: !current }).eq('id', id);
                     if (error) showToast(error.message, true);
-                    else { await loadFlavours(); showToast('Updated'); }
+                    else { await loadFlavours(); showToast(current ? 'Marked out of stock' : 'Marked in stock'); }
                 });
             });
             document.querySelectorAll('.delete-flavour').forEach(btn => {
