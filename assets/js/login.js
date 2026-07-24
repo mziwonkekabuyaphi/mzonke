@@ -13,6 +13,13 @@
  *   • profile row is NULL, OR
  *   • profile.role is NULL/empty, OR
  *   • profile.status !== 'Active'
+ *
+ * CHANGED (Passport Key rework): a customer who registered via WhatsApp
+ * has a wallet but no password yet. Before attempting a password sign-in,
+ * we check GET /api/passport-key/status?email=... — if the account exists
+ * but has no Passport Key, we hand off to passport-key.js's OTP flow
+ * instead of calling signIn() with whatever they typed into the password
+ * field (which would just fail with a confusing "incorrect password").
  */
 
 import {
@@ -25,6 +32,8 @@ import {
   getSessionWithProfile,
   completeCustomerRegistration,
 } from '../../config/auth.js';
+
+import { startPassportKeySetup } from './passport-key.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
 const emailInput  = document.getElementById('email');
@@ -59,6 +68,24 @@ function setLoading(state, btn, labelEl, loadingText, defaultText) {
   btn.disabled = state;
   btn.classList.toggle('loading', state);
   labelEl.textContent = state ? loadingText : defaultText;
+}
+
+// ── Passport Key status check ──────────────────────────────────────────────
+/**
+ * Returns { exists, hasPassportKey } for the given email, or null if the
+ * check itself failed (network error etc) — callers should fall back to
+ * the normal password flow in that case rather than blocking login on a
+ * status-check outage.
+ */
+async function checkPassportKeyStatus(email) {
+  try {
+    const res = await fetch(`/api/passport-key/status?email=${encodeURIComponent(email)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Passport Key status check failed:', err);
+    return null;
+  }
 }
 
 // ── Core post-auth handler ─────────────────────────────────────────────────
@@ -125,14 +152,32 @@ async function handleLogin() {
   const email    = emailInput?.value?.trim();
   const password = passwordInput?.value;
 
-  if (!email || !password) {
-    showAuthError('Enter your email and passport key.');
+  if (!email) {
+    showAuthError('Enter your email address.');
     return;
   }
 
   setLoading(true, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
 
   try {
+    // Check Passport Key status before touching Supabase auth at all — a
+    // WhatsApp-registered customer with no password yet should never see
+    // "incorrect email or password" for a password they were never asked
+    // to set. If the check itself fails, fall through to the normal flow
+    // so a status-endpoint outage doesn't block existing users.
+    const status = await checkPassportKeyStatus(email);
+
+    if (status?.exists && !status.hasPassportKey) {
+      setLoading(false, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
+      startPassportKeySetup(email);
+      return;
+    }
+
+    if (!password) {
+      showAuthError('Enter your passport key.');
+      return;
+    }
+
     const { user, error } = await signIn(email, password);
     if (error || !user) throw new Error(error || 'Login failed. Please try again.');
     await finishLogin(user);
