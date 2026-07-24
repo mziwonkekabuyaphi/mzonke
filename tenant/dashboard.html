@@ -352,6 +352,30 @@
     .color-swatch:hover { transform: scale(1.05); }
     .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
 
+    .module-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      gap: 10px;
+    }
+    .module-toggle-row:last-of-type { border-bottom: none; }
+    .module-toggle-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .module-toggle-info i { color: var(--text-muted); width: 16px; text-align: center; flex-shrink: 0; }
+    .module-toggle-name { font-size: 0.8rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .module-toggle-inactive .module-toggle-name { color: var(--text-muted); }
+    .toggle-switch {
+      position: relative; width: 38px; height: 22px; flex-shrink: 0;
+      border-radius: 99px; background: var(--surface-3); border: 1px solid var(--border);
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    }
+    .toggle-switch.on { background: var(--red); border-color: var(--red); box-shadow: 0 0 10px var(--red-glow); }
+    .toggle-switch.disabled { opacity: 0.5; cursor: wait; }
+    .toggle-knob {
+      position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+      border-radius: 50%; background: white; transition: transform 0.15s var(--ease);
+    }
+    .toggle-switch.on .toggle-knob { transform: translateX(16px); }
+    .module-toggle-empty { font-size: 0.76rem; color: var(--text-dim); padding: 8px 0; }
+
     .success-toast {
       position: fixed; bottom: 24px; right: 24px; z-index: 9998;
       background: var(--surface-2); border: 1px solid #22c55e44;
@@ -454,6 +478,14 @@
            @click="goToModule(module)">
         <span class="sb-item-icon"><i :class="getIconClass(module.icon)"></i></span>
         <span class="sb-item-label">{{ module.name }}</span>
+      </div>
+      <div v-if="modulesError" class="sb-item" style="color:#ef4444; cursor:default;">
+        <span class="sb-item-icon"><i class="fas fa-triangle-exclamation"></i></span>
+        <span class="sb-item-label">Failed to load modules</span>
+      </div>
+      <div v-else-if="!allModules.length" class="sb-item" style="color:var(--text-dim); cursor:default;">
+        <span class="sb-item-icon"><i class="fas fa-circle-info"></i></span>
+        <span class="sb-item-label">No active modules</span>
       </div>
 
       <div class="sb-divider"></div>
@@ -604,6 +636,26 @@
             <button class="btn-red" style="width:100%; justify-content:center; margin-top:4px;" @click="saveSystemPrefsToDB">Save Preferences</button>
           </div>
 
+          <!-- Module Visibility -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="fas fa-toggle-on"></i></div>
+              <div class="settings-card-title">Module Visibility</div>
+            </div>
+            <div v-if="!allModulesFull.length" class="module-toggle-empty">No modules found in Supabase.</div>
+            <div v-for="module in allModulesFull" :key="module.id"
+                 class="module-toggle-row" :class="{ 'module-toggle-inactive': !module.is_active }">
+              <div class="module-toggle-info">
+                <i :class="getIconClass(module.icon)"></i>
+                <span class="module-toggle-name">{{ module.name }}</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: module.is_active, disabled: togglingModuleId === module.id }"
+                   @click="togglingModuleId !== module.id && toggleModuleActive(module)">
+                <div class="toggle-knob"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -618,37 +670,27 @@
 <script type="module">
   import { supabase } from '../config/supabase.js';
 
-  const FIXED_MODULES = [
-    { id: 'whatsapp-concierge',  name: 'Rands WhatsApp Concierge', icon: 'fab fa-whatsapp',    path: 'whatsapp-admin.html'  },
-    { id: 'event-management',    name: 'Event Management',          icon: 'fas fa-calendar-alt', path: 'events-admin.html'    },
-    { id: 'wallet-management',   name: 'Wallet Management',         icon: 'fas fa-wallet',       path: 'wallet-admin.html'    },
-    { id: 'vvip-console',        name: 'VVIP Console',              icon: 'fas fa-crown',        path: 'vvip-admin.html'      },
-    { id: 'hubbly-station',      name: 'Hubbly Station',            icon: 'fas fa-smoking',      path: 'shisha-admin.html'    },
-    { id: 'orders-sales-engine', name: 'Orders & Sales Engine',     icon: 'fas fa-chart-line',   path: 'orders-admin.html'    },
-    { id: 'booze-lockers',       name: 'Booze Lockers',             icon: 'fas fa-wine-bottle',  path: 'lockers-admin.html'   },
-    { id: 'staff-management',    name: 'Staff Management',          icon: 'fas fa-users',        path: 'staff-admin.html'     },
-    { id: 'kiosk-ad-manager',    name: 'Kiosk Ad Manager',          icon: 'fas fa-tv',           path: 'kiosk-admin.html'     },
-    { id: 'analytics-hub',       name: 'Analytics Hub',             icon: 'fas fa-chart-simple', path: 'analytics-hub.html'   }
-  ];
+  // Modules are 100% Supabase-driven — no hardcoded fallback list.
+  // Sidebar only shows modules where is_active = true; the Settings
+  // page lets you flip is_active on/off per module (see toggleModuleActive).
 
-  let _cache = null;
+  async function loadActiveModules() {
+    const { data, error } = await supabase
+      .from('modules')
+      .select('id, name, icon, path')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return (data || []).map(m => ({ ...m, file: m.path }));
+  }
 
-  async function loadModules() {
-    if (_cache) return _cache;
-    try {
-      const { data, error } = await supabase
-        .from('modules')
-        .select('id, name, icon, path')
-        .order('display_order', { ascending: true, nullsFirst: false });
-      if (error) throw error;
-      if (data && data.length > 0) {
-        _cache = data.map(m => ({ ...m, file: m.path }));
-      } else throw new Error('empty');
-    } catch {
-      console.warn('[Modules] Using fallback.');
-      _cache = FIXED_MODULES;
-    }
-    return _cache;
+  async function loadAllModulesForSettings() {
+    const { data, error } = await supabase
+      .from('modules')
+      .select('id, name, icon, path, is_active, display_order')
+      .order('display_order', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return data || [];
   }
 
   new Vue({
@@ -659,6 +701,9 @@
       sidebarOpen: false,
       currentSection: 'overview',
       allModules: [],
+      allModulesFull: [],
+      modulesError: false,
+      togglingModuleId: null,
       venueSettings: {
         venue_name: 'Rands Vibe',
         venue_location: 'Cape Town, South Africa',
@@ -716,6 +761,47 @@
       async logout() {
         try { await supabase.auth.signOut(); } catch(e) { console.warn(e); }
         window.location.href = '../login.html';
+      },
+      async reloadModules() {
+        try {
+          this.allModules = await loadActiveModules();
+          this.modulesError = false;
+          // If the module currently being viewed just got hidden, bounce to overview
+          if (this.currentSection.startsWith('module_')) {
+            const stillVisible = this.allModules.some(m => 'module_' + m.id === this.currentSection);
+            if (!stillVisible) this.currentSection = 'overview';
+          }
+        } catch (e) {
+          console.error('[Modules] Failed to load:', e);
+          this.allModules = [];
+          this.modulesError = true;
+        }
+      },
+      async loadModulesSettingsList() {
+        try {
+          this.allModulesFull = await loadAllModulesForSettings();
+        } catch (e) {
+          console.error('[Modules] Failed to load settings list:', e);
+        }
+      },
+      async toggleModuleActive(module) {
+        this.togglingModuleId = module.id;
+        const nextState = !module.is_active;
+        try {
+          const { error } = await supabase
+            .from('modules')
+            .update({ is_active: nextState })
+            .eq('id', module.id);
+          if (error) throw error;
+          module.is_active = nextState;
+          await this.reloadModules();
+          this.showToast();
+        } catch (e) {
+          console.error('[Modules] Toggle failed:', e);
+          alert('Could not update module visibility.');
+        } finally {
+          this.togglingModuleId = null;
+        }
       },
       setSidebarBgColor(c) { this.sidebarBgColor = c; this.saveThemeToDB(); },
       setActiveBgColor(c) { this.activeBgColor = c; this.saveThemeToDB(); },
@@ -782,9 +868,9 @@
     },
     async mounted() {
       this.loadingMessage = 'Loading modules…';
-      this.allModules = await loadModules();
+      await this.reloadModules();
       this.loadingMessage = 'Loading settings…';
-      await Promise.all([this.loadVenueSettingsFromDB(), this.loadThemeFromDB(), this.loadSystemPrefsFromDB()]);
+      await Promise.all([this.loadVenueSettingsFromDB(), this.loadThemeFromDB(), this.loadSystemPrefsFromDB(), this.loadModulesSettingsList()]);
       this.loadingMessage = 'Booting dashboard…';
       setTimeout(() => { this.showLoadingScreen = false; this.applyAutoRefresh(); }, 600);
     }
