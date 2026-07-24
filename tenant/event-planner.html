@@ -1,0 +1,2851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Event Floor Manager · Rands</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --red: #E30613;
+            --red-glow: rgba(227, 6, 19, 0.35);
+            --red-dim: rgba(227, 6, 19, 0.10);
+            --red-border: rgba(227, 6, 19, 0.22);
+            --bg: #09090b;
+            --s1: #111114;
+            --s2: #18181c;
+            --s3: #1e1e24;
+            --s4: #26262e;
+            --border: rgba(255, 255, 255, 0.07);
+            --border-b: rgba(255, 255, 255, 0.12);
+            --text: #f4f4f5;
+            --text-2: #a1a1aa;
+            --muted: #71717a;
+            --dim: #3f3f46;
+            --green: #22c55e;
+            --gold: #f59e0b;
+            --purple: #8b5cf6;
+            --blue: #3b82f6;
+            --orange: #f97316;
+            --pink: #ec4899;
+            --cyan: #06b6d4;
+            --table-available: #22c55e;
+            --table-reserved: #f59e0b;
+            --table-occupied: #3b82f6;
+            --table-sold: #E30613;
+            --table-cleaning: #8b5cf6;
+            --table-blocked: #6b7280;
+        }
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+        }
+        [v-cloak] {
+            display: none !important;
+        }
+
+        /* ─── APP LAYOUT ─── */
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 100vw;
+            overflow: hidden;
+            background: var(--bg);
+        }
+
+        /* ─── TOP TOOLBAR ─── */
+        .top-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--s1);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            min-height: 48px;
+        }
+        .top-toolbar .brand {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 12px;
+        }
+        .top-toolbar .brand .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--red);
+            box-shadow: 0 0 8px var(--red-glow);
+        }
+        .top-toolbar .sep {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+            flex-shrink: 0;
+        }
+        .toolbar-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            font-size: 0.7rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-family: 'Inter', sans-serif;
+            white-space: nowrap;
+            height: 30px;
+        }
+        .toolbar-btn:hover {
+            background: var(--s3);
+            color: var(--text);
+        }
+        .toolbar-btn.active {
+            background: var(--red-dim);
+            color: var(--red);
+            border: 1px solid var(--red-border);
+        }
+        .toolbar-btn.primary {
+            background: var(--red);
+            color: #fff;
+        }
+        .toolbar-btn.primary:hover {
+            background: #c8050f;
+        }
+        .toolbar-btn i {
+            font-size: 0.75rem;
+        }
+        .toolbar-btn .label {
+            font-size: 0.65rem;
+        }
+        .toolbar-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .event-selector-wrap {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .event-selector-wrap select {
+            background: var(--s2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px 28px 4px 10px;
+            color: var(--text);
+            font-size: 0.75rem;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            height: 30px;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2371717a'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            min-width: 140px;
+            cursor: pointer;
+        }
+        .event-selector-wrap select:focus {
+            border-color: var(--red-border);
+        }
+        .event-selector-wrap select option {
+            background: var(--s2);
+            color: var(--text);
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .toolbar-group .toolbar-btn {
+            padding: 4px 8px;
+        }
+
+        .search-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+        }
+        .search-toolbar input {
+            background: var(--s2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px 10px 4px 28px;
+            color: var(--text);
+            font-size: 0.7rem;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            height: 30px;
+            width: 140px;
+            transition: border-color 0.15s;
+        }
+        .search-toolbar input:focus {
+            border-color: var(--red-border);
+        }
+        .search-toolbar input::placeholder {
+            color: var(--muted);
+        }
+        .search-toolbar .search-icon {
+            position: relative;
+        }
+        .search-toolbar .search-icon i {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--muted);
+            font-size: 0.65rem;
+            pointer-events: none;
+        }
+
+        /* ─── MAIN BODY ─── */
+        .main-body {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ─── LEFT TOOLBOX ─── */
+        .left-toolbox {
+            width: 60px;
+            background: var(--s1);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            overflow-x: hidden;
+            flex-shrink: 0;
+            padding: 8px 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .left-toolbox::-webkit-scrollbar {
+            width: 2px;
+        }
+        .left-toolbox::-webkit-scrollbar-thumb {
+            background: var(--s4);
+            border-radius: 99px;
+        }
+        .toolbox-category {
+            font-size: 0.45rem;
+            text-transform: uppercase;
+            color: var(--dim);
+            letter-spacing: 0.08em;
+            padding: 6px 4px 2px 4px;
+            font-weight: 700;
+            text-align: center;
+        }
+        .toolbox-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 2px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.12s;
+            color: var(--muted);
+            font-size: 0.5rem;
+            text-align: center;
+            gap: 2px;
+            border: 1px solid transparent;
+            user-select: none;
+            min-height: 44px;
+        }
+        .toolbox-item:hover {
+            background: var(--s3);
+            color: var(--text);
+        }
+        .toolbox-item.active {
+            background: var(--red-dim);
+            border-color: var(--red-border);
+            color: var(--red);
+        }
+        .toolbox-item i {
+            font-size: 0.95rem;
+        }
+        .toolbox-item .label {
+            font-size: 0.45rem;
+            line-height: 1.1;
+            max-width: 50px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ─── CANVAS WRAPPER ─── */
+        .canvas-wrapper {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: var(--bg);
+            cursor: grab;
+        }
+        .canvas-wrapper:active {
+            cursor: grabbing;
+        }
+        .canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: 0 0;
+            will-change: transform;
+        }
+        .canvas-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                radial-gradient(circle, var(--border) 1px, transparent 1px);
+            background-size: 30px 30px;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        .canvas-grid.hidden {
+            opacity: 0;
+        }
+
+        /* ─── CANVAS OBJECTS ─── */
+        .floor-object {
+            position: absolute;
+            cursor: pointer;
+            user-select: none;
+            border: 2px solid transparent;
+            transition: border-color 0.1s;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            color: var(--text-2);
+            overflow: hidden;
+            min-width: 12px;
+            min-height: 12px;
+        }
+        .floor-object .obj-label {
+            font-size: 0.5rem;
+            color: var(--muted);
+            text-align: center;
+            line-height: 1.2;
+            pointer-events: none;
+            padding: 2px;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+            max-width: 90%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .floor-object .obj-icon {
+            font-size: 1.2rem;
+            pointer-events: none;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        }
+        .floor-object.selected {
+            border-color: var(--red);
+            box-shadow: 0 0 0 1px var(--red-glow), inset 0 0 0 1px rgba(227, 6, 19, 0.15);
+            z-index: 1000 !important;
+        }
+        .floor-object .resize-handle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: var(--red);
+            border: 1px solid var(--bg);
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 0.12s;
+        }
+        .floor-object.selected .resize-handle {
+            opacity: 1;
+        }
+        .floor-object .resize-handle.nw {
+            top: -4px;
+            left: -4px;
+            cursor: nw-resize;
+        }
+        .floor-object .resize-handle.ne {
+            top: -4px;
+            right: -4px;
+            cursor: ne-resize;
+        }
+        .floor-object .resize-handle.sw {
+            bottom: -4px;
+            left: -4px;
+            cursor: sw-resize;
+        }
+        .floor-object .resize-handle.se {
+            bottom: -4px;
+            right: -4px;
+            cursor: se-resize;
+        }
+        .floor-object .rotate-handle {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 12px;
+            background: var(--purple);
+            border-radius: 50%;
+            border: 1px solid var(--bg);
+            cursor: grab;
+            opacity: 0;
+            transition: opacity 0.12s;
+        }
+        .floor-object.selected .rotate-handle {
+            opacity: 1;
+        }
+        .floor-object .delete-btn {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--red);
+            color: #fff;
+            border: none;
+            font-size: 0.5rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.12s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .floor-object.selected .delete-btn {
+            opacity: 1;
+        }
+        .floor-object .delete-btn:hover {
+            background: #b91c1c;
+        }
+
+        /* Table-specific styles */
+        .floor-object.table-obj .table-status-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+        .floor-object.table-obj .table-number-label {
+            position: absolute;
+            bottom: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.45rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.7);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 0 4px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+
+        /* ─── RIGHT PROPERTIES PANEL ─── */
+        .right-panel {
+            width: 280px;
+            background: var(--s1);
+            border-left: 1px solid var(--border);
+            flex-shrink: 0;
+            overflow-y: auto;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .right-panel::-webkit-scrollbar {
+            width: 2px;
+        }
+        .right-panel::-webkit-scrollbar-thumb {
+            background: var(--s4);
+            border-radius: 99px;
+        }
+        .right-panel .panel-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--dim);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+        .right-panel .prop-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .right-panel .prop-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .right-panel .prop-row label {
+            font-size: 0.6rem;
+            color: var(--muted);
+            min-width: 60px;
+            font-weight: 500;
+        }
+        .right-panel .prop-row input,
+        .right-panel .prop-row select {
+            flex: 1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--s2);
+            color: var(--text);
+            font-size: 0.7rem;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.12s;
+            min-width: 0;
+        }
+        .right-panel .prop-row input:focus,
+        .right-panel .prop-row select:focus {
+            border-color: var(--red-border);
+        }
+        .right-panel .prop-row input[type="color"] {
+            padding: 2px;
+            height: 28px;
+            width: 32px;
+            flex: 0 0 auto;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .right-panel .prop-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--red);
+            flex: 0 0 auto;
+            cursor: pointer;
+        }
+        .right-panel .prop-row .color-preview {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .right-panel .prop-row .prop-value {
+            font-size: 0.7rem;
+            color: var(--text-2);
+            flex: 1;
+        }
+        .right-panel .prop-row .prop-label {
+            font-size: 0.6rem;
+            color: var(--muted);
+            min-width: 60px;
+        }
+
+        /* Table status selector in properties */
+        .table-status-selector {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .table-status-selector .status-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .table-status-selector .status-dot:hover {
+            transform: scale(1.15);
+        }
+        .table-status-selector .status-dot.active {
+            border-color: var(--text);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+        }
+
+        /* ─── TABLE DETAILS PANEL ─── */
+        .table-details-panel {
+            background: var(--s2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            display: none;
+        }
+        .table-details-panel.visible {
+            display: block;
+        }
+        .table-details-panel .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            font-size: 0.7rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .table-details-panel .detail-row:last-child {
+            border-bottom: none;
+        }
+        .table-details-panel .detail-label {
+            color: var(--muted);
+        }
+        .table-details-panel .detail-value {
+            color: var(--text);
+            font-weight: 500;
+        }
+        .table-details-panel .detail-actions {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .table-details-panel .detail-actions button {
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: none;
+            font-size: 0.6rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-family: 'Inter', sans-serif;
+        }
+        .table-details-panel .detail-actions .btn-reserve {
+            background: var(--gold);
+            color: #000;
+        }
+        .table-details-panel .detail-actions .btn-sell {
+            background: var(--red);
+            color: #fff;
+        }
+        .table-details-panel .detail-actions .btn-release {
+            background: var(--s4);
+            color: var(--text);
+        }
+        .table-details-panel .detail-actions .btn-assign {
+            background: var(--blue);
+            color: #fff;
+        }
+        .table-details-panel .detail-actions .btn-delete {
+            background: transparent;
+            color: var(--red);
+        }
+
+        /* ─── MINI MAP ─── */
+        .mini-map {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            width: 180px;
+            height: 140px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .mini-map:hover {
+            opacity: 1;
+        }
+        .mini-map .mini-canvas {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        .mini-map .mini-viewport {
+            position: absolute;
+            border: 1.5px solid var(--red);
+            background: rgba(227, 6, 19, 0.08);
+            pointer-events: none;
+        }
+        .mini-map .mini-object {
+            position: absolute;
+            border-radius: 2px;
+            pointer-events: none;
+        }
+
+        /* ─── TOAST ─── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: var(--s2);
+            border: 1px solid var(--border-b);
+            color: var(--text);
+            padding: 10px 22px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .toast.success {
+            border-color: var(--green);
+        }
+        .toast.success i {
+            color: var(--green);
+        }
+        .toast.error {
+            border-color: var(--red);
+        }
+        .toast.error i {
+            color: var(--red);
+        }
+
+        /* ─── AI MODAL ─── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(6px);
+            z-index: 5000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.2s;
+        }
+        .modal-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .modal-box {
+            background: var(--s1);
+            border: 1px solid var(--border-b);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 520px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-box .modal-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .modal-box .modal-title i {
+            color: var(--red);
+        }
+        .modal-box .modal-body {
+            color: var(--text-2);
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        .modal-box .modal-body textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--s2);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            resize: vertical;
+            min-height: 80px;
+            outline: none;
+            transition: border-color 0.12s;
+        }
+        .modal-box .modal-body textarea:focus {
+            border-color: var(--red-border);
+        }
+        .modal-box .modal-footer {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            justify-content: flex-end;
+        }
+        .modal-box .modal-footer button {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-family: 'Inter', sans-serif;
+        }
+        .modal-box .modal-footer .btn-cancel {
+            background: var(--s3);
+            color: var(--muted);
+            border: 1px solid var(--border);
+        }
+        .modal-box .modal-footer .btn-cancel:hover {
+            background: var(--s4);
+        }
+        .modal-box .modal-footer .btn-generate {
+            background: var(--red);
+            color: #fff;
+        }
+        .modal-box .modal-footer .btn-generate:hover {
+            background: #c8050f;
+        }
+
+        /* ─── SCROLLBAR ─── */
+        ::-webkit-scrollbar {
+            width: 3px;
+            height: 3px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--s4);
+            border-radius: 99px;
+        }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 1024px) {
+            .right-panel {
+                width: 220px;
+                padding: 10px 10px;
+            }
+            .left-toolbox {
+                width: 50px;
+            }
+            .toolbox-item {
+                min-height: 38px;
+                padding: 4px 2px;
+            }
+            .toolbox-item i {
+                font-size: 0.8rem;
+            }
+            .mini-map {
+                width: 140px;
+                height: 110px;
+                bottom: 12px;
+                right: 12px;
+            }
+        }
+        @media (max-width: 768px) {
+            .top-toolbar {
+                padding: 4px 8px;
+                gap: 4px;
+            }
+            .top-toolbar .brand .label {
+                display: none;
+            }
+            .toolbar-btn .label {
+                display: none;
+            }
+            .toolbar-btn {
+                padding: 4px 6px;
+                font-size: 0.65rem;
+                height: 26px;
+            }
+            .event-selector-wrap select {
+                min-width: 100px;
+                font-size: 0.65rem;
+                padding: 2px 22px 2px 6px;
+                height: 26px;
+            }
+            .search-toolbar input {
+                width: 80px;
+                font-size: 0.6rem;
+                height: 26px;
+                padding: 2px 6px 2px 22px;
+            }
+            .left-toolbox {
+                width: 40px;
+                padding: 4px 2px;
+            }
+            .toolbox-item {
+                min-height: 32px;
+                padding: 2px 1px;
+            }
+            .toolbox-item i {
+                font-size: 0.7rem;
+            }
+            .toolbox-item .label {
+                font-size: 0.35rem;
+                max-width: 36px;
+            }
+            .toolbox-category {
+                font-size: 0.35rem;
+                padding: 3px 2px 0 2px;
+            }
+            .right-panel {
+                width: 180px;
+                padding: 8px 8px;
+                font-size: 0.6rem;
+            }
+            .right-panel .prop-row label {
+                min-width: 40px;
+                font-size: 0.5rem;
+            }
+            .right-panel .prop-row input,
+            .right-panel .prop-row select {
+                font-size: 0.6rem;
+                padding: 2px 4px;
+            }
+            .mini-map {
+                width: 100px;
+                height: 80px;
+                bottom: 8px;
+                right: 8px;
+            }
+            .floor-object .obj-label {
+                font-size: 0.4rem;
+            }
+            .floor-object .obj-icon {
+                font-size: 0.9rem;
+            }
+            .table-details-panel .detail-row {
+                font-size: 0.6rem;
+                padding: 2px 0;
+            }
+        }
+        @media (max-width: 480px) {
+            .right-panel {
+                display: none;
+            }
+            .left-toolbox {
+                width: 36px;
+            }
+            .toolbox-item {
+                min-height: 28px;
+            }
+            .toolbox-item i {
+                font-size: 0.6rem;
+            }
+            .top-toolbar .sep {
+                display: none;
+            }
+            .event-selector-wrap select {
+                min-width: 70px;
+                font-size: 0.55rem;
+            }
+            .search-toolbar input {
+                width: 60px;
+            }
+            .mini-map {
+                width: 80px;
+                height: 64px;
+                bottom: 6px;
+                right: 6px;
+            }
+        }
+
+        /* ─── LOADING SPINNER ─── */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-top-color: var(--red);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ─── EMPTY STATE ─── */
+        .empty-canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--dim);
+            pointer-events: none;
+        }
+        .empty-canvas i {
+            font-size: 3rem;
+            color: var(--s3);
+            display: block;
+            margin-bottom: 8px;
+        }
+        .empty-canvas p {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <div class="app">
+
+            <!-- ─── TOP TOOLBAR ─── -->
+            <div class="top-toolbar">
+                <div class="brand">
+                    <span class="dot"></span>
+                    <span class="label">Floor Manager</span>
+                </div>
+                <div class="sep"></div>
+
+                <div class="event-selector-wrap">
+                    <select v-model="selectedEventId" @change="loadEvent">
+                        <option v-for="ev in events" :key="ev.id" :value="ev.id">{{ ev.name }}</option>
+                    </select>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="toolbar-group">
+                    <button class="toolbar-btn primary" @click="saveFloorPlan" :disabled="saving">
+                        <i class="fas fa-save"></i>
+                        <span class="label">Save</span>
+                    </button>
+                    <button class="toolbar-btn" @click="autoSave" :disabled="!hasChanges" title="Auto-save enabled">
+                        <i class="fas fa-clock"></i>
+                        <span class="label">Auto</span>
+                    </button>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" @click="undo" :disabled="!canUndo" title="Undo (Ctrl+Z)">
+                        <i class="fas fa-undo-alt"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="redo" :disabled="!canRedo" title="Redo (Ctrl+Y)">
+                        <i class="fas fa-redo-alt"></i>
+                    </button>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" @click="copySelected" :disabled="!selectedObject" title="Copy (Ctrl+C)">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="pasteObject" :disabled="!clipboard" title="Paste (Ctrl+V)">
+                        <i class="fas fa-paste"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="deleteSelected" :disabled="!selectedObject" title="Delete (Del)">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" @click="zoomIn" title="Zoom In">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="zoomOut" title="Zoom Out">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="fitScreen" title="Fit Screen">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                    <button class="toolbar-btn" :class="{ active: showGrid }" @click="showGrid = !showGrid" title="Grid">
+                        <i class="fas fa-th"></i>
+                    </button>
+                    <button class="toolbar-btn" :class="{ active: snapEnabled }" @click="snapEnabled = !snapEnabled" title="Snap">
+                        <i class="fas fa-magnet"></i>
+                    </button>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" @click="exportPNG" title="Export PNG">
+                        <i class="fas fa-image"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="exportPDF" title="Export PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
+                    <button class="toolbar-btn" @click="printLayout" title="Print">
+                        <i class="fas fa-print"></i>
+                    </button>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" @click="openAIModal" title="AI Generate Layout">
+                        <i class="fas fa-robot"></i>
+                        <span class="label">AI</span>
+                    </button>
+                </div>
+
+                <div class="search-toolbar">
+                    <div class="search-icon">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <input type="text" v-model="searchQuery" placeholder="Search tables..." />
+                </div>
+            </div>
+
+            <!-- ─── MAIN BODY ─── -->
+            <div class="main-body">
+
+                <!-- LEFT TOOLBOX -->
+                <div class="left-toolbox">
+                    <div class="toolbox-category">Venue</div>
+                    <div class="toolbox-item" @click="addObject('stage')" :class="{ active: activeTool === 'stage' }">
+                        <i class="fas fa-stage"></i>
+                        <span class="label">Stage</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('dance_floor')" :class="{ active: activeTool === 'dance_floor' }">
+                        <i class="fas fa-people-arrows"></i>
+                        <span class="label">Dance</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('bar')" :class="{ active: activeTool === 'bar' }">
+                        <i class="fas fa-glass-martini-alt"></i>
+                        <span class="label">Bar</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('cocktail_bar')" :class="{ active: activeTool === 'cocktail_bar' }">
+                        <i class="fas fa-cocktail"></i>
+                        <span class="label">Cocktail</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('shisha_lounge')" :class="{ active: activeTool === 'shisha_lounge' }">
+                        <i class="fas fa-smoking"></i>
+                        <span class="label">Shisha</span>
+                    </div>
+
+                    <div class="toolbox-category">Seating</div>
+                    <div class="toolbox-item" @click="addObject('vip_table')" :class="{ active: activeTool === 'vip_table' }">
+                        <i class="fas fa-crown"></i>
+                        <span class="label">VIP</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('vvip_table')" :class="{ active: activeTool === 'vvip_table' }">
+                        <i class="fas fa-gem"></i>
+                        <span class="label">VVIP</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('table')" :class="{ active: activeTool === 'table' }">
+                        <i class="fas fa-chair"></i>
+                        <span class="label">Table</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('chair')" :class="{ active: activeTool === 'chair' }">
+                        <i class="fas fa-chair"></i>
+                        <span class="label">Chair</span>
+                    </div>
+
+                    <div class="toolbox-category">Service</div>
+                    <div class="toolbox-item" @click="addObject('food_stall')" :class="{ active: activeTool === 'food_stall' }">
+                        <i class="fas fa-utensils"></i>
+                        <span class="label">Food</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('merchandise')" :class="{ active: activeTool === 'merchandise' }">
+                        <i class="fas fa-shopping-bag"></i>
+                        <span class="label">Merch</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('info_desk')" :class="{ active: activeTool === 'info_desk' }">
+                        <i class="fas fa-info-circle"></i>
+                        <span class="label">Info</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('ticket_booth')" :class="{ active: activeTool === 'ticket_booth' }">
+                        <i class="fas fa-ticket-alt"></i>
+                        <span class="label">Tickets</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('cashier')" :class="{ active: activeTool === 'cashier' }">
+                        <i class="fas fa-cash-register"></i>
+                        <span class="label">Cashier</span>
+                    </div>
+
+                    <div class="toolbox-category">Access</div>
+                    <div class="toolbox-item" @click="addObject('entrance')" :class="{ active: activeTool === 'entrance' }">
+                        <i class="fas fa-door-open"></i>
+                        <span class="label">Entrance</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('exit')" :class="{ active: activeTool === 'exit' }">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span class="label">Exit</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('emergency_exit')" :class="{ active: activeTool === 'emergency_exit' }">
+                        <i class="fas fa-exit"></i>
+                        <span class="label">Emerg</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('queue')" :class="{ active: activeTool === 'queue' }">
+                        <i class="fas fa-people-line"></i>
+                        <span class="label">Queue</span>
+                    </div>
+
+                    <div class="toolbox-category">Safety</div>
+                    <div class="toolbox-item" @click="addObject('security')" :class="{ active: activeTool === 'security' }">
+                        <i class="fas fa-shield-alt"></i>
+                        <span class="label">Security</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('medical')" :class="{ active: activeTool === 'medical' }">
+                        <i class="fas fa-medkit"></i>
+                        <span class="label">Medical</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('fire_extinguisher')" :class="{ active: activeTool === 'fire_extinguisher' }">
+                        <i class="fas fa-fire-extinguisher"></i>
+                        <span class="label">Fire</span>
+                    </div>
+
+                    <div class="toolbox-category">Shapes</div>
+                    <div class="toolbox-item" @click="addObject('rectangle')" :class="{ active: activeTool === 'rectangle' }">
+                        <i class="fas fa-square"></i>
+                        <span class="label">Rect</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('circle')" :class="{ active: activeTool === 'circle' }">
+                        <i class="fas fa-circle"></i>
+                        <span class="label">Circle</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('line')" :class="{ active: activeTool === 'line' }">
+                        <i class="fas fa-minus"></i>
+                        <span class="label">Line</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('arrow')" :class="{ active: activeTool === 'arrow' }">
+                        <i class="fas fa-arrow-right"></i>
+                        <span class="label">Arrow</span>
+                    </div>
+                    <div class="toolbox-item" @click="addObject('text')" :class="{ active: activeTool === 'text' }">
+                        <i class="fas fa-font"></i>
+                        <span class="label">Text</span>
+                    </div>
+                </div>
+
+                <!-- CANVAS -->
+                <div class="canvas-wrapper" ref="canvasWrapper" @mousedown="onCanvasMouseDown" @wheel.prevent="onWheel">
+                    <div class="canvas-container" ref="canvasContainer" :style="canvasTransform">
+                        <div class="canvas-grid" :class="{ hidden: !showGrid }" :style="gridStyle"></div>
+
+                        <!-- Empty state -->
+                        <div class="empty-canvas" v-if="!objects.length && !loading">
+                            <i class="fas fa-vector-square"></i>
+                            <p>Drag objects from the left toolbox onto the canvas</p>
+                        </div>
+
+                        <!-- Objects -->
+                        <div v-for="obj in objects" :key="obj.id"
+                        class="floor-object"
+                        :class="[obj.object_type + '-obj', { selected: selectedId === obj.id }]"
+                        :style="getObjectStyle(obj)"
+                        @mousedown.stop="selectObject(obj, $event)"
+                        @dblclick="openTableDetails(obj)"
+                        :data-id="obj.id">
+                        <!-- Icon or label -->
+                        <span v-if="obj.object_type === 'text'" class="obj-label" style="font-size:0.7rem;font-weight:600;color:var(--text);">{{ obj.name || 'Text' }}</span>
+                        <span v-else-if="obj.object_type === 'line'" class="obj-label" style="font-size:0.5rem;">—</span>
+                        <span v-else-if="obj.object_type === 'arrow'" class="obj-label" style="font-size:0.7rem;">➜</span>
+                        <span v-else-if="obj.object_type === 'rectangle'" class="obj-label" style="font-size:0.5rem;">▭</span>
+                        <span v-else-if="obj.object_type === 'circle'" class="obj-label" style="font-size:0.7rem;">●</span>
+                        <span v-else class="obj-icon" :class="getObjectIcon(obj)"></span>
+                        <span class="obj-label" v-if="obj.name && obj.object_type !== 'text' && obj.object_type !== 'line' && obj.object_type !== 'arrow'">{{ obj.name }}</span>
+
+                        <!-- Table status dot -->
+                        <span v-if="obj.object_type === 'table' || obj.object_type === 'vip_table' || obj.object_type === 'vvip_table'"
+                        class="table-status-dot" :style="{ background: getTableStatusColor(obj.meta?.status || 'available') }"></span>
+                        <span v-if="obj.object_type === 'table' || obj.object_type === 'vip_table' || obj.object_type === 'vvip_table'"
+                        class="table-number-label">{{ obj.meta?.table_number || 'T' + obj.id.slice(0,4) }}</span>
+
+                        <!-- Selection handles -->
+                        <div class="resize-handle nw" @mousedown.stop="startResize($event, obj, 'nw')"></div>
+                        <div class="resize-handle ne" @mousedown.stop="startResize($event, obj, 'ne')"></div>
+                        <div class="resize-handle sw" @mousedown.stop="startResize($event, obj, 'sw')"></div>
+                        <div class="resize-handle se" @mousedown.stop="startResize($event, obj, 'se')"></div>
+                        <div class="rotate-handle" @mousedown.stop="startRotate($event, obj)"></div>
+                        <button class="delete-btn" @mousedown.stop @click="deleteObject(obj.id)"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+
+                <!-- Mini Map -->
+                <div class="mini-map" @mousedown="onMiniMapDown" ref="miniMap">
+                    <div class="mini-canvas" ref="miniCanvas">
+                        <div v-for="obj in objects" :key="'mini-'+obj.id"
+                        class="mini-object"
+                        :style="getMiniObjectStyle(obj)"></div>
+                        <div class="mini-viewport" :style="miniViewportStyle"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT PROPERTIES PANEL -->
+            <div class="right-panel" ref="rightPanel">
+                <div class="panel-title" v-if="!selectedObject">Properties</div>
+                <div class="panel-title" v-else>Properties — {{ selectedObject.name || selectedObject.object_type }}</div>
+
+                <!-- No selection -->
+                <div v-if="!selectedObject" style="color:var(--muted);font-size:0.7rem;text-align:center;padding:20px 0;">
+                    Select an object on the canvas to edit its properties.
+                </div>
+
+                <!-- Object properties -->
+                <template v-else>
+                    <div class="prop-group">
+                        <div class="prop-row">
+                            <label>Name</label>
+                            <input type="text" v-model="selectedObject.name" @input="updateObject" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Type</label>
+                            <span class="prop-value">{{ selectedObject.object_type }}</span>
+                        </div>
+                    </div>
+
+                    <div class="prop-group">
+                        <div class="prop-row">
+                            <label>X</label>
+                            <input type="number" v-model.number="selectedObject.x" @input="updateObject" step="1" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Y</label>
+                            <input type="number" v-model.number="selectedObject.y" @input="updateObject" step="1" />
+                        </div>
+                        <div class="prop-row">
+                            <label>W</label>
+                            <input type="number" v-model.number="selectedObject.width" @input="updateObject" step="1" min="10" />
+                        </div>
+                        <div class="prop-row">
+                            <label>H</label>
+                            <input type="number" v-model.number="selectedObject.height" @input="updateObject" step="1" min="10" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Rotation</label>
+                            <input type="number" v-model.number="selectedObject.rotation" @input="updateObject" step="1" min="0" max="360" />
+                        </div>
+                    </div>
+
+                    <div class="prop-group">
+                        <div class="prop-row">
+                            <label>Fill</label>
+                            <input type="color" v-model="selectedObject.fill_color" @input="updateObject" />
+                            <span class="prop-value" style="font-size:0.6rem;color:var(--muted);">{{ selectedObject.fill_color }}</span>
+                        </div>
+                        <div class="prop-row">
+                            <label>Border</label>
+                            <input type="color" v-model="selectedObject.border_color" @input="updateObject" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Opacity</label>
+                            <input type="range" v-model.number="selectedObject.opacity" @input="updateObject" min="0" max="1" step="0.05" style="flex:1;" />
+                            <span class="prop-value" style="font-size:0.6rem;min-width:30px;">{{ Math.round(selectedObject.opacity * 100) }}%</span>
+                        </div>
+                        <div class="prop-row">
+                            <label>Border W</label>
+                            <input type="number" v-model.number="selectedObject.border_width" @input="updateObject" step="0.5" min="0" max="10" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Radius</label>
+                            <input type="number" v-model.number="selectedObject.corner_radius" @input="updateObject" step="1" min="0" max="50" />
+                        </div>
+                    </div>
+
+                    <div class="prop-group">
+                        <div class="prop-row">
+                            <label>Visible</label>
+                            <input type="checkbox" v-model="selectedObject.visible" @change="updateObject" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Locked</label>
+                            <input type="checkbox" v-model="selectedObject.locked" @change="updateObject" />
+                        </div>
+                        <div class="prop-row">
+                            <label>Z-Index</label>
+                            <input type="number" v-model.number="selectedObject.z_index" @input="updateObject" step="1" />
+                        </div>
+                    </div>
+
+                    <!-- Table-specific properties -->
+                    <template v-if="isTableType(selectedObject.object_type)">
+                        <div class="panel-title" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">Table Details</div>
+                        <div class="prop-group">
+                            <div class="prop-row">
+                                <label>Table #</label>
+                                <input type="text" v-model="selectedObject.meta.table_number" @input="updateObject" />
+                            </div>
+                            <div class="prop-row">
+                                <label>Table Name</label>
+                                <input type="text" v-model="selectedObject.meta.table_name" @input="updateObject" />
+                            </div>
+                            <div class="prop-row">
+                                <label>Capacity</label>
+                                <input type="number" v-model.number="selectedObject.meta.capacity" @input="updateObject" min="1" />
+                            </div>
+                            <div class="prop-row">
+                                <label>Price (R)</label>
+                                <input type="number" v-model.number="selectedObject.meta.price" @input="updateObject" min="0" step="10" />
+                            </div>
+                            <div class="prop-row">
+                                <label>Min Spend</label>
+                                <input type="number" v-model.number="selectedObject.meta.min_spend" @input="updateObject" min="0" step="50" />
+                            </div>
+                            <div class="prop-row">
+                                <label>Section</label>
+                                <input type="text" v-model="selectedObject.meta.section" @input="updateObject" placeholder="e.g. VIP, Main" />
+                            </div>
+                            <div class="prop-row">
+                                <label>Status</label>
+                                <div class="table-status-selector">
+                                    <div class="status-dot" :class="{ active: selectedObject.meta.status === 'available' }"
+                                    style="background:var(--table-available);" @click="setTableStatus('available')"
+                                    title="Available"></div>
+                                    <div class="status-dot" :class="{ active: selectedObject.meta.status === 'reserved' }"
+                                    style="background:var(--table-reserved);" @click="setTableStatus('reserved')"
+                                    title="Reserved"></div>
+                                    <div class="status-dot" :class="{ active: selectedObject.meta.status === 'occupied' }"
+                                    style="background:var(--table-occupied);" @click="setTableStatus('occupied')"
+                                    title="Occupied"></div>
+                                    <div class="status-dot" :class="{ active: selectedObject.meta.status === 'sold' }"
+                                    style="background:var(--table-sold);" @click="setTableStatus('sold')"
+                                    title="Sold"></div>
+                                    <div class="status-dot" :class="{ active: selectedObject.meta.status === 'cleaning' }"
+                                    style="background:var(--table-cleaning);" @click="setTableStatus('cleaning')"
+                                    title="Cleaning"></div>
+                                    <div class="status-dot" :class="{ active: selectedObject.meta.status === 'blocked' }"
+                                    style="background:var(--table-blocked);" @click="setTableStatus('blocked')"
+                                    title="Blocked"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Table details panel (expanded) -->
+                        <div class="table-details-panel" :class="{ visible: showTableDetails }">
+                            <div class="detail-row"><span class="detail-label">Customer</span><span class="detail-value">{{ selectedObject.meta.customer || '—' }}</span></div>
+                            <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">{{ selectedObject.meta.phone || '—' }}</span></div>
+                            <div class="detail-row"><span class="detail-label">Booking</span><span class="detail-value">{{ selectedObject.meta.booking_ref || '—' }}</span></div>
+                            <div class="detail-row"><span class="detail-label">Waiter</span><span class="detail-value">{{ selectedObject.meta.waiter || '—' }}</span></div>
+                            <div class="detail-row"><span class="detail-label">Host</span><span class="detail-value">{{ selectedObject.meta.host || '—' }}</span></div>
+                            <div class="detail-row"><span class="detail-label">Shisha</span><span class="detail-value">{{ selectedObject.meta.shisha || '—' }}</span></div>
+                            <div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value" style="font-size:0.65rem;">{{ selectedObject.meta.notes || '—' }}</span></div>
+                            <div class="detail-actions">
+                                <button class="btn-reserve" @click="tableAction('reserve')"><i class="fas fa-bookmark"></i> Reserve</button>
+                                <button class="btn-sell" @click="tableAction('sell')"><i class="fas fa-tag"></i> Sell</button>
+                                <button class="btn-assign" @click="tableAction('assign')"><i class="fas fa-user-plus"></i> Assign</button>
+                                <button class="btn-release" @click="tableAction('release')"><i class="fas fa-undo"></i> Release</button>
+                                <button class="btn-delete" @click="deleteSelected"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                        </div>
+                        <button class="toolbar-btn" style="width:100%;justify-content:center;margin-top:4px;" @click="showTableDetails = !showTableDetails">
+                            <i class="fas" :class="showTableDetails ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                            {{ showTableDetails ? 'Hide Details' : 'Show Details' }}
+                        </button>
+                    </template>
+
+                    <div class="prop-group" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">
+                        <div class="prop-row">
+                            <label>Notes</label>
+                            <input type="text" v-model="selectedObject.meta.notes" @input="updateObject" placeholder="Optional notes..." />
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── AI MODAL ─── -->
+    <div class="modal-overlay" :class="{ active: aiModalOpen }" @click.self="aiModalOpen = false">
+        <div class="modal-box">
+            <div class="modal-title"><i class="fas fa-robot"></i> AI Layout Generator</div>
+            <div class="modal-body">
+                <p style="margin-bottom:10px;">Describe the venue layout you want, and the AI will generate objects on the canvas.</p>
+                <textarea v-model="aiPrompt" placeholder="e.g. Create a nightclub for 2,500 people with 30 VVIP tables surrounding the dance floor, two bars, four exits and a stage."></textarea>
+                <div style="margin-top:8px;font-size:0.65rem;color:var(--muted);">
+                    <i class="fas fa-info-circle"></i> This is a placeholder — the AI will generate objects based on your description.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" @click="aiModalOpen = false">Cancel</button>
+                <button class="btn-generate" @click="generateAILayout" :disabled="aiGenerating">
+                    <span v-if="aiGenerating" class="spinner" style="margin-right:6px;"></span>
+                    {{ aiGenerating ? 'Generating...' : 'Generate Layout' }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── TOAST ─── -->
+    <div class="toast" :class="[{ show: toastVisible }, toastType]">
+        <i :class="toastIcon"></i> {{ toastMessage }}
+    </div>
+</div>
+
+<script type="module">
+    import { supabase } from '../config/supabase.js';
+
+    const { createApp, nextTick } = Vue;
+
+    // ─── HELPERS ───
+    function generateId() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    function formatR(val) {
+        return `R${(val || 0).toFixed(2)}`;
+    }
+
+    function getObjectDefaults(type) {
+        const base = {
+            x: 200,
+            y: 200,
+            width: 80,
+            height: 60,
+            rotation: 0,
+            z_index: 1,
+            fill_color: '#2a2a32',
+            border_color: '#4a4a55',
+            opacity: 1,
+            border_width: 1,
+            corner_radius: 4,
+            locked: false,
+            visible: true,
+            name: '',
+            meta: { notes: '' }
+        };
+
+        const typeMap = {
+            stage: { width: 180, height: 100, fill_color: '#3d1a1a', border_color: '#E30613', name: 'Stage' },
+            dance_floor: { width: 200, height: 160, fill_color: '#1a2a3d', border_color: '#3b82f6', name: 'Dance Floor' },
+            bar: { width: 160, height: 60, fill_color: '#2a1a0a', border_color: '#f59e0b', name: 'Bar' },
+            cocktail_bar: { width: 140, height: 50, fill_color: '#1a2a1a', border_color: '#22c55e', name: 'Cocktail Bar' },
+            shisha_lounge: { width: 120, height: 80, fill_color: '#1a1a2a', border_color: '#8b5cf6', name: 'Shisha Lounge' },
+            table: { width: 60, height: 50, fill_color: '#1a2a1a', border_color: '#22c55e', name: 'Table', meta: { table_number: 'T1', capacity: 4, price: 0, min_spend: 0, status: 'available', section: 'Main' } },
+            vip_table: { width: 80, height: 60, fill_color: '#2a1a2a', border_color: '#f59e0b', name: 'VIP Table', meta: { table_number: 'VIP1', capacity: 6, price: 500, min_spend: 2000, status: 'available', section: 'VIP' } },
+            vvip_table: { width: 100, height: 70, fill_color: '#2a1a1a', border_color: '#E30613', name: 'VVIP Table', meta: { table_number: 'VVIP1', capacity: 8, price: 1500, min_spend: 5000, status: 'available', section: 'VVIP' } },
+            chair: { width: 30, height: 30, fill_color: '#1a1a1a', border_color: '#4a4a55', name: 'Chair' },
+            entrance: { width: 50, height: 30, fill_color: '#0a2a1a', border_color: '#22c55e', name: 'Entrance' },
+            exit: { width: 50, height: 30, fill_color: '#2a0a0a', border_color: '#E30613', name: 'Exit' },
+            emergency_exit: { width: 50, height: 30, fill_color: '#2a0a0a', border_color: '#E30613', name: 'Emergency Exit' },
+            security: { width: 40, height: 40, fill_color: '#1a1a2a', border_color: '#3b82f6', name: 'Security' },
+            medical: { width: 50, height: 50, fill_color: '#1a2a2a', border_color: '#22c55e', name: 'Medical' },
+            food_stall: { width: 80, height: 50, fill_color: '#2a1a0a', border_color: '#f59e0b', name: 'Food Stall' },
+            merchandise: { width: 70, height: 50, fill_color: '#1a1a2a', border_color: '#8b5cf6', name: 'Merchandise' },
+            info_desk: { width: 60, height: 40, fill_color: '#1a2a2a', border_color: '#06b6d4', name: 'Info Desk' },
+            ticket_booth: { width: 50, height: 40, fill_color: '#2a1a1a', border_color: '#f59e0b', name: 'Ticket Booth' },
+            cashier: { width: 50, height: 40, fill_color: '#1a1a2a', border_color: '#22c55e', name: 'Cashier' },
+            queue: { width: 30, height: 80, fill_color: '#1a1a1a', border_color: '#6b7280', name: 'Queue' },
+            fire_extinguisher: { width: 20, height: 30, fill_color: '#2a0a0a', border_color: '#E30613', name: 'Fire Ext' },
+            text: { width: 120, height: 30, fill_color: 'transparent', border_color: 'transparent', name: 'Text', border_width: 0 },
+            rectangle: { width: 80, height: 60, fill_color: '#2a2a32', border_color: '#4a4a55', name: 'Rectangle' },
+            circle: { width: 60, height: 60, fill_color: '#2a2a32', border_color: '#4a4a55', name: 'Circle', corner_radius: 30 },
+            line: { width: 80, height: 4, fill_color: '#4a4a55', border_color: '#4a4a55', name: 'Line', border_width: 0 },
+            arrow: { width: 60, height: 20, fill_color: '#4a4a55', border_color: '#4a4a55', name: 'Arrow', border_width: 0 },
+        };
+        const def = typeMap[type] || typeMap.rectangle;
+        return { ...base, ...def, object_type: type, meta: { ...base.meta, ...(def.meta || {}) } };
+    }
+
+    function getObjectIcon(obj) {
+        const map = {
+            stage: 'fa-stage',
+            dance_floor: 'fa-people-arrows',
+            bar: 'fa-glass-martini-alt',
+            cocktail_bar: 'fa-cocktail',
+            shisha_lounge: 'fa-smoking',
+            table: 'fa-chair',
+            vip_table: 'fa-crown',
+            vvip_table: 'fa-gem',
+            chair: 'fa-chair',
+            entrance: 'fa-door-open',
+            exit: 'fa-sign-out-alt',
+            emergency_exit: 'fa-exit',
+            security: 'fa-shield-alt',
+            medical: 'fa-medkit',
+            food_stall: 'fa-utensils',
+            merchandise: 'fa-shopping-bag',
+            info_desk: 'fa-info-circle',
+            ticket_booth: 'fa-ticket-alt',
+            cashier: 'fa-cash-register',
+            queue: 'fa-people-line',
+            fire_extinguisher: 'fa-fire-extinguisher',
+            text: 'fa-font',
+            rectangle: 'fa-square',
+            circle: 'fa-circle',
+            line: 'fa-minus',
+            arrow: 'fa-arrow-right',
+        };
+        return map[obj.object_type] || 'fa-cube';
+    }
+
+    function getTableStatusColor(status) {
+        const map = {
+            available: '#22c55e',
+            reserved: '#f59e0b',
+            occupied: '#3b82f6',
+            sold: '#E30613',
+            cleaning: '#8b5cf6',
+            blocked: '#6b7280'
+        };
+        return map[status] || '#6b7280';
+    }
+
+    function isTableType(type) {
+        return ['table', 'vip_table', 'vvip_table'].includes(type);
+    }
+
+    // ─── APP ───
+    const app = createApp({
+        data() {
+            return {
+                // Events
+                events: [],
+                selectedEventId: null,
+
+                // Floor plan
+                floorPlanId: null,
+                objects: [],
+                loading: false,
+                saving: false,
+                hasChanges: false,
+                autoSaveTimer: null,
+
+                // View
+                zoom: 1,
+                panX: 0,
+                panY: 0,
+                showGrid: true,
+                snapEnabled: true,
+                gridSize: 20,
+
+                // Selection
+                selectedId: null,
+                selectedObject: null,
+                clipboard: null,
+
+                // Undo/Redo
+                undoStack: [],
+                redoStack: [],
+                maxUndo: 30,
+
+                // Drag state
+                dragging: false,
+                dragStartX: 0,
+                dragStartY: 0,
+                dragObject: null,
+                dragOffsetX: 0,
+                dragOffsetY: 0,
+                isPanning: false,
+                panStartX: 0,
+                panStartY: 0,
+                panStartPanX: 0,
+                panStartPanY: 0,
+
+                // Resize
+                resizing: false,
+                resizeObject: null,
+                resizeHandle: null,
+                resizeStartX: 0,
+                resizeStartY: 0,
+                resizeStartW: 0,
+                resizeStartH: 0,
+                resizeStartXPos: 0,
+                resizeStartYPos: 0,
+
+                // Rotate
+                rotating: false,
+                rotateObject: null,
+                rotateStartAngle: 0,
+                rotateStartRotation: 0,
+
+                // Search
+                searchQuery: '',
+
+                // AI
+                aiModalOpen: false,
+                aiPrompt: '',
+                aiGenerating: false,
+
+                // Table details
+                showTableDetails: false,
+
+                // Toast
+                toastVisible: false,
+                toastMessage: '',
+                toastType: 'success',
+                toastIcon: 'fas fa-check-circle',
+                toastTimer: null,
+
+                // Mini map
+                miniMapDragging: false,
+
+                // Active tool
+                activeTool: null,
+
+                // Supabase
+                supabaseConnected: false,
+                realtimeSubscription: null,
+            };
+        },
+
+        computed: {
+            canUndo() { return this.undoStack.length > 0; },
+            canRedo() { return this.redoStack.length > 0; },
+            canvasTransform() {
+                return `transform: translate(${this.panX}px, ${this.panY}px) scale(${this.zoom}); transform-origin: 0 0;`;
+            },
+            gridStyle() {
+                const size = this.gridSize * this.zoom;
+                return {
+                    backgroundImage: `radial-gradient(circle, var(--border) 1px, transparent 1px)`,
+                    backgroundSize: `${size}px ${size}px`,
+                };
+            },
+            miniViewportStyle() {
+                const wrapper = this.$refs.canvasWrapper;
+                if (!wrapper) return { display: 'none' };
+                const rect = wrapper.getBoundingClientRect();
+                const scaleX = 180 / (this.getTotalWidth() || 1);
+                const scaleY = 140 / (this.getTotalHeight() || 1);
+                const scale = Math.min(scaleX, scaleY, 1);
+                const vw = rect.width / this.zoom * scale;
+                const vh = rect.height / this.zoom * scale;
+                const vx = -this.panX / this.zoom * scale;
+                const vy = -this.panY / this.zoom * scale;
+                return {
+                    left: vx + 'px',
+                    top: vy + 'px',
+                    width: vw + 'px',
+                    height: vh + 'px',
+                };
+            },
+            filteredObjects() {
+                if (!this.searchQuery) return this.objects;
+                const q = this.searchQuery.toLowerCase();
+                return this.objects.filter(obj => {
+                    if (obj.name && obj.name.toLowerCase().includes(q)) return true;
+                    if (obj.meta?.table_number && obj.meta.table_number.toLowerCase().includes(q)) return true;
+                    if (obj.meta?.customer && obj.meta.customer.toLowerCase().includes(q)) return true;
+                    if (obj.meta?.booking_ref && obj.meta.booking_ref.toLowerCase().includes(q)) return true;
+                    return false;
+                });
+            }
+        },
+
+        watch: {
+            selectedId(id) {
+                this.selectedObject = this.objects.find(o => o.id === id) || null;
+                if (!this.selectedObject) this.showTableDetails = false;
+            },
+            objects: {
+                deep: true,
+                handler() {
+                    this.hasChanges = true;
+                    this.pushUndo();
+                }
+            },
+            hasChanges(val) {
+                if (val) {
+                    clearTimeout(this.autoSaveTimer);
+                    this.autoSaveTimer = setTimeout(() => this.autoSave(), 5000);
+                }
+            }
+        },
+
+        async mounted() {
+            await this.initSupabase();
+            await this.loadEvents();
+            this.setupKeyboardShortcuts();
+            this.setupRealtime();
+            this.startAutoSave();
+            // Select first event
+            if (this.events.length) {
+                this.selectedEventId = this.events[0].id;
+                await this.loadEvent();
+            }
+            // Fit screen after load
+            await nextTick();
+            this.fitScreen();
+        },
+
+        beforeUnmount() {
+            if (this.realtimeSubscription) this.realtimeSubscription.unsubscribe();
+            clearInterval(this.autoSaveTimer);
+            document.removeEventListener('keydown', this._keydownHandler);
+        },
+
+        methods: {
+            // ─── SUPABASE ───
+            async initSupabase() {
+                try {
+                    const mod = await import('../config/supabase.js');
+                    this.supabase = mod.default || mod.supabase;
+                    this.supabaseConnected = !!this.supabase;
+                } catch (e) {
+                    console.error('Supabase load failed:', e);
+                    this.showToast('Could not connect to Supabase', 'error');
+                }
+            },
+
+            // ─── EVENTS ───
+            async loadEvents() {
+                if (!this.supabase) return;
+                try {
+                    const { data, error } = await this.supabase
+                        .from('events')
+                        .select('id, name')
+                        .order('name');
+                    if (error) throw error;
+                    this.events = data || [];
+                    if (!this.events.length) {
+                        // Seed default events
+                        const defaults = [
+                            { name: 'Summer Shutdown' },
+                            { name: 'All White Party' },
+                            { name: 'Amapiano Festival' },
+                            { name: 'Youth Festival' },
+                            { name: "New Year's Eve" },
+                        ];
+                        const { data: inserted } = await this.supabase
+                            .from('events')
+                            .insert(defaults)
+                            .select();
+                        this.events = inserted || defaults;
+                    }
+                } catch (e) {
+                    console.error('Load events error:', e);
+                    this.showToast('Failed to load events', 'error');
+                }
+            },
+
+            // ─── FLOOR PLAN ───
+            async loadEvent() {
+                if (!this.selectedEventId || !this.supabase) return;
+                this.loading = true;
+                try {
+                    // Get or create floor plan
+                    let { data: plans, error } = await this.supabase
+                        .from('floor_plans')
+                        .select('*')
+                        .eq('event_id', this.selectedEventId)
+                        .maybeSingle();
+
+                    if (error && error.code !== 'PGRST116') throw error;
+
+                    if (!plans) {
+                        // Create default floor plan
+                        const { data: newPlan, error: createErr } = await this.supabase
+                            .from('floor_plans')
+                            .insert({
+                                event_id: this.selectedEventId,
+                                name: 'Main Floor',
+                                venue_name: 'Rands Venue',
+                                width: 2000,
+                                height: 1500,
+                                grid_size: 20,
+                                show_grid: true,
+                                background_color: '#09090b',
+                                zoom: 1
+                            })
+                            .select()
+                            .single();
+                        if (createErr) throw createErr;
+                        plans = newPlan;
+                    }
+
+                    this.floorPlanId = plans.id;
+                    this.zoom = plans.zoom || 1;
+                    this.showGrid = plans.show_grid !== false;
+                    this.gridSize = plans.grid_size || 20;
+
+                    // Load objects
+                    const { data: objects, error: objErr } = await this.supabase
+                        .from('floor_objects')
+                        .select('*')
+                        .eq('floor_plan_id', this.floorPlanId)
+                        .order('z_index', { ascending: true });
+
+                    if (objErr) throw objErr;
+
+                    this.objects = (objects || []).map(o => ({
+                        ...o,
+                        meta: o.meta || {},
+                        fill_color: o.fill_color || '#2a2a32',
+                        border_color: o.border_color || '#4a4a55',
+                        opacity: o.opacity !== undefined ? o.opacity : 1,
+                        border_width: o.border_width !== undefined ? o.border_width : 1,
+                        corner_radius: o.corner_radius !== undefined ? o.corner_radius : 4,
+                        locked: o.locked || false,
+                        visible: o.visible !== false,
+                        rotation: o.rotation || 0,
+                        z_index: o.z_index || 0,
+                    }));
+
+                    this.hasChanges = false;
+                    this.clearUndo();
+                    this.showToast('Floor plan loaded', 'success');
+
+                } catch (e) {
+                    console.error('Load event error:', e);
+                    this.showToast('Failed to load floor plan', 'error');
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            async saveFloorPlan() {
+                if (!this.supabase || !this.floorPlanId) {
+                    this.showToast('No floor plan to save', 'error');
+                    return;
+                }
+                this.saving = true;
+                try {
+                    // Update plan
+                    await this.supabase
+                        .from('floor_plans')
+                        .update({
+                            zoom: this.zoom,
+                            show_grid: this.showGrid,
+                            grid_size: this.gridSize,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', this.floorPlanId);
+
+                    // Upsert objects
+                    for (const obj of this.objects) {
+                        const payload = {
+                            floor_plan_id: this.floorPlanId,
+                            object_type: obj.object_type,
+                            name: obj.name || '',
+                            x: Math.round(obj.x || 0),
+                            y: Math.round(obj.y || 0),
+                            width: Math.round(obj.width || 40),
+                            height: Math.round(obj.height || 30),
+                            rotation: obj.rotation || 0,
+                            z_index: obj.z_index || 0,
+                            fill_color: obj.fill_color || '#2a2a32',
+                            border_color: obj.border_color || '#4a4a55',
+                            opacity: obj.opacity !== undefined ? obj.opacity : 1,
+                            border_width: obj.border_width || 1,
+                            corner_radius: obj.corner_radius || 4,
+                            locked: obj.locked || false,
+                            hidden: !obj.visible,
+                            meta: obj.meta || {},
+                        };
+                        if (obj.id && obj.id.length > 6) {
+                            // Update existing
+                            await this.supabase
+                                .from('floor_objects')
+                                .update(payload)
+                                .eq('id', obj.id);
+                        } else {
+                            // Insert new
+                            const { data: inserted } = await this.supabase
+                                .from('floor_objects')
+                                .insert({ ...payload, id: obj.id })
+                                .select()
+                                .single();
+                            if (inserted) obj.id = inserted.id;
+                        }
+                    }
+
+                    this.hasChanges = false;
+                    this.showToast('Floor plan saved', 'success');
+
+                } catch (e) {
+                    console.error('Save error:', e);
+                    this.showToast('Save failed: ' + e.message, 'error');
+                } finally {
+                    this.saving = false;
+                }
+            },
+
+            autoSave() {
+                if (this.hasChanges && this.supabaseConnected) {
+                    this.saveFloorPlan();
+                }
+            },
+
+            startAutoSave() {
+                setInterval(() => this.autoSave(), 30000);
+            },
+
+            // ─── OBJECT CRUD ───
+            addObject(type) {
+                const defaults = getObjectDefaults(type);
+                const obj = {
+                    id: 'obj_' + generateId(),
+                    floor_plan_id: this.floorPlanId,
+                    ...defaults,
+                    x: 200 + Math.random() * 100,
+                    y: 200 + Math.random() * 100,
+                    z_index: this.objects.length + 1,
+                    meta: { ...defaults.meta },
+                };
+                // Ensure table has a number
+                if (isTableType(type)) {
+                    const existing = this.objects.filter(o => isTableType(o.object_type));
+                    obj.meta.table_number = obj.meta.table_number || `T${existing.length + 1}`;
+                }
+                this.objects.push(obj);
+                this.selectedId = obj.id;
+                this.hasChanges = true;
+                this.showToast(`Added ${obj.name || type}`, 'success');
+                this.activeTool = null;
+            },
+
+            deleteObject(id) {
+                const idx = this.objects.findIndex(o => o.id === id);
+                if (idx === -1) return;
+                const obj = this.objects[idx];
+                if (obj.locked) {
+                    this.showToast('Object is locked', 'error');
+                    return;
+                }
+                this.objects.splice(idx, 1);
+                if (this.selectedId === id) {
+                    this.selectedId = null;
+                    this.selectedObject = null;
+                }
+                this.hasChanges = true;
+                this.showToast('Deleted', 'success');
+            },
+
+            deleteSelected() {
+                if (this.selectedObject) {
+                    this.deleteObject(this.selectedObject.id);
+                }
+            },
+
+            duplicateObject(obj) {
+                if (obj.locked) return;
+                const copy = JSON.parse(JSON.stringify(obj));
+                copy.id = 'obj_' + generateId();
+                copy.x += 20;
+                copy.y += 20;
+                copy.name = obj.name + ' (copy)';
+                if (isTableType(copy.object_type)) {
+                    const existing = this.objects.filter(o => isTableType(o.object_type));
+                    copy.meta.table_number = `T${existing.length + 1}`;
+                }
+                this.objects.push(copy);
+                this.selectedId = copy.id;
+                this.hasChanges = true;
+                this.showToast('Duplicated', 'success');
+            },
+
+            copySelected() {
+                if (!this.selectedObject) return;
+                this.clipboard = JSON.parse(JSON.stringify(this.selectedObject));
+                this.showToast('Copied', 'success');
+            },
+
+            pasteObject() {
+                if (!this.clipboard) return;
+                const paste = JSON.parse(JSON.stringify(this.clipboard));
+                paste.id = 'obj_' + generateId();
+                paste.x += 30;
+                paste.y += 30;
+                this.objects.push(paste);
+                this.selectedId = paste.id;
+                this.hasChanges = true;
+                this.showToast('Pasted', 'success');
+            },
+
+            // ─── SELECTION ───
+            selectObject(obj, event) {
+                if (this.resizing || this.rotating || this.dragging) return;
+                if (obj.locked) {
+                    this.selectedId = obj.id;
+                    this.selectedObject = obj;
+                    return;
+                }
+                this.selectedId = obj.id;
+                this.selectedObject = obj;
+                if (event) event.stopPropagation();
+            },
+
+            // ─── TRANSFORMS ───
+            getObjectStyle(obj) {
+                if (!obj.visible) return { display: 'none' };
+                const rot = obj.rotation || 0;
+                const fill = obj.fill_color || '#2a2a32';
+                const border = obj.border_color || '#4a4a55';
+                const bw = obj.border_width || 1;
+                const radius = obj.corner_radius || 0;
+                const opacity = obj.opacity !== undefined ? obj.opacity : 1;
+
+                // For line/arrow, use different rendering
+                if (obj.object_type === 'line' || obj.object_type === 'arrow') {
+                    return {
+                        left: obj.x + 'px',
+                        top: obj.y + 'px',
+                        width: obj.width + 'px',
+                        height: obj.height + 'px',
+                        transform: `rotate(${rot}deg)`,
+                        background: fill,
+                        border: `${bw}px solid ${border}`,
+                        borderRadius: radius + 'px',
+                        opacity: opacity,
+                        zIndex: obj.z_index || 0,
+                    };
+                }
+
+                return {
+                    left: obj.x + 'px',
+                    top: obj.y + 'px',
+                    width: obj.width + 'px',
+                    height: obj.height + 'px',
+                    transform: `rotate(${rot}deg)`,
+                    background: fill,
+                    border: `${bw}px solid ${border}`,
+                    borderRadius: radius + 'px',
+                    opacity: opacity,
+                    zIndex: obj.z_index || 0,
+                };
+            },
+
+            updateObject() {
+                this.hasChanges = true;
+                // Force reactivity
+                this.objects = [...this.objects];
+            },
+
+            setTableStatus(status) {
+                if (!this.selectedObject) return;
+                if (this.selectedObject.locked) return;
+                this.selectedObject.meta.status = status;
+                this.updateObject();
+                this.showToast(`Table status: ${status}`, 'success');
+            },
+
+            tableAction(action) {
+                if (!this.selectedObject) return;
+                const meta = this.selectedObject.meta;
+                switch (action) {
+                    case 'reserve':
+                        meta.status = 'reserved';
+                        meta.booking_ref = 'BK-' + Date.now().toString(36).toUpperCase();
+                        this.showToast('Table reserved', 'success');
+                        break;
+                    case 'sell':
+                        meta.status = 'sold';
+                        this.showToast('Table marked as sold', 'success');
+                        break;
+                    case 'assign':
+                        const name = prompt('Enter customer name:');
+                        if (name) { meta.customer = name;
+                            meta.status = 'occupied';
+                            this.showToast(`Assigned to ${name}`, 'success'); }
+                        break;
+                    case 'release':
+                        meta.status = 'available';
+                        meta.customer = '';
+                        meta.booking_ref = '';
+                        this.showToast('Table released', 'success');
+                        break;
+                }
+                this.updateObject();
+            },
+
+            openTableDetails(obj) {
+                if (isTableType(obj.object_type)) {
+                    this.selectedId = obj.id;
+                    this.selectedObject = obj;
+                    this.showTableDetails = true;
+                }
+            },
+
+            // ─── ZOOM & PAN ───
+            zoomIn() {
+                this.zoom = clamp(this.zoom * 1.15, 0.1, 5);
+                this.hasChanges = true;
+            },
+            zoomOut() {
+                this.zoom = clamp(this.zoom / 1.15, 0.1, 5);
+                this.hasChanges = true;
+            },
+            fitScreen() {
+                const wrapper = this.$refs.canvasWrapper;
+                if (!wrapper) return;
+                const rect = wrapper.getBoundingClientRect();
+                const totalW = this.getTotalWidth() || 1600;
+                const totalH = this.getTotalHeight() || 1200;
+                const pad = 40;
+                const zoomX = (rect.width - pad) / totalW;
+                const zoomY = (rect.height - pad) / totalH;
+                this.zoom = clamp(Math.min(zoomX, zoomY, 1.5), 0.1, 5);
+                this.panX = (rect.width - totalW * this.zoom) / 2;
+                this.panY = (rect.height - totalH * this.zoom) / 2;
+                this.hasChanges = true;
+            },
+
+            getTotalWidth() {
+                let maxX = 0;
+                for (const obj of this.objects) {
+                    maxX = Math.max(maxX, obj.x + obj.width);
+                }
+                return Math.max(maxX + 200, 1200);
+            },
+            getTotalHeight() {
+                let maxY = 0;
+                for (const obj of this.objects) {
+                    maxY = Math.max(maxY, obj.y + obj.height);
+                }
+                return Math.max(maxY + 200, 900);
+            },
+
+            // ─── CANVAS MOUSE EVENTS ───
+            onCanvasMouseDown(event) {
+                if (event.button !== 0) return;
+                const target = event.target;
+                if (target.closest('.floor-object') || target.closest('.resize-handle') ||
+                    target.closest('.rotate-handle') || target.closest('.delete-btn')) {
+                    return;
+                }
+                // Deselect
+                this.selectedId = null;
+                this.selectedObject = null;
+                this.showTableDetails = false;
+                this.isPanning = true;
+                this.panStartX = event.clientX;
+                this.panStartY = event.clientY;
+                this.panStartPanX = this.panX;
+                this.panStartPanY = this.panY;
+                this.$refs.canvasWrapper.style.cursor = 'grabbing';
+            },
+
+            onWheel(event) {
+                const delta = event.deltaY > 0 ? 0.9 : 1.1;
+                const newZoom = clamp(this.zoom * delta, 0.1, 5);
+                // Zoom toward mouse position
+                const rect = this.$refs.canvasWrapper.getBoundingClientRect();
+                const mx = event.clientX - rect.left;
+                const my = event.clientY - rect.top;
+                const worldX = (mx - this.panX) / this.zoom;
+                const worldY = (my - this.panY) / this.zoom;
+                this.zoom = newZoom;
+                this.panX = mx - worldX * this.zoom;
+                this.panY = my - worldY * this.zoom;
+                this.hasChanges = true;
+            },
+
+            // ─── DRAG ───
+            startDrag(obj, event) {
+                if (obj.locked) return;
+                if (event.button !== 0) return;
+                this.dragging = true;
+                this.dragObject = obj;
+                const rect = this.$refs.canvasWrapper.getBoundingClientRect();
+                const x = (event.clientX - rect.left - this.panX) / this.zoom;
+                const y = (event.clientY - rect.top - this.panY) / this.zoom;
+                this.dragOffsetX = x - obj.x;
+                this.dragOffsetY = y - obj.y;
+                this.dragStartX = event.clientX;
+                this.dragStartY = event.clientY;
+                document.addEventListener('mousemove', this.onDragMove);
+                document.addEventListener('mouseup', this.onDragEnd);
+            },
+
+            onDragMove(event) {
+                if (!this.dragging || !this.dragObject) return;
+                const rect = this.$refs.canvasWrapper.getBoundingClientRect();
+                let x = (event.clientX - rect.left - this.panX) / this.zoom - this.dragOffsetX;
+                let y = (event.clientY - rect.top - this.panY) / this.zoom - this.dragOffsetY;
+
+                if (this.snapEnabled) {
+                    x = Math.round(x / this.gridSize) * this.gridSize;
+                    y = Math.round(y / this.gridSize) * this.gridSize;
+                }
+
+                this.dragObject.x = Math.max(0, x);
+                this.dragObject.y = Math.max(0, y);
+                this.hasChanges = true;
+            },
+
+            onDragEnd() {
+                this.dragging = false;
+                this.dragObject = null;
+                document.removeEventListener('mousemove', this.onDragMove);
+                document.removeEventListener('mouseup', this.onDragEnd);
+            },
+
+            // ─── RESIZE ───
+            startResize(event, obj, handle) {
+                if (obj.locked) return;
+                event.stopPropagation();
+                this.resizing = true;
+                this.resizeObject = obj;
+                this.resizeHandle = handle;
+                this.resizeStartX = event.clientX;
+                this.resizeStartY = event.clientY;
+                this.resizeStartW = obj.width;
+                this.resizeStartH = obj.height;
+                this.resizeStartXPos = obj.x;
+                this.resizeStartYPos = obj.y;
+                document.addEventListener('mousemove', this.onResizeMove);
+                document.addEventListener('mouseup', this.onResizeEnd);
+            },
+
+            onResizeMove(event) {
+                if (!this.resizing || !this.resizeObject) return;
+                const dx = (event.clientX - this.resizeStartX) / this.zoom;
+                const dy = (event.clientY - this.resizeStartY) / this.zoom;
+                const obj = this.resizeObject;
+                const handle = this.resizeHandle;
+                let w = this.resizeStartW;
+                let h = this.resizeStartH;
+                let x = this.resizeStartXPos;
+                let y = this.resizeStartYPos;
+
+                if (handle.includes('e')) { w = Math.max(10, this.resizeStartW + dx); }
+                if (handle.includes('w')) { w = Math.max(10, this.resizeStartW - dx);
+                    x = this.resizeStartXPos + this.resizeStartW - w; }
+                if (handle.includes('s')) { h = Math.max(10, this.resizeStartH + dy); }
+                if (handle.includes('n')) { h = Math.max(10, this.resizeStartH - dy);
+                    y = this.resizeStartYPos + this.resizeStartH - h; }
+
+                if (this.snapEnabled) {
+                    w = Math.round(w / this.gridSize) * this.gridSize;
+                    h = Math.round(h / this.gridSize) * this.gridSize;
+                    x = Math.round(x / this.gridSize) * this.gridSize;
+                    y = Math.round(y / this.gridSize) * this.gridSize;
+                }
+
+                obj.width = Math.max(10, w);
+                obj.height = Math.max(10, h);
+                obj.x = Math.max(0, x);
+                obj.y = Math.max(0, y);
+                this.hasChanges = true;
+            },
+
+            onResizeEnd() {
+                this.resizing = false;
+                this.resizeObject = null;
+                document.removeEventListener('mousemove', this.onResizeMove);
+                document.removeEventListener('mouseup', this.onResizeEnd);
+            },
+
+            // ─── ROTATE ───
+            startRotate(event, obj) {
+                if (obj.locked) return;
+                event.stopPropagation();
+                this.rotating = true;
+                this.rotateObject = obj;
+                const rect = this.$refs.canvasWrapper.getBoundingClientRect();
+                const cx = obj.x + obj.width / 2;
+                const cy = obj.y + obj.height / 2;
+                const sx = (event.clientX - rect.left - this.panX) / this.zoom;
+                const sy = (event.clientY - rect.top - this.panY) / this.zoom;
+                this.rotateStartAngle = Math.atan2(sy - cy, sx - cx);
+                this.rotateStartRotation = obj.rotation || 0;
+                document.addEventListener('mousemove', this.onRotateMove);
+                document.addEventListener('mouseup', this.onRotateEnd);
+            },
+
+            onRotateMove(event) {
+                if (!this.rotating || !this.rotateObject) return;
+                const rect = this.$refs.canvasWrapper.getBoundingClientRect();
+                const obj = this.rotateObject;
+                const cx = obj.x + obj.width / 2;
+                const cy = obj.y + obj.height / 2;
+                const sx = (event.clientX - rect.left - this.panX) / this.zoom;
+                const sy = (event.clientY - rect.top - this.panY) / this.zoom;
+                const angle = Math.atan2(sy - cy, sx - cx);
+                let rotation = this.rotateStartRotation + (angle - this.rotateStartAngle) * (180 / Math.PI);
+                rotation = ((rotation % 360) + 360) % 360;
+                obj.rotation = Math.round(rotation);
+                this.hasChanges = true;
+            },
+
+            onRotateEnd() {
+                this.rotating = false;
+                this.rotateObject = null;
+                document.removeEventListener('mousemove', this.onRotateMove);
+                document.removeEventListener('mouseup', this.onRotateEnd);
+            },
+
+            // ─── MINI MAP ───
+            onMiniMapDown(event) {
+                this.miniMapDragging = true;
+                this.updateMiniMapView(event);
+                document.addEventListener('mousemove', this.onMiniMapMove);
+                document.addEventListener('mouseup', this.onMiniMapUp);
+            },
+
+            onMiniMapMove(event) {
+                if (!this.miniMapDragging) return;
+                this.updateMiniMapView(event);
+            },
+
+            onMiniMapUp() {
+                this.miniMapDragging = false;
+                document.removeEventListener('mousemove', this.onMiniMapMove);
+                document.removeEventListener('mouseup', this.onMiniMapUp);
+            },
+
+            updateMiniMapView(event) {
+                const rect = this.$refs.miniMap.getBoundingClientRect();
+                const x = (event.clientX - rect.left) / rect.width;
+                const y = (event.clientY - rect.top) / rect.height;
+                const totalW = this.getTotalWidth();
+                const totalH = this.getTotalHeight();
+                const wrapper = this.$refs.canvasWrapper;
+                const wRect = wrapper.getBoundingClientRect();
+                const vw = wRect.width / this.zoom;
+                const vh = wRect.height / this.zoom;
+                const panX = -(x * totalW - vw / 2);
+                const panY = -(y * totalH - vh / 2);
+                this.panX = panX;
+                this.panY = panY;
+                this.hasChanges = true;
+            },
+
+            getMiniObjectStyle(obj) {
+                const totalW = this.getTotalWidth() || 1600;
+                const totalH = this.getTotalHeight() || 1200;
+                const scaleX = 180 / totalW;
+                const scaleY = 140 / totalH;
+                const scale = Math.min(scaleX, scaleY, 1);
+                return {
+                    left: (obj.x * scale) + 'px',
+                    top: (obj.y * scale) + 'px',
+                    width: Math.max(2, obj.width * scale) + 'px',
+                    height: Math.max(2, obj.height * scale) + 'px',
+                    background: obj.fill_color || '#2a2a32',
+                    border: '1px solid ' + (obj.border_color || '#4a4a55'),
+                    borderRadius: (obj.corner_radius || 0) * scale + 'px',
+                    opacity: obj.visible ? 0.7 : 0.2,
+                };
+            },
+
+            // ─── KEYBOARD SHORTCUTS ───
+            setupKeyboardShortcuts() {
+                this._keydownHandler = (e) => {
+                    // Don't trigger if typing in input
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+                    const ctrl = e.ctrlKey || e.metaKey;
+
+                    if (ctrl && e.key === 'z') { e.preventDefault();
+                        this.undo(); return; }
+                    if (ctrl && e.key === 'y') { e.preventDefault();
+                        this.redo(); return; }
+                    if (ctrl && e.key === 'c') { e.preventDefault();
+                        this.copySelected(); return; }
+                    if (ctrl && e.key === 'v') { e.preventDefault();
+                        this.pasteObject(); return; }
+                    if (e.key === 'Delete' || e.key === 'Backspace') {
+                        e.preventDefault();
+                        this.deleteSelected();
+                        return;
+                    }
+                    if (e.key === 'Escape') {
+                        this.selectedId = null;
+                        this.selectedObject = null;
+                        this.showTableDetails = false;
+                        return;
+                    }
+                    // Arrow keys nudge
+                    if (this.selectedObject && !this.selectedObject.locked) {
+                        const step = e.shiftKey ? 10 : 1;
+                        if (e.key === 'ArrowUp') { e.preventDefault();
+                            this.selectedObject.y = Math.max(0, this.selectedObject.y - step);
+                            this.updateObject(); }
+                        if (e.key === 'ArrowDown') { e.preventDefault();
+                            this.selectedObject.y += step;
+                            this.updateObject(); }
+                        if (e.key === 'ArrowLeft') { e.preventDefault();
+                            this.selectedObject.x = Math.max(0, this.selectedObject.x - step);
+                            this.updateObject(); }
+                        if (e.key === 'ArrowRight') { e.preventDefault();
+                            this.selectedObject.x += step;
+                            this.updateObject(); }
+                    }
+                };
+                document.addEventListener('keydown', this._keydownHandler);
+            },
+
+            // ─── UNDO / REDO ───
+            pushUndo() {
+                if (!this.objects.length) return;
+                const state = JSON.stringify(this.objects);
+                if (this.undoStack.length && this.undoStack[this.undoStack.length - 1] === state) return;
+                this.undoStack.push(state);
+                if (this.undoStack.length > this.maxUndo) this.undoStack.shift();
+                this.redoStack = [];
+            },
+
+            undo() {
+                if (!this.undoStack.length) return;
+                const current = JSON.stringify(this.objects);
+                this.redoStack.push(current);
+                const prev = this.undoStack.pop();
+                this.objects = JSON.parse(prev);
+                this.selectedId = this.objects.length ? this.objects[0].id : null;
+                this.hasChanges = true;
+                this.showToast('Undo', 'success');
+            },
+
+            redo() {
+                if (!this.redoStack.length) return;
+                const current = JSON.stringify(this.objects);
+                this.undoStack.push(current);
+                const next = this.redoStack.pop();
+                this.objects = JSON.parse(next);
+                this.selectedId = this.objects.length ? this.objects[0].id : null;
+                this.hasChanges = true;
+                this.showToast('Redo', 'success');
+            },
+
+            clearUndo() {
+                this.undoStack = [];
+                this.redoStack = [];
+            },
+
+            // ─── AI ───
+            openAIModal() {
+                this.aiModalOpen = true;
+                this.aiPrompt = '';
+            },
+
+            async generateAILayout() {
+                if (!this.aiPrompt.trim()) {
+                    this.showToast('Please describe the layout you want', 'error');
+                    return;
+                }
+                this.aiGenerating = true;
+                try {
+                    // Placeholder: simulate AI response
+                    const prompt = this.aiPrompt.toLowerCase();
+                    const objects = [];
+
+                    // Parse some common keywords
+                    const hasStage = prompt.includes('stage');
+                    const hasDance = prompt.includes('dance') || prompt.includes('floor');
+                    const hasBar = prompt.includes('bar');
+                    const hasVIP = prompt.includes('vip');
+                    const hasVVIP = prompt.includes('vvip');
+                    const hasShisha = prompt.includes('shisha');
+                    const hasFood = prompt.includes('food') || prompt.includes('stall');
+
+                    // Extract numbers
+                    const numMatch = prompt.match(/(\d+)\s*(?:people|pax|capacity|attendees?)/);
+                    const numPeople = numMatch ? parseInt(numMatch[1]) : 200;
+
+                    // Determine scale
+                    const scale = Math.min(Math.max(numPeople / 100, 1), 30);
+
+                    let x = 100,
+                        y = 100;
+
+                    // Stage
+                    if (hasStage) {
+                        objects.push({
+                            ...getObjectDefaults('stage'),
+                            x: 300,
+                            y: 100,
+                            width: 200 * Math.min(scale / 2, 2),
+                            height: 100 * Math.min(scale / 2, 2),
+                            name: 'Main Stage'
+                        });
+                        x = 400;
+                        y = 300;
+                    }
+
+                    // Dance floor
+                    if (hasDance) {
+                        objects.push({
+                            ...getObjectDefaults('dance_floor'),
+                            x: 200,
+                            y: 300,
+                            width: 250 * Math.min(scale / 2, 2.5),
+                            height: 180 * Math.min(scale / 2, 2.5),
+                            name: 'Dance Floor'
+                        });
+                        y = 500;
+                    }
+
+                    // Bar
+                    if (hasBar) {
+                        objects.push({
+                            ...getObjectDefaults('bar'),
+                            x: 80,
+                            y: hasDance ? 550 : 350,
+                            width: 160,
+                            height: 50,
+                            name: 'Main Bar'
+                        });
+                        objects.push({
+                            ...getObjectDefaults('bar'),
+                            x: 500,
+                            y: hasDance ? 550 : 350,
+                            width: 160,
+                            height: 50,
+                            name: 'Second Bar'
+                        });
+                    }
+
+                    // VIP tables
+                    if (hasVIP) {
+                        const count = Math.min(Math.max(Math.floor(numPeople / 50), 2), 20);
+                        for (let i = 0; i < count; i++) {
+                            const angle = (i / count) * Math.PI * 2;
+                            const radius = 200 * Math.min(scale / 2, 2);
+                            const tx = 350 + Math.cos(angle) * radius;
+                            const ty = 400 + Math.sin(angle) * radius;
+                            objects.push({
+                                ...getObjectDefaults('vip_table'),
+                                x: tx - 40,
+                                y: ty - 30,
+                                width: 80,
+                                height: 60,
+                                name: `VIP ${i + 1}`,
+                                meta: { table_number: `VIP${i + 1}`, capacity: 6, price: 500, min_spend: 2000, status: 'available', section: 'VIP' }
+                            });
+                        }
+                    }
+
+                    // VVIP tables
+                    if (hasVVIP) {
+                        const count = Math.min(Math.max(Math.floor(numPeople / 100), 1), 10);
+                        for (let i = 0; i < count; i++) {
+                            const angle = (i / count) * Math.PI * 2 + 0.3;
+                            const radius = 120 * Math.min(scale / 2, 1.8);
+                            const tx = 350 + Math.cos(angle) * radius;
+                            const ty = 400 + Math.sin(angle) * radius;
+                            objects.push({
+                                ...getObjectDefaults('vvip_table'),
+                                x: tx - 50,
+                                y: ty - 35,
+                                width: 100,
+                                height: 70,
+                                name: `VVIP ${i + 1}`,
+                                meta: { table_number: `VVIP${i + 1}`, capacity: 8, price: 1500, min_spend: 5000, status: 'available', section: 'VVIP' }
+                            });
+                        }
+                    }
+
+                    // Shisha lounge
+                    if (hasShisha) {
+                        objects.push({
+                            ...getObjectDefaults('shisha_lounge'),
+                            x: 60,
+                            y: 80,
+                            width: 120,
+                            height: 80,
+                            name: 'Shisha Lounge'
+                        });
+                    }
+
+                    // Food stalls
+                    if (hasFood) {
+                        objects.push({
+                            ...getObjectDefaults('food_stall'),
+                            x: 500,
+                            y: 80,
+                            width: 80,
+                            height: 50,
+                            name: 'Food Stall 1'
+                        });
+                        objects.push({
+                            ...getObjectDefaults('food_stall'),
+                            x: 620,
+                            y: 80,
+                            width: 80,
+                            height: 50,
+                            name: 'Food Stall 2'
+                        });
+                    }
+
+                    // Always add some tables if none specified
+                    if (!hasVIP && !hasVVIP && !hasStage) {
+                        for (let i = 0; i < Math.min(Math.floor(numPeople / 20), 15); i++) {
+                            const row = Math.floor(i / 4);
+                            const col = i % 4;
+                            objects.push({
+                                ...getObjectDefaults('table'),
+                                x: 80 + col * 100,
+                                y: 200 + row * 80,
+                                width: 60,
+                                height: 50,
+                                name: `Table ${i + 1}`,
+                                meta: { table_number: `T${i + 1}`, capacity: 4, price: 0, min_spend: 0, status: 'available', section: 'Main' }
+                            });
+                        }
+                    }
+
+                    // Entrances and exits
+                    objects.push({
+                        ...getObjectDefaults('entrance'),
+                        x: 40,
+                        y: 100,
+                        width: 50,
+                        height: 30,
+                        name: 'Main Entrance'
+                    });
+                    objects.push({
+                        ...getObjectDefaults('exit'),
+                        x: 700,
+                        y: 150,
+                        width: 50,
+                        height: 30,
+                        name: 'Exit'
+                    });
+                    objects.push({
+                        ...getObjectDefaults('emergency_exit'),
+                        x: 700,
+                        y: 500,
+                        width: 50,
+                        height: 30,
+                        name: 'Emergency Exit'
+                    });
+
+                    // Security
+                    objects.push({
+                        ...getObjectDefaults('security'),
+                        x: 40,
+                        y: 150,
+                        width: 40,
+                        height: 40,
+                        name: 'Security'
+                    });
+
+                    // Add all objects
+                    for (const obj of objects) {
+                        obj.id = 'obj_' + generateId();
+                        obj.floor_plan_id = this.floorPlanId;
+                        obj.z_index = this.objects.length + 1;
+                        this.objects.push(obj);
+                    }
+
+                    this.hasChanges = true;
+                    this.aiModalOpen = false;
+                    this.showToast(`AI generated ${objects.length} objects`, 'success');
+
+                    // Fit screen to show everything
+                    await nextTick();
+                    this.fitScreen();
+
+                } catch (e) {
+                    console.error('AI generation error:', e);
+                    this.showToast('AI generation failed: ' + e.message, 'error');
+                } finally {
+                    this.aiGenerating = false;
+                }
+            },
+
+            // ─── EXPORT ───
+            exportPNG() {
+                this.showToast('Export PNG coming soon', 'info');
+            },
+            exportPDF() {
+                this.showToast('Export PDF coming soon', 'info');
+            },
+            printLayout() {
+                window.print();
+            },
+
+            // ─── REALTIME ───
+            setupRealtime() {
+                if (!this.supabase) return;
+                if (this.realtimeSubscription) this.realtimeSubscription.unsubscribe();
+                this.realtimeSubscription = this.supabase
+                    .channel('floor-realtime')
+                    .on('postgres_changes', {
+                        event: '*',
+                        schema: 'public',
+                        table: 'floor_objects'
+                    }, (payload) => {
+                        // Only refresh if this is not our own save
+                        if (!this.saving && payload.eventType !== 'UPDATE') {
+                            this.loadEvent();
+                        }
+                    })
+                    .on('postgres_changes', {
+                        event: '*',
+                        schema: 'public',
+                        table: 'venue_tables'
+                    }, () => {
+                        // Table status changed externally — reload
+                        this.loadEvent();
+                    })
+                    .subscribe();
+            },
+
+            // ─── TOAST ───
+            showToast(message, type = 'success') {
+                this.toastMessage = message;
+                this.toastType = type;
+                this.toastIcon = type === 'success' ? 'fas fa-check-circle' :
+                    type === 'error' ? 'fas fa-exclamation-circle' :
+                    'fas fa-info-circle';
+                this.toastVisible = true;
+                clearTimeout(this.toastTimer);
+                this.toastTimer = setTimeout(() => {
+                    this.toastVisible = false;
+                }, 3000);
+            },
+        },
+
+        // ─── MOUSE EVENT BINDING ───
+        mounted() {
+            // Bind drag events at the component level
+            const wrapper = this.$refs.canvasWrapper;
+            if (wrapper) {
+                wrapper.addEventListener('mousemove', (e) => {
+                    if (this.isPanning) {
+                        const dx = e.clientX - this.panStartX;
+                        const dy = e.clientY - this.panStartY;
+                        this.panX = this.panStartPanX + dx;
+                        this.panY = this.panStartPanY + dy;
+                        this.hasChanges = true;
+                    }
+                });
+                wrapper.addEventListener('mouseup', () => {
+                    if (this.isPanning) {
+                        this.isPanning = false;
+                        wrapper.style.cursor = 'grab';
+                    }
+                });
+                wrapper.addEventListener('mouseleave', () => {
+                    if (this.isPanning) {
+                        this.isPanning = false;
+                        wrapper.style.cursor = 'grab';
+                    }
+                });
+            }
+
+            // Allow drag from toolbox items
+            document.querySelectorAll('.toolbox-item').forEach(el => {
+                el.addEventListener('mousedown', (e) => {
+                    // Click handled by @click
+                });
+            });
+        },
+    });
+
+    app.mount('#app');
+</script>
+</body>
+</html>
