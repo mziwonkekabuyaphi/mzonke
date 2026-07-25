@@ -38,6 +38,8 @@ import { startPassportKeySetup } from './passport-key.js';
 // ── DOM elements ───────────────────────────────────────────────────────────
 const emailInput  = document.getElementById('email');
 const passwordInput = document.getElementById('password');
+const passwordStep  = document.getElementById('passwordStep');
+const passwordStepForgotRow = document.getElementById('passwordStepForgotRow');
 const loginBtn      = document.getElementById('loginBtn');
 const loginBtnLabel = document.getElementById('loginBtnLabel');
 const authError     = document.getElementById('authError');
@@ -50,6 +52,40 @@ const passkeyWrap = document.getElementById('passkeyWrap');
 const togglePw   = document.getElementById('togglePw');
 const eyeIcon    = document.getElementById('eyeIcon');
 const eyeOffIcon = document.getElementById('eyeOffIcon');
+
+// ── Two-step form state ─────────────────────────────────────────────────────
+// 'email'    — only the email field is shown; tapping the button submits the
+//              email and checks Passport Key status.
+// 'password' — email was verified to belong to an account with a Passport
+//              Key already set; the password field is now revealed and the
+//              button performs the actual sign-in.
+// Kept as a plain variable rather than reading DOM visibility back out,
+// so the two states can never disagree with each other.
+let step = 'email';
+
+function showPasswordStep() {
+  step = 'password';
+  if (passwordStep) passwordStep.style.display = '';
+  if (passwordStepForgotRow) passwordStepForgotRow.style.display = '';
+  if (loginBtnLabel) loginBtnLabel.textContent = 'Enter Rands Vibe';
+  passwordInput?.focus();
+}
+
+function resetToEmailStep() {
+  step = 'email';
+  if (passwordStep) passwordStep.style.display = 'none';
+  if (passwordStepForgotRow) passwordStepForgotRow.style.display = 'none';
+  if (passwordInput) passwordInput.value = '';
+  if (loginBtnLabel) loginBtnLabel.textContent = 'Continue';
+}
+
+// If the customer edits the email after already reaching the password step
+// (e.g. they typo'd it), don't let a stale "this account has a password"
+// state carry over to a different address — drop back to the email step so
+// it gets re-checked.
+emailInput?.addEventListener('input', () => {
+  if (step === 'password') resetToEmailStep();
+});
 
 // ── Error display helpers ──────────────────────────────────────────────────
 function showAuthError(message) {
@@ -145,39 +181,54 @@ async function finishLogin(user) {
 // a name that was never attached to window, so that handler was dead code.
 window.finishLogin = finishLogin;
 
-// ── EMAIL / PASSWORD ───────────────────────────────────────────────────────
-async function handleLogin() {
-  hideAuthError();
+// ── STEP 1: EMAIL ────────────────────────────────────────────────────────
+async function handleEmailStep() {
+  const email = emailInput?.value?.trim();
+  if (!email) {
+    showAuthError('Enter your email address.');
+    return;
+  }
 
+  setLoading(true, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
+
+  const status = await checkPassportKeyStatus(email);
+
+  if (status?.exists && !status.hasPassportKey) {
+    // WhatsApp-registered, no Passport Key yet — straight to the OTP flow.
+    setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
+    startPassportKeySetup(email);
+    return;
+  }
+
+  if (status && !status.exists) {
+    // No account at all for this email — don't reveal a password field
+    // that could never succeed; point them at registration instead.
+    setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
+    showAuthError("We couldn't find an account with that email. New to Rands? Create your Passport below.");
+    return;
+  }
+
+  // Either the account has a Passport Key already (status.hasPassportKey),
+  // or the status check itself failed (status === null) — fail open to the
+  // normal password field rather than blocking login on a status-endpoint
+  // outage.
+  setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
+  showPasswordStep();
+}
+
+// ── STEP 2: PASSWORD ────────────────────────────────────────────────────────
+async function handlePasswordStep() {
   const email    = emailInput?.value?.trim();
   const password = passwordInput?.value;
 
-  if (!email) {
-    showAuthError('Enter your email address.');
+  if (!password) {
+    showAuthError('Enter your passport key.');
     return;
   }
 
   setLoading(true, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
 
   try {
-    // Check Passport Key status before touching Supabase auth at all — a
-    // WhatsApp-registered customer with no password yet should never see
-    // "incorrect email or password" for a password they were never asked
-    // to set. If the check itself fails, fall through to the normal flow
-    // so a status-endpoint outage doesn't block existing users.
-    const status = await checkPassportKeyStatus(email);
-
-    if (status?.exists && !status.hasPassportKey) {
-      setLoading(false, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
-      startPassportKeySetup(email);
-      return;
-    }
-
-    if (!password) {
-      showAuthError('Enter your passport key.');
-      return;
-    }
-
     const { user, error } = await signIn(email, password);
     if (error || !user) throw new Error(error || 'Login failed. Please try again.');
     await finishLogin(user);
@@ -186,6 +237,15 @@ async function handleLogin() {
     showAuthError(err.message);
   } finally {
     setLoading(false, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
+  }
+}
+
+async function handleLogin() {
+  hideAuthError();
+  if (step === 'email') {
+    await handleEmailStep();
+  } else {
+    await handlePasswordStep();
   }
 }
 
