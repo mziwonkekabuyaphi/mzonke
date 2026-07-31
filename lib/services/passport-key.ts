@@ -33,7 +33,7 @@
  *
  * Requires:
  *   - the `passport_key_otps` table — see migrations/002_passport_key_otps.sql
- *   - env vars: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (new —
+ *   - env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (new —
  *     this repo needs service-role access now, it didn't before),
  *     WHATSAPP_REPO_INTERNAL_URL, INTERNAL_API_SECRET (shared with the
  *     WhatsApp repo)
@@ -55,7 +55,7 @@ const MAX_ATTEMPTS = 5;
 // -----------------------------------------------------------------------------
 
 function getAdminClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     throw new Error('Missing Supabase admin credentials');
