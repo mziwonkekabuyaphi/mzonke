@@ -24,35 +24,38 @@ export const ROLE_ROUTES = {
 };
 
 /* =========================
-   SIGN IN
+   SIGN IN — PASSPORT (unified email OR phone + password)
+   Single credential, either identifier. signIn()/signInWithPhone() below
+   are kept as thin wrappers so nothing else in the codebase breaks.
 ========================= */
-export async function signIn(email, password) {
+export async function signInWithPassport(identifierType, identifierValue, password) {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const payload =
+      identifierType === 'email'
+        ? { email: identifierValue, password }
+        : { phone: identifierValue, password };
+    const { data, error } = await supabase.auth.signInWithPassword(payload);
     if (error) return { user: null, error: formatAuthError(error) };
     return { user: data.user, error: null };
   } catch (err) {
-    console.error('❌ Sign in crash:', err);
+    console.error('❌ Passport sign in crash:', err);
     return { user: null, error: 'Network error. Please check your connection and try again.' };
   }
 }
 
 /* =========================
-   SIGN IN — PHONE + PIN
-   Same shape as signIn(), just phone+password instead of email+password.
-   Supabase treats a phone identity with a password exactly like an email
-   one for signInWithPassword() — same session, same getProfile()/
-   requireAuth() handling downstream.
+   SIGN IN  (thin wrapper over signInWithPassport)
+========================= */
+export async function signIn(email, password) {
+  return signInWithPassport('email', email, password);
+}
+
+/* =========================
+   SIGN IN — PHONE + PIN  (thin wrapper over signInWithPassport)
+   Kept for any code that still imports signInWithPhone directly.
 ========================= */
 export async function signInWithPhone(phone, pin) {
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({ phone, password: pin });
-    if (error) return { user: null, error: formatAuthError(error) };
-    return { user: data.user, error: null };
-  } catch (err) {
-    console.error('❌ Phone sign in crash:', err);
-    return { user: null, error: 'Network error. Please check your connection and try again.' };
-  }
+  return signInWithPassport('phone', phone, pin);
 }
 
 /* =========================
