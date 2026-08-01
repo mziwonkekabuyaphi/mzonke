@@ -35,6 +35,20 @@ let needsPassword = false; // false when just attaching a 2nd identifier
 
 const PHONE_PATTERN = /^0[0-9]{9}$/;
 
+/**
+ * Mirrors lib/services/passport.ts's normalizePhone() exactly: local
+ * 0xxxxxxxxx -> 27xxxxxxxxx. Must stay in sync with the server-side version —
+ * identifierValue computed here is what we later pass to signInWithPassport,
+ * which has to match auth.users.phone (which the server stores normalized).
+ */
+function normalizePhone(raw) {
+  const digits = raw.replace(/\D/g, '');
+  if (/^0[0-9]{9}$/.test(digits)) {
+    return '27' + digits.slice(1);
+  }
+  return digits;
+}
+
 export function getLoginContent() {
   return document.querySelector('.login-content');
 }
@@ -118,7 +132,7 @@ async function submitIdentifier(raw) {
     render(identifierStepMarkup('Enter a valid email address or Mzansi mobile number.'));
     return;
   }
-  const value = type === 'phone' ? raw.replace(/\D/g, '') : raw.trim();
+  const value = type === 'phone' ? normalizePhone(raw) : raw.trim();
 
   render(statusMarkup('Checking…'));
   identifierType = type;
