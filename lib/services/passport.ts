@@ -358,11 +358,27 @@ export async function setPassportKey(
         user_metadata: {
           name: profile.name,
           surname: profile.surname,
+          // Always include the profile's known phone, even when the
+          // identifier being attached is email. handle_new_auth_user()
+          // only auto-links this new auth user to our existing profile
+          // (found via profileId, above) when it can match by phone; without
+          // this, an email-identifier signup gives the trigger nothing to
+          // match on, so it falls through to inserting a brand-new profiles
+          // row for the same auth user — which then collides with our own
+          // update below, since auth_user_id is unique per profile.
+          phone: profile.phone,
         },
       } as never);
       if (createError) throw createError;
       if (!data.user) throw new Error('No user returned from auth creation.');
       authUserId = data.user.id;
+
+      // Belt-and-braces: even with phone passed above, if the trigger still
+      // couldn't match (e.g. profile.phone was null) it will have inserted
+      // a stray duplicate profiles row for this auth user instead of
+      // linking ours. Remove it before our own update below claims
+      // auth_user_id — safe, since it was only just created this request.
+      await admin.from('profiles').delete().eq('auth_user_id', authUserId).neq('id', profile.id);
     } catch (err) {
       if (!isIdentifierAlreadyRegisteredError(err)) {
         throw new Error(`Failed to create auth user: ${err instanceof Error ? err.message : String(err)}`);
