@@ -34,6 +34,7 @@ import {
 } from '../../config/auth.js';
 
 import { startPassportKeySetup } from './passport-key.js';
+import { startPhonePinFlow } from './phone-pin.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
 const emailInput  = document.getElementById('email');
@@ -48,6 +49,7 @@ const registerLink  = document.getElementById('registerLink');
 const googleBtn   = document.getElementById('googleBtn');
 const passkeyBtn  = document.getElementById('passkeyBtn');
 const passkeyWrap = document.getElementById('passkeyWrap');
+const phonePinLink = document.getElementById('phonePinLink');
 
 const togglePw   = document.getElementById('togglePw');
 const eyeIcon    = document.getElementById('eyeIcon');
@@ -308,6 +310,12 @@ registerLink?.addEventListener('click', (e) => {
 
 googleBtn?.addEventListener('click', handleGoogleLogin);
 passkeyBtn?.addEventListener('click', handlePasskeyLogin);
+
+phonePinLink?.addEventListener('click', (e) => {
+  e.preventDefault();
+  hideAuthError();
+  startPhonePinFlow();
+});
 
 // ── Handle return from an OAuth redirect (e.g. Google) ─────────────────────
 // signInWithGoogle() sends the browser to Google, which redirects back here

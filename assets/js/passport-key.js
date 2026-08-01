@@ -22,7 +22,7 @@ let panelEl = null;
 let currentEmail = '';
 let verificationToken = '';
 
-function getLoginContent() {
+export function getLoginContent() {
   return document.querySelector('.login-content');
 }
 
@@ -35,14 +35,14 @@ function getOriginalFormNodes() {
   };
 }
 
-function hideOriginalForm() {
+export function hideOriginalForm() {
   const { form, ctaWrap, divider, altBtns } = getOriginalFormNodes();
   [form, ctaWrap, divider, altBtns].forEach((el) => {
     if (el) el.style.display = 'none';
   });
 }
 
-function showOriginalForm() {
+export function showOriginalForm() {
   const { form, ctaWrap, divider, altBtns } = getOriginalFormNodes();
   [form, ctaWrap, divider, altBtns].forEach((el) => {
     if (el) el.style.display = '';
