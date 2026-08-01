@@ -99,7 +99,7 @@ function generateCode(): string {
  * That repo is the only one with WhatsApp send credentials — see
  * app/api/internal/send-whatsapp-message/route.ts over there.
  */
-async function deliverOtpOverWhatsApp(phone: string, code: string): Promise<void> {
+export async function deliverOtpOverWhatsApp(phone: string, code: string): Promise<void> {
   const url = process.env.WHATSAPP_REPO_INTERNAL_URL;
   const secret = process.env.INTERNAL_API_SECRET;
   if (!url || !secret) {
