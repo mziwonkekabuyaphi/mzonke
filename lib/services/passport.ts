@@ -50,12 +50,12 @@ interface ProfileRow {
   name: string | null;
   surname: string | null;
   auth_user_id: string | null;
-  passport_set: boolean;
+  passport_key_set: boolean;
   registration_complete: boolean;
 }
 
 const PROFILE_COLUMNS =
-  'id, phone, email, name, surname, auth_user_id, passport_set, registration_complete';
+  'id, phone, email, name, surname, auth_user_id, passport_key_set, registration_complete';
 
 // -----------------------------------------------------------------------------
 // Identifier normalization
@@ -160,7 +160,7 @@ export async function checkPassportStatus(
 
   return {
     exists: true,
-    passportSet: Boolean(profile.passport_set),
+    passportSet: Boolean(profile.passport_key_set),
     hasIdentifier,
     profileId: profile.id,
   };
@@ -397,7 +397,7 @@ export async function setPassportKey(
 
   const profileUpdate: Record<string, unknown> = {
     auth_user_id: authUserId,
-    passport_set: true,
+    passport_key_set: true,
   };
   // Keep profiles.email in sync when email is the identifier just attached.
   // profiles.phone is never changed here — it's the WhatsApp-verified
