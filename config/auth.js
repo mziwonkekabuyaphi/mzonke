@@ -38,6 +38,24 @@ export async function signIn(email, password) {
 }
 
 /* =========================
+   SIGN IN — PHONE + PIN
+   Same shape as signIn(), just phone+password instead of email+password.
+   Supabase treats a phone identity with a password exactly like an email
+   one for signInWithPassword() — same session, same getProfile()/
+   requireAuth() handling downstream.
+========================= */
+export async function signInWithPhone(phone, pin) {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ phone, password: pin });
+    if (error) return { user: null, error: formatAuthError(error) };
+    return { user: data.user, error: null };
+  } catch (err) {
+    console.error('❌ Phone sign in crash:', err);
+    return { user: null, error: 'Network error. Please check your connection and try again.' };
+  }
+}
+
+/* =========================
    SIGN OUT
 ========================= */
 export async function signOutUser() {
