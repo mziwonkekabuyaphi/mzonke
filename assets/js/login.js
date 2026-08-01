@@ -2,7 +2,8 @@
  * assets/js/login.js — Rands Vibe Login Controller
  *
  * Auth flow:
- *   1. Authenticate with Supabase (email/password, Google, or Passkey)
+ *   1. Authenticate with Supabase (email/phone+password via Passport,
+ *      Google, or Passkey)
  *   2. Fetch profile from `profiles` table via getProfile(user.id)
  *   3. Validate: profile exists + role is set + status === 'Active'
  *   4. If registration isn't finished yet (no wallet), finish it —
@@ -14,16 +15,20 @@
  *   • profile.role is NULL/empty, OR
  *   • profile.status !== 'Active'
  *
- * CHANGED (Passport Key rework): a customer who registered via WhatsApp
- * has a wallet but no password yet. Before attempting a password sign-in,
- * we check GET /api/passport-key/status?email=... — if the account exists
- * but has no Passport Key, we hand off to passport-key.js's OTP flow
- * instead of calling signIn() with whatever they typed into the password
- * field (which would just fail with a confusing "incorrect password").
+ * CHANGED (Passport merge): Passport Key and Phone PIN used to be two
+ * separate panels (passport-key.js / phone-pin.js), each with their own
+ * status check and their own "use the other one instead" link. They're now
+ * one merged flow in passport.js. This file's job shrinks to: collect
+ * whatever the customer typed into the single identifier field (email OR
+ * phone — detected by format inside passport.js) and hand off to
+ * startPassportFlow(), which owns every subsequent step (status check,
+ * password entry, OTP setup, sign-in) itself. login.js no longer runs its
+ * own two-step email/password state machine or its own status check —
+ * that would just be a second, competing source of truth for the same
+ * decision passport.js already has to make internally.
  */
 
 import {
-  signIn,
   signInWithGoogle,
   signInWithPasskey,
   isPasskeySupported,
@@ -33,14 +38,10 @@ import {
   completeCustomerRegistration,
 } from '../../config/auth.js';
 
-import { startPassportKeySetup } from './passport-key.js';
-import { startPhonePinFlow } from './phone-pin.js';
+import { startPassportFlow } from './passport.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
 const emailInput  = document.getElementById('email');
-const passwordInput = document.getElementById('password');
-const passwordStep  = document.getElementById('passwordStep');
-const passwordStepForgotRow = document.getElementById('passwordStepForgotRow');
 const loginBtn      = document.getElementById('loginBtn');
 const loginBtnLabel = document.getElementById('loginBtnLabel');
 const authError     = document.getElementById('authError');
@@ -49,45 +50,10 @@ const registerLink  = document.getElementById('registerLink');
 const googleBtn   = document.getElementById('googleBtn');
 const passkeyBtn  = document.getElementById('passkeyBtn');
 const passkeyWrap = document.getElementById('passkeyWrap');
-const phonePinLink = document.getElementById('phonePinLink');
 
 const togglePw   = document.getElementById('togglePw');
 const eyeIcon    = document.getElementById('eyeIcon');
 const eyeOffIcon = document.getElementById('eyeOffIcon');
-
-// ── Two-step form state ─────────────────────────────────────────────────────
-// 'email'    — only the email field is shown; tapping the button submits the
-//              email and checks Passport Key status.
-// 'password' — email was verified to belong to an account with a Passport
-//              Key already set; the password field is now revealed and the
-//              button performs the actual sign-in.
-// Kept as a plain variable rather than reading DOM visibility back out,
-// so the two states can never disagree with each other.
-let step = 'email';
-
-function showPasswordStep() {
-  step = 'password';
-  if (passwordStep) passwordStep.style.display = '';
-  if (passwordStepForgotRow) passwordStepForgotRow.style.display = '';
-  if (loginBtnLabel) loginBtnLabel.textContent = 'Enter Rands Vibe';
-  passwordInput?.focus();
-}
-
-function resetToEmailStep() {
-  step = 'email';
-  if (passwordStep) passwordStep.style.display = 'none';
-  if (passwordStepForgotRow) passwordStepForgotRow.style.display = 'none';
-  if (passwordInput) passwordInput.value = '';
-  if (loginBtnLabel) loginBtnLabel.textContent = 'Continue';
-}
-
-// If the customer edits the email after already reaching the password step
-// (e.g. they typo'd it), don't let a stale "this account has a password"
-// state carry over to a different address — drop back to the email step so
-// it gets re-checked.
-emailInput?.addEventListener('input', () => {
-  if (step === 'password') resetToEmailStep();
-});
 
 // ── Error display helpers ──────────────────────────────────────────────────
 function showAuthError(message) {
@@ -108,24 +74,6 @@ function setLoading(state, btn, labelEl, loadingText, defaultText) {
   labelEl.textContent = state ? loadingText : defaultText;
 }
 
-// ── Passport Key status check ──────────────────────────────────────────────
-/**
- * Returns { exists, hasPassportKey } for the given email, or null if the
- * check itself failed (network error etc) — callers should fall back to
- * the normal password flow in that case rather than blocking login on a
- * status-check outage.
- */
-async function checkPassportKeyStatus(email) {
-  try {
-    const res = await fetch(`/api/passport-key/status?email=${encodeURIComponent(email)}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.error('Passport Key status check failed:', err);
-    return null;
-  }
-}
-
 // ── Core post-auth handler ─────────────────────────────────────────────────
 /**
  * Called after any successful Supabase auth method returns a user.
@@ -137,30 +85,23 @@ async function checkPassportKeyStatus(email) {
 async function finishLogin(user) {
   const { profile, error } = await getProfile(user.id);
 
-  // Profile row missing entirely
   if (error === 'NO_PROFILE') {
     throw new Error('Your account is not fully configured. Please contact support team at info@rands.co.za.');
   }
 
-  // Profile exists but role column is null/empty
   if (error === 'NO_ROLE') {
     throw new Error('Your account has no role assigned. Please contact support team at info@rands.co.za.');
   }
 
-  // Unexpected DB / network error — don't expose internals
   if (error) {
     console.error('Profile fetch error during login:', error);
     throw new Error('Unable to verify your account. Please try again.');
   }
 
-  // Account inactive
   if (profile.status !== 'Active') {
     throw new Error('Your account is inactive. Please contact support team at info@rands.co.za.');
   }
 
-  // Registration started (profile exists, role/status are fine) but never
-  // finished — no wallet yet. Finish it here rather than bouncing the user
-  // to register.html, whose form assumes a fresh email/password signup.
   if (profile.role === 'customer' && !profile.registration_complete) {
     const { error: completeError } = await completeCustomerRegistration(profile);
     if (completeError) {
@@ -168,7 +109,6 @@ async function finishLogin(user) {
     }
   }
 
-  // Unrecognised role (shouldn't happen, but guard anyway)
   const redirectUrl = getRoleRedirectUrl(profile.role);
   if (!redirectUrl) {
     throw new Error(`Unknown role "${profile.role}". Please contact Rands support team at info@rands.co.za.`);
@@ -178,77 +118,27 @@ async function finishLogin(user) {
   window.location.href = redirectUrl;
 }
 
-// Exposed so the inline OAuth-callback handler in login.html (which waits
-// for window.finishLogin) can actually find it — it was previously calling
-// a name that was never attached to window, so that handler was dead code.
+// Exposed so the inline OAuth-callback handler in login.html and
+// passport.js's panel can both find it.
 window.finishLogin = finishLogin;
 
-// ── STEP 1: EMAIL ────────────────────────────────────────────────────────
-async function handleEmailStep() {
-  const email = emailInput?.value?.trim();
-  if (!email) {
-    showAuthError('Enter your email address.');
+// ── STEP 1 (only step): IDENTIFIER ──────────────────────────────────────────
+// The email field is now a generic identifier field — passport.js detects
+// whether what's typed is an email or a phone number and takes it from
+// there (status check, password vs. OTP-setup, sign-in). This function's
+// only job is to grab the raw value and hand off.
+function handleLogin() {
+  hideAuthError();
+
+  const value = emailInput?.value?.trim();
+  if (!value) {
+    showAuthError('Enter your mobile number or email address.');
     return;
   }
 
   setLoading(true, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
-
-  const status = await checkPassportKeyStatus(email);
-
-  if (status?.exists && !status.hasPassportKey) {
-    // WhatsApp-registered, no Passport Key yet — straight to the OTP flow.
-    setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
-    startPassportKeySetup(email);
-    return;
-  }
-
-  if (status && !status.exists) {
-    // No account at all for this email — don't reveal a password field
-    // that could never succeed; point them at registration instead.
-    setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
-    showAuthError("We couldn't find an account with that email. New to Rands? Create your Passport below.");
-    return;
-  }
-
-  // Either the account has a Passport Key already (status.hasPassportKey),
-  // or the status check itself failed (status === null) — fail open to the
-  // normal password field rather than blocking login on a status-endpoint
-  // outage.
+  startPassportFlow(value);
   setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
-  showPasswordStep();
-}
-
-// ── STEP 2: PASSWORD ────────────────────────────────────────────────────────
-async function handlePasswordStep() {
-  const email    = emailInput?.value?.trim();
-  const password = passwordInput?.value;
-
-  if (!password) {
-    showAuthError('Enter your passport key.');
-    return;
-  }
-
-  setLoading(true, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
-
-  try {
-    const { user, error } = await signIn(email, password);
-    if (error || !user) throw new Error(error || 'Login failed. Please try again.');
-    await finishLogin(user);
-  } catch (err) {
-    console.error('Login error:', err);
-    showAuthError(err.message);
-  } finally {
-    setLoading(false, loginBtn, loginBtnLabel, 'OPENING RANDS VIBES…', 'UNGENILE');
-  }
-}
-
-async function handleLogin() {
-  hideAuthError();
-  if (step === 'email') {
-    await handleEmailStep();
-  } else {
-    await handlePasswordStep();
-  }
 }
 
 // ── GOOGLE ─────────────────────────────────────────────────────────────────
@@ -261,7 +151,6 @@ async function handleGoogleLogin() {
 
   try {
     const { error } = await signInWithGoogle();
-    // On success Supabase immediately redirects the browser — nothing else to do.
     if (error) throw new Error(error);
   } catch (err) {
     console.error('Google login error:', err);
@@ -295,10 +184,7 @@ async function handlePasskeyLogin() {
 loginBtn?.addEventListener('click', handleLogin);
 
 document.addEventListener('keydown', (e) => {
-  if (
-    e.key === 'Enter' &&
-    (document.activeElement === emailInput || document.activeElement === passwordInput)
-  ) {
+  if (e.key === 'Enter' && document.activeElement === emailInput) {
     handleLogin();
   }
 });
@@ -311,23 +197,10 @@ registerLink?.addEventListener('click', (e) => {
 googleBtn?.addEventListener('click', handleGoogleLogin);
 passkeyBtn?.addEventListener('click', handlePasskeyLogin);
 
-phonePinLink?.addEventListener('click', (e) => {
-  e.preventDefault();
-  hideAuthError();
-  startPhonePinFlow();
-});
-
 // ── Handle return from an OAuth redirect (e.g. Google) ─────────────────────
-// signInWithGoogle() sends the browser to Google, which redirects back here
-// with the session tokens appended as a URL fragment (#access_token=...).
-// The Supabase client consumes that fragment and establishes a session
-// automatically. This runs once on load and finishes the login the same way
-// handleLogin()/handlePasskeyLogin() do — including completing registration
-// (wallet creation) if this session belongs to a profile that was created by
-// the DB trigger but never finished register.html's activation step.
 (async () => {
   const result = await getSessionWithProfile();
-  if (!result) return; // no session yet — normal case, let the user log in
+  if (!result) return;
 
   const { profile } = result;
 
@@ -363,7 +236,11 @@ phonePinLink?.addEventListener('click', (e) => {
 })();
 
 // ── Password visibility toggle ─────────────────────────────────────────────
+// Static markup may still have a #password field for autofill/accessibility
+// even though passport.js renders its own password step inside the panel —
+// this toggle only does anything if such a field exists elsewhere on the page.
 togglePw?.addEventListener('click', () => {
+  const passwordInput = document.getElementById('password');
   const isHidden = passwordInput?.type === 'password';
   if (passwordInput)  passwordInput.type       = isHidden ? 'text' : 'password';
   if (eyeIcon)        eyeIcon.style.display    = isHidden ? 'none' : '';
