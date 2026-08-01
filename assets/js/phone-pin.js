@@ -19,6 +19,19 @@
  * duplicating the panel-injection pattern, and the same CSS classes
  * (field-group, field-input, cta-btn, auth-error, signup-link) so it
  * matches the rest of the login screen with no new CSS.
+ *
+ * FIXED (2026-08-01): currentPhone is kept in local format (0xxxxxxxxx)
+ * for the whole life of this panel, which is fine for every /api/phone-pin/*
+ * call since lib/services/phone-pin.ts normalizes internally before each DB
+ * lookup. But the two places below that call signInWithPhone() go straight
+ * to Supabase Auth with no server in between, and Supabase has no idea
+ * 0xxxxxxxxx and 27xxxxxxxxx are the same number — auth.users.phone is
+ * always stored in 27xxxxxxxxx form (see handle_new_auth_user() /
+ * setCustomerPin() in phone-pin.ts). Signing in with the raw 0xxxxxxxxx
+ * value therefore always failed with "Invalid login credentials", even
+ * with the correct PIN. normalizePhone() below mirrors the exact same rule
+ * phone-pin.ts already uses server-side, applied right before those two
+ * signInWithPhone() calls.
  */
 
 import { signInWithPhone } from '../../config/auth.js';
@@ -27,6 +40,18 @@ import { getLoginContent, hideOriginalForm, showOriginalForm } from './passport-
 let panelEl = null;
 let currentPhone = '';
 let verificationToken = '';
+
+/**
+ * Mirrors the normalization in lib/services/phone-pin.ts's normalizePhone():
+ * local 0xxxxxxxxx -> 27xxxxxxxxx, anything else passed through as-is.
+ * Needed here because this is the only client-side code path that talks
+ * to Supabase Auth directly (signInWithPassword under the hood) instead of
+ * going through one of our own /api/phone-pin/* routes, which already
+ * normalize server-side.
+ */
+function normalizePhone(digits) {
+  return digits.startsWith('0') ? '27' + digits.slice(1) : digits;
+}
 
 function closePanel() {
   panelEl?.remove();
@@ -130,7 +155,7 @@ async function submitPin(pin) {
 
   render(statusMarkup('Signing in…'));
   try {
-    const { user, error } = await signInWithPhone(currentPhone, pin);
+    const { user, error } = await signInWithPhone(normalizePhone(currentPhone), pin);
     if (error || !user) throw new Error(error || 'Incorrect PIN. Please try again.');
 
     if (typeof window.finishLogin === 'function') {
@@ -252,7 +277,7 @@ async function submitNewPin(pin, confirm) {
     if (!res.ok) throw new Error(data.error || 'Could not set your PIN. Please try again.');
 
     // Sign the customer straight in with the PIN they just set.
-    const { user, error } = await signInWithPhone(currentPhone, pin);
+    const { user, error } = await signInWithPhone(normalizePhone(currentPhone), pin);
     if (error || !user) {
       closePanel();
       const authError = document.getElementById('authError');
