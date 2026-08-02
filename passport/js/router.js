@@ -67,9 +67,13 @@ async function render(path) {
 }
 
 function updateActiveNavItem(path) {
-    document.querySelectorAll('#bottom-nav .nav-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.link === path);
+    document.querySelectorAll('#bottom-nav .bottom-nav__item').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.link === path);
     });
+    // Old multi-page setup never rendered #bottomNavContainer into home.html —
+    // the bottom nav only existed on the other 5 pages. Reproduce that by
+    // hiding the nav (via body class) whenever the current route is home.
+    document.body.classList.toggle('nav-hidden', path === 'home');
 }
 
 export function navigate(path) {
