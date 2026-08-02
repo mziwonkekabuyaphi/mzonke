@@ -14,9 +14,19 @@ registerRoute('home', {
     module: () => import('../pages/home.js')
 });
 
+registerRoute('tickets', {
+    fragment: 'fragments/tickets.html',
+    module: () => import('../pages/tickets.js')
+});
+
+registerRoute('vvip', {
+    fragment: 'fragments/vvip.html',
+    module: () => import('../pages/vvip.js')
+});
+
 // --- Not yet converted — placeholders so nav links don't dead-end.
 // Convert these one at a time using the same 3-step pattern as home.js.
-['order', 'tickets', 'vvip', 'lockers', 'shisha', 'pre-order', 'statement',
+['order', 'lockers', 'shisha', 'pre-order', 'statement',
  'profile', 'deposit', 'pay-now', 'festival-banner'].forEach((path) => {
     registerRoute(path, {
         fragment: `fragments/${path}.html`,   // create this file when you migrate the page
