@@ -1,4 +1,5 @@
 import { supabase } from '../../config/supabase.js';
+import { loadScriptOnce } from '../js/lazy-load.js';
 
 // Same cleanup pattern as pages/home.js — every listener/channel created in
 // init() gets undone in destroy() so nothing leaks or double-fires if the
@@ -65,22 +66,6 @@ function closeConfirmModal(confirmed) { document.getElementById('confirmationMod
 
 // qrcodejs / html2canvas are only needed on this page, so load them on
 // demand instead of paying for them on every route via index.html <head>.
-// Cached on window after first load — a revisit within the same session
-// resolves instantly without re-fetching.
-function loadScriptOnce(src, globalCheck) {
-    if (globalCheck()) return Promise.resolve();
-    if (!window.__scriptLoadPromises) window.__scriptLoadPromises = {};
-    if (window.__scriptLoadPromises[src]) return window.__scriptLoadPromises[src];
-    const p = new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error(`Failed to load ${src}`));
-        document.head.appendChild(s);
-    });
-    window.__scriptLoadPromises[src] = p;
-    return p;
-}
 function loadTicketLibs() {
     return Promise.all([
         loadScriptOnce('https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js', () => !!window.QRCode),
