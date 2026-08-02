@@ -54,7 +54,7 @@
         ];
       },
       spiritSubs() {
-        return [{ id:'rum', name:'Rum', emoji:'🏝️' },{ id:'vodka', name:'Vodka', emoji:'❄️' },{ id:'whisky', name:'Whisky', emoji:'🥃' },{ id:'cognac', name:'Cognac', emoji:'🥃' }];
+        return [{ id:'rum', name:'Rum', icon:'fas fa-umbrella-beach' },{ id:'vodka', name:'Vodka', icon:'fas fa-snowflake' },{ id:'whisky', name:'Whisky', icon:'fas fa-whiskey-glass' },{ id:'cognac', name:'Cognac', icon:'fas fa-wine-bottle' }];
       },
       currentCategoryLabel() {
         if (this.searchQuery) return 'Search Results';
@@ -210,7 +210,7 @@
             .insert({
               user_id: this.userId,
               total: orderTotal,
-              status: 'pending',
+              status: isScheduled ? 'scheduled' : 'pending',
               payment_method: 'wallet',
               payment_status: 'paid',
               scheduled_for: isScheduled ? scheduledFor : null,
@@ -302,7 +302,7 @@
           bookedHtml = `<div style="padding:12px 20px;"><h3 style="display:flex; gap:8px;"><i class="fas fa-calendar-alt" style="color:var(--red);"></i> Scheduled Orders</h3></div><div class="orders-grid">${scheduled.map(b => {
             const itemsList = b.order_items?.map(it => `${it.quantity}x ${it.product_name}`).join(', ') || '';
             const scheduledTime = b.scheduled_for ? new Date(b.scheduled_for).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'pending';
-            return `<div class="order-card"><div class="card-header"><span>#${b.order_number}</span><span>📅 ${scheduledTime}</span></div><div style="padding:12px;">${itemsList}<div style="font-weight:bold; margin-top:8px; color:var(--red);">R${b.total.toFixed(2)}</div></div></div>`;
+            return `<div class="order-card"><div class="card-header"><span>#${b.order_number}</span><span><i class="fas fa-calendar-alt"></i> ${scheduledTime}</span></div><div style="padding:12px;">${itemsList}<div style="font-weight:bold; margin-top:8px; color:var(--red);">R${b.total.toFixed(2)}</div></div></div>`;
           }).join('')}</div>`;
         }
         document.getElementById('bookedGridSection').innerHTML = bookedHtml;
