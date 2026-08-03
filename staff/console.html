@@ -4,12 +4,97 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Rands Staff Console · VELVET OPS</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <style>
-    /* ========== YOUR EXACT STYLES – UNCHANGED ========== */
+    /* ========== LOADING SCREEN ========== */
+    .loading-screen {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #09090b;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+    }
+    .load-logo-wrap {
+      position: relative;
+      width: 80px; height: 80px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 32px;
+    }
+    .load-logo-bg {
+      width: 64px; height: 64px;
+      background: #E30613;
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 40px rgba(227, 6, 19, 0.35), 0 0 80px rgba(227, 6, 19, 0.15);
+      animation: logoPulse 2s ease-in-out infinite;
+      overflow: hidden;
+    }
+    .load-logo-bg img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .load-logo-bg i { color: white; font-size: 1.6rem; }
+    .load-ring {
+      position: absolute; inset: -6px;
+      border-radius: 24px;
+      border: 1.5px solid rgba(227, 6, 19, 0.25);
+      animation: ringRotate 3s linear infinite;
+    }
+    .load-ring::before {
+      content: '';
+      position: absolute; top: -2px; left: 50%;
+      width: 6px; height: 6px;
+      background: #E30613;
+      border-radius: 50%;
+      transform: translateX(-50%);
+      box-shadow: 0 0 8px #E30613;
+    }
+    @keyframes logoPulse {
+      0%,100%{ box-shadow: 0 0 40px rgba(227,6,19,0.35), 0 0 80px rgba(227,6,19,0.15); }
+      50%{ box-shadow: 0 0 60px rgba(227,6,19,0.5), 0 0 100px rgba(227,6,19,0.2); }
+    }
+    @keyframes ringRotate { to { transform: rotate(360deg); } }
+    @keyframes loadProgress {
+      from { width: 0%; }
+      to { width: 100%; }
+    }
+
+    .load-brand {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.8rem; font-weight: 700;
+      color: #f4f4f5; letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .load-sub {
+      font-size: 0.72rem;
+      color: #71717a;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 40px;
+    }
+    .load-bar-wrap {
+      width: 200px; height: 2px;
+      background: #1e1e24;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .load-bar {
+      height: 100%;
+      background: #E30613;
+      border-radius: 99px;
+      animation: loadProgress 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      box-shadow: 0 0 12px #E30613;
+    }
+    .load-msg {
+      font-size: 0.72rem;
+      color: #3f3f46;
+      margin-top: 14px;
+      letter-spacing: 0.03em;
+    }
+
+    /* ========== YOUR EXISTING STYLES ========== */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --red: #E30613;
@@ -927,7 +1012,6 @@
       white-space: nowrap;
     }
     .logout-btn:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.4); }
-    /* role-select removed – role is loaded from Supabase */
     .auth-screen {
       position: fixed;
       inset: 0;
@@ -1023,13 +1107,27 @@
 </head>
 <body>
 <div id="app" v-cloak>
-  <!-- Auth loading screen -->
-  <div class="auth-screen" v-if="authLoading">
+  <!-- ========== BEAUTIFUL LOADING SCREEN ========== -->
+  <div class="loading-screen" v-if="showLoadingScreen">
+    <div class="load-logo-wrap">
+      <div class="load-logo-bg">
+        <img src="../assets/images/rands-logo.png" alt="Rands" @error="handleLogoError">
+      </div>
+      <div class="load-ring"></div>
+    </div>
+    <div class="load-brand">Rands</div>
+    <div class="load-sub">Staff Console · Velvet Ops</div>
+    <div class="load-bar-wrap"><div class="load-bar"></div></div>
+    <div class="load-msg">{{ loadingMessage }}</div>
+  </div>
+
+  <!-- ========== AUTH LOADING (legacy, hidden by default) ========== -->
+  <div class="auth-screen" v-if="authLoading && !showLoadingScreen" style="display:none;">
     <div class="spinner"></div>
     <span class="auth-screen-title">Verifying session…</span>
   </div>
 
-  <!-- Access denied screen -->
+  <!-- ========== ACCESS DENIED ========== -->
   <div class="access-denied" v-else-if="accessDenied">
     <i class="fas fa-shield-alt"></i>
     <h2>Access Denied</h2>
@@ -1037,12 +1135,11 @@
     <button class="btn btn-red" @click="doLogout"><i class="fas fa-sign-out-alt"></i> Sign out</button>
   </div>
 
-  <!-- Main console (only shown when auth passes) -->
+  <!-- ========== MAIN CONSOLE ========== -->
   <template v-else>
-  <!-- HEADER (unchanged) -->
+  <!-- HEADER -->
   <header class="header">
     <button class="header-btn mobile-menu-btn" @click="sidebarOpen = !sidebarOpen"><i class="fas fa-bars"></i></button>
-    <div class="header-logo-img" style="display:none;"></div>
     <div class="header-divider" style="display:none;"></div>
     <div class="search-bar" :class="{ focused: searchFocused }" @click="openCommand">
       <i class="fas fa-search" style="font-size:11px; color:var(--text3);"></i>
@@ -1083,7 +1180,7 @@
     <!-- SIDEBAR -->
     <nav class="sidebar" :class="{open: sidebarOpen}" @mouseleave="sidebarOpen = false">
       <div class="sidebar-logo">
-        <img src="../assets/images/rands-logo.png" alt="Rands Staff Console" class="sidebar-logo-img">
+        <img src="../assets/images/rands-logo.png" alt="Rands Staff Console" class="sidebar-logo-img" @error="handleLogoError">
         <span class="sidebar-logo-text">Rands Staff Console</span>
       </div>
       <div class="sidebar-nav">
@@ -1160,9 +1257,8 @@
       </div>
 
       <div class="content-area">
-        <!-- DASHBOARD (real data only) -->
+        <!-- DASHBOARD -->
         <div v-if="activeModule === 'dashboard'" class="content-scroll">
-          <!-- Stats row: computed from wallets, refunds, etc. -->
           <div class="stats-grid mb-5">
             <div class="stat-card"><div class="stat-label"><i class="fas fa-users" style="color:var(--blue);"></i> Total Accounts</div><div class="stat-value">{{ globalStats.totalAccounts }}</div><div class="stat-delta delta-up"><i class="fas fa-arrow-up" style="font-size:8px;"></i> wallets</div></div>
             <div class="stat-card"><div class="stat-label"><i class="fas fa-chart-line" style="color:var(--green);"></i> Total Balance</div><div class="stat-value">R{{ globalStats.totalBalance }}</div></div>
@@ -1174,7 +1270,6 @@
           </div>
 
           <div class="two-col mb-5">
-            <!-- Left panel: Recent Top‑ups (real) -->
             <div class="panel">
               <div class="panel-header"><span class="panel-title">Recent Top‑ups</span></div>
               <div class="panel-body">
@@ -1185,7 +1280,6 @@
                 </div>
               </div>
             </div>
-            <!-- Right panel: Recent Support Tickets -->
             <div class="panel">
               <div class="panel-header"><span class="panel-title">Recent Support Tickets</span></div>
               <div class="panel-body">
@@ -1198,7 +1292,6 @@
             </div>
           </div>
 
-          <!-- Pending Approvals (real refund requests) -->
           <div class="section-header mb-3"><span class="section-title">Pending Approvals</span></div>
           <div class="table-wrap mb-5">
             <div v-if="pendingApprovals.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No pending refund requests</div>
@@ -1208,7 +1301,6 @@
             </div>
           </div>
 
-          <!-- Recent Activity (real transactions + tickets) -->
           <div class="section-header mb-3"><span class="section-title">Recent Activity</span></div>
           <div class="table-wrap mb-5">
             <div v-for="act in activityFeed" :key="act.id" class="activity-item">
@@ -1219,7 +1311,6 @@
             <div v-if="activityFeed.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No recent activity</div>
           </div>
 
-          <!-- Customers table -->
           <div class="section-header mb-3"><span class="section-title">Customers</span><span class="section-action">Export CSV</span></div>
           <div class="table-wrap">
             <div class="table-toolbar">
@@ -1246,7 +1337,7 @@
           </div>
         </div>
 
-        <!-- IFRAME MODULES (unchanged) -->
+        <!-- IFRAME MODULES -->
         <div v-else style="height:100%;position:relative;">
           <div v-if="moduleLoading" class="module-loading"><div class="spinner"></div><span style="font-size:11px;color:var(--text3);">Loading {{ activeModuleLabel }}...</span></div>
           <iframe :src="activeModuleSrc" :title="activeModuleLabel" class="module-frame" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation" referrerpolicy="no-referrer" @load="moduleLoading = false" @error="onIframeError"></iframe>
@@ -1255,11 +1346,19 @@
     </main>
   </div>
 
-  <!-- Command palette, toasts, modals (unchanged) -->
+  <!-- Command palette -->
   <transition name="fade"><div class="cmd-backdrop" v-if="cmdOpen" @click.self="cmdOpen = false"><div class="cmd-box"><div class="cmd-input-row"><i class="fas fa-search" style="color:var(--text3);font-size:14px;"></i><input class="cmd-input" v-model="cmdQuery" ref="cmdInput" placeholder="Search customers..." @keydown.esc="cmdOpen = false" @keydown.enter="cmdEnter"></div><div class="cmd-results"><template v-if="cmdQuery.length < 2"><div class="cmd-group-label">Quick navigation</div><div v-for="mod in availableModules" :key="mod.key" class="cmd-result-item" @click="navigate(mod.key); cmdOpen=false;"><i :class="mod.icon"></i>{{ mod.title }}<span style="margin-left:auto;font-size:10px;color:var(--text3);">Module</span></div></template><template v-else><div class="cmd-group-label">Search results</div><div v-for="r in cmdResults" :key="r.id" class="cmd-result-item"><i :class="r.icon"></i><div><div>{{ r.label }}</div><div style="font-size:10px;color:var(--text3);">{{ r.sub }}</div></div><span class="badge ml-auto" :class="r.badgeClass">{{ r.type }}</span></div><div v-if="cmdResults.length === 0" style="padding:20px;text-align:center;font-size:12px;color:var(--text3);">No results for "{{ cmdQuery }}"</div></template></div><div class="cmd-hint"><span class="kbd"><span class="key">Esc</span> close</span><span class="kbd"><span class="key">Enter</span> open</span><span class="kbd"><span class="key">K</span> open search</span></div></div></div></transition>
+  
+  <!-- Toasts -->
   <div class="toast-stack"><div v-for="t in toasts" :key="t.id" class="toast" :class="t.type"><i :class="t.icon"></i><span>{{ t.message }}</span></div></div>
+  
+  <!-- Modal -->
   <transition name="fade"><div class="modal-backdrop" v-if="modal.open" @click.self="modal.open = false"><div class="modal"><div class="modal-title">{{ modal.title }}</div><div class="modal-body">{{ modal.body }}</div><div class="modal-actions"><button class="btn" @click="modal.open = false">Cancel</button><button class="btn btn-red" @click="modal.confirm(); modal.open = false">{{ modal.confirmLabel }}</button></div></div></div></transition>
+  
+  <!-- Fullscreen -->
   <div v-if="isFullscreen && activeModule !== 'dashboard'" style="position:fixed;inset:0;z-index:5000;background:#0D0F12;display:flex;flex-direction:column;"><div style="height:40px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;"><i :class="activeModuleMeta?.icon" style="color:var(--red);font-size:13px;"></i><span style="font-size:12px;font-weight:600;color:var(--text);">{{ activeModuleLabel }}</span><div class="ml-auto flex items-center gap-2"><span class="clock">{{ currentTime }}</span><button class="btn btn-sm" @click="isFullscreen = false"><i class="fas fa-compress" style="font-size:10px;"></i> Exit Fullscreen</button></div></div><iframe :src="activeModuleSrc" :title="activeModuleLabel" style="flex:1;border:none;" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation" referrerpolicy="no-referrer"></iframe></div>
+  
+  <!-- Mobile backdrop -->
   <div v-if="sidebarOpen" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:39;display:none;" class="mobile-backdrop" @click="sidebarOpen = false"></div>
   </template>
 </div>
@@ -1275,7 +1374,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========================
-// FALLBACK HARDCODED MODULES (used only if database has no entries)
+// FALLBACK HARDCODED MODULES
 // ========================
 const FALLBACK_MODULES = {
   'event_manager': ['dashboard', 'box_office', 'gate_scanner', 'shisha_pos', 'shisha_console', 'booze_vault', 'register_locker', 'unlock_vault', 'booze_collection', 'booze_counter', 'pre_order_pos', 'butcher_orders', 'butcher_collection', 'vvip_tab', 'vvip_staff'],
@@ -1291,9 +1390,6 @@ const FALLBACK_MODULES = {
 // ========================
 async function fetchStaffModulesFromDB(staffId) {
   try {
-    // Get staff profile with job title (staff_role column in profiles).
-    // profiles.id is its own generated PK — auth_user_id is what links the
-    // row back to the logged-in auth user, so we must filter on that.
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('staff_role')
@@ -1305,7 +1401,6 @@ async function fetchStaffModulesFromDB(staffId) {
       return [];
     }
     
-    // Get modules for this job title from job_title_modules table
     const { data: modules, error: modulesError } = await supabaseClient
       .from('job_title_modules')
       .select('module_id')
@@ -1316,7 +1411,6 @@ async function fetchStaffModulesFromDB(staffId) {
       return [];
     }
     
-    // Return array of module IDs
     const moduleIds = (modules || []).map(m => m.module_id);
     console.log(`✅ Found ${moduleIds.length} modules for ${profile.staff_role}:`, moduleIds);
     return moduleIds;
@@ -1328,7 +1422,7 @@ async function fetchStaffModulesFromDB(staffId) {
 }
 
 // ========================
-// HELPER FUNCTIONS (data fetching)
+// DATA FETCHING FUNCTIONS
 // ========================
 async function fetchWalletsWithProfiles() {
   const { data, error } = await supabaseClient
@@ -1350,8 +1444,6 @@ async function fetchWalletsWithProfiles() {
 }
 
 async function fetchRefundRequests() {
-  // refund_requests has TWO fkeys to profiles (customer_id, processed_by) —
-  // must name the constraint or PostgREST throws "more than one relationship found".
   const { data, error } = await supabaseClient.from('refund_requests').select('*, profiles!refund_requests_customer_id_fkey(name)').order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(r => ({
@@ -1365,9 +1457,6 @@ async function fetchRefundRequests() {
 }
 
 async function fetchRecentTopups(limit = 8) {
-  // wallet_transactions has NO foreign key to wallets (wallet_id is just a
-  // plain column, not an FK) — only user_id -> profiles.id is a real FK,
-  // so join profiles directly instead of trying to embed via wallets.
   const { data, error } = await supabaseClient
     .from('wallet_transactions')
     .select('*, profiles!wallet_transactions_user_id_fkey(name)')
@@ -1384,8 +1473,6 @@ async function fetchRecentTopups(limit = 8) {
 }
 
 async function fetchRecentTickets(limit = 5) {
-  // support_tickets has TWO fkeys to profiles (customer_id, assigned_to) —
-  // must name the constraint or PostgREST throws "more than one relationship found".
   const { data, error } = await supabaseClient
     .from('support_tickets')
     .select('*, profiles!support_tickets_customer_id_fkey(name)')
@@ -1433,14 +1520,18 @@ const MODULE_META = {
 
 createApp({
   setup() {
-    // ── Auth / permission state ──────────────────────────────────────────────
-    const authLoading    = ref(true);
+    // ── Loading state ───────────────────────────────────────────────────────
+    const showLoadingScreen = ref(true);
+    const loadingMessage = ref('Initialising Staff Console…');
+
+    // ── Auth state ──────────────────────────────────────────────────────────
+    const authLoading    = ref(false);
     const accessDenied   = ref(false);
     const accessDeniedMsg= ref('');
     const jobTitle       = ref('');
     const allowedModules = ref([]);
 
-    // ── UI state ──────────────────────────────────────────────────────────────
+    // ── UI state ──────────────────────────────────────────────────────────
     const staffName   = ref('Staff Member');
     const activeModule= ref('dashboard');
     const moduleLoading= ref(false);
@@ -1458,6 +1549,7 @@ createApp({
     const toasts      = ref([]);
     const modal       = ref({ open: false, title: '', body: '', confirmLabel: 'Confirm', confirm: () => {} });
     const profileOpen = ref(false);
+    const searchFocused = ref(false);
 
     // ── Data state ──────────────────────────────────────────────────────────
     const wallets          = ref([]);
@@ -1477,7 +1569,18 @@ createApp({
       return { totalAccounts, totalBalance, blockedAccounts, pendingRefunds, approvedRefunds: 0, totalRefundAmount: 0, activeOrders: 0, ticketsScanned: 0, scanPct: 0, walletLoads: 0, walletValue: 0, vvipTables: 0, vvipPending: 0 };
     });
 
-    // ── Toast helper ────────────────────────────────────────────────────────
+    // ── Logo error fallback ────────────────────────────────────────────────
+    const handleLogoError = (e) => {
+      e.target.style.display = 'none';
+      const parent = e.target.parentElement;
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-crown';
+      icon.style.fontSize = '1.6rem';
+      icon.style.color = 'white';
+      parent.appendChild(icon);
+    };
+
+    // ── Toast helper ──────────────────────────────────────────────────────
     let toastId = 0;
     const showToast = (message, type = 'info') => {
       const icons = { success:'fas fa-check-circle', error:'fas fa-times-circle', info:'fas fa-info-circle', warn:'fas fa-exclamation-triangle' };
@@ -1488,18 +1591,17 @@ createApp({
 
     // ── Auth: load user → profile → staff_role → permissions ──────────────
     const loadAuth = async () => {
-      authLoading.value = true;
+      loadingMessage.value = 'Verifying session…';
       try {
         const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
         if (authError || !user) {
           accessDenied.value   = true;
           accessDeniedMsg.value= 'You are not logged in. Please sign in to access the Staff Console.';
-          authLoading.value    = false;
+          showLoadingScreen.value = false;
           return;
         }
 
-        // profiles.id is its own generated PK — auth_user_id links the row
-        // back to the logged-in auth user, so filter on that, not id.
+        loadingMessage.value = 'Loading staff profile…';
         const { data: profile, error: profileError } = await supabaseClient
           .from('profiles')
           .select('name, role, staff_role')
@@ -1509,28 +1611,25 @@ createApp({
         if (profileError || !profile) {
           accessDenied.value   = true;
           accessDeniedMsg.value= 'Your staff profile could not be found. Please contact your administrator.';
-          authLoading.value    = false;
+          showLoadingScreen.value = false;
           return;
         }
 
         if (profile.role !== 'staff') {
           accessDenied.value   = true;
           accessDeniedMsg.value= `This console is for staff members only. Your account role is "${profile.role}".`;
-          authLoading.value    = false;
+          showLoadingScreen.value = false;
           return;
         }
 
-        // ✅ FETCH MODULES FROM DATABASE
+        loadingMessage.value = 'Loading permissions…';
         const modulesFromDB = await fetchStaffModulesFromDB(user.id);
         
-        // If no modules in database, use fallback
         let perms = [];
         if (modulesFromDB.length > 0) {
           perms = modulesFromDB;
           console.log('📦 Using modules from database:', perms);
         } else if (profile.staff_role) {
-          // Normalize "Event Manager" -> "event_manager" so the fallback map
-          // matches regardless of how staff_role is capitalized/spaced.
           const normalizedRole = profile.staff_role.trim().toLowerCase().replace(/\s+/g, '_');
           if (FALLBACK_MODULES[normalizedRole]) {
             perms = FALLBACK_MODULES[normalizedRole];
@@ -1541,23 +1640,27 @@ createApp({
         if (!profile.staff_role || perms.length === 0) {
           accessDenied.value   = true;
           accessDeniedMsg.value= `No modules assigned for "${profile.staff_role || 'unknown role'}". Please contact your administrator.`;
-          authLoading.value    = false;
+          showLoadingScreen.value = false;
           return;
         }
 
-        // Auth passed — populate state
+        // Auth passed
         staffName.value     = profile.name || user.email || 'Staff Member';
         jobTitle.value      = profile.staff_role || 'Staff';
         allowedModules.value= perms;
         authLoading.value   = false;
 
-        // Load live data
-        fetchAllData();
+        loadingMessage.value = 'Loading dashboard data…';
+        await fetchAllData();
+        
+        loadingMessage.value = 'Ready!';
+        setTimeout(() => { showLoadingScreen.value = false; }, 400);
+
       } catch (err) {
         console.error('Auth error:', err);
         accessDenied.value   = true;
         accessDeniedMsg.value= 'An unexpected error occurred during authentication.';
-        authLoading.value    = false;
+        showLoadingScreen.value = false;
       }
     };
 
@@ -1591,7 +1694,6 @@ createApp({
           { id:2, icon:'fas fa-clock',  color:'#F59E0B', text:`${pendingApprovals.value.length} pending refunds`, time:'now', unread:true }
         ];
         unreadNotifs.value = notifications.value.filter(n => n.unread).length;
-        showToast(`Loaded ${wallets.value.length} wallets`, 'success');
       } catch (err) {
         console.error(err);
         showToast('Error loading data from Supabase', 'error');
@@ -1603,7 +1705,7 @@ createApp({
     // ── Permission guard ─────────────────────────────────────────────────────
     const hasModule = (key) => allowedModules.value.includes(key);
 
-    // ── Navigation with access guard ─────────────────────────────────────────
+    // ── Navigation ───────────────────────────────────────────────────────────
     const navigate = (key) => {
       if (key === 'dashboard') { activeModule.value = 'dashboard'; sidebarOpen.value = false; notifOpen.value = false; return; }
       if (!hasModule(key)) {
@@ -1699,19 +1801,22 @@ createApp({
       updateTime(); updateShift();
       timeInt  = setInterval(updateTime,  1000);
       shiftInt = setInterval(updateShift, 1000);
-      statsInt = setInterval(() => { if (!authLoading.value && !accessDenied.value) fetchAllData(); }, 30000);
+      statsInt = setInterval(() => { if (!showLoadingScreen.value && !accessDenied.value) fetchAllData(); }, 30000);
       window.addEventListener('keydown', handleKey);
+      
+      // Start auth flow
       loadAuth();
     });
     onUnmounted(() => { clearInterval(timeInt); clearInterval(shiftInt); clearInterval(statsInt); window.removeEventListener('keydown', handleKey); });
 
     return {
+      showLoadingScreen, loadingMessage, handleLogoError,
       authLoading, accessDenied, accessDeniedMsg,
       jobTitle, staffName, staffInitials, activeModule, moduleLoading,
       sidebarOpen, notifOpen, cmdOpen, cmdQuery, cmdInput, isFullscreen, currentTime,
       shiftTimer, shiftStart, globalStats, notifications, unreadNotifs, pendingApprovals,
       activityFeed, customers, customerSearch, customerFilter, filteredCustomers,
-      recentTopups, recentTickets, cmdResults, toasts, modal, profileOpen,
+      recentTopups, recentTickets, cmdResults, toasts, modal, profileOpen, searchFocused,
       availableModules, activeModuleMeta, activeModuleLabel, activeModuleSrc,
       hasModule, navigate, showToast, confirmLogout, doLogout, approve, decline,
       markAllRead, onIframeError, enterFullscreen, refreshStats,
