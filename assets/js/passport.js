@@ -98,12 +98,32 @@ function render(html) {
  * non-digits and check against the local 0xxxxxxxxx shape already used by
  * phone-pin.js's validation -> phone; else invalid.
  */
-function detectIdentifierType(raw) {
+export function detectIdentifierType(raw) {
   const value = raw.trim();
   if (value.includes('@')) return 'email';
   const digits = value.replace(/\D/g, '');
   if (PHONE_PATTERN.test(digits)) return 'phone';
   return null;
+}
+
+/**
+ * Lightweight read-only lookup for login.js's live identifier field, so it
+ * can decide whether to reveal the password/Passport Key input — without
+ * opening this panel or duplicating the fetch/normalize logic. Returns the
+ * same shape /api/passport/status does, plus `type`/`value`. Returns
+ * `{ type: null }` for input that isn't a recognizable email or phone yet
+ * (e.g. still mid-typing) so callers can treat that as "don't know yet"
+ * rather than "not found".
+ */
+export async function peekPassportStatus(raw, { signal } = {}) {
+  const type = detectIdentifierType(raw);
+  if (!type) return { type: null };
+  const value = type === 'phone' ? normalizePhone(raw) : raw.trim();
+
+  const res = await fetch(`/api/passport/status?type=${type}&value=${encodeURIComponent(value)}`, { signal });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not check that account.');
+  return { type, value, ...data };
 }
 
 // ── Step 1: identifier entry / re-entry on error ────────────────────────────

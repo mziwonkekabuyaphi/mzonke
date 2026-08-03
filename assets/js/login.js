@@ -40,7 +40,7 @@ import {
   completeCustomerRegistration,
 } from '../../config/auth.js';
 
-import { startPassportFlow } from './passport.js';
+import { startPassportFlow, peekPassportStatus } from './passport.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
 const emailInput    = document.getElementById('email');
@@ -223,19 +223,103 @@ async function handlePasskeyLogin() {
   }
 }
 
-// ── Progressive disclosure: hide password field until an identifier is
-// being typed. This is a display-only nicety — it doesn't check whether
-// the identifier is known, that happens server-side in passport.js/status
-// once the customer submits. Left blank on submit, an unrecognized or
-// first-time identifier still correctly falls through to the OTP flow.
-function updatePasswordStepVisibility() {
-  const hasValue = Boolean(emailInput?.value?.trim());
-  if (passwordStep)          passwordStep.style.display          = hasValue ? '' : 'none';
-  if (passwordStepForgotRow) passwordStepForgotRow.style.display = hasValue ? '' : 'none';
+// ── Progressive disclosure, backed by the real account status ──────────────
+// The password/Passport Key field should only appear once we actually know,
+// from the database, that this identifier belongs to an account that
+// already has a Passport Key set. Everything else is decided the same way:
+//   • not a recognizable email/phone yet (still typing)  -> stay hidden, no warning
+//   • no account found for that identifier                -> stay hidden, show a
+//                                                            "no Passport found" warning
+//   • account found, but this identifier has no key yet   -> stay hidden, no warning
+//                                                            (Continue with no password
+//                                                            routes into passport.js's
+//                                                            OTP flow, which correctly
+//                                                            handles first-time setup
+//                                                            vs. attaching a 2nd identifier)
+//   • account found, key already set for this identifier  -> show the field
+const EMAIL_LOOKS_COMPLETE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const identifierErrorEl = document.getElementById('err-email');
+
+let identifierCheckTimer = null;
+let identifierCheckAbort = null;
+let identifierCheckSeq = 0;
+
+function looksLikeCompleteIdentifier(raw) {
+  const value = raw.trim();
+  if (!value) return false;
+  if (value.includes('@')) return EMAIL_LOOKS_COMPLETE.test(value);
+  return /^0[0-9]{9}$/.test(value.replace(/\D/g, ''));
 }
 
-emailInput?.addEventListener('input', updatePasswordStepVisibility);
-updatePasswordStepVisibility();
+function setPasswordStepVisible(visible) {
+  if (passwordStep)          passwordStep.style.display          = visible ? '' : 'none';
+  if (passwordStepForgotRow) passwordStepForgotRow.style.display = visible ? '' : 'none';
+}
+
+function clearIdentifierWarning() {
+  identifierErrorEl?.classList.remove('visible');
+}
+
+function showIdentifierWarning(message) {
+  if (!identifierErrorEl) return;
+  identifierErrorEl.textContent = message;
+  identifierErrorEl.classList.add('visible');
+}
+
+async function runIdentifierCheck(raw) {
+  const seq = ++identifierCheckSeq;
+  identifierCheckAbort?.abort();
+  const controller = new AbortController();
+  identifierCheckAbort = controller;
+
+  try {
+    const status = await peekPassportStatus(raw, { signal: controller.signal });
+    if (seq !== identifierCheckSeq) return; // a newer keystroke has since started its own check
+
+    if (!status.type) {
+      setPasswordStepVisible(false);
+      clearIdentifierWarning();
+      return;
+    }
+
+    if (!status.exists) {
+      setPasswordStepVisible(false);
+      showIdentifierWarning(
+        `We couldn\u2019t find a Rands Passport for that ${status.type === 'email' ? 'email address' : 'number'}.`,
+      );
+      return;
+    }
+
+    clearIdentifierWarning();
+    setPasswordStepVisible(Boolean(status.passportSet && status.hasIdentifier));
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
+    if (seq !== identifierCheckSeq) return;
+    // Network hiccup — fail quiet rather than blocking typing with a warning
+    // that isn't actually about the account.
+    setPasswordStepVisible(false);
+    clearIdentifierWarning();
+  }
+}
+
+function handleIdentifierInput() {
+  const raw = emailInput?.value ?? '';
+  clearTimeout(identifierCheckTimer);
+
+  if (!looksLikeCompleteIdentifier(raw)) {
+    identifierCheckSeq++; // invalidate any in-flight/pending check
+    identifierCheckAbort?.abort();
+    setPasswordStepVisible(false);
+    clearIdentifierWarning();
+    return;
+  }
+
+  identifierCheckTimer = setTimeout(() => runIdentifierCheck(raw), 400);
+}
+
+emailInput?.addEventListener('input', handleIdentifierInput);
+setPasswordStepVisible(false);
+handleIdentifierInput(); // covers browser autofill landing a value before any 'input' event
 
 // ── Event listeners ────────────────────────────────────────────────────────
 loginBtn?.addEventListener('click', handleLogin);
