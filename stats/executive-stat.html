@@ -218,6 +218,7 @@
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-crown"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">VVIP Revenue</div></div>
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-smoking"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Shisha Revenue</div></div>
         <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-utensils"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Rands Smart Counter</div></div>
+        <div class="kpi-card"><div class="kpi-header"><div class="kpi-icon"><i class="fas fa-wine-bottle"></i></div></div><div class="kpi-value" style="font-size:1rem;color:var(--muted);">Loading...</div><div class="kpi-label">Pre-Order Revenue</div></div>
     </div>
 
     <!-- REVENUE BREAKDOWN BY DEPARTMENT (locker bar removed) -->
@@ -306,6 +307,41 @@
             </div>
         </div>
     </div>
+
+    <!-- NEW SYSTEMS: MY VAULT / VVIP TABS / TABLE BOOKINGS -->
+    <div class="chart-row" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-vault"></i> My Vault</div>
+            </div>
+            <div id="vaultStats" class="stats-grid">
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Pending Approval</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Currently Stored</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Stored Value</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Collected (All Time)</div></div>
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-crown"></i> VVIP Tabs</div>
+            </div>
+            <div id="vvipTabStats" class="stats-grid">
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Active Tabs</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Total Tab Balance</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Frozen Tabs</div></div>
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title"><i class="fas fa-chair"></i> Table Bookings</div>
+            </div>
+            <div id="tableBookingStats" class="stats-grid">
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Reserved</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Checked In</div></div>
+                <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Revenue Paid</div></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script type="module">
@@ -321,12 +357,15 @@
 
     // ─── DATA STATE (locker revenue still tracked but not shown in revenue contexts) ───
     let revenueData = {
-        events: 0, vvip: 0, shisha: 0, lockers: 0, orders: 0, butcher: 0, smartCounter: 0
+        events: 0, vvip: 0, shisha: 0, lockers: 0, orders: 0, butcher: 0, smartCounter: 0, preorder: 0
     };
     let activeSessions = { shisha: 0, lockers: 0, vvipTables: 0, staffOnShift: 0 };
     let operationalMetrics = { totalCustomers: 0, activeWallets: 0, pendingOrders: 0, readyPickup: 0 };
     let customerMetrics = { totalWalletBalance: 0, avgWalletBalance: 0, uniqueUsers: 0, newToday: 0 };
     let workforceMetrics = { totalStaff: 0, activeStaff: 0, onShift: 0, todayHours: 0 };
+    let vaultMetrics = { pendingApproval: 0, stored: 0, storedValue: 0, collected: 0 };
+    let vvipTabMetrics = { active: 0, totalBalance: 0, frozen: 0 };
+    let tableBookingMetrics = { reserved: 0, checkedIn: 0, revenue: 0 };
     let revenueTrend = Array(30).fill(0);
     let dataLoaded = false;
 
@@ -335,30 +374,45 @@
         let hasData = false;
 
         try {
-            // ── ORDERS (Smart Counter + Butcher) ──
+            // ── ORDERS (Smart Counter + Butcher POS + Pre-Order) ──
+            // NOTE: Pre-Order rows use source='preorder' with status values
+            // 'PAID' / 'READY_FOR_PICKUP' / 'COLLECTED' (distinct casing from the
+            // legacy POS status set). Both are queried here so nothing is missed.
             const { data: orders, error: orderErr } = await supabase
                 .from('orders')
-                .select('total, vendor, status, created_at');
+                .select('total, total_amount, vendor, source, status, created_at, order_date');
             if (!orderErr && orders && orders.length) {
                 hasData = true;
+                const orderTotal = (o) => (o.total ?? o.total_amount ?? 0);
+                const isPreorder = (o) => o.source === 'preorder';
+
                 revenueData.smartCounter = orders
-                    .filter(o => o.vendor === 'Rands Smart Counter' && (o.status === 'completed' || o.status === 'collected'))
-                    .reduce((s, o) => s + (o.total || 0), 0);
+                    .filter(o => !isPreorder(o) && o.vendor === 'Rands Smart Counter' && (o.status === 'completed' || o.status === 'collected'))
+                    .reduce((s, o) => s + orderTotal(o), 0);
                 revenueData.butcher = orders
-                    .filter(o => o.vendor === 'The Butcher Shop' && (o.status === 'completed' || o.status === 'collected'))
-                    .reduce((s, o) => s + (o.total || 0), 0);
-                revenueData.orders = revenueData.smartCounter + revenueData.butcher;
-                
-                operationalMetrics.pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'placed').length;
-                operationalMetrics.readyPickup = orders.filter(o => o.status === 'ready').length;
-                
-                // Revenue trend (last 30 days)
+                    .filter(o => !isPreorder(o) && o.vendor === 'The Butcher Shop' && (o.status === 'completed' || o.status === 'collected'))
+                    .reduce((s, o) => s + orderTotal(o), 0);
+                revenueData.preorder = orders
+                    .filter(o => isPreorder(o) && o.status === 'COLLECTED')
+                    .reduce((s, o) => s + orderTotal(o), 0);
+                revenueData.orders = revenueData.smartCounter + revenueData.butcher + revenueData.preorder;
+
+                operationalMetrics.pendingOrders = orders.filter(o =>
+                    o.status === 'pending' || o.status === 'placed' || o.status === 'PAID'
+                ).length;
+                operationalMetrics.readyPickup = orders.filter(o =>
+                    o.status === 'ready' || o.status === 'READY_FOR_PICKUP'
+                ).length;
+
+                // Revenue trend (last 30 days) — uses order_date when present
+                // (Pre-Order sets this on checkout), falling back to created_at.
                 revenueTrend = Array(30).fill(0);
                 orders.forEach(o => {
-                    if (o.status === 'completed' || o.status === 'collected') {
-                        const daysAgo = Math.floor((Date.now() - new Date(o.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                    if (o.status === 'completed' || o.status === 'collected' || o.status === 'COLLECTED') {
+                        const ts = o.order_date || o.created_at;
+                        const daysAgo = Math.floor((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24));
                         if (daysAgo >= 0 && daysAgo < 30) {
-                            revenueTrend[29 - daysAgo] += (o.total || 0);
+                            revenueTrend[29 - daysAgo] += orderTotal(o);
                         }
                     }
                 });
@@ -376,16 +430,67 @@
                 activeSessions.vvipTables = vvipBookings.filter(b => b.status === 'checked_in' || b.status === 'seated').length;
             }
 
-            // ── SHISHA SESSIONS ──
-            const { data: shishaSessions, error: shishaErr } = await supabase
-                .from('shisha_sessions')
-                .select('total_amount, status');
-            if (!shishaErr && shishaSessions && shishaSessions.length) {
+            // ── SHISHA / HOOKAH ──
+            // The legacy shisha_sessions table tracked its own revenue, but the
+            // live hookah_sessions/hookah_devices tables have no revenue column —
+            // shisha is now sold as regular order_items (product_type='shisha').
+            // Occupancy comes from hookah_sessions; revenue comes from orders.
+            const { data: hookahSessions, error: hookahErr } = await supabase
+                .from('hookah_sessions')
+                .select('status');
+            if (!hookahErr && hookahSessions && hookahSessions.length) {
                 hasData = true;
-                revenueData.shisha = shishaSessions
-                    .filter(s => s.status === 'active' || s.status === 'refill' || s.status === 'expired')
-                    .reduce((sum, s) => sum + (s.total_amount || 0), 0);
-                activeSessions.shisha = shishaSessions.filter(s => s.status === 'active' || s.status === 'refill').length;
+                activeSessions.shisha = hookahSessions.filter(s => s.status === 'active').length;
+            }
+
+            const { data: shishaItems, error: shishaItemErr } = await supabase
+                .from('order_items')
+                .select('subtotal, product_type, order_id, orders!inner(status)')
+                .eq('product_type', 'shisha');
+            if (!shishaItemErr && shishaItems && shishaItems.length) {
+                hasData = true;
+                revenueData.shisha = shishaItems
+                    .filter(i => ['completed', 'collected', 'COLLECTED'].includes(i.orders?.status))
+                    .reduce((sum, i) => sum + (i.subtotal || 0), 0);
+            }
+
+            // ── MY VAULT ──
+            const { data: vaultHoldings, error: vaultErr } = await supabase
+                .from('vault_holdings')
+                .select('status, total_value');
+            if (!vaultErr && vaultHoldings && vaultHoldings.length) {
+                hasData = true;
+                vaultMetrics.pendingApproval = vaultHoldings.filter(v =>
+                    v.status === 'PENDING_APPROVAL' || v.status === 'PENDING_COLLECTION_APPROVAL'
+                ).length;
+                const storedRows = vaultHoldings.filter(v => v.status === 'STORED' || v.status === 'READY_FOR_COLLECTION');
+                vaultMetrics.stored = storedRows.length;
+                vaultMetrics.storedValue = storedRows.reduce((s, v) => s + (v.total_value || 0), 0);
+                vaultMetrics.collected = vaultHoldings.filter(v => v.status === 'COLLECTED').length;
+            }
+
+            // ── VVIP TAB ACCOUNTS ──
+            const { data: vvipTabs, error: vvipTabErr } = await supabase
+                .from('vvip_tab_accounts')
+                .select('status, balance');
+            if (!vvipTabErr && vvipTabs && vvipTabs.length) {
+                hasData = true;
+                vvipTabMetrics.active = vvipTabs.filter(t => t.status === 'active').length;
+                vvipTabMetrics.frozen = vvipTabs.filter(t => t.status === 'frozen').length;
+                vvipTabMetrics.totalBalance = vvipTabs.reduce((s, t) => s + (t.balance || 0), 0);
+            }
+
+            // ── TABLE BOOKINGS ──
+            const { data: tableBookings, error: tableBookingErr } = await supabase
+                .from('table_bookings')
+                .select('status, payment_status, amount_paid');
+            if (!tableBookingErr && tableBookings && tableBookings.length) {
+                hasData = true;
+                tableBookingMetrics.reserved = tableBookings.filter(b => b.status === 'reserved').length;
+                tableBookingMetrics.checkedIn = tableBookings.filter(b => b.status === 'checked_in').length;
+                tableBookingMetrics.revenue = tableBookings
+                    .filter(b => b.payment_status === 'paid')
+                    .reduce((s, b) => s + (b.amount_paid || 0), 0);
             }
 
             // ── LOCKERS (still track value for occupancy, but not used in revenue) ──
@@ -430,10 +535,16 @@
             }
 
             // ── STAFF SHIFTS ──
-            const { data: shifts, error: shiftErr } = await supabase
-                .from('staff_shifts')
-                .select('staff_id, status, hours_worked, login_time');
-            if (!shiftErr && shifts && shifts.length) {
+            // Two shift tables exist in the DB (staff_shifts and a newer
+            // staff_shifts_v2). Whichever your clock-in flow actually writes to,
+            // both are queried and merged here so this KPI can't silently go stale
+            // again if/when the app switches over.
+            const [{ data: shiftsV1, error: shiftV1Err }, { data: shiftsV2, error: shiftV2Err }] = await Promise.all([
+                supabase.from('staff_shifts').select('staff_id, status, hours_worked, login_time'),
+                supabase.from('staff_shifts_v2').select('staff_id, status, hours_worked, login_time')
+            ]);
+            const shifts = [...(shiftV1Err ? [] : (shiftsV1 || [])), ...(shiftV2Err ? [] : (shiftsV2 || []))];
+            if (shifts.length) {
                 hasData = true;
                 workforceMetrics.onShift = shifts.filter(s => s.status === 'active').length;
                 const today = new Date().toISOString().split('T')[0];
@@ -485,6 +596,7 @@
 
     // Hero KPI: total revenue does NOT include lockers
     function renderHeroKPI() {
+        // revenueData.orders already includes smartCounter + butcher + preorder
         const totalRevenue = revenueData.events + revenueData.vvip + revenueData.shisha + revenueData.orders;
         
         const heroItems = [
@@ -492,7 +604,8 @@
             { icon: "fa-shopping-cart", label: "Active Orders", value: operationalMetrics.pendingOrders + operationalMetrics.readyPickup, sub: `${operationalMetrics.readyPickup} ready` },
             { icon: "fa-crown", label: "VVIP Revenue", value: fmtR(revenueData.vvip) },
             { icon: "fa-smoking", label: "Shisha Revenue", value: fmtR(revenueData.shisha), sub: `${activeSessions.shisha} active sessions` },
-            { icon: "fa-utensils", label: "Rands Smart Counter", value: fmtR(revenueData.orders) }
+            { icon: "fa-utensils", label: "Rands Smart Counter", value: fmtR(revenueData.smartCounter) },
+            { icon: "fa-wine-bottle", label: "Pre-Order Revenue", value: fmtR(revenueData.preorder), sub: `${operationalMetrics.pendingOrders} awaiting fulfillment` }
         ];
         document.getElementById('heroKpiGrid').innerHTML = heroItems.map(k => `
             <div class="kpi-card">
@@ -508,8 +621,8 @@
 
     // Department revenue: remove "Lockers"
     function renderDepartmentRevenue() {
-        const departments = ['Events', 'VVIP', 'Shisha', 'Smart Counter', 'Butcher'];
-        const revenues = [revenueData.events, revenueData.vvip, revenueData.shisha, revenueData.smartCounter, revenueData.butcher];
+        const departments = ['Events', 'VVIP', 'Shisha', 'Smart Counter', 'Butcher', 'Pre-Order'];
+        const revenues = [revenueData.events, revenueData.vvip, revenueData.shisha, revenueData.smartCounter, revenueData.butcher, revenueData.preorder];
         
         const ctx = document.getElementById('departmentRevenueChart').getContext('2d');
         if (charts.department) charts.department.destroy();
@@ -566,7 +679,9 @@
             { name: 'VVIP Packages', revenue: revenueData.vvip, icon: 'fa-crown' },
             { name: 'Shisha Sessions', revenue: revenueData.shisha, icon: 'fa-smoking' },
             { name: 'Smart Counter', revenue: revenueData.smartCounter, icon: 'fa-beer-mug-empty' },
-            { name: 'Butcher Shop', revenue: revenueData.butcher, icon: 'fa-drumstick-bite' }
+            { name: 'Butcher Shop', revenue: revenueData.butcher, icon: 'fa-drumstick-bite' },
+            { name: 'Pre-Order', revenue: revenueData.preorder, icon: 'fa-wine-bottle' },
+            { name: 'Table Bookings', revenue: tableBookingMetrics.revenue, icon: 'fa-chair' }
         ].sort((a, b) => b.revenue - a.revenue);
         
         const container = document.getElementById('topRevenueStreams');
@@ -603,13 +718,22 @@
         if (customerMetrics.newToday > 0) {
             activities.push({ type: 'customer', title: 'New Wallets Today', detail: `${customerMetrics.newToday} new wallets created`, time: 'today', amount: 0 });
         }
+        if (vaultMetrics.pendingApproval > 0) {
+            activities.push({ type: 'vault', title: 'Vault Approvals Pending', detail: `${vaultMetrics.pendingApproval} requests awaiting staff review`, time: 'now', amount: 0 });
+        }
+        if (vvipTabMetrics.active > 0) {
+            activities.push({ type: 'vvip', title: 'Active VVIP Tabs', detail: `${vvipTabMetrics.active} tabs open, ${fmtR(vvipTabMetrics.totalBalance)} balance`, time: 'now', amount: 0 });
+        }
+        if (tableBookingMetrics.reserved > 0) {
+            activities.push({ type: 'booking', title: 'Reserved Tables', detail: `${tableBookingMetrics.reserved} tables awaiting check-in`, time: 'now', amount: 0 });
+        }
         
         const container = document.getElementById('unifiedActivity');
         if (!activities.length) {
             container.innerHTML = '<div class="empty-state"><i class="fas fa-stream"></i><p>No recent activity.</p></div>';
             return;
         }
-        const iconMap = { order: 'fa-shopping-cart', shisha: 'fa-smoking', locker: 'fa-wine-bottle', staff: 'fa-user-check', customer: 'fa-user-plus' };
+        const iconMap = { order: 'fa-shopping-cart', shisha: 'fa-smoking', locker: 'fa-wine-bottle', staff: 'fa-user-check', customer: 'fa-user-plus', vault: 'fa-vault', vvip: 'fa-crown', booking: 'fa-chair' };
         container.innerHTML = activities.map(a => `
             <div class="activity-item">
                 <div class="activity-badge"><i class="fas ${iconMap[a.type] || 'fa-circle'}"></i></div>
@@ -636,6 +760,31 @@
         `;
     }
 
+    function renderVaultSummary() {
+        document.getElementById('vaultStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${vaultMetrics.pendingApproval}</div><div class="stat-label">Pending Approval</div></div>
+            <div class="stat-card"><div class="stat-number">${vaultMetrics.stored}</div><div class="stat-label">Currently Stored</div></div>
+            <div class="stat-card"><div class="stat-number">${fmtR(vaultMetrics.storedValue)}</div><div class="stat-label">Stored Value</div></div>
+            <div class="stat-card"><div class="stat-number">${vaultMetrics.collected}</div><div class="stat-label">Collected (All Time)</div></div>
+        `;
+    }
+
+    function renderVvipTabSummary() {
+        document.getElementById('vvipTabStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${vvipTabMetrics.active}</div><div class="stat-label">Active Tabs</div></div>
+            <div class="stat-card"><div class="stat-number">${fmtR(vvipTabMetrics.totalBalance)}</div><div class="stat-label">Total Tab Balance</div></div>
+            <div class="stat-card"><div class="stat-number">${vvipTabMetrics.frozen}</div><div class="stat-label">Frozen Tabs</div></div>
+        `;
+    }
+
+    function renderTableBookingSummary() {
+        document.getElementById('tableBookingStats').innerHTML = `
+            <div class="stat-card"><div class="stat-number">${tableBookingMetrics.reserved}</div><div class="stat-label">Reserved</div></div>
+            <div class="stat-card"><div class="stat-number">${tableBookingMetrics.checkedIn}</div><div class="stat-label">Checked In</div></div>
+            <div class="stat-card"><div class="stat-number">${fmtR(tableBookingMetrics.revenue)}</div><div class="stat-label">Revenue Paid</div></div>
+        `;
+    }
+
     function renderAllDashboards() {
         renderHeroKPI();
         renderDepartmentRevenue();
@@ -646,6 +795,9 @@
         renderUnifiedActivity();
         renderWorkforceSummary();
         renderCustomerMetrics();
+        renderVaultSummary();
+        renderVvipTabSummary();
+        renderTableBookingSummary();
     }
 
     // ─── TIME FILTER HANDLERS ───
@@ -662,13 +814,18 @@
     function setupRealtime() {
         supabase.channel('executive-analytics')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadExecutiveData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => loadExecutiveData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_bookings' }, () => loadExecutiveData())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'shisha_sessions' }, () => loadExecutiveData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'hookah_sessions' }, () => loadExecutiveData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'lockers' }, () => loadExecutiveData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => loadExecutiveData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadExecutiveData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, () => loadExecutiveData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_shifts' }, () => loadExecutiveData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_shifts_v2' }, () => loadExecutiveData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vault_holdings' }, () => loadExecutiveData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'vvip_tab_accounts' }, () => loadExecutiveData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'table_bookings' }, () => loadExecutiveData())
             .subscribe();
     }
 
