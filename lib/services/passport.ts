@@ -346,29 +346,59 @@ export async function setPassportKey(
   }
 
   const confirmField = identifierType === 'email' ? 'email_confirm' : 'phone_confirm';
+
+  // If the profile already has the OTHER identifier on file (e.g. WhatsApp
+  // registration captured both email and phone), attach it in the same
+  // create-user call below instead of waiting for a follow-up login to
+  // trigger a second "attach + OTP" round. Both channels are already
+  // established as belonging to this customer by the time we get here —
+  // phone via WhatsApp, and any email captured alongside it during that
+  // same registration — so a later OTP wouldn't be proving anything new.
+  // This is what avoids customers seeing a second "set up your Passport
+  // Key" prompt the first time they log in with whichever identifier they
+  // didn't use for initial setup.
+  const otherType: IdentifierType = identifierType === 'email' ? 'phone' : 'email';
+  const otherConfirmField = otherType === 'email' ? 'email_confirm' : 'phone_confirm';
+  const otherValueRaw = otherType === 'email' ? profile.email : profile.phone;
+  const otherValue = otherValueRaw ? normalizeIdentifier(otherType, otherValueRaw) : null;
+
   let authUserId: string;
 
   if (!profile.auth_user_id) {
     // No auth identity at all yet for this profile — create one.
+    const buildPayload = (includeOther: boolean) => ({
+      [identifierType]: identifierValue,
+      password,
+      [confirmField]: true,
+      ...(includeOther && otherValue ? { [otherType]: otherValue, [otherConfirmField]: true } : {}),
+      user_metadata: {
+        name: profile.name,
+        surname: profile.surname,
+        // Always include the profile's known phone, even when the
+        // identifier being attached is email. handle_new_auth_user()
+        // only auto-links this new auth user to our existing profile
+        // (found via profileId, above) when it can match by phone; without
+        // this, an email-identifier signup gives the trigger nothing to
+        // match on, so it falls through to inserting a brand-new profiles
+        // row for the same auth user — which then collides with our own
+        // update below, since auth_user_id is unique per profile.
+        phone: profile.phone,
+      },
+    });
+
     try {
-      const { data, error: createError } = await admin.auth.admin.createUser({
-        [identifierType]: identifierValue,
-        password,
-        [confirmField]: true,
-        user_metadata: {
-          name: profile.name,
-          surname: profile.surname,
-          // Always include the profile's known phone, even when the
-          // identifier being attached is email. handle_new_auth_user()
-          // only auto-links this new auth user to our existing profile
-          // (found via profileId, above) when it can match by phone; without
-          // this, an email-identifier signup gives the trigger nothing to
-          // match on, so it falls through to inserting a brand-new profiles
-          // row for the same auth user — which then collides with our own
-          // update below, since auth_user_id is unique per profile.
-          phone: profile.phone,
-        },
-      } as never);
+      let { data, error: createError } = await admin.auth.admin.createUser(buildPayload(true) as never);
+
+      if (createError && otherValue && isIdentifierAlreadyRegisteredError(createError)) {
+        // The conflict may belong to the OTHER identifier (e.g. stale data
+        // pointing some unrelated auth user at this email/phone) rather
+        // than the one actually being verified right now. Don't block this
+        // setup over that — retry with just the identifier being verified;
+        // the other one can still be attached later via the normal
+        // "attach a second identifier" path if the conflict clears up.
+        ({ data, error: createError } = await admin.auth.admin.createUser(buildPayload(false) as never));
+      }
+
       if (createError) throw createError;
       if (!data.user) throw new Error('No user returned from auth creation.');
       authUserId = data.user.id;
