@@ -1738,10 +1738,12 @@
     };
 
     window.closeEvent = function() {
-      // "Close Event" navigates back to the Event Manager dashboard — it does
-      // not change the event's status in the database. Use the ⋮ actions in
-      // Event Manager if you actually want to mark the event as completed.
-      window.location.href = 'event-admin.html';
+      // "Close Event" navigates back into the Command Centre dashboard with
+      // the Event Management module selected — Event Manager normally lives
+      // iframed inside dashboard.html, so opening event-admin.html directly
+      // would show it unframed (no sidebar/topbar). This does not change
+      // the event's status in the database.
+      window.location.href = 'dashboard.html?module=event_management';
     };
 
     // ─── FULLSCREEN ───
