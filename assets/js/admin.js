@@ -28,9 +28,9 @@
         return data;
     }
 
-    let charts = {}, currentEditingTemplate = null, currentEditingIntent = null;
+    let charts = {}, currentEditingTemplate = null;
     let selectedConversationId = null;
-    let allConversations = [], allAIRequests = [], allSessions = [], allTemplates = [], allIntents = [], aiSettings = {};
+    let allConversations = [], allAIRequests = [], allSessions = [], allTemplates = [], aiSettings = {};
     let allMessagesFlat = []; // flattened messages from the conversations join, used for dashboard stats
     const messagesCache = new Map(); // conversation_id -> messages[] (full row set once a conversation has been opened)
     const profilesCache = new Map(); // customer_id -> profiles row
@@ -255,7 +255,6 @@
     async function loadAIRequests() { try { const {data,error} = await supabase.from('ai_requests').select('*').order('created_at',{ascending:false}).limit(300); if(error) throw error; allAIRequests = data||[]; } catch(e) { allAIRequests=[]; } }
     async function loadActiveSessions() { try { const {data,error} = await supabase.from('conversation_sessions').select('*').order('last_message_at',{ascending:false}).limit(50); if(error) throw error; allSessions = data||[]; } catch(e) { allSessions=[]; } }
     async function loadTemplates() { try { const {data,error} = await supabase.from('whatsapp_templates').select('*').order('template_name'); if(error) throw error; allTemplates = data||[]; } catch(e) { allTemplates=[]; } }
-    async function loadIntents() { try { const {data,error} = await supabase.from('ai_intents').select('*').order('intent_name'); if(error) throw error; allIntents = data||[]; } catch(e) { allIntents=[]; } }
     async function loadAISettings() { try { const {data,error} = await supabase.from('ai_settings').select('*').eq('id','default').maybeSingle(); if(error) throw error; aiSettings = data||{model:'claude',temperature:0.3,max_tokens:500,enable_ai:true}; } catch(e) { aiSettings={model:'claude',temperature:0.3,max_tokens:500,enable_ai:true}; } }
 
     async function updateConversationLastMessage(conversationId, iso) {
@@ -426,15 +425,9 @@
             document.getElementById('cpStatusRow').innerHTML = '';
             document.getElementById('cpFieldPhone').textContent='—'; document.getElementById('cpFirstContact').textContent='—'; document.getElementById('cpTotalMsgs').textContent='—';
             document.getElementById('cpTagsRow').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
-            document.getElementById('aiSuggestedList').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
-            document.getElementById('aiLastAction').querySelector('.intent-row').innerHTML = '<span class="intent-name">—</span>';
             const emailRow = document.getElementById('cpEmailRow'); emailRow.classList.add('cp-disabled'); document.getElementById('cpFieldEmail').textContent = 'Not connected';
             document.getElementById('cpInsightsGrid').innerHTML = '';
             document.getElementById('cpTimeline').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
-            document.getElementById('cpNotesBox').value = ''; document.getElementById('cpNotesBox').disabled = true;
-            document.getElementById('cpInternalTagsRow').innerHTML = '';
-            document.getElementById('cpPriorityRow').querySelectorAll('.priority-opt').forEach(el => el.classList.remove('active'));
-            ['aiConfidenceBadge','aiRoutingDecision','aiCurrentHandler','aiResponseTime','aiModelUsed','aiTokenCount','aiHumanNeeded'].forEach(id => document.getElementById(id).textContent = '—');
             return;
         }
 
@@ -474,35 +467,9 @@
             ? topIntents.map(([name,count]) => `<span class="cp-chip${count>2?' tone-red':''}">${esc(name.replace(/_/g,' '))} · ${count}</span>`).join('')
             : '<span class="cp-empty-note">No intent history yet</span>';
 
-        // AI status for this conversation
+        // AI state — no longer shown in the panel, but still needed for the "needs human" badge in the chat list
         const aiOn = aiSettings.enable_ai && isAIEnabled(c);
-        document.getElementById('aiGlobalSwitch').classList.toggle('on', aiOn);
-        document.getElementById('aiStatusDot').className = 'ai-status-dot' + (aiOn ? '' : ' off');
-        document.getElementById('aiStatusText').textContent = !aiSettings.enable_ai ? 'AI disabled globally' : (!isAIEnabled(c) ? 'Paused — human handling' : 'AI enabled');
-        document.getElementById('aiTakeOverLabel').textContent = !isAIEnabled(c) ? 'Resume AI' : 'Take Over';
-        document.getElementById('aiTakeOverBtn').querySelector('i').className = !isAIEnabled(c) ? 'fas fa-robot' : 'fas fa-hand-paper';
-
-        // Last AI action for this phone, from ai_requests
         const lastReq = allAIRequests.find(r => r.phone === c.phone);
-        const actionBox = document.getElementById('aiLastAction');
-        if (lastReq) {
-            actionBox.querySelector('.intent-row').innerHTML = `<span class="intent-name">${esc((lastReq.intent||'unknown').replace(/_/g,' '))}</span><span class="ai-result-pill ${lastReq.success?'success':'fail'}">${lastReq.success?'Success':'Failed'}</span>`;
-            let tsLine = actionBox.querySelector('.ts');
-            if (!tsLine) { tsLine = document.createElement('div'); tsLine.className = 'ts'; actionBox.appendChild(tsLine); }
-            tsLine.textContent = fmtDate(lastReq.created_at);
-        } else {
-            actionBox.querySelector('.intent-row').innerHTML = '<span class="intent-name" style="color:var(--muted);font-weight:400;">No AI activity yet</span>';
-            const tsLine = actionBox.querySelector('.ts'); if (tsLine) tsLine.remove();
-        }
-
-        // Suggested replies — active templates matching this conversation's current intent
-        const topIntent = currentIntent || topIntents[0]?.[0];
-        const matches = allTemplates.filter(t => t.active && (!topIntent || t.template_key === topIntent || (t.template_name||'').toLowerCase().includes(topIntent||''))).slice(0,4);
-        const fallback = allTemplates.filter(t => t.active).slice(0,3);
-        const list = matches.length ? matches : fallback;
-        document.getElementById('aiSuggestedList').innerHTML = list.length
-            ? list.map(t => `<div class="ai-suggested-item" onclick="useSuggestedReply('${esc(t.template_key||'').replace(/'/g,"\\'")}')"><span class="txt">${esc(t.content||t.template_name||'')}</span><i class="fas fa-arrow-up-right-from-square"></i></div>`).join('')
-            : '<span class="cp-empty-note">No active templates yet</span>';
 
         const needsHuman = !!(lastReq && lastReq.success === false);
         renderCpExtras(c, lastReq, needsHuman, aiOn);
@@ -528,17 +495,6 @@
         ];
         document.getElementById('cpInsightsGrid').innerHTML = insights.map(i => `<div class="insight-card placeholder" title="Placeholder — connect the matching table to make this live"><div class="ic-val"><i class="fas ${i.icon}"></i>${esc(String(i.val))}</div><div class="ic-label">${esc(i.label)}</div></div>`).join('');
 
-        // Internal notes (per-conversation, localStorage — prototype only)
-        const notesBox = document.getElementById('cpNotesBox');
-        notesBox.disabled = false;
-        notesBox.value = getNote(c.id);
-        notesBox.dataset.convId = c.id;
-
-        // Priority + internal tags (localStorage — prototype only)
-        const priority = getPriority(c.id);
-        document.getElementById('cpPriorityRow').querySelectorAll('.priority-opt').forEach(el => el.classList.toggle('active', el.dataset.p === priority));
-        renderInternalTags(c.id);
-
         // Conversation timeline — built from real message/state data plus intelligently-labelled placeholders
         const msgs = getMsgs(c.id);
         const first = msgs[0];
@@ -554,79 +510,7 @@
         items.push({ title: 'Wallet Top-up', time: 'Placeholder — wallet not connected', real: false });
         if (getConvStatus(c) === 'closed') items.push({ title: 'Conversation Closed', time: fullTimestamp(state?.updated_at), real: true });
         document.getElementById('cpTimeline').innerHTML = items.map(it => `<div class="timeline-item ${it.real?'':'tl-muted'}"><div class="tl-dot-col"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-content"><div class="tl-title">${esc(it.title)}</div><div class="tl-time">${esc(it.time||'—')}</div></div></div>`).join('');
-
-        // AI panel extended fields — grounded where data exists, clearly-labelled mock elsewhere
-        const confidence = lastReq ? (lastReq.success ? seededVal(seed+20,78,97) : seededVal(seed+21,22,54)) : null;
-        const confBand = confidence===null ? null : (confidence>=75?'green':confidence>=50?'yellow':'red');
-        document.getElementById('aiConfidenceBadge').innerHTML = confidence===null ? '—' : `<span class="conf-badge ${confBand}">${confidence}%</span>`;
-        document.getElementById('aiRoutingDecision').textContent = needsHuman ? 'Escalate to human' : (aiOn ? 'Handle with AI' : 'Human handling');
-        document.getElementById('aiCurrentHandler').textContent = aiOn ? 'AI Concierge' : 'Human Agent';
-        document.getElementById('aiResponseTime').textContent = lastReq ? `${(seededVal(seed+22,4,28)/10).toFixed(1)}s` : '—';
-        document.getElementById('aiModelUsed').textContent = aiSettings.model || 'claude';
-        document.getElementById('aiTokenCount').textContent = lastReq ? seededVal(seed+23,120,980) : '—';
-        document.getElementById('aiHumanNeeded').innerHTML = needsHuman ? '<span style="color:var(--red);font-weight:600;">Yes</span>' : '<span style="color:#4ade80;font-weight:600;">No</span>';
-
-        // AI debug panel — realistic mock data, never wired to a live backend yet
-        document.getElementById('dbgIntent').textContent = getCurrentIntent(c) || (lastReq?.intent) || 'general_inquiry';
-        document.getElementById('dbgConfidence').textContent = confidence===null ? 'n/a' : `${confidence}%`;
-        document.getElementById('dbgPrompt').textContent = `"${(msgs[msgs.length-1]?.message_text || 'Hi, I need help with...').slice(0,90)}"`;
-        document.getElementById('dbgMemory').textContent = `Last ${Math.min(msgs.length,10)} messages`;
-        document.getElementById('dbgTools').textContent = needsHuman ? 'escalate_to_human()' : 'lookup_order(), check_wallet_balance()';
-        document.getElementById('dbgExecTime').textContent = `${seededVal(seed+24,180,940)}ms`;
-        document.getElementById('dbgResponse').textContent = lastReq ? (lastReq.success ? 'Response generated and sent successfully.' : 'Generation failed — handed off to a human agent.') : 'No AI activity recorded yet.';
-        document.getElementById('dbgRouting').textContent = needsHuman ? 'human_handoff' : 'ai_direct_reply';
     }
-
-    let notesSaveTimer = null;
-    window.onNotesInput = function() {
-        const box = document.getElementById('cpNotesBox');
-        const convId = box.dataset.convId;
-        if (!convId) return;
-        clearTimeout(notesSaveTimer);
-        notesSaveTimer = setTimeout(() => {
-            setNote(convId, box.value);
-            const hint = document.getElementById('cpNotesSaved');
-            hint.classList.add('show');
-            setTimeout(() => hint.classList.remove('show'), 1200);
-        }, 500);
-    };
-
-    window.setConvPriority = function(p) {
-        if (!selectedConversationId) return;
-        setPriority(selectedConversationId, p);
-        document.getElementById('cpPriorityRow').querySelectorAll('.priority-opt').forEach(el => el.classList.toggle('active', el.dataset.p === p));
-        renderChatList(document.getElementById('chatSearch').value);
-        showToast(`Priority set to ${p}`);
-    };
-
-    function renderInternalTags(convId) {
-        const tags = getTags(convId);
-        document.getElementById('cpInternalTagsRow').innerHTML = tags.length
-            ? tags.map((t,i) => `<span class="cp-tag-chip">${esc(t)}<button onclick="removeInternalTag(${i})" title="Remove"><i class="fas fa-times"></i></button></span>`).join('')
-            : '<span class="cp-empty-note">No internal tags yet</span>';
-    }
-    window.addInternalTag = function() {
-        if (!selectedConversationId) return;
-        const input = document.getElementById('cpTagInput');
-        const val = input.value.trim();
-        if (!val) return;
-        const tags = getTags(selectedConversationId);
-        if (!tags.includes(val)) { tags.push(val); setTags(selectedConversationId, tags); }
-        input.value = '';
-        renderInternalTags(selectedConversationId);
-    };
-    window.removeInternalTag = function(idx) {
-        if (!selectedConversationId) return;
-        const tags = getTags(selectedConversationId);
-        tags.splice(idx,1);
-        setTags(selectedConversationId, tags);
-        renderInternalTags(selectedConversationId);
-    };
-
-    window.toggleAiDebug = function() {
-        document.getElementById('aiDebugToggle').classList.toggle('open');
-        document.getElementById('aiDebugBody').classList.toggle('open');
-    };
 
     window.useSuggestedReply = function(key) {
         const t = allTemplates.find(t => t.template_key === key);
@@ -974,28 +858,19 @@
         if(charts.ai) charts.ai.destroy();
         charts.ai=new Chart(ctxA,{type:'doughnut',data:{labels:['Successful','Failed'],datasets:[{data:[succ,fail],backgroundColor:['#22c55e','#E30613'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:C.legend,boxWidth:10,font:{size:10}}}}}});
 
-        document.getElementById('dashTemplatesList').innerHTML=allTemplates.slice(0,6).map(t=>`<div class="dash-template-item"><span class="name">${esc(t.template_name||t.template_key)}</span><span class="status ${t.active?'active':''}">${t.active?'Active':'Inactive'}</span></div>`).join('')||'<div style="color:var(--muted);font-size:0.75rem;">No templates</div>';
-        document.getElementById('dashIntentsList').innerHTML=allIntents.slice(0,12).map(i=>`<span class="dash-intent-chip">${esc(i.intent_name)}</span>`).join('')||'<span style="color:var(--muted);font-size:0.75rem;">No intents</span>';
         const s=aiSettings;
         document.getElementById('dashSettingsGrid').innerHTML=`<div class="dash-setting"><div class="val">${s.model||'claude'}</div><div class="label">Model</div></div><div class="dash-setting"><div class="val">${s.temperature||0.3}</div><div class="label">Temperature</div></div><div class="dash-setting"><div class="val">${s.max_tokens||500}</div><div class="label">Max Tokens</div></div><div class="dash-setting"><div class="val" style="color:${s.enable_ai?'#22c55e':'#E30613'}">${s.enable_ai?'ON':'OFF'}</div><div class="label">AI Status</div></div>`;
     }
 
     window.refreshAllData = async function() {
         showToast('Refreshing…');
-        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
+        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadAISettings()]);
         renderChatList(document.getElementById('chatSearch').value);
         if (selectedConversationId) { renderChatMessages(selectedConversationId); updateChatHeader(selectedConversationId); renderCustomerPanel(selectedConversationId); }
         if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashboard();
         showToast('Data refreshed');
     };
 
-    window.openTemplateModal=(id=null)=>{currentEditingTemplate=id;document.getElementById('templateModalTitle').innerText=id?'Edit Template':'Add Template';if(id&&allTemplates){const t=allTemplates.find(tm=>tm.id===id);if(t){document.getElementById('templateName').value=t.template_name||'';document.getElementById('templateKey').value=t.template_key||'';document.getElementById('templateContent').value=t.content||'';document.getElementById('templateStatus').value=t.active?'true':'false';}}else{['templateName','templateKey','templateContent'].forEach(i=>document.getElementById(i).value='');document.getElementById('templateStatus').value='true';}document.getElementById('templateModal').classList.add('active');};
-    window.closeTemplateModal=()=>document.getElementById('templateModal').classList.remove('active');
-    window.saveTemplate=async()=>{const name=document.getElementById('templateName').value.trim(),key=document.getElementById('templateKey').value.trim(),content=document.getElementById('templateContent').value.trim(),active=document.getElementById('templateStatus').value==='true';if(!name||!key||!content){showToast('Name, key and content required',true);return;}try{if(currentEditingTemplate)await supabase.from('whatsapp_templates').update({template_name:name,template_key:key,content,active,updated_at:new Date()}).eq('id',currentEditingTemplate);else await supabase.from('whatsapp_templates').insert({template_key:key,template_name:name,content,active});showToast(currentEditingTemplate?'Template updated':'Template added');closeTemplateModal();await loadTemplates();if(document.getElementById('dashboardOverlay').classList.contains('open'))renderDashboard();}catch(e){showToast(e.message,true);}};
-
-    window.openIntentModal=(id=null)=>{currentEditingIntent=id;document.getElementById('intentModalTitle').innerText=id?'Edit Intent':'Add Intent';if(id&&allIntents){const i=allIntents.find(it=>it.id===id);if(i){document.getElementById('intentName').value=i.intent_name;document.getElementById('intentDescription').value=i.description||'';}}else{document.getElementById('intentName').value='';document.getElementById('intentDescription').value='';}document.getElementById('intentModal').classList.add('active');};
-    window.closeIntentModal=()=>document.getElementById('intentModal').classList.remove('active');
-    window.saveIntent=async()=>{const name=document.getElementById('intentName').value.trim().toLowerCase().replace(/ /g,'_'),description=document.getElementById('intentDescription').value.trim();if(!name){showToast('Intent name required',true);return;}try{if(currentEditingIntent)await supabase.from('ai_intents').update({intent_name:name,description,updated_at:new Date()}).eq('id',currentEditingIntent);else await supabase.from('ai_intents').insert({intent_name:name,description,active:true});showToast(currentEditingIntent?'Intent updated':'Intent added');closeIntentModal();await loadIntents();if(document.getElementById('dashboardOverlay').classList.contains('open'))renderDashboard();}catch(e){showToast(e.message,true);}};
 
     window.openAISettingsModal=()=>{const s=aiSettings;document.getElementById('aiModel').value=s.model||'claude';document.getElementById('aiTemperature').value=s.temperature||0.3;document.getElementById('aiMaxTokens').value=s.max_tokens||500;document.getElementById('aiEnable').value=s.enable_ai?'true':'false';document.getElementById('aiSettingsModal').classList.add('active');};
     window.closeAISettingsModal=()=>document.getElementById('aiSettingsModal').classList.remove('active');
@@ -1074,7 +949,7 @@
     setInterval(()=>{loadAIRequests();loadActiveSessions();loadConversationStates();if(selectedConversationId)renderCustomerPanel(selectedConversationId);},30000);
 
     async function init() {
-        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadIntents(),loadAISettings()]);
+        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadAISettings()]);
         renderChatList('');
         if (allConversations.length) {
             selectedConversationId = allConversations[0].id;
@@ -1085,7 +960,7 @@
             renderCustomerPanel(selectedConversationId);
         }
         setupRealtime();
-        window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.allIntents=allIntents;window.aiSettings=aiSettings;window.conversationStates=stateByPhone;
+        window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.aiSettings=aiSettings;window.conversationStates=stateByPhone;
     }
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.attach-menu') && !e.target.closest('[onclick="toggleAttachMenu()"]')) document.getElementById('attachMenu')?.classList.remove('open');
