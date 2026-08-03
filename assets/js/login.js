@@ -29,6 +29,8 @@
  */
 
 import {
+  signIn,
+  signInWithPhone,
   signInWithGoogle,
   signInWithPasskey,
   isPasskeySupported,
@@ -41,7 +43,8 @@ import {
 import { startPassportFlow } from './passport.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
-const emailInput  = document.getElementById('email');
+const emailInput    = document.getElementById('email');
+const passwordInput = document.getElementById('password');
 const loginBtn      = document.getElementById('loginBtn');
 const loginBtnLabel = document.getElementById('loginBtnLabel');
 const authError     = document.getElementById('authError');
@@ -122,11 +125,22 @@ async function finishLogin(user) {
 // passport.js's panel can both find it.
 window.finishLogin = finishLogin;
 
-// ── STEP 1 (only step): IDENTIFIER ──────────────────────────────────────────
-// The email field is now a generic identifier field — passport.js detects
-// whether what's typed is an email or a phone number and takes it from
-// there (status check, password vs. OTP-setup, sign-in). This function's
-// only job is to grab the raw value and hand off.
+// ── STEP 1: IDENTIFIER (+ optional password) ────────────────────────────────
+// The email field is a generic identifier field (email or phone). Two paths
+// out of it:
+//
+//   • Password typed  → classic direct sign-in via signIn()/signInWithPhone()
+//     straight against Supabase Auth. This is the ONLY path admin and staff
+//     ever use — they are not customers and have nothing to do with
+//     passport.js or its customer-only /api/passport/status check. Any
+//     customer who already has a Passport Key set can also just type it
+//     here and skip the panel entirely.
+//
+//   • Password left blank → passport.js's OTP-based Passport Key flow.
+//     That flow is customer-only: first-time WhatsApp signups who don't
+//     have a password yet, or a customer re-entering to attach a second
+//     identifier. Admin/staff should never hit this branch since they
+//     always type a password.
 function handleLogin() {
   hideAuthError();
 
@@ -136,9 +150,35 @@ function handleLogin() {
     return;
   }
 
+  const password = passwordInput?.value ?? '';
+
+  if (password) {
+    signInDirect(value, password);
+    return;
+  }
+
   setLoading(true, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
   startPassportFlow(value);
   setLoading(false, loginBtn, loginBtnLabel, 'Checking…', 'Continue');
+}
+
+// ── Classic direct sign-in (admin, staff, and password-holding customers) ──
+async function signInDirect(identifier, password) {
+  setLoading(true, loginBtn, loginBtnLabel, 'Signing in…', 'Continue');
+  try {
+    const isEmail = identifier.includes('@');
+    const { user, error } = isEmail
+      ? await signIn(identifier, password)
+      : await signInWithPhone(identifier, password);
+
+    if (error || !user) throw new Error(error || 'Incorrect email/number or password.');
+    await finishLogin(user);
+  } catch (err) {
+    console.error('Direct sign-in error:', err);
+    showAuthError(err.message);
+  } finally {
+    setLoading(false, loginBtn, loginBtnLabel, 'Signing in…', 'Continue');
+  }
 }
 
 // ── GOOGLE ─────────────────────────────────────────────────────────────────
@@ -184,7 +224,7 @@ async function handlePasskeyLogin() {
 loginBtn?.addEventListener('click', handleLogin);
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && document.activeElement === emailInput) {
+  if (e.key === 'Enter' && (document.activeElement === emailInput || document.activeElement === passwordInput)) {
     handleLogin();
   }
 });
