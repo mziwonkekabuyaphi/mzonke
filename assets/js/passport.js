@@ -239,7 +239,9 @@ function codeStepMarkup(errorMsg) {
     <div class="field-group">
       <label class="field-label">${needsPassword ? 'Passport Key Setup' : 'Confirm It\u2019s You'}</label>
       <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:12px;">
-        We sent a 6-digit code over WhatsApp to the number on file. Enter it below to continue.
+        ${needsPassword
+          ? 'We sent a 6-digit code over WhatsApp to the number on file. Enter it below to continue.'
+          : 'You already have a Passport Key \u2014 we just need to confirm this is really you. We sent a 6-digit code over WhatsApp to the number on file, and your existing Passport Key will work here too once it\u2019s linked.'}
       </p>
       <div class="input-wrap">
         <input class="field-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"

@@ -58,6 +58,9 @@ const togglePw   = document.getElementById('togglePw');
 const eyeIcon    = document.getElementById('eyeIcon');
 const eyeOffIcon = document.getElementById('eyeOffIcon');
 
+const passwordStep          = document.getElementById('passwordStep');
+const passwordStepForgotRow = document.getElementById('passwordStepForgotRow');
+
 // ── Error display helpers ──────────────────────────────────────────────────
 function showAuthError(message) {
   if (!authError) return;
@@ -219,6 +222,20 @@ async function handlePasskeyLogin() {
     passkeyBtn.querySelector('.alt-btn-label').textContent = 'Sign in with Passkey';
   }
 }
+
+// ── Progressive disclosure: hide password field until an identifier is
+// being typed. This is a display-only nicety — it doesn't check whether
+// the identifier is known, that happens server-side in passport.js/status
+// once the customer submits. Left blank on submit, an unrecognized or
+// first-time identifier still correctly falls through to the OTP flow.
+function updatePasswordStepVisibility() {
+  const hasValue = Boolean(emailInput?.value?.trim());
+  if (passwordStep)          passwordStep.style.display          = hasValue ? '' : 'none';
+  if (passwordStepForgotRow) passwordStepForgotRow.style.display = hasValue ? '' : 'none';
+}
+
+emailInput?.addEventListener('input', updatePasswordStepVisibility);
+updatePasswordStepVisibility();
 
 // ── Event listeners ────────────────────────────────────────────────────────
 loginBtn?.addEventListener('click', handleLogin);
