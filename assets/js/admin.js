@@ -31,6 +31,7 @@
     let charts = {}, currentEditingTemplate = null;
     let selectedConversationId = null;
     let allConversations = [], allAIRequests = [], allSessions = [], allTemplates = [], aiSettings = {};
+    let allTickets = [], allOrders = [], allVvipBookings = [];
     let allMessagesFlat = []; // flattened messages from the conversations join, used for dashboard stats
     const messagesCache = new Map(); // conversation_id -> messages[] (full row set once a conversation has been opened)
     const profilesCache = new Map(); // customer_id -> profiles row
@@ -257,6 +258,29 @@
     async function loadTemplates() { try { const {data,error} = await supabase.from('whatsapp_templates').select('*').order('template_name'); if(error) throw error; allTemplates = data||[]; } catch(e) { allTemplates=[]; } }
     async function loadAISettings() { try { const {data,error} = await supabase.from('ai_settings').select('*').eq('id','default').maybeSingle(); if(error) throw error; aiSettings = data||{model:'claude',temperature:0.3,max_tokens:500,enable_ai:true}; } catch(e) { aiSettings={model:'claude',temperature:0.3,max_tokens:500,enable_ai:true}; } }
 
+    // Loads tickets/orders/VVIP table bookings so the customer panel can show real Passport Balance,
+    // Recent Tickets, and VVIP Tables data instead of placeholders.
+    async function loadTickets() { try { const {data,error} = await supabase.from('tickets').select('*').order('issued_at',{ascending:false}).limit(500); if(error) throw error; allTickets = data||[]; } catch(e) { allTickets=[]; } }
+    async function loadOrders() { try { const {data,error} = await supabase.from('orders').select('*').order('created_at',{ascending:false}).limit(500); if(error) throw error; allOrders = data||[]; } catch(e) { allOrders=[]; } }
+    async function loadVvipBookings() { try { const {data,error} = await supabase.from('vvip_bookings').select('*').order('created_at',{ascending:false}).limit(500); if(error) throw error; allVvipBookings = data||[]; } catch(e) { allVvipBookings=[]; } }
+
+    // Matches by phone first (every ticket/order/booking row carries a phone column), falling back to
+    // profile_id where the phone field is empty. This is the same matching approach as ai_requests.
+    function getCustomerTickets(c) { return allTickets.filter(t => (c.phone && t.customer_phone === c.phone) || (c.profile_id && t.customer_id === c.profile_id)); }
+    function getCustomerOrders(c) { return allOrders.filter(o => (c.phone && (o.phone === c.phone || o.customer_phone === c.phone)) || (c.profile_id && o.user_id === c.profile_id)); }
+    function getCustomerVvipBookings(c) { return allVvipBookings.filter(b => (c.phone && b.customer_phone === c.phone) || (c.profile_id && b.customer_id === c.profile_id)); }
+    const profilesByPhoneCache = new Map(); // phone -> profiles row (or null), separate cache since profiles are keyed by id elsewhere
+    async function getProfileByPhone(phone) {
+        if (!phone) return null;
+        if (profilesByPhoneCache.has(phone)) return profilesByPhoneCache.get(phone);
+        try {
+            const { data, error } = await supabase.from('profiles').select('*').eq('phone', phone).maybeSingle();
+            if (error) throw error;
+            profilesByPhoneCache.set(phone, data || null);
+            return data || null;
+        } catch (e) { profilesByPhoneCache.set(phone, null); return null; }
+    }
+
     async function updateConversationLastMessage(conversationId, iso) {
         try {
             await supabase.from('conversations').update({ last_message_at: iso, updated_at: iso }).eq('id', conversationId);
@@ -423,15 +447,21 @@
             avatar.textContent = '?'; nameEl.textContent = '—'; phoneEl.textContent = 'No conversation selected';
             document.getElementById('cpOnlineStatus').innerHTML = '<span class="online-dot" style="background:var(--dim);box-shadow:none;"></span> —';
             document.getElementById('cpStatusRow').innerHTML = '';
+            document.getElementById('aiGlobalSwitch').classList.remove('on');
+            document.getElementById('aiStatusDot').className = 'ai-status-dot off';
+            document.getElementById('aiStatusText').textContent = '—';
             document.getElementById('cpFieldPhone').textContent='—'; document.getElementById('cpFirstContact').textContent='—'; document.getElementById('cpTotalMsgs').textContent='—';
             document.getElementById('cpTagsRow').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
             const emailRow = document.getElementById('cpEmailRow'); emailRow.classList.add('cp-disabled'); document.getElementById('cpFieldEmail').textContent = 'Not connected';
+            const balanceRow = document.getElementById('cpPassportBalanceRow'); balanceRow.classList.add('cp-disabled'); document.getElementById('cpFieldPassportBalance').textContent = 'Not connected';
+            const ticketsRow = document.getElementById('cpTicketsRow'); ticketsRow.classList.add('cp-disabled'); document.getElementById('cpFieldTickets').textContent = 'Not connected';
+            const ordersRow = document.getElementById('cpOrdersRow'); ordersRow.classList.add('cp-disabled'); document.getElementById('cpFieldOrders').textContent = 'Not connected';
             document.getElementById('cpInsightsGrid').innerHTML = '';
             document.getElementById('cpTimeline').innerHTML = '<span class="cp-empty-note">No conversation selected</span>';
             return;
         }
 
-        const profile = c.profile_id ? await getProfile(c.profile_id) : null;
+        const profile = (c.profile_id ? await getProfile(c.profile_id) : null) || await getProfileByPhone(c.phone);
         // Bail out if the user has since clicked into a different conversation.
         if (selectedConversationId !== id) return;
 
@@ -459,6 +489,23 @@
         if (profile?.email) { emailRow.classList.remove('cp-disabled'); emailRow.removeAttribute('data-tip'); document.getElementById('cpFieldEmail').textContent = profile.email; }
         else { emailRow.classList.add('cp-disabled'); emailRow.setAttribute('data-tip','No matching profile email found'); document.getElementById('cpFieldEmail').textContent = 'Not connected'; }
 
+        // Passport Balance — real balance from profiles.wallet_balance
+        const balanceRow = document.getElementById('cpPassportBalanceRow');
+        if (profile && profile.wallet_balance != null) { balanceRow.classList.remove('cp-disabled'); balanceRow.removeAttribute('data-tip'); document.getElementById('cpFieldPassportBalance').textContent = `R${Number(profile.wallet_balance).toFixed(2)}`; }
+        else { balanceRow.classList.add('cp-disabled'); balanceRow.setAttribute('data-tip','No matching profile found'); document.getElementById('cpFieldPassportBalance').textContent = 'Not connected'; }
+
+        // Recent Tickets — real rows from the tickets table, matched on phone (falls back to customer_id)
+        const custTickets = getCustomerTickets(c);
+        const ticketsRow = document.getElementById('cpTicketsRow');
+        if (custTickets.length) { ticketsRow.classList.remove('cp-disabled'); ticketsRow.removeAttribute('data-tip'); document.getElementById('cpFieldTickets').textContent = `${custTickets.length} (${custTickets.filter(t=>t.status==='issued').length} active)`; }
+        else { ticketsRow.classList.add('cp-disabled'); ticketsRow.setAttribute('data-tip','No tickets found for this customer'); document.getElementById('cpFieldTickets').textContent = 'None yet'; }
+
+        // Recent Orders — real rows from the orders table, matched on phone (falls back to user_id)
+        const custOrders = getCustomerOrders(c);
+        const ordersRow = document.getElementById('cpOrdersRow');
+        if (custOrders.length) { ordersRow.classList.remove('cp-disabled'); ordersRow.removeAttribute('data-tip'); document.getElementById('cpFieldOrders').textContent = `${custOrders.length} order${custOrders.length===1?'':'s'}`; }
+        else { ordersRow.classList.add('cp-disabled'); ordersRow.setAttribute('data-tip','No orders found for this customer'); document.getElementById('cpFieldOrders').textContent = 'None yet'; }
+
         // Common topics — derived from this customer's AI request history
         const intentCounts = {};
         allAIRequests.filter(r => r.phone === c.phone).forEach(r => { if (r.intent) intentCounts[r.intent] = (intentCounts[r.intent]||0)+1; });
@@ -467,33 +514,47 @@
             ? topIntents.map(([name,count]) => `<span class="cp-chip${count>2?' tone-red':''}">${esc(name.replace(/_/g,' '))} · ${count}</span>`).join('')
             : '<span class="cp-empty-note">No intent history yet</span>';
 
-        // AI state — no longer shown in the panel, but still needed for the "needs human" badge in the chat list
+        // AI on/off toggle — real handover control, calls /api/admin/handover
         const aiOn = aiSettings.enable_ai && isAIEnabled(c);
+        document.getElementById('aiGlobalSwitch').classList.toggle('on', aiOn);
+        document.getElementById('aiStatusDot').className = 'ai-status-dot' + (aiOn ? '' : ' off');
+        document.getElementById('aiStatusText').textContent = !aiSettings.enable_ai ? 'AI disabled globally' : (!isAIEnabled(c) ? 'Paused — human handling' : 'AI enabled');
         const lastReq = allAIRequests.find(r => r.phone === c.phone);
 
         const needsHuman = !!(lastReq && lastReq.success === false);
-        renderCpExtras(c, lastReq, needsHuman, aiOn);
+        renderCpExtras(c, profile, lastReq, needsHuman, aiOn);
     }
 
-    // ─── CUSTOMER INTELLIGENCE: INSIGHTS / NOTES / TIMELINE / PRIORITY+TAGS / AI DEBUG+FIELDS ───
-    function renderCpExtras(c, lastReq, needsHuman, aiOn) {
+    // ─── CUSTOMER INTELLIGENCE: INSIGHTS / TIMELINE / AI STATE ───
+    function renderCpExtras(c, profile, lastReq, needsHuman, aiOn) {
         const seed = seedFrom(c.phone || c.id);
 
-        // Insights — clearly-labelled placeholders until wallet/orders/tickets/events tables exist
+        // Insights — real data where a matching table exists (Passport Balance, Tickets, Orders,
+        // VVIP Tables, Lifetime Spend, Last Purchase); clearly-labelled placeholders for the rest.
+        const custTickets = getCustomerTickets(c);
+        const custOrders = getCustomerOrders(c);
+        const custVvip = getCustomerVvipBookings(c);
+        const orderTotal = (o) => Number(o.total ?? o.total_amount ?? 0);
+        const lifetimeSpend = custOrders.reduce((sum,o) => sum + orderTotal(o), 0);
+        const lastOrderDate = custOrders.length ? custOrders.map(o=>o.created_at||o.order_date).filter(Boolean).sort().slice(-1)[0] : null;
+
         const insights = [
-            { label: 'Wallet Balance', val: `R${seededVal(seed+1,50,900)}.00`, icon: 'fa-wallet' },
-            { label: 'Tickets Purchased', val: seededVal(seed+2,0,6), icon: 'fa-ticket' },
-            { label: 'Orders', val: seededVal(seed+3,0,14), icon: 'fa-bag-shopping' },
-            { label: 'Bookings', val: seededVal(seed+4,0,5), icon: 'fa-calendar-check' },
+            { label: 'Passport Balance', val: profile && profile.wallet_balance != null ? `R${Number(profile.wallet_balance).toFixed(2)}` : 'n/a', icon: 'fa-wallet', real: true },
+            { label: 'Tickets Purchased', val: custTickets.length, icon: 'fa-ticket', real: true },
+            { label: 'Orders', val: custOrders.length, icon: 'fa-bag-shopping', real: true },
+            { label: 'VVIP Tables', val: custVvip.length, icon: 'fa-champagne-glasses', real: true },
             { label: 'Lockers', val: seededVal(seed+5,0,2), icon: 'fa-lock' },
-            { label: 'Events Attended', val: seededVal(seed+6,0,9), icon: 'fa-champagne-glasses' },
-            { label: 'Lifetime Spend', val: `R${seededVal(seed+7,200,8000)}`, icon: 'fa-sack-dollar' },
+            { label: 'Events Attended', val: seededVal(seed+6,0,9), icon: 'fa-calendar-check' },
+            { label: 'Lifetime Spend', val: lifetimeSpend > 0 ? `R${lifetimeSpend.toFixed(2)}` : 'R0.00', icon: 'fa-sack-dollar', real: true },
             { label: 'Favourite Category', val: ['Sport','Music','Comedy','Theatre','Family'][seededVal(seed+8,0,4)], icon: 'fa-heart' },
             { label: 'Loyalty Tier', val: ['Bronze','Silver','Gold','Platinum'][seededVal(seed+9,0,3)], icon: 'fa-medal' },
             { label: 'Avg Response Time', val: `${seededVal(seed+10,1,9)}m`, icon: 'fa-stopwatch' },
-            { label: 'Last Purchase', val: `${seededVal(seed+11,1,29)}d ago`, icon: 'fa-clock' },
+            { label: 'Last Purchase', val: lastOrderDate ? fmtDate(lastOrderDate) : 'n/a', icon: 'fa-clock', real: true },
         ];
-        document.getElementById('cpInsightsGrid').innerHTML = insights.map(i => `<div class="insight-card placeholder" title="Placeholder — connect the matching table to make this live"><div class="ic-val"><i class="fas ${i.icon}"></i>${esc(String(i.val))}</div><div class="ic-label">${esc(i.label)}</div></div>`).join('');
+        document.getElementById('cpInsightsGrid').innerHTML = insights.map(i => i.real
+            ? `<div class="insight-card" title="Live from Supabase"><div class="ic-val"><i class="fas ${i.icon}"></i>${esc(String(i.val))}</div><div class="ic-label">${esc(i.label)}</div></div>`
+            : `<div class="insight-card placeholder" title="Placeholder — connect the matching table to make this live"><div class="ic-val"><i class="fas ${i.icon}"></i>${esc(String(i.val))}</div><div class="ic-label">${esc(i.label)}</div></div>`
+        ).join('');
 
         // Conversation timeline — built from real message/state data plus intelligently-labelled placeholders
         const msgs = getMsgs(c.id);
@@ -864,7 +925,7 @@
 
     window.refreshAllData = async function() {
         showToast('Refreshing…');
-        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadAISettings()]);
+        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadAISettings(),loadTickets(),loadOrders(),loadVvipBookings()]);
         renderChatList(document.getElementById('chatSearch').value);
         if (selectedConversationId) { renderChatMessages(selectedConversationId); updateChatHeader(selectedConversationId); renderCustomerPanel(selectedConversationId); }
         if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashboard();
@@ -949,7 +1010,7 @@
     setInterval(()=>{loadAIRequests();loadActiveSessions();loadConversationStates();if(selectedConversationId)renderCustomerPanel(selectedConversationId);},30000);
 
     async function init() {
-        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadAISettings()]);
+        await Promise.all([loadConversations(),loadConversationStates(),loadAIRequests(),loadActiveSessions(),loadTemplates(),loadAISettings(),loadTickets(),loadOrders(),loadVvipBookings()]);
         renderChatList('');
         if (allConversations.length) {
             selectedConversationId = allConversations[0].id;
@@ -960,7 +1021,7 @@
             renderCustomerPanel(selectedConversationId);
         }
         setupRealtime();
-        window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.aiSettings=aiSettings;window.conversationStates=stateByPhone;
+        window.allConversations=allConversations;window.allAIRequests=allAIRequests;window.allSessions=allSessions;window.allTemplates=allTemplates;window.aiSettings=aiSettings;window.conversationStates=stateByPhone;window.allTickets=allTickets;window.allOrders=allOrders;window.allVvipBookings=allVvipBookings;
     }
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.attach-menu') && !e.target.closest('[onclick="toggleAttachMenu()"]')) document.getElementById('attachMenu')?.classList.remove('open');
