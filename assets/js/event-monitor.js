@@ -1744,6 +1744,45 @@
       window.location.href = 'event-admin.html';
     };
 
+    // ─── FULLSCREEN ───
+    // Useful for putting this monitor up on a venue screen/TV at the door.
+    function isFullscreen() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+    }
+
+    function updateFullscreenBtn() {
+      const btn = document.getElementById('fullscreenBtn');
+      if (!btn) return;
+      btn.innerHTML = isFullscreen()
+        ? '<i class="fas fa-compress"></i> Exit Fullscreen'
+        : '<i class="fas fa-expand"></i> Fullscreen';
+    }
+
+    window.toggleFullscreen = async function() {
+      try {
+        if (!isFullscreen()) {
+          const el = document.documentElement;
+          if (el.requestFullscreen) await el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+          else if (el.msRequestFullscreen) await el.msRequestFullscreen();
+          else { showToast('Fullscreen is not supported on this device', 'error'); return; }
+        } else {
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+          else if (document.msExitFullscreen) await document.msExitFullscreen();
+        }
+      } catch (err) {
+        console.error('Fullscreen error:', err);
+        showToast('Could not toggle fullscreen: ' + err.message, 'error');
+      }
+    };
+
+    // Keep the button in sync if fullscreen is toggled another way (Esc, F11,
+    // or a browser/OS chrome control) rather than only through our button.
+    ['fullscreenchange', 'webkitfullscreenchange', 'msfullscreenchange'].forEach(evt => {
+      document.addEventListener(evt, updateFullscreenBtn);
+    });
+
     // ─── INIT ───
     async function init() {
       eventId = getUrlParam('event_id');
