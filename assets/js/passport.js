@@ -295,12 +295,52 @@ async function submitCode(code) {
     if (needsPassword) {
       render(newPasswordStepMarkup(null));
     } else {
-      // Attaching a second identifier — no password to collect, finish now.
-      await finishSetup(undefined);
+      // Attaching a second identifier to an account that already has a
+      // Passport Key. We still ask for it here (not a NEW one) so we can
+      // finish this the same way first-time setup does: link + sign in
+      // immediately, instead of dumping the customer back on the login
+      // form to type it in again from scratch.
+      render(confirmLinkPasswordStepMarkup(null));
     }
   } catch (err) {
     render(codeStepMarkup(err.message));
   }
+}
+
+// ── Step 2b-alt: confirm existing Passport Key to finish linking a 2nd
+// identifier, then sign in immediately ──────────────────────────────────────
+
+function confirmLinkPasswordStepMarkup(errorMsg) {
+  return `
+    <div class="field-group">
+      <label class="field-label" for="passConfirmLinkPassword">Confirm Your Passport Key</label>
+      <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:12px;">
+        You\u2019re verified — enter your existing Passport Key once more to finish linking this
+        ${identifierType === 'email' ? 'email' : 'number'} and sign in.
+      </p>
+      <div class="input-wrap">
+        <input class="field-input" type="password" id="passConfirmLinkPassword" placeholder="Your Passport Key"
+               autocomplete="current-password" />
+      </div>
+      ${errorMsg ? `<div class="auth-error visible">${errorMsg}</div>` : ''}
+    </div>
+    <div class="cta-wrap">
+      <button class="cta-btn red-cta" type="button" id="passSubmitConfirmLink">
+        <span class="btn-label">Confirm &amp; Sign In</span>
+      </button>
+    </div>
+    <div class="signup-link">
+      <a href="#" id="passCancel">Cancel</a>
+    </div>
+  `;
+}
+
+async function submitConfirmLink(password) {
+  if (!password) {
+    render(confirmLinkPasswordStepMarkup('Enter your Passport Key to finish linking.'));
+    return;
+  }
+  await finishSetup(password);
 }
 
 // ── Step 2c: choose a password (first-time setup only) ─────────────────────
@@ -359,9 +399,11 @@ async function finishSetup(password) {
     if (!res.ok) throw new Error(data.error || 'Could not set up your Passport Key. Please try again.');
 
     if (password === undefined) {
-      // Attaching a second identifier to an existing password — we never
-      // collected that password here, so we can't auto-sign-in. Send the
-      // customer back to the normal form to sign in as usual.
+      // Defensive fallback only — the UI always collects a password before
+      // calling finishSetup now (see confirmLinkPasswordStepMarkup), so
+      // this path shouldn't normally be reachable. If it is hit some other
+      // way, we truly have no credential to sign in with, so send the
+      // customer back to the form.
       closePanel();
       const authError = document.getElementById('authError');
       if (authError) {
@@ -388,8 +430,10 @@ async function finishSetup(password) {
   } catch (err) {
     if (password === undefined) {
       render(codeStepMarkup(err.message));
-    } else {
+    } else if (needsPassword) {
       render(newPasswordStepMarkup(err.message));
+    } else {
+      render(confirmLinkPasswordStepMarkup(err.message));
     }
   }
 }
@@ -452,6 +496,13 @@ function wireUp() {
   });
   document.getElementById('passConfirmPassword')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('passSubmitNewPassword')?.click();
+  });
+
+  document.getElementById('passSubmitConfirmLink')?.addEventListener('click', () => {
+    submitConfirmLink(document.getElementById('passConfirmLinkPassword')?.value ?? '');
+  });
+  document.getElementById('passConfirmLinkPassword')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('passSubmitConfirmLink')?.click();
   });
 
   document.getElementById('passCancel')?.addEventListener('click', (e) => {
