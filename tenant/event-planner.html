@@ -1451,6 +1451,7 @@
                 <!-- CANVAS -->
                 <div class="canvas-wrapper" ref="canvasWrapper" @mousedown="onCanvasMouseDown" @wheel.prevent="onWheel"
                     :class="{ 'drop-target': isDraggingFromToolbox }"
+                    @dragenter.prevent="onCanvasDragOver"
                     @dragover.prevent="onCanvasDragOver"
                     @drop.prevent="onCanvasDrop">
                     <div class="canvas-container" ref="canvasContainer" :style="canvasTransform">
@@ -2102,6 +2103,14 @@
         },
 
         async mounted() {
+            // Prevent the browser from navigating away / going blank if a
+            // dragged toolbox item is dropped anywhere outside the canvas
+            // (or on a stray child element some browsers won't bubble
+            // preventDefault() up from in time).
+            this._preventPageDrop = (e) => e.preventDefault();
+            window.addEventListener('dragover', this._preventPageDrop);
+            window.addEventListener('drop', this._preventPageDrop);
+
             await this.initSupabase();
             await this.loadEvents();
             this.setupKeyboardShortcuts();
@@ -2148,6 +2157,8 @@
             if (this.realtimeSubscription) this.realtimeSubscription.unsubscribe();
             clearInterval(this.autoSaveTimer);
             document.removeEventListener('keydown', this._keydownHandler);
+            window.removeEventListener('dragover', this._preventPageDrop);
+            window.removeEventListener('drop', this._preventPageDrop);
         },
 
         methods: {
@@ -2396,14 +2407,21 @@
             },
 
             onCanvasDrop(event) {
-                const type = event.dataTransfer.getData('text/plain') || this.dragToolboxType;
                 this.isDraggingFromToolbox = false;
-                this.dragToolboxType = null;
-                if (!type) return;
-                const rect = this.$refs.canvasWrapper.getBoundingClientRect();
-                const x = (event.clientX - rect.left - this.panX) / this.zoom;
-                const y = (event.clientY - rect.top - this.panY) / this.zoom;
-                this.addObjectAt(type, x, y);
+                try {
+                    const type = (event.dataTransfer && event.dataTransfer.getData('text/plain')) || this.dragToolboxType;
+                    const wrapper = this.$refs.canvasWrapper;
+                    if (!type || !wrapper) return;
+                    const rect = wrapper.getBoundingClientRect();
+                    const x = (event.clientX - rect.left - this.panX) / this.zoom;
+                    const y = (event.clientY - rect.top - this.panY) / this.zoom;
+                    this.addObjectAt(type, x, y);
+                } catch (e) {
+                    console.error('Drop failed:', e);
+                    this.showToast('Could not place object', 'error');
+                } finally {
+                    this.dragToolboxType = null;
+                }
             },
 
             deleteObject(id) {
