@@ -504,6 +504,7 @@
             ? list.map(t => `<div class="ai-suggested-item" onclick="useSuggestedReply('${esc(t.template_key||'').replace(/'/g,"\\'")}')"><span class="txt">${esc(t.content||t.template_name||'')}</span><i class="fas fa-arrow-up-right-from-square"></i></div>`).join('')
             : '<span class="cp-empty-note">No active templates yet</span>';
 
+        const needsHuman = !!(lastReq && lastReq.success === false);
         renderCpExtras(c, lastReq, needsHuman, aiOn);
     }
 
