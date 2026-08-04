@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>My Vault · Staff</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
+</script>
+<style>
+/* Matches console.html's dark theme variables so this reads consistently inside the iframe */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --red: #E30613; --red-dim: rgba(227,6,19,0.08); --red-border: rgba(227,6,19,0.2);
+  --bg: #0D0F12; --surface: #141720; --surface2: #1C2030; --surface3: #232840;
+  --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.1);
+  --text: #F0F2F8; --text2: #8B92A8; --text3: #555E78;
+  --green: #22C55E; --amber: #F59E0B; --blue: #3B82F6;
+}
+html, body { height: 100%; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; padding-bottom: 40px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+.vault-header { padding: 16px 18px 0 18px; }
+.vault-title { font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.vault-title i { color: var(--red); }
+.vault-sub { font-size: 0.75rem; color: var(--text2); margin-top: 2px; }
+
+.vault-tabs { display: flex; gap: 4px; padding: 14px 18px 0 18px; overflow-x: auto; }
+.vault-tab { flex-shrink: 0; padding: 8px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.vault-tab:hover { background: var(--surface2); }
+.vault-tab.active { background: var(--red-dim); color: var(--text); }
+.vault-tab-badge { background: var(--red); color: white; font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 99px; min-width: 16px; text-align: center; }
+
+.vault-content { padding: 16px 18px; }
+.vault-empty { text-align: center; padding: 50px 20px; color: var(--text3); }
+.vault-empty i { font-size: 1.8rem; margin-bottom: 10px; display: block; }
+
+.req-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.req-card-header { padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface2); flex-wrap: wrap; gap: 6px; }
+.req-customer { font-weight: 700; }
+.req-customer-sub { font-size: 0.72rem; color: var(--text2); }
+.req-badge { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 99px; }
+.req-badge.pending { background: rgba(245,158,11,0.15); color: var(--amber); }
+.req-badge.stored { background: rgba(34,197,94,0.15); color: var(--green); }
+.req-badge.ready { background: rgba(59,130,246,0.15); color: var(--blue); }
+.req-badge.collected { background: var(--surface3); color: var(--text2); }
+.req-badge.rejected { background: rgba(227,6,19,0.15); color: var(--red); }
+.req-body { padding: 12px 14px; }
+.req-item-row { display: flex; justify-content: space-between; font-size: 0.82rem; padding: 4px 0; color: var(--text2); }
+.req-item-row b { color: var(--text); font-weight: 600; }
+.req-value-row { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border2); font-weight: 700; }
+.req-meta { font-size: 0.68rem; color: var(--text3); margin-top: 8px; }
+.req-actions { display: flex; gap: 8px; padding: 0 14px 14px 14px; }
+.btn { flex: 1; padding: 9px; border-radius: 8px; border: none; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-approve { background: var(--green); color: #06210f; }
+.btn-approve:hover { filter: brightness(1.08); }
+.btn-reject { background: var(--surface3); color: var(--text); border: 1px solid var(--border2); }
+.btn-reject:hover { background: rgba(227,6,19,0.15); color: var(--red); }
+.btn-release { background: var(--blue); color: #05122b; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 10px 18px; border-radius: 10px; font-size: 0.8rem; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.toast.error { border-color: rgba(227,6,19,0.4); color: #ff8a8a; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; width: 90%; max-width: 380px; padding: 18px; }
+.modal-box h4 { margin-bottom: 10px; }
+.modal-box textarea { width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; color: var(--text); padding: 8px; font-family: inherit; font-size: 0.8rem; min-height: 70px; margin-bottom: 12px; }
+.modal-actions { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div class="vault-header">
+  <div class="vault-title"><i class="fas fa-box-archive"></i> My Vault</div>
+  <div class="vault-sub">Independent of the old locker/Booze Vault system — do not confuse the two.</div>
+</div>
+
+<div class="vault-tabs">
+  <div class="vault-tab active" data-tab="pending_storage">Pending Storage <span class="vault-tab-badge" id="badge_pending_storage">0</span></div>
+  <div class="vault-tab" data-tab="active_holdings">Active Holdings</div>
+  <div class="vault-tab" data-tab="pending_collections">Pending Collections <span class="vault-tab-badge" id="badge_pending_collections">0</span></div>
+  <div class="vault-tab" data-tab="ready_for_collection">Ready for Collection</div>
+  <div class="vault-tab" data-tab="history">History</div>
+</div>
+
+<div class="vault-content" id="vaultContent"></div>
+
+<div class="modal-overlay" id="reasonModal">
+  <div class="modal-box">
+    <h4 id="reasonModalTitle">Reject Request</h4>
+    <textarea id="reasonInput" placeholder="Reason (shown to the customer)..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-reject" id="reasonCancelBtn">Cancel</button>
+      <button class="btn btn-approve" id="reasonConfirmBtn">Confirm Reject</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { supabase } from '../config/supabase.js';
+
+let staffProfile = null; // { id, role, name }
+let currentTab = 'pending_storage';
+let reasonCallback = null;
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.innerText = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function fmtMoney(n) { return `R${(Number(n) || 0).toFixed(2)}`; }
+function fmtDate(d) { return d ? new Date(d).toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
+function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+
+function openReasonModal(title, onConfirm) {
+  document.getElementById('reasonModalTitle').innerText = title;
+  document.getElementById('reasonInput').value = '';
+  document.getElementById('reasonModal').classList.add('show');
+  reasonCallback = onConfirm;
+}
+function closeReasonModal() { document.getElementById('reasonModal').classList.remove('show'); reasonCallback = null; }
+document.getElementById('reasonCancelBtn').onclick = closeReasonModal;
+document.getElementById('reasonConfirmBtn').onclick = () => {
+  const reason = document.getElementById('reasonInput').value.trim();
+  const cb = reasonCallback;
+  closeReasonModal();
+  if (cb) cb(reason);
+};
+
+async function loadStaffProfile() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { staffProfile = null; return; }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, name, role, staff_role')
+    .eq('auth_user_id', session.user.id)
+    .maybeSingle();
+  if (profile && ['staff', 'admin'].includes(profile.role)) {
+    staffProfile = profile;
+  } else {
+    staffProfile = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// DATA FETCHERS (staff can SELECT all Vault rows per RLS policy)
+// ─────────────────────────────────────────────────────────
+async function fetchRequests(requestType, status) {
+  const { data, error } = await supabase
+    .from('vault_requests')
+    .select(`
+      id, request_type, status, requested_at, approved_at, rejection_reason,
+      customer_profile_id,
+      profiles!vault_requests_customer_profile_id_fkey ( name, phone ),
+      vault_holdings (
+        id, status, total_value,
+        vault_items ( id, product_name, quantity, unit_value, total_value )
+      )
+    `)
+    .eq('request_type', requestType)
+    .eq('status', status)
+    .order('requested_at', { ascending: true });
+  if (error) { console.error(error); return []; }
+  return data || [];
+}
+
+async function fetchHoldings(statusList) {
+  const { data, error } = await supabase
+    .from('vault_holdings')
+    .select(`
+      id, status, total_value, requested_at, stored_at, collection_approved_at, collected_at,
+      rejected_at, rejection_reason, collection_rejection_reason,
+      customer_profile_id,
+      profiles!vault_holdings_customer_profile_id_fkey ( name, phone ),
+      vault_items ( id, product_name, quantity, unit_value, total_value )
+    `)
+    .in('status', statusList)
+    .order('requested_at', { ascending: false });
+  if (error) { console.error(error); return []; }
+  return data || [];
+}
+
+function renderItems(items) {
+  return (items || []).map(i => `
+    <div class="req-item-row"><span><b>${i.quantity} &times;</b> ${escapeHtml(i.product_name)}</span><span>${fmtMoney(i.total_value)}</span></div>
+  `).join('');
+}
+
+// ─────────────────────────────────────────────────────────
+// TAB RENDERERS
+// ─────────────────────────────────────────────────────────
+async function renderPendingStorage() {
+  const requests = await fetchRequests('STORE', 'PENDING');
+  document.getElementById('badge_pending_storage').innerText = requests.length;
+  const container = document.getElementById('vaultContent');
+  if (requests.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-check-circle"></i>No pending storage requests.</div>`;
+    return;
+  }
+  container.innerHTML = requests.map(r => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(r.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(r.profiles?.phone || '')}</div></div>
+        <span class="req-badge pending">Pending Approval</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(r.vault_holdings?.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(r.vault_holdings?.total_value)}</span></div>
+        <div class="req-meta">Requested ${fmtDate(r.requested_at)}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-approve" data-approve-store="${r.id}"><i class="fas fa-check"></i> Approve</button>
+        <button class="btn btn-reject" data-reject-store="${r.id}"><i class="fas fa-times"></i> Reject</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-approve-store]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('vault_approve_store', { p_vault_request_id: btn.dataset.approveStore });
+      if (error) { showToast(error.message || 'Approval failed', true); btn.disabled = false; return; }
+      showToast('Storage approved — items are now STORED.');
+      renderCurrentTab();
+    };
+  });
+  container.querySelectorAll('[data-reject-store]').forEach(btn => {
+    btn.onclick = () => {
+      openReasonModal('Reject Storage Request', async (reason) => {
+        const { error } = await supabase.rpc('vault_reject_store', { p_vault_request_id: btn.dataset.rejectStore, p_reason: reason || null });
+        if (error) { showToast(error.message || 'Rejection failed', true); return; }
+        showToast('Storage request rejected.');
+        renderCurrentTab();
+      });
+    };
+  });
+}
+
+async function renderActiveHoldings() {
+  const holdings = await fetchHoldings(['STORED']);
+  const container = document.getElementById('vaultContent');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-box-open"></i>No active holdings right now.</div>`;
+    return;
+  }
+  container.innerHTML = holdings.map(h => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(h.profiles?.phone || '')}</div></div>
+        <span class="req-badge stored">Stored</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(h.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(h.total_value)}</span></div>
+        <div class="req-meta">Stored ${fmtDate(h.stored_at)} &middot; ID: ${h.id.slice(0,8)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function renderPendingCollections() {
+  const requests = await fetchRequests('COLLECT', 'PENDING');
+  document.getElementById('badge_pending_collections').innerText = requests.length;
+  const container = document.getElementById('vaultContent');
+  if (requests.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-check-circle"></i>No pending collection requests.</div>`;
+    return;
+  }
+  container.innerHTML = requests.map(r => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(r.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(r.profiles?.phone || '')}</div></div>
+        <span class="req-badge pending">Collection Pending</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(r.vault_holdings?.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(r.vault_holdings?.total_value)}</span></div>
+        <div class="req-meta">Requested ${fmtDate(r.requested_at)} &middot; Holding: ${r.vault_holdings?.id?.slice(0,8)}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-approve" data-approve-collect="${r.id}"><i class="fas fa-check"></i> Approve Unlock</button>
+        <button class="btn btn-reject" data-reject-collect="${r.id}"><i class="fas fa-times"></i> Reject</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-approve-collect]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('vault_approve_collect', { p_vault_request_id: btn.dataset.approveCollect });
+      if (error) { showToast(error.message || 'Approval failed', true); btn.disabled = false; return; }
+      showToast('Collection approved — ready for the customer.');
+      renderCurrentTab();
+    };
+  });
+  container.querySelectorAll('[data-reject-collect]').forEach(btn => {
+    btn.onclick = () => {
+      openReasonModal('Reject Collection Request', async (reason) => {
+        const { error } = await supabase.rpc('vault_reject_collect', { p_vault_request_id: btn.dataset.rejectCollect, p_reason: reason || null });
+        if (error) { showToast(error.message || 'Rejection failed', true); return; }
+        showToast('Collection request rejected — holding returned to Stored.');
+        renderCurrentTab();
+      });
+    };
+  });
+}
+
+async function renderReadyForCollection() {
+  const holdings = await fetchHoldings(['READY_FOR_COLLECTION']);
+  const container = document.getElementById('vaultContent');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-hand-holding"></i>Nothing ready for collection right now.</div>`;
+    return;
+  }
+  container.innerHTML = holdings.map(h => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(h.profiles?.phone || '')}</div></div>
+        <span class="req-badge ready">Ready</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(h.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(h.total_value)}</span></div>
+        <div class="req-meta">Approved ${fmtDate(h.collection_approved_at)} &middot; ID: ${h.id.slice(0,8)}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-release" data-release="${h.id}"><i class="fas fa-hand-holding-heart"></i> Release to Customer</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-release]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('vault_release', { p_vault_holding_id: btn.dataset.release });
+      if (error) { showToast(error.message || 'Release failed', true); btn.disabled = false; return; }
+      showToast('Released — holding marked as Collected.');
+      renderCurrentTab();
+    };
+  });
+}
+
+async function renderHistory() {
+  const holdings = await fetchHoldings(['COLLECTED', 'REJECTED']);
+  const container = document.getElementById('vaultContent');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-clock-rotate-left"></i>No historical Vault holdings yet.</div>`;
+    return;
+  }
+  container.innerHTML = holdings.map(h => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(h.profiles?.phone || '')}</div></div>
+        <span class="req-badge ${h.status === 'COLLECTED' ? 'collected' : 'rejected'}">${h.status === 'COLLECTED' ? 'Collected' : 'Rejected'}</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(h.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(h.total_value)}</span></div>
+        <div class="req-meta">
+          ${h.status === 'COLLECTED' ? `Collected ${fmtDate(h.collected_at)}` : `Rejected ${fmtDate(h.rejected_at)}${h.rejection_reason ? ': ' + escapeHtml(h.rejection_reason) : ''}`}
+          &middot; ID: ${h.id.slice(0,8)}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function renderCurrentTab() {
+  const renderers = {
+    pending_storage: renderPendingStorage,
+    active_holdings: renderActiveHoldings,
+    pending_collections: renderPendingCollections,
+    ready_for_collection: renderReadyForCollection,
+    history: renderHistory
+  };
+  await renderers[currentTab]();
+  // Keep badge counts fresh even when viewing a different tab
+  fetchRequests('STORE', 'PENDING').then(r => document.getElementById('badge_pending_storage').innerText = r.length);
+  fetchRequests('COLLECT', 'PENDING').then(r => document.getElementById('badge_pending_collections').innerText = r.length);
+}
+
+document.querySelectorAll('.vault-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.vault-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTab = tab.dataset.tab;
+    renderCurrentTab();
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────
+await loadStaffProfile();
+if (!staffProfile) {
+  document.getElementById('vaultContent').innerHTML = `<div class="vault-empty"><i class="fas fa-lock"></i>Staff/admin sign-in required to use My Vault.</div>`;
+  document.querySelector('.vault-tabs').style.display = 'none';
+} else {
+  renderCurrentTab();
+  setInterval(renderCurrentTab, 20000); // light auto-refresh, same cadence as your other staff modules
+}
+</script>
+</body>
+</html>
