@@ -680,6 +680,11 @@
     if (digits.length > 9) digits = digits.slice(-9);
     return digits;
   }
+  function toE164ZA(phone) {
+    // Normalizes to +27XXXXXXXXX so 073.../2773.../+2773... all resolve to the same account
+    const last9 = normalizePhoneDigits(phone);
+    return last9 ? '+27' + last9 : '';
+  }
   function detectInputType(raw) {
     const v = (raw || '').trim();
     if (!v) return 'empty';
@@ -848,7 +853,9 @@
     cachedProfile = null; cachedWallet = null;
     balPreview.className = 'balance-preview';
     if (!phone) return;
-    const { data: p } = await supabase.from('profiles').select('id, name').eq('phone', phone).maybeSingle();
+    const digits = normalizePhoneDigits(phone);
+    const { data: candidates } = await supabase.from('profiles').select('id, name, phone').ilike('phone', `%${digits}%`);
+    const p = (candidates || []).find(c => normalizePhoneDigits(c.phone) === digits);
     if (!p) return;
     cachedProfile = p;
     const { data: w } = await supabase.from('wallets').select('id, balance').eq('user_id', p.id).maybeSingle();
@@ -999,10 +1006,12 @@
 
   /* Wallet purchase */
   async function purchaseWithWallet() {
-    const phone       = buyPhone.value.trim();
+    const rawPhone    = buyPhone.value.trim();
     const passportKey = buyCvv.value.trim();
-    if (!phone || !passportKey) { toast('Enter phone and Passport Key', 'error'); return; }
+    if (!rawPhone || !passportKey) { toast('Enter phone and Passport Key', 'error'); return; }
     if (!currentEvent)  { toast('Select an event', 'error'); return; }
+    const phone = toE164ZA(rawPhone);
+    if (!phone) { toast('Enter a valid phone number', 'error'); return; }
     setPurchaseLoading(true);
     try {
       const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ phone, password: passportKey });

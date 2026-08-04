@@ -1294,6 +1294,20 @@ let currentWalletUser = null;
 let currentWalletData = null;
 let selectedTopupAmount = null;
 
+/* ══════════════ PHONE NORMALIZATION (handles 073... / 2773... / +2773... interchangeably) ══════════════ */
+function normalizePhoneDigits(phone) {
+  // Last 9 significant digits, used for fuzzy-matching existing records regardless of format
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.length > 9) digits = digits.slice(-9);
+  return digits;
+}
+function toE164ZA(phone) {
+  // Normalizes South African numbers to a consistent +27XXXXXXXXX format for Supabase Auth
+  const last9 = normalizePhoneDigits(phone);
+  return last9 ? '+27' + last9 : '';
+}
+
 function toast(msg, dur=2800){
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
@@ -1510,9 +1524,11 @@ function setWalletAuthLoading(on) {
 }
 
 window.submitWalletLogin = async function() {
-  const phone = document.getElementById('authPhone')?.value.trim();
+  const rawPhone = document.getElementById('authPhone')?.value.trim();
   const password = document.getElementById('authPassword')?.value;
-  if (!phone || !password) { toast('Enter your cellphone number and Passport Key'); return; }
+  if (!rawPhone || !password) { toast('Enter your cellphone number and Passport Key'); return; }
+  const phone = toE164ZA(rawPhone);
+  if (!phone) { toast('Please enter a valid cellphone number'); return; }
   setWalletAuthLoading(true);
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ phone, password });
@@ -1526,10 +1542,12 @@ window.submitWalletLogin = async function() {
 
 window.submitWalletSignup = async function() {
   const name = document.getElementById('authName')?.value.trim();
-  const phone = document.getElementById('authPhone')?.value.trim();
+  const rawPhone = document.getElementById('authPhone')?.value.trim();
   const password = document.getElementById('authPassword')?.value;
   const confirm = document.getElementById('authPasswordConfirm')?.value;
-  if (!name || !phone || !password) { toast('Please fill in all fields'); return; }
+  if (!name || !rawPhone || !password) { toast('Please fill in all fields'); return; }
+  const phone = toE164ZA(rawPhone);
+  if (!phone) { toast('Please enter a valid cellphone number'); return; }
   if (password.length < 6) { toast('Passport Key must be at least 6 characters'); return; }
   if (password !== confirm) { toast('Passport Keys do not match'); return; }
   setWalletAuthLoading(true);
@@ -1538,10 +1556,10 @@ window.submitWalletSignup = async function() {
     if (error) { toast(error.message?.includes('registered') ? 'An account with this number already exists' : 'Could not create Passport'); return; }
     const userId = data.user?.id;
     if (!userId) { toast('Signup succeeded — please login'); walletAuthMode = 'login'; renderWalletAuthForm(); return; }
-    // Create linked profile + wallet rows
-    await supabase.from('profiles').upsert({ id: userId, name, phone }, { onConflict: 'id' });
-    const walletId = String(Date.now()).slice(-16).padStart(16, '0');
-    await supabase.from('wallets').upsert({ user_id: userId, wallet_id: walletId, balance: 0 }, { onConflict: 'user_id' });
+    // Create linked profile + wallet rows (phone stored normalized so it matches however it's typed next time)
+    const { error: profileErr } = await supabase.from('profiles').upsert({ id: userId, name, phone }, { onConflict: 'id' });
+    if (profileErr) console.error('Profile upsert error during signup (see chat for the RLS policy fix):', profileErr);
+    await ensureWallet(userId);
     toast('Passport created! Welcome to Rands.');
     // If email confirmation isn't required, a session is returned immediately; otherwise sign in explicitly.
     if (data.session?.user) { await loadWalletForAuthUser(data.session.user); }
@@ -1555,6 +1573,32 @@ window.submitWalletSignup = async function() {
   } finally { setWalletAuthLoading(false); }
 };
 
+function accountNumberFor(wallet) {
+  return wallet?.wallet_id || (wallet?.id ? wallet.id.slice(0, 8).toUpperCase() : 'N/A');
+}
+
+async function ensureWallet(userId) {
+  let { data: wallet, error: walletErr } = await supabase.from('wallets').select('*').eq('user_id', userId).maybeSingle();
+  if (walletErr) console.error('Wallet lookup error:', walletErr);
+  if (wallet) return wallet;
+
+  const walletId = String(Date.now()).slice(-16).padStart(16, '0');
+  let { data: newWallet, error: createErr } = await supabase.from('wallets').insert({ user_id: userId, wallet_id: walletId, balance: 0 }).select().maybeSingle();
+
+  if (createErr && /wallet_id/i.test(createErr.message || '')) {
+    // This Supabase project's "wallets" table has no wallet_id column — retry without it.
+    // (See the SQL note in chat if you'd like to add the column instead.)
+    console.warn('wallets table has no wallet_id column — created wallet without it.');
+    ({ data: newWallet, error: createErr } = await supabase.from('wallets').insert({ user_id: userId, balance: 0 }).select().maybeSingle());
+  }
+
+  if (createErr || !newWallet) {
+    console.error('Wallet creation error:', createErr);
+    return null;
+  }
+  return newWallet;
+}
+
 async function loadWalletForAuthUser(authUser) {
   toast('Loading your Passport...');
   try {
@@ -1564,19 +1608,12 @@ async function loadWalletForAuthUser(authUser) {
       // Backfill profile row for pre-existing auth users
       profile = { id: authUser.id, name: authUser.user_metadata?.name || 'Customer', phone: authUser.phone || '' };
       const { error: upsertErr } = await supabase.from('profiles').upsert(profile, { onConflict: 'id' });
-      if (upsertErr) console.error('Profile upsert error:', upsertErr);
+      if (upsertErr) console.error('Profile upsert error (see chat for the RLS policy fix):', upsertErr);
     }
-    let { data: wallet, error: walletErr } = await supabase.from('wallets').select('*').eq('user_id', authUser.id).maybeSingle();
-    if (walletErr) console.error('Wallet lookup error:', walletErr);
+    const wallet = await ensureWallet(authUser.id);
     if (!wallet) {
-      const walletId = String(Date.now()).slice(-16).padStart(16, '0');
-      const { data: newWallet, error: createErr } = await supabase.from('wallets').insert({ user_id: authUser.id, wallet_id: walletId, balance: 0 }).select().maybeSingle();
-      if (createErr || !newWallet) {
-        console.error('Wallet creation error:', createErr);
-        toast('Could not set up your Passport wallet — please try again or contact staff');
-        return;
-      }
-      wallet = newWallet;
+      toast('Could not set up your Passport wallet — please try again or contact staff');
+      return;
     }
     currentWalletUser = { id: profile.id, name: profile.name, phone: profile.phone };
     currentWalletData = wallet;
@@ -1641,6 +1678,11 @@ function showWristband(html, autoPrintNow) {
 window.openCheckinForCurrentUser = function() {
   closeScreen('wallet');
   openScreen('checkin');
+};
+
+window.checkinTicketById = async function(ticketId) {
+  await processCheckin(ticketId);
+  await renderWalletDashboard(); // refresh ticket list so it now shows "Checked in"
 };
 
 async function processCheckin(rawId) {
@@ -1754,6 +1796,25 @@ async function renderWalletDashboard() {
     .eq('user_id', currentWalletUser.id)
     .order('created_at', { ascending: false })
     .limit(10);
+
+  const myPhoneDigits = normalizePhoneDigits(currentWalletUser.phone);
+  const { data: myTicketsRaw, error: ticketsErr } = await supabase
+    .from('tickets')
+    .select('id, checked_in, ticket_type, event_id, issued_at, customer_phone')
+    .ilike('customer_phone', `%${myPhoneDigits}%`)
+    .order('issued_at', { ascending: false })
+    .limit(20);
+  if (ticketsErr) console.error('My tickets lookup error:', ticketsErr);
+  // Belt-and-braces: the ilike above can over-match (substring), so confirm with an exact digit comparison
+  const myTickets = (myTicketsRaw || []).filter(t => normalizePhoneDigits(t.customer_phone) === myPhoneDigits).slice(0, 10);
+
+  // Resolve event names for the tickets we found
+  let eventNameById = {};
+  const eventIds = [...new Set((myTickets || []).map(t => t.event_id).filter(Boolean))];
+  if (eventIds.length > 0) {
+    const { data: evs } = await supabase.from('events').select('id, name, start_time').in('id', eventIds);
+    (evs || []).forEach(e => { eventNameById[e.id] = e; });
+  }
   
   container.innerHTML = `
     <div class="wallet-dashboard">
@@ -1761,7 +1822,7 @@ async function renderWalletDashboard() {
         <div class="wc-chip">Rands Vibe Passport</div>
         <div class="wallet-balance-amount">R ${balance.toFixed(2)} <small>ZAR</small></div>
         <div class="wallet-info-row">
-          <div class="wallet-info-item"><div class="wallet-info-label">Rands Account Number</div><div class="wallet-info-value">${currentWalletData?.wallet_id || 'N/A'}</div></div>
+          <div class="wallet-info-item"><div class="wallet-info-label">Rands Account Number</div><div class="wallet-info-value">${accountNumberFor(currentWalletData)}</div></div>
           <div class="wallet-info-item"><div class="wallet-info-label">Customer Name</div><div class="wallet-info-value">${currentWalletUser?.name || 'Customer'}</div></div>
           <div class="wallet-info-item"><div class="wallet-info-label">Last Updated</div><div class="wallet-info-value">${lastUpdated}</div></div>
         </div>
@@ -1771,9 +1832,32 @@ async function renderWalletDashboard() {
         </div>
       </div>
 
+      <div class="section-divider"><span>Your Tickets</span></div>
+      <div class="transaction-history" style="margin-bottom:1.5rem">
+        ${!myTickets || myTickets.length === 0 ? '<div class="empty-state">No tickets found for this Passport yet — buy one below.</div>' :
+          myTickets.map(t => {
+            const ev = eventNameById[t.event_id];
+            const evName = ev?.name || 'Rands Event';
+            const evDate = ev?.start_time ? new Date(ev.start_time).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) : '';
+            const isVip = t.ticket_type === 'vip';
+            return `
+            <div class="transaction-item">
+              <div class="transaction-info">
+                <div class="transaction-date">${evName}${evDate ? ' · ' + evDate : ''}</div>
+                <div class="transaction-desc">${isVip ? '⭐ VIP' : 'General Admission'} · #${t.id.slice(-8).toUpperCase()}</div>
+              </div>
+              ${t.checked_in
+                ? `<div class="transaction-status completed">Checked in</div>`
+                : `<button class="btn-primary" style="padding:8px 16px;font-size:0.68rem" onclick="checkinTicketById('${t.id}')">Check In &amp; Print</button>`
+              }
+            </div>`;
+          }).join('')
+        }
+      </div>
+
       <div class="section-divider"><span>Events</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem">
-        <div class="sub-card" onclick="openCheckinForCurrentUser()"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div class="sc-title">Check In</div><p class="sc-desc">Scan or enter your ticket code &amp; collect your wristband.</p><div class="sc-cta">Check In <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div>
+        <div class="sub-card" onclick="openCheckinForCurrentUser()"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div class="sc-title">Check In (Manual)</div><p class="sc-desc">Got a ticket bought on another number? Enter it manually.</p><div class="sc-cta">Check In <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div>
         <div class="sub-card" onclick="openBuyWithWallet()"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9a3 3 0 010-6h18a3 3 0 010 6"/><path d="M3 15a3 3 0 010 6h18a3 3 0 010-6"/><path d="M12 3v18"/></svg></div><div class="sc-title">Buy Ticket</div><p class="sc-desc">Pay with your Passport balance &amp; check in instantly.</p><div class="sc-cta">Buy Now <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div>
       </div>
       
@@ -1855,7 +1939,7 @@ window.processTopup = async function() {
 
 window.showWalletQR = function() {
   const qrData = JSON.stringify({
-    wallet_id: currentWalletData.wallet_id,
+    wallet_id: accountNumberFor(currentWalletData),
     user_id: currentWalletUser.id,
     name: currentWalletUser.name
   });
@@ -1865,7 +1949,7 @@ window.showWalletQR = function() {
       <div class="section-divider"><span>Your Passport QR Code</span></div>
       <div class="wallet-info-row">
         <div class="wallet-info-item"><div class="wallet-info-label">Customer Name</div><div class="wallet-info-value">${currentWalletUser.name || 'Customer'}</div></div>
-        <div class="wallet-info-item"><div class="wallet-info-label">Rands Account Number</div><div class="wallet-info-value">${currentWalletData.wallet_id || 'N/A'}</div></div>
+        <div class="wallet-info-item"><div class="wallet-info-label">Rands Account Number</div><div class="wallet-info-value">${accountNumberFor(currentWalletData)}</div></div>
         <div class="wallet-info-item"><div class="wallet-info-label">Current Balance</div><div class="wallet-info-value">R ${(currentWalletData.balance || 0).toFixed(2)}</div></div>
       </div>
       <svg id="walletQRCode" width="200" height="200" viewBox="0 0 200 200" style="background:white; border-radius:16px; padding:10px;"></svg>
@@ -1877,7 +1961,7 @@ window.showWalletQR = function() {
   `;
   const qrSvg = document.getElementById('walletQRCode');
   if (qrSvg) {
-    qrSvg.innerHTML = `<rect width="180" height="180" fill="#E30613" rx="10"/><text x="90" y="100" text-anchor="middle" fill="white" font-size="12" font-family="monospace">RANDS</text><text x="90" y="120" text-anchor="middle" fill="white" font-size="10">${currentWalletData.wallet_id?.slice(-8) || 'WALLET'}</text>`;
+    qrSvg.innerHTML = `<rect width="180" height="180" fill="#E30613" rx="10"/><text x="90" y="100" text-anchor="middle" fill="white" font-size="12" font-family="monospace">RANDS</text><text x="90" y="120" text-anchor="middle" fill="white" font-size="10">${accountNumberFor(currentWalletData).slice(-8)}</text>`;
   }
 };
 
