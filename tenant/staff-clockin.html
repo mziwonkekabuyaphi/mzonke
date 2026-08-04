@@ -495,6 +495,17 @@
         setTimeout(() => toast.style.display = 'none', 3000);
     }
 
+    // Supabase/PostgREST already returns timestamptz values with their offset
+    // baked in (e.g. "2026-08-04T00:05:08.593+00:00"). Blindly appending "Z"
+    // to a string that already has an offset produces an unparseable date,
+    // which silently corrupts hours_worked (NaN -> null on save). Only add
+    // "Z" if the string genuinely has no timezone info.
+    function parseServerTimestamp(ts) {
+        if (!ts) return null;
+        const hasOffset = /Z$|[+-]\d{2}:?\d{2}$/.test(ts);
+        return new Date(hasOffset ? ts : ts + 'Z');
+    }
+
     function formatDuration(ms) {
         const minutes = Math.floor(ms / (1000 * 60));
         if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
@@ -528,7 +539,7 @@
             let html = '';
             for (const shift of shifts) {
                 const staffName = staffMap.get(shift.staff_id) || 'Unknown';
-                const loginUTC = new Date(shift.login_time + 'Z');
+                const loginUTC = parseServerTimestamp(shift.login_time);
                 const now = new Date();
                 const durationMs = now - loginUTC;
                 const durationStr = formatDuration(durationMs);
@@ -594,7 +605,7 @@
 
     async function clockOut(shift, staff) {
         const now = new Date();
-        const loginUTC = new Date(shift.login_time + 'Z');
+        const loginUTC = parseServerTimestamp(shift.login_time);
         const diffMs = now - loginUTC;
         const hours = diffMs / (1000 * 60 * 60);
         const { error } = await supabase
@@ -713,7 +724,7 @@
     // Live-ticking elapsed time on roster rows between the 15s data refreshes
     setInterval(() => {
         document.querySelectorAll('.shift-item[data-login]').forEach(row => {
-            const loginUTC = new Date(row.dataset.login + 'Z');
+            const loginUTC = parseServerTimestamp(row.dataset.login);
             const el = row.querySelector('.staff-elapsed');
             if (el) el.textContent = formatDuration(new Date() - loginUTC);
         });
