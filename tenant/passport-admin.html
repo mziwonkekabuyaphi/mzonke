@@ -126,15 +126,6 @@
   @media (max-width: 1000px) {
     .dashboard-two-columns { grid-template-columns: 1fr; }
   }
-  .support-wristband-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-    margin-bottom: 1.5rem;
-  }
-  @media (max-width: 1000px) {
-    .support-wristband-row { grid-template-columns: 1fr; }
-  }
 
   .dashboard-card {
     background: var(--s2);
@@ -171,11 +162,11 @@
   }
 
   /* Lists */
-  .account-list, .refund-list, .ticket-list, .wristband-list {
+  .account-list, .refund-list {
     max-height: 450px;
     overflow-y: auto;
   }
-  .account-item, .refund-item, .ticket-item, .wristband-item {
+  .account-item, .refund-item {
     background: var(--s3);
     border-radius: 16px;
     padding: 12px 16px;
@@ -189,7 +180,7 @@
     border: 1px solid var(--border);
     transition: all 0.2s;
   }
-  .account-item:hover, .refund-item:hover, .ticket-item:hover, .wristband-item:hover {
+  .account-item:hover, .refund-item:hover {
     border-color: var(--red-border);
     background: var(--s2);
   }
@@ -640,9 +631,32 @@
   ::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 99px; }
 
   @media (max-width: 900px) {
-    .dashboard-two-columns, .support-wristband-row { grid-template-columns: 1fr; }
+    .dashboard-two-columns { grid-template-columns: 1fr; }
     .dashboard-overlay { width: 100vw; max-width: 100vw; }
   }
+
+  /* Refund request filter tabs */
+  .refund-filter-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .refund-filter-tab {
+    flex: 1;
+    background: var(--s3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refund-filter-tab:hover { color: var(--text); }
+  .refund-filter-tab.active { background: var(--red-dim); border-color: var(--red-border); color: var(--red); }
 </style>
 </head>
 <body>
@@ -715,35 +729,19 @@
       </div>
     </div>
 
-    <!-- Middle row: Support Queue | Wristband Center -->
-    <div class="support-wristband-row">
-      <div class="dashboard-card">
-        <div class="card-header">
-          <h3><i class="fas fa-headset"></i> Support Queue</h3>
-          <button class="action-btn primary small" id="newTicketBtn"><i class="fas fa-plus"></i> New Ticket</button>
-        </div>
-        <div class="card-body">
-          <div id="supportTicketsList" class="ticket-list"><div class="empty-state" style="color:var(--muted);padding:20px;text-align:center;">Loading...</div></div>
-        </div>
-      </div>
-      <div class="dashboard-card">
-        <div class="card-header">
-          <h3><i class="fas fa-id-card"></i> Wristband Center</h3>
-          <button class="action-btn primary small" id="newWristbandBtn"><i class="fas fa-plus"></i> New Wristband</button>
-        </div>
-        <div class="card-body">
-          <div id="wristbandsList" class="wristband-list"><div class="empty-state" style="color:var(--muted);padding:20px;text-align:center;">Loading...</div></div>
-        </div>
-      </div>
-    </div>
-
     <!-- Refund Requests (full width) -->
     <div class="dashboard-card" style="margin-top:0;">
       <div class="card-header">
-        <h3><i class="fas fa-undo-alt"></i> Refund Requests</h3>
+        <h3><i class="fas fa-money-bill-transfer"></i> Refund Requests<span id="refundPendingBadge" style="display:none;background:var(--red);color:white;font-size:0.6rem;font-weight:700;padding:2px 8px;border-radius:60px;margin-left:4px;">0</span></h3>
         <button class="action-btn info" id="refreshRefundsBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
       </div>
       <div class="card-body">
+        <div class="refund-filter-tabs">
+          <button class="refund-filter-tab active" data-status="pending">Pending</button>
+          <button class="refund-filter-tab" data-status="approved">Approved</button>
+          <button class="refund-filter-tab" data-status="rejected">Rejected</button>
+          <button class="refund-filter-tab" data-status="all">All</button>
+        </div>
         <div class="refund-list" id="refundRequestsList"></div>
       </div>
     </div>
@@ -803,27 +801,6 @@
     </div>
   </div>
 
-  <!-- New Support Ticket Modal -->
-  <div id="newTicketModal" class="simple-modal">
-    <div class="simple-modal-content">
-      <div class="modal-header"><h3><i class="fas fa-ticket-alt"></i> New Support Ticket</h3></div>
-      <div class="topup-input-group"><select id="ticketCustomerId" class="topup-input"><option value="">Select customer (wallet ID)</option></select></div>
-      <div class="topup-input-group"><select id="ticketIssueType" class="topup-input"><option value="payment_failed">💳 Customer cannot pay</option><option value="lost_wristband">📱 Lost wristband</option><option value="wallet_not_updated">🔄 Wallet not updated</option><option value="duplicate_transaction">🔁 Duplicate transaction</option><option value="other">❓ Other</option></select></div>
-      <div class="topup-input-group"><input type="text" id="ticketDescription" placeholder="Description" class="topup-input"></div>
-      <div class="topup-input-group"><select id="ticketPriority" class="topup-input"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
-      <div class="modal-footer"><button class="modal-btn confirm" id="createTicketBtn">Create Ticket</button><button class="modal-btn cancel" id="closeTicketModalBtn">Cancel</button></div>
-    </div>
-  </div>
-
-  <!-- Wristband Actions Modal -->
-  <div id="wristbandActionModal" class="simple-modal">
-    <div class="simple-modal-content">
-      <div class="modal-header"><h3 id="wristbandActionTitle">Wristband Action</h3></div>
-      <div id="wristbandActionBody"></div>
-      <div class="modal-footer"><button class="modal-btn confirm" id="executeWristbandAction">Confirm</button><button class="modal-btn cancel" id="closeWristbandModalBtn">Cancel</button></div>
-    </div>
-  </div>
-
   <!-- Confirmation Modal -->
   <div id="confirmModal" class="custom-modal-overlay">
     <div class="custom-modal">
@@ -844,8 +821,7 @@
   let accounts = [];
   let selectedAccountId = null;
   let refundRequests = [];
-  let supportTickets = [];
-  let wristbands = [];
+  let refundFilter = 'pending';
   let modalResolve = null;
 
   // ─── HELPERS ───
@@ -968,178 +944,6 @@
     } catch(err) { showToast('Status update failed: '+err.message, 'error'); return false; }
   }
 
-  // ─── SUPPORT TICKETS ───
-  async function loadSupportTickets() {
-    try {
-      const { data, error } = await supabase
-        .from('support_tickets')
-        .select('*, profiles:customer_id (name, email)')
-        .not('status', 'eq', 'closed')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      supportTickets = (data||[]).map(t => ({
-        id: t.id,
-        customer_id: t.customer_id,
-        customer_name: t.profiles?.name || t.customer_name || 'Unknown',
-        customer_email: t.profiles?.email || '',
-        issue_type: t.issue_type,
-        description: t.description,
-        status: t.status,
-        priority: t.priority,
-        created_at: t.created_at
-      }));
-      renderSupportTickets();
-    } catch(err) { console.error(err); supportTickets=[]; renderSupportTickets(); }
-  }
-
-  function renderSupportTickets() {
-    const container = document.getElementById('supportTicketsList');
-    if (!supportTickets.length) { container.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center;">No tickets</div>'; return; }
-    container.innerHTML = supportTickets.map(t => `
-      <div class="ticket-item">
-        <div><div class="account-id">${escapeHtml(t.customer_name)}</div><div class="account-name">${escapeHtml(t.issue_type.replace('_',' '))} • ${new Date(t.created_at).toLocaleDateString()}</div></div>
-        <div><div class="account-status status-${t.status}">${t.status.toUpperCase()}</div>
-          <div class="ticket-actions" style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
-            ${t.status === 'open' ? `<button class="action-btn small warning" data-ticket-id="${t.id}" data-action="progress">In Progress</button>` : ''}
-            ${t.status !== 'resolved' ? `<button class="action-btn small success" data-ticket-id="${t.id}" data-action="resolve">Resolve</button>` : ''}
-            <button class="action-btn small danger" data-ticket-id="${t.id}" data-action="close">Close & Delete</button>
-          </div>
-        </div>
-      </div>
-    `).join('');
-    document.querySelectorAll('[data-ticket-id]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const id = btn.dataset.ticketId, action = btn.dataset.action;
-        if (action === 'progress') await markInProgress(id);
-        else if (action === 'resolve') await resolveTicket(id);
-        else if (action === 'close') await deleteTicket(id);
-      });
-    });
-  }
-
-  async function markInProgress(ticketId) {
-    if (!await showConfirm('Mark as In Progress?')) return;
-    await supabase.from('support_tickets').update({ status: 'in_progress', updated_at: new Date().toISOString() }).eq('id', ticketId);
-    showToast('Ticket in progress', 'success');
-    await loadSupportTickets();
-  }
-
-  async function resolveTicket(ticketId) {
-    if (!await showConfirm('Resolve this ticket?')) return;
-    await supabase.from('support_tickets').update({ status: 'resolved', resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', ticketId);
-    showToast('Ticket resolved', 'success');
-    await loadSupportTickets();
-  }
-
-  async function deleteTicket(ticketId) {
-    if (!await showConfirm('Close and delete this ticket?')) return;
-    await supabase.from('support_tickets').delete().eq('id', ticketId);
-    showToast('Ticket deleted', 'success');
-    await loadSupportTickets();
-  }
-
-  async function createTicket(customerId, issueType, description, priority) {
-    const { error } = await supabase.from('support_tickets').insert({
-      customer_id: customerId || null,
-      issue_type: issueType,
-      description,
-      priority: priority || 'normal',
-      status: 'open'
-    });
-    if (error) { showToast('Failed: '+error.message, 'error'); return false; }
-    showToast('Ticket created', 'success');
-    await loadSupportTickets();
-    return true;
-  }
-
-  // ─── WRISTBANDS ───
-  async function loadWristbands() {
-    try {
-      const { data, error } = await supabase
-        .from('wristbands')
-        .select('*, profiles:wallet_id (name, email)')
-        .order('issued_at', { ascending: false });
-      if (error) throw error;
-      wristbands = (data||[]).map(w => ({
-        id: w.id,
-        uid: w.uid,
-        wallet_id: w.wallet_id,
-        active: w.active,
-        issued_at: w.issued_at,
-        customer_name: w.profiles?.name || 'Unassigned'
-      }));
-      renderWristbands();
-    } catch(err) { console.error(err); wristbands=[]; renderWristbands(); }
-  }
-
-  function renderWristbands() {
-    const container = document.getElementById('wristbandsList');
-    if (!wristbands.length) { container.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center;">No wristbands</div>'; return; }
-    container.innerHTML = wristbands.map(w => `
-      <div class="wristband-item">
-        <div><div class="account-id">${escapeHtml(w.uid)}</div><div class="account-name">${escapeHtml(w.customer_name)} • ${w.active ? 'Active' : 'Disabled'}</div></div>
-        <div class="wristband-actions" style="display:flex;gap:4px;flex-wrap:wrap;">
-          <button class="action-btn small info" data-wristband-id="${w.id}" data-action="assign">Assign</button>
-          <button class="action-btn small warning" data-wristband-id="${w.id}" data-action="replace">Replace</button>
-          <button class="action-btn small danger" data-wristband-id="${w.id}" data-action="disable">${w.active ? 'Disable' : 'Enable'}</button>
-        </div>
-      </div>
-    `).join('');
-    document.querySelectorAll('[data-wristband-id]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = btn.dataset.wristbandId, action = btn.dataset.action;
-        openWristbandAction(id, action);
-      });
-    });
-  }
-
-  let currentWristbandAction = null;
-  function openWristbandAction(wristbandId, action) {
-    const wristband = wristbands.find(w => w.id === wristbandId);
-    if (!wristband) return;
-    currentWristbandAction = { wristbandId, action, wristband };
-    const titleMap = { assign:'Assign Wristband', replace:'Replace UID', disable: wristband.active ? 'Disable Wristband' : 'Enable Wristband' };
-    document.getElementById('wristbandActionTitle').innerText = titleMap[action];
-    let body = '';
-    if (action === 'assign') {
-      body = `<select id="assignWalletSelect" class="topup-input"><option value="">Select customer (wallet ID)</option>${accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)} (${a.id.slice(0,8)})</option>`).join('')}</select>`;
-    } else if (action === 'replace') {
-      body = `<input type="text" id="newUid" placeholder="New UID (e.g., 04:5E:8A:2F:1C)" class="topup-input">`;
-    } else {
-      body = `<p style="color:var(--muted);">Are you sure you want to ${action} this wristband?</p>`;
-    }
-    document.getElementById('wristbandActionBody').innerHTML = body;
-    document.getElementById('wristbandActionModal').classList.add('active');
-  }
-
-  async function executeWristbandAction() {
-    const { wristbandId, action, wristband } = currentWristbandAction;
-    if (action === 'assign') {
-      const walletId = document.getElementById('assignWalletSelect').value;
-      if (!walletId) { showToast('Select a customer', 'error'); return; }
-      await supabase.from('wristbands').update({ wallet_id: walletId, active: true }).eq('id', wristbandId);
-      showToast('Wristband assigned', 'success');
-    } else if (action === 'replace') {
-      const newUid = document.getElementById('newUid')?.value.trim();
-      if (!newUid) { showToast('Enter new UID', 'error'); return; }
-      await supabase.from('wristbands').update({ uid: newUid }).eq('id', wristbandId);
-      showToast('UID replaced', 'success');
-    } else if (action === 'disable') {
-      const newActive = !wristband.active;
-      await supabase.from('wristbands').update({ active: newActive }).eq('id', wristbandId);
-      showToast(newActive ? 'Wristband enabled' : 'Wristband disabled', 'success');
-    }
-    document.getElementById('wristbandActionModal').classList.remove('active');
-    await loadWristbands();
-  }
-
-  async function createWristband(uid, walletId = null) {
-    const { error } = await supabase.from('wristbands').insert({ uid, wallet_id: walletId, active: true });
-    if (error) showToast('Failed: '+error.message, 'error');
-    else showToast('Wristband created', 'success');
-    await loadWristbands();
-  }
-
   // ─── REFUNDS ───
   async function loadRefundRequests() {
     try {
@@ -1156,6 +960,7 @@
         status: r.status,
         created_at: r.created_at
       }));
+      updateRefundPendingBadge();
       renderRefundRequests();
       updateStats();
     } catch(err) {
@@ -1166,10 +971,24 @@
     }
   }
 
+  function updateRefundPendingBadge() {
+    const pendingCount = refundRequests.filter(r => r.status === 'pending').length;
+    const badge = document.getElementById('refundPendingBadge');
+    badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+    badge.innerText = pendingCount;
+  }
+
+  function setRefundFilter(status) {
+    refundFilter = status;
+    document.querySelectorAll('.refund-filter-tab').forEach(el => el.classList.toggle('active', el.dataset.status === status));
+    renderRefundRequests();
+  }
+
   function renderRefundRequests() {
     const container = document.getElementById('refundRequestsList');
-    if (!refundRequests.length) { container.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center;">No refund requests</div>'; return; }
-    container.innerHTML = refundRequests.map(req => `
+    const filtered = refundFilter === 'all' ? refundRequests : refundRequests.filter(r => r.status === refundFilter);
+    if (!filtered.length) { container.innerHTML = `<div style="color:var(--muted);padding:20px;text-align:center;">No ${refundFilter === 'all' ? '' : refundFilter} refund requests</div>`; return; }
+    container.innerHTML = filtered.map(req => `
       <div class="refund-item">
         <div><div class="account-id">${escapeHtml(req.customer_name)}</div><div class="account-name">${escapeHtml(req.reason || 'No reason')}</div></div>
         <div><div class="account-balance">${fmtR(req.amount)}</div><div class="account-status status-${req.status}">${req.status.toUpperCase()}</div>
@@ -1309,9 +1128,7 @@
     if (selectedAccountId) await selectAccount(selectedAccountId);
     renderAccountList();
     updateStats();
-    // Reload support, wristbands, refunds
-    await loadSupportTickets();
-    await loadWristbands();
+    // Reload refunds
     await loadRefundRequests();
     // If dashboard open, refresh charts
     if (document.getElementById('dashboardOverlay').classList.contains('open')) renderCharts();
@@ -1474,12 +1291,6 @@
   async function init() {
     await refreshData();
 
-    // Populate customer select for new ticket
-    const customerSelect = document.getElementById('ticketCustomerId');
-    customerSelect.innerHTML = '<option value="">Select customer</option>' + accounts.map(a =>
-      `<option value="${a.user_id}">${escapeHtml(a.name)} (${a.email})</option>`
-    ).join('');
-
     // Event listeners
     document.getElementById('topUpBtn').addEventListener('click', () => {
       if (!selectedAccountId) return showToast('Select account', 'error');
@@ -1518,31 +1329,7 @@
     document.getElementById('closeManualRefundModalBtn').addEventListener('click', () => document.getElementById('manualRefundModal').classList.remove('active'));
     document.getElementById('refreshBtnHeader').addEventListener('click', refreshData);
     document.getElementById('refreshRefundsBtn').addEventListener('click', loadRefundRequests);
-
-    // New ticket
-    document.getElementById('newTicketBtn').addEventListener('click', () => {
-      document.getElementById('ticketCustomerId').value = '';
-      document.getElementById('ticketDescription').value = '';
-      document.getElementById('newTicketModal').classList.add('active');
-    });
-    document.getElementById('closeTicketModalBtn').addEventListener('click', () => document.getElementById('newTicketModal').classList.remove('active'));
-    document.getElementById('createTicketBtn').addEventListener('click', async () => {
-      const custId = document.getElementById('ticketCustomerId').value || null;
-      const issue = document.getElementById('ticketIssueType').value;
-      const desc = document.getElementById('ticketDescription').value;
-      const priority = document.getElementById('ticketPriority').value;
-      if (!issue) { showToast('Select issue type', 'error'); return; }
-      await createTicket(custId, issue, desc, priority);
-      document.getElementById('newTicketModal').classList.remove('active');
-    });
-
-    // Wristband
-    document.getElementById('newWristbandBtn').addEventListener('click', async () => {
-      const newUid = prompt('Enter new wristband UID (e.g., 04:5E:8A:2F:1C)');
-      if (newUid) await createWristband(newUid);
-    });
-    document.getElementById('executeWristbandAction').addEventListener('click', executeWristbandAction);
-    document.getElementById('closeWristbandModalBtn').addEventListener('click', () => document.getElementById('wristbandActionModal').classList.remove('active'));
+    document.querySelectorAll('.refund-filter-tab').forEach(tab => tab.addEventListener('click', () => setRefundFilter(tab.dataset.status)));
 
     // Presets
     document.querySelectorAll('.preset-btn[data-amount]').forEach(btn => btn.addEventListener('click', () => {
