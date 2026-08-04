@@ -66,14 +66,16 @@ async function render(path) {
     }
 }
 
+// Routes that hide the shared bottom nav — either because the old
+// multi-page version never included it (home), or because the page has
+// its own fixed bottom bar that would collide with it (order's cart-bar).
+const NAV_HIDDEN_ROUTES = new Set(['home', 'order']);
+
 function updateActiveNavItem(path) {
     document.querySelectorAll('#bottom-nav .bottom-nav__item').forEach(el => {
         el.classList.toggle('is-active', el.dataset.link === path);
     });
-    // Old multi-page setup never rendered #bottomNavContainer into home.html —
-    // the bottom nav only existed on the other 5 pages. Reproduce that by
-    // hiding the nav (via body class) whenever the current route is home.
-    document.body.classList.toggle('nav-hidden', path === 'home');
+    document.body.classList.toggle('nav-hidden', NAV_HIDDEN_ROUTES.has(path));
 }
 
 export function navigate(path) {
