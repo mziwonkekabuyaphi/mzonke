@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Pre-Order · Staff</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --red: #E30613; --red-dim: rgba(227,6,19,0.08);
+  --bg: #0D0F12; --surface: #141720; --surface2: #1C2030; --surface3: #232840;
+  --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.1);
+  --text: #F0F2F8; --text2: #8B92A8; --text3: #555E78;
+  --green: #22C55E; --amber: #F59E0B; --blue: #3B82F6;
+}
+html, body { height: 100%; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; padding-bottom: 40px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+.po-header { padding: 16px 18px 0 18px; }
+.po-title { font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.po-title i { color: var(--red); }
+.po-sub { font-size: 0.75rem; color: var(--text2); margin-top: 2px; }
+
+.po-tabs { display: flex; gap: 4px; padding: 14px 18px 0 18px; overflow-x: auto; }
+.po-tab { flex-shrink: 0; padding: 8px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.po-tab:hover { background: var(--surface2); }
+.po-tab.active { background: var(--red-dim); color: var(--text); }
+.po-tab-badge { background: var(--red); color: white; font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 99px; min-width: 16px; text-align: center; }
+
+.po-content { padding: 16px 18px; }
+.po-empty { text-align: center; padding: 50px 20px; color: var(--text3); }
+.po-empty i { font-size: 1.8rem; margin-bottom: 10px; display: block; }
+
+.order-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.order-card-header { padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface2); flex-wrap: wrap; gap: 6px; }
+.order-customer { font-weight: 700; }
+.order-customer-sub { font-size: 0.72rem; color: var(--text2); }
+.order-badge { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 99px; }
+.order-badge.paid { background: rgba(245,158,11,0.15); color: var(--amber); }
+.order-badge.ready { background: rgba(59,130,246,0.15); color: var(--blue); }
+.order-badge.collected { background: var(--surface3); color: var(--text2); }
+.order-body { padding: 12px 14px; }
+.order-item-row { display: flex; justify-content: space-between; font-size: 0.82rem; padding: 4px 0; color: var(--text2); }
+.order-item-row b { color: var(--text); font-weight: 600; }
+.order-value-row { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border2); font-weight: 700; }
+.order-meta { font-size: 0.68rem; color: var(--text3); margin-top: 8px; }
+.order-actions { display: flex; gap: 8px; padding: 0 14px 14px 14px; }
+.btn { flex: 1; padding: 9px; border-radius: 8px; border: none; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-ready { background: var(--blue); color: #05122b; }
+.btn-collect { background: var(--green); color: #06210f; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 10px 18px; border-radius: 10px; font-size: 0.8rem; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.toast.error { border-color: rgba(227,6,19,0.4); color: #ff8a8a; }
+</style>
+</head>
+<body>
+
+<div class="po-header">
+  <div class="po-title"><i class="fas fa-wine-bottle"></i> Pre-Order Fulfillment</div>
+  <div class="po-sub">New Pre-Order system — replaces the old Butcher POS/collection pages.</div>
+</div>
+
+<div class="po-tabs">
+  <div class="po-tab active" data-tab="paid">Paid <span class="po-tab-badge" id="badge_paid">0</span></div>
+  <div class="po-tab" data-tab="ready">Ready for Pickup <span class="po-tab-badge" id="badge_ready">0</span></div>
+  <div class="po-tab" data-tab="collected">Collected (History)</div>
+</div>
+
+<div class="po-content" id="poContent"></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { supabase } from '../config/supabase.js';
+
+let staffProfile = null;
+let currentTab = 'paid';
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.innerText = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function fmtMoney(n) { return `R${(Number(n) || 0).toFixed(2)}`; }
+function fmtDate(d) { return d ? new Date(d).toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
+function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+
+async function loadStaffProfile() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { staffProfile = null; return; }
+  const { data: profile } = await supabase.from('profiles').select('id, name, role, staff_role').eq('auth_user_id', session.user.id).maybeSingle();
+  staffProfile = (profile && ['staff', 'admin'].includes(profile.role)) ? profile : null;
+}
+
+async function fetchOrders(status) {
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('id, order_number, status, total_amount, order_date, ready_at, collected_at, customer_name, customer_phone')
+    .eq('source', 'preorder')
+    .eq('status', status)
+    .order('order_date', { ascending: true });
+  if (error) { console.error(error); return []; }
+
+  const orderIds = (orders || []).map(o => o.id);
+  let itemsByOrder = {};
+  if (orderIds.length > 0) {
+    const { data: items } = await supabase
+      .from('order_items')
+      .select('order_id, product_name, quantity, unit_price, subtotal')
+      .in('order_id', orderIds);
+    (items || []).forEach(it => {
+      if (!itemsByOrder[it.order_id]) itemsByOrder[it.order_id] = [];
+      itemsByOrder[it.order_id].push(it);
+    });
+  }
+  return (orders || []).map(o => ({ ...o, items: itemsByOrder[o.id] || [] }));
+}
+
+function renderItems(items) {
+  return (items || []).map(i => `<div class="order-item-row"><span><b>${i.quantity} &times;</b> ${escapeHtml(i.product_name)}</span><span>${fmtMoney(i.subtotal)}</span></div>`).join('');
+}
+
+async function renderPaid() {
+  const orders = await fetchOrders('PAID');
+  document.getElementById('badge_paid').innerText = orders.length;
+  const container = document.getElementById('poContent');
+  if (orders.length === 0) { container.innerHTML = `<div class="po-empty"><i class="fas fa-check-circle"></i>No orders awaiting fulfillment.</div>`; return; }
+  container.innerHTML = orders.map(o => `
+    <div class="order-card">
+      <div class="order-card-header">
+        <div><div class="order-customer">${escapeHtml(o.customer_name || 'Unknown')}</div><div class="order-customer-sub">${escapeHtml(o.customer_phone || '')} &middot; ${escapeHtml(o.order_number || '')}</div></div>
+        <span class="order-badge paid">Paid</span>
+      </div>
+      <div class="order-body">
+        ${renderItems(o.items)}
+        <div class="order-value-row"><span>Total</span><span>${fmtMoney(o.total_amount)}</span></div>
+        <div class="order-meta">Ordered ${fmtDate(o.order_date)}</div>
+      </div>
+      <div class="order-actions">
+        <button class="btn btn-ready" data-ready="${o.id}"><i class="fas fa-box"></i> Mark Ready for Pickup</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-ready]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('preorder_mark_ready', { p_order_id: btn.dataset.ready });
+      if (error) { showToast(error.message || 'Failed', true); btn.disabled = false; return; }
+      showToast('Order marked ready for pickup.');
+      renderCurrentTab();
+    };
+  });
+}
+
+async function renderReady() {
+  const orders = await fetchOrders('READY_FOR_PICKUP');
+  document.getElementById('badge_ready').innerText = orders.length;
+  const container = document.getElementById('poContent');
+  if (orders.length === 0) { container.innerHTML = `<div class="po-empty"><i class="fas fa-hand-holding"></i>Nothing ready for pickup right now.</div>`; return; }
+  container.innerHTML = orders.map(o => `
+    <div class="order-card">
+      <div class="order-card-header">
+        <div><div class="order-customer">${escapeHtml(o.customer_name || 'Unknown')}</div><div class="order-customer-sub">${escapeHtml(o.customer_phone || '')} &middot; ${escapeHtml(o.order_number || '')}</div></div>
+        <span class="order-badge ready">Ready</span>
+      </div>
+      <div class="order-body">
+        ${renderItems(o.items)}
+        <div class="order-value-row"><span>Total</span><span>${fmtMoney(o.total_amount)}</span></div>
+        <div class="order-meta">Ready since ${fmtDate(o.ready_at)}</div>
+      </div>
+      <div class="order-actions">
+        <button class="btn btn-collect" data-collect="${o.id}"><i class="fas fa-hand-holding-heart"></i> Mark Collected</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-collect]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('preorder_mark_collected', { p_order_id: btn.dataset.collect });
+      if (error) { showToast(error.message || 'Failed', true); btn.disabled = false; return; }
+      showToast('Order marked collected.');
+      renderCurrentTab();
+    };
+  });
+}
+
+async function renderCollected() {
+  const orders = await fetchOrders('COLLECTED');
+  const container = document.getElementById('poContent');
+  if (orders.length === 0) { container.innerHTML = `<div class="po-empty"><i class="fas fa-clock-rotate-left"></i>No collected orders yet.</div>`; return; }
+  container.innerHTML = orders.slice().reverse().map(o => `
+    <div class="order-card">
+      <div class="order-card-header">
+        <div><div class="order-customer">${escapeHtml(o.customer_name || 'Unknown')}</div><div class="order-customer-sub">${escapeHtml(o.customer_phone || '')} &middot; ${escapeHtml(o.order_number || '')}</div></div>
+        <span class="order-badge collected">Collected</span>
+      </div>
+      <div class="order-body">
+        ${renderItems(o.items)}
+        <div class="order-value-row"><span>Total</span><span>${fmtMoney(o.total_amount)}</span></div>
+        <div class="order-meta">Collected ${fmtDate(o.collected_at)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function renderCurrentTab() {
+  const renderers = { paid: renderPaid, ready: renderReady, collected: renderCollected };
+  await renderers[currentTab]();
+  fetchOrders('PAID').then(o => document.getElementById('badge_paid').innerText = o.length);
+  fetchOrders('READY_FOR_PICKUP').then(o => document.getElementById('badge_ready').innerText = o.length);
+}
+
+document.querySelectorAll('.po-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.po-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTab = tab.dataset.tab;
+    renderCurrentTab();
+  });
+});
+
+await loadStaffProfile();
+if (!staffProfile) {
+  document.getElementById('poContent').innerHTML = `<div class="po-empty"><i class="fas fa-lock"></i>Staff/admin sign-in required.</div>`;
+  document.querySelector('.po-tabs').style.display = 'none';
+} else {
+  renderCurrentTab();
+  setInterval(renderCurrentTab, 20000);
+}
+</script>
+</body>
+</html>
