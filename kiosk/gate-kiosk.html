@@ -515,8 +515,8 @@
       <input type="tel" id="buyPhone" class="kiosk-input" placeholder="+27 00 000 0000" autocomplete="off">
     </div>
     <div class="form-row">
-      <label>🔐 Wallet CVV</label>
-      <input type="password" id="buyCvv" class="kiosk-input" placeholder="•••" maxlength="6" autocomplete="off">
+      <label>🔐 Passport Key</label>
+      <input type="password" id="buyCvv" class="kiosk-input" placeholder="Passport Key" autocomplete="off">
     </div>
 
     <div id="balancePreview" class="balance-preview">
@@ -848,7 +848,7 @@
     cachedProfile = null; cachedWallet = null;
     balPreview.className = 'balance-preview';
     if (!phone) return;
-    const { data: p } = await supabase.from('profiles').select('id, card_cvv, name').eq('phone', phone).maybeSingle();
+    const { data: p } = await supabase.from('profiles').select('id, name').eq('phone', phone).maybeSingle();
     if (!p) return;
     cachedProfile = p;
     const { data: w } = await supabase.from('wallets').select('id, balance').eq('user_id', p.id).maybeSingle();
@@ -999,19 +999,20 @@
 
   /* Wallet purchase */
   async function purchaseWithWallet() {
-    const phone = buyPhone.value.trim();
-    const cvv   = buyCvv.value.trim();
-    if (!phone || !cvv) { toast('Enter phone and CVV', 'error'); return; }
+    const phone       = buyPhone.value.trim();
+    const passportKey = buyCvv.value.trim();
+    if (!phone || !passportKey) { toast('Enter phone and Passport Key', 'error'); return; }
     if (!currentEvent)  { toast('Select an event', 'error'); return; }
     setPurchaseLoading(true);
     try {
+      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ phone, password: passportKey });
+      if (authErr || !authData?.user) { toast('Incorrect phone or Passport Key', 'error'); return; }
       let profile = cachedProfile;
       if (!profile) {
-        const { data, error } = await supabase.from('profiles').select('id, card_cvv, name').eq('phone', phone).maybeSingle();
-        if (error || !data) { toast('No account found with this phone', 'error'); return; }
+        const { data, error } = await supabase.from('profiles').select('id, name').eq('id', authData.user.id).maybeSingle();
+        if (error || !data) { toast('No profile found for this account', 'error'); return; }
         profile = data; cachedProfile = data;
       }
-      if (profile.card_cvv !== cvv) { toast('Incorrect CVV', 'error'); return; }
       let wallet = cachedWallet;
       if (!wallet) {
         const { data, error } = await supabase.from('wallets').select('id, balance').eq('user_id', profile.id).maybeSingle();
@@ -1058,6 +1059,7 @@
       buyCvv.value = '';
       cachedWallet = null; cachedProfile = null;
       balPreview.className = 'balance-preview';
+      await supabase.auth.signOut();
     } finally { setPurchaseLoading(false); }
   }
 
