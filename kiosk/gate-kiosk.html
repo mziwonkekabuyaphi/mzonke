@@ -685,6 +685,12 @@
     const last9 = normalizePhoneDigits(phone);
     return last9 ? '+27' + last9 : '';
   }
+  function phoneToAuthEmail(phone) {
+    // Matches kiosk-start.html: Supabase phone-auth needs a paid SMS provider, so we
+    // authenticate with a synthetic email derived from the phone number instead.
+    const last9 = normalizePhoneDigits(phone);
+    return last9 ? `${last9}@passport.rands.local` : '';
+  }
   function detectInputType(raw) {
     const v = (raw || '').trim();
     if (!v) return 'empty';
@@ -1011,11 +1017,12 @@
     if (!rawPhone || !passportKey) { toast('Enter phone and Passport Key', 'error'); return; }
     if (!currentEvent)  { toast('Select an event', 'error'); return; }
     const phone = toE164ZA(rawPhone);
-    if (!phone) { toast('Enter a valid phone number', 'error'); return; }
+    const authEmail = phoneToAuthEmail(rawPhone);
+    if (!phone || !authEmail) { toast('Enter a valid phone number', 'error'); return; }
     setPurchaseLoading(true);
     try {
-      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ phone, password: passportKey });
-      if (authErr || !authData?.user) { toast('Incorrect phone or Passport Key', 'error'); return; }
+      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({ email: authEmail, password: passportKey });
+      if (authErr || !authData?.user) { console.error('Purchase auth error:', authErr); toast('Incorrect phone or Passport Key', 'error'); return; }
       let profile = cachedProfile;
       if (!profile) {
         const { data, error } = await supabase.from('profiles').select('id, name').eq('id', authData.user.id).maybeSingle();

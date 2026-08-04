@@ -1303,9 +1303,16 @@ function normalizePhoneDigits(phone) {
   return digits;
 }
 function toE164ZA(phone) {
-  // Normalizes South African numbers to a consistent +27XXXXXXXXX format for Supabase Auth
+  // Normalizes to +27XXXXXXXXX format (used for display / ticket-matching only)
   const last9 = normalizePhoneDigits(phone);
   return last9 ? '+27' + last9 : '';
+}
+function phoneToAuthEmail(phone) {
+  // Supabase phone-auth requires a paid SMS provider (Twilio etc). To avoid that requirement,
+  // we authenticate with a synthetic email derived from the phone number instead — the guest
+  // never sees this, they only ever type their cellphone number + Passport Key.
+  const last9 = normalizePhoneDigits(phone);
+  return last9 ? `${last9}@passport.rands.local` : '';
 }
 
 function toast(msg, dur=2800){
@@ -1527,12 +1534,16 @@ window.submitWalletLogin = async function() {
   const rawPhone = document.getElementById('authPhone')?.value.trim();
   const password = document.getElementById('authPassword')?.value;
   if (!rawPhone || !password) { toast('Enter your cellphone number and Passport Key'); return; }
-  const phone = toE164ZA(rawPhone);
-  if (!phone) { toast('Please enter a valid cellphone number'); return; }
+  const authEmail = phoneToAuthEmail(rawPhone);
+  if (!authEmail) { toast('Please enter a valid cellphone number'); return; }
   setWalletAuthLoading(true);
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ phone, password });
-    if (error || !data?.user) { toast('Incorrect cellphone number or Passport Key'); return; }
+    const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    if (error || !data?.user) {
+      console.error('Login error:', error);
+      toast('Incorrect cellphone number or Passport Key');
+      return;
+    }
     await loadWalletForAuthUser(data.user);
   } catch (err) {
     console.error('Login error:', err);
@@ -1547,13 +1558,18 @@ window.submitWalletSignup = async function() {
   const confirm = document.getElementById('authPasswordConfirm')?.value;
   if (!name || !rawPhone || !password) { toast('Please fill in all fields'); return; }
   const phone = toE164ZA(rawPhone);
-  if (!phone) { toast('Please enter a valid cellphone number'); return; }
+  const authEmail = phoneToAuthEmail(rawPhone);
+  if (!phone || !authEmail) { toast('Please enter a valid cellphone number'); return; }
   if (password.length < 6) { toast('Passport Key must be at least 6 characters'); return; }
   if (password !== confirm) { toast('Passport Keys do not match'); return; }
   setWalletAuthLoading(true);
   try {
-    const { data, error } = await supabase.auth.signUp({ phone, password, options: { data: { name } } });
-    if (error) { toast(error.message?.includes('registered') ? 'An account with this number already exists' : 'Could not create Passport'); return; }
+    const { data, error } = await supabase.auth.signUp({ email: authEmail, password, options: { data: { name, phone } } });
+    if (error) {
+      console.error('Signup error:', error);
+      toast(error.message?.includes('registered') ? 'An account with this number already exists' : 'Could not create Passport — see console for details');
+      return;
+    }
     const userId = data.user?.id;
     if (!userId) { toast('Signup succeeded — please login'); walletAuthMode = 'login'; renderWalletAuthForm(); return; }
     // Create linked profile + wallet rows (phone stored normalized so it matches however it's typed next time)
@@ -1561,10 +1577,12 @@ window.submitWalletSignup = async function() {
     if (profileErr) console.error('Profile upsert error during signup (see chat for the RLS policy fix):', profileErr);
     await ensureWallet(userId);
     toast('Passport created! Welcome to Rands.');
-    // If email confirmation isn't required, a session is returned immediately; otherwise sign in explicitly.
+    // If email confirmation is required on your Supabase project, no session comes back yet —
+    // this will fail until "Confirm email" is turned OFF for the Email provider (see chat).
     if (data.session?.user) { await loadWalletForAuthUser(data.session.user); }
     else {
-      const { data: signInData } = await supabase.auth.signInWithPassword({ phone, password });
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+      if (signInErr) { console.error('Post-signup login error:', signInErr); toast('Account created — please turn off "Confirm email" in Supabase, then login'); return; }
       if (signInData?.user) await loadWalletForAuthUser(signInData.user);
     }
   } catch (err) {
@@ -1606,7 +1624,7 @@ async function loadWalletForAuthUser(authUser) {
     if (profileErr) console.error('Profile lookup error:', profileErr);
     if (!profile) {
       // Backfill profile row for pre-existing auth users
-      profile = { id: authUser.id, name: authUser.user_metadata?.name || 'Customer', phone: authUser.phone || '' };
+      profile = { id: authUser.id, name: authUser.user_metadata?.name || 'Customer', phone: authUser.user_metadata?.phone || '' };
       const { error: upsertErr } = await supabase.from('profiles').upsert(profile, { onConflict: 'id' });
       if (upsertErr) console.error('Profile upsert error (see chat for the RLS policy fix):', upsertErr);
     }
