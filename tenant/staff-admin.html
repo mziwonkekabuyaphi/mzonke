@@ -843,7 +843,7 @@
     let payrollRecords = [];
     let currentPayrollBatch = [];      // records currently shown in the Payroll tab
     const payrollById = new Map();     // every payroll record we've seen, keyed by id (used by payslip view/download)
-    let venueInfo = { name: 'Rands', address: '' };
+    let venueInfo = { name: 'Rands', address: '', phone: '' };
     let currentPage = 1;
     const pageSize = 10;
 
@@ -1627,31 +1627,35 @@
         setFill(C.red); doc.rect(0, 118, PAGE_W, 3, 'F');
 
         // logo badge — red panel behind the transparent-PNG logo
-        const badgeX = 40, badgeY = 24, badgeW = 150, badgeH = 70;
-        setFill(C.red); doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 8, 8, 'F');
+        const badgeX = 40, badgeY = 22, badgeW = 104, badgeH = 56;
+        setFill(C.red); doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 7, 7, 'F');
         const logoRatio = 92 / 196; // source logo is 196x92
-        const logoW = badgeW - 28, logoH = logoW * logoRatio;
-        doc.addImage(RANDS_LOGO_PNG, 'PNG', badgeX + 14, badgeY + (badgeH - logoH) / 2, logoW, logoH);
+        const logoW = badgeW - 22, logoH = logoW * logoRatio;
+        doc.addImage(RANDS_LOGO_PNG, 'PNG', badgeX + 11, badgeY + (badgeH - logoH) / 2, logoW, logoH);
+
+        // period date sits under the badge
+        setText(C.muted); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+        doc.text(`${formatDate(record.period_start)} – ${formatDate(record.period_end)}`, badgeX, badgeY + badgeH + 14);
 
         const textX = badgeX + badgeW + 18;
         setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
-        doc.text(venueInfo.name || 'Rands Cape Town', textX, 52);
+        doc.text(venueInfo.name || 'Rands Cape Town', textX, 40);
         setText(C.boneSoft); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        if (venueInfo.address) doc.text(venueInfo.address, textX, 68);
-        doc.text('PAYE & UIF registered employer', textX, venueInfo.address ? 81 : 68);
+        let infoY = 56;
+        if (venueInfo.address) { doc.text(venueInfo.address, textX, infoY); infoY += 13; }
+        if (venueInfo.phone) { doc.text(venueInfo.phone, textX, infoY); }
 
         setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-        trackedText('PAYSLIP', R, 38, { align: 'right' }, 2);
-        setText(C.bone); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-        doc.text(`${formatDate(record.period_start)} – ${formatDate(record.period_end)}`, R, 54, { align: 'right' });
+        trackedText('PAYSLIP', R, 34, { align: 'right' }, 2);
 
         // status pill
-        const pillW = 68, pillH = 18, pillX = R - pillW, pillY = 66;
+        const pillW = 68, pillH = 18, pillX = R - pillW, pillY = 46;
         setFill(isPaid ? C.champagne : C.charcoal);
         setDraw(isPaid ? C.champagne : C.boneSoft); doc.setLineWidth(0.75);
         doc.roundedRect(pillX, pillY, pillW, pillH, 9, 9, isPaid ? 'F' : 'S');
         setText(isPaid ? C.charcoal : C.boneSoft); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
         trackedText(isPaid ? 'PAID' : 'PENDING', pillX + pillW / 2, pillY + 12.5, { align: 'center' }, 1);
+
 
         // ---------------- Employee details card ----------------
         let y = 150;
@@ -2071,8 +2075,8 @@
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) { window.parent.location.href = '../login.html'; return; }
-            const { data: venueData } = await supabase.from('venue_settings').select('venue_name, venue_location').limit(1).maybeSingle();
-            if (venueData) venueInfo = { name: venueData.venue_name || 'Rands', address: venueData.venue_location || '' };
+            const { data: venueData } = await supabase.from('venue_settings').select('venue_name, venue_location, contact_phone').limit(1).maybeSingle();
+            if (venueData) venueInfo = { name: venueData.venue_name || 'Rands', address: venueData.venue_location || '', phone: venueData.contact_phone || '' };
             await loadWorkforceData();
             setupListeners();
             initTabs();
