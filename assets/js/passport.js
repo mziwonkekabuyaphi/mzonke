@@ -41,7 +41,7 @@ const PHONE_PATTERN = /^0[0-9]{9}$/;
  * identifierValue computed here is what we later pass to signInWithPassport,
  * which has to match auth.users.phone (which the server stores normalized).
  */
-function normalizePhone(raw) {
+export function normalizePhone(raw) {
   const digits = raw.replace(/\D/g, '');
   if (/^0[0-9]{9}$/.test(digits)) {
     return '27' + digits.slice(1);

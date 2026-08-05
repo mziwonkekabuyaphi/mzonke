@@ -40,7 +40,7 @@ import {
   completeCustomerRegistration,
 } from '../../config/auth.js';
 
-import { startPassportFlow, peekPassportStatus } from './passport.js';
+import { startPassportFlow, peekPassportStatus, normalizePhone } from './passport.js';
 
 // ── DOM elements ───────────────────────────────────────────────────────────
 const emailInput    = document.getElementById('email');
@@ -172,7 +172,7 @@ async function signInDirect(identifier, password) {
     const isEmail = identifier.includes('@');
     const { user, error } = isEmail
       ? await signIn(identifier, password)
-      : await signInWithPhone(identifier, password);
+      : await signInWithPhone(normalizePhone(identifier), password);
 
     if (error || !user) throw new Error(error || 'Incorrect email/number or password.');
     await finishLogin(user);
