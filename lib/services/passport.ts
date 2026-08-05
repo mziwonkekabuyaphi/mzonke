@@ -102,7 +102,6 @@ async function findProfileById(admin: SupabaseClient, profileId: string): Promis
   const { data, error } = await admin
     .from('profiles')
     .select(PROFILE_COLUMNS)
-    .eq('role', 'customer')
     .eq('id', profileId)
     .maybeSingle();
   if (error) throw new Error(`Profile lookup failed: ${error.message}`);
