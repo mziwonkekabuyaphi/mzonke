@@ -267,9 +267,13 @@
 <script type="module">
     import { supabase } from '../config/supabase.js';
 
-    const SESSION_PRICE = 250;
     const COAL_DURATION = 60;          // minutes
     const REFILL_THRESHOLD = 15;       // minutes
+
+    // Flavour name -> price (R), loaded from shisha_products so it always
+    // matches what's set on the Dashboard instead of a hardcoded value.
+    let flavourPrices = {};
+    let coalRefillPrice = null;
 
     let currentBalance = 0;
     let activeSession = null;
@@ -322,25 +326,38 @@
             return;
         }
         const userId = session.user.id;
-        
+
+        // profiles.id is the real PK (not the same as the auth user id --
+        // profiles are linked via auth_user_id, since some profiles exist
+        // before an auth account, e.g. WhatsApp-started signups).
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('id, name, phone')
+            .eq('auth_user_id', userId)
+            .maybeSingle();
+        if (profileErr) console.warn("Profile fetch error:", profileErr);
+
+        if (!profile) {
+            console.warn("No profile found for auth user", userId);
+            currentBalance = 0;
+            currentCustomer = null;
+            updateWalletDisplay();
+            return;
+        }
+
+        // wallets.user_id references profiles.id, not the auth user id.
         const { data: wallet, error: walletErr } = await supabase
             .from('wallets')
             .select('id, balance')
-            .eq('user_id', userId)
+            .eq('user_id', profile.id)
             .maybeSingle();
         if (walletErr) console.warn("Wallet fetch error:", walletErr);
         const balance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
         currentBalance = balance;
-        
-        const { data: profile, error: profileErr } = await supabase
-            .from('profiles')
-            .select('name, phone')
-            .eq('id', userId)
-            .maybeSingle();
-        if (profileErr) console.warn("Profile fetch error:", profileErr);
-        
+
         currentCustomer = {
-            id: userId,
+            id: profile.id,
+            authUserId: userId,
             walletId: wallet?.id || null,
             phone: profile?.phone || session.user.user_metadata?.phone || session.user.email || '',
             name: profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Member'
@@ -352,6 +369,14 @@
     // ========== LOAD LOCATIONS & FLAVOURS FROM DB ==========
     async function loadLocationsAndFlavours() {
         try {
+            // Load coal refill price (single venue-wide setting, managed on the Dashboard)
+            const { data: settings, error: settingsError } = await supabase
+                .from('venue_settings')
+                .select('coal_refill_price')
+                .maybeSingle();
+            if (settingsError) console.warn('Coal refill price fetch error:', settingsError);
+            coalRefillPrice = settings?.coal_refill_price != null ? Number(settings.coal_refill_price) : null;
+
             // Load locations
             const { data: locations, error: locError } = await supabase
                 .from('shisha_locations')
@@ -375,10 +400,10 @@
                 });
             }
             
-            // Load flavours
+            // Load flavours (with live pricing from the DB, same source the Dashboard uses)
             const { data: flavours, error: flavError } = await supabase
                 .from('shisha_products')
-                .select('name')
+                .select('name, price')
                 .eq('is_available', true)
                 .order('name');
             
@@ -386,14 +411,16 @@
             
             const flavourSelect = document.getElementById('orderFlavour');
             flavourSelect.innerHTML = '';
+            flavourPrices = {};
             
             if (!flavours || flavours.length === 0) {
                 flavourSelect.innerHTML = '<option value="">No available flavours</option>';
             } else {
                 flavours.forEach(flav => {
+                    flavourPrices[flav.name] = Number(flav.price) || 0;
                     const opt = document.createElement('option');
                     opt.value = flav.name;
-                    opt.textContent = flav.name;
+                    opt.textContent = flav.price ? `${flav.name} - R${flav.price}` : flav.name;
                     flavourSelect.appendChild(opt);
                 });
             }
@@ -420,7 +447,9 @@
             orderBtn.textContent = hasLocations ? 'No flavours available' : 'No shisha stations available';
         } else {
             orderBtn.disabled = false;
-            orderBtn.textContent = `Smoke Now - R${SESSION_PRICE}`;
+            const selectedFlavour = flavourSelect.value;
+            const price = flavourPrices[selectedFlavour];
+            orderBtn.textContent = price ? `Smoke Now - R${price}` : 'Smoke Now';
         }
     }
 
@@ -581,7 +610,8 @@
 
     async function requestCoalRefill() {
         if (!activeSession) { showToast("No active session", true); return; }
-        await sendRequestToStaff({ type: 'maintenance', shishaId: activeSession.shishaId, location: activeSession.location, flavour: activeSession.flavour, amount: 250 });
+        const amount = coalRefillPrice != null ? coalRefillPrice : 250;
+        await sendRequestToStaff({ type: 'maintenance', shishaId: activeSession.shishaId, location: activeSession.location, flavour: activeSession.flavour, amount });
     }
     async function requestEndSession() {
         if (!activeSession) { showToast("No active session", true); return; }
@@ -655,7 +685,13 @@
             return;
         }
         
-        await sendRequestToStaff({ type: 'order_session', location, flavour, amount: SESSION_PRICE, paymentMethod: 'wallet', accountId: currentCustomer?.phone });
+        const amount = flavourPrices[flavour];
+        if (!amount) {
+            showToast("Couldn't determine price for this flavour, please try again", true);
+            return;
+        }
+
+        await sendRequestToStaff({ type: 'order_session', location, flavour, amount, paymentMethod: 'wallet', accountId: currentCustomer?.phone });
     }
 
     // ========== LOAD PUFFING STATEMENT ==========
