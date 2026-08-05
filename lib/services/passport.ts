@@ -92,8 +92,7 @@ async function findProfileByIdentifier(
     .select(PROFILE_COLUMNS)
     // Same restriction as phone-pin.ts's findProfileByPhone — staff/admin/
     // mobile_scanner rows must never be reachable through this flow.
-    .eq('role', 'customer')
-    .eq(column, value)
+        .eq(column, value)
     .maybeSingle();
   if (error) throw new Error(`Profile lookup failed: ${error.message}`);
   return data as ProfileRow | null;
