@@ -92,6 +92,7 @@ async function findProfileByIdentifier(
     .select(PROFILE_COLUMNS)
     // Same restriction as phone-pin.ts's findProfileByPhone — staff/admin/
     // mobile_scanner rows must never be reachable through this flow.
+        .eq('role', 'customer')
         .eq(column, value)
     .maybeSingle();
   if (error) throw new Error(`Profile lookup failed: ${error.message}`);
@@ -102,6 +103,7 @@ async function findProfileById(admin: SupabaseClient, profileId: string): Promis
   const { data, error } = await admin
     .from('profiles')
     .select(PROFILE_COLUMNS)
+    .eq('role', 'customer')
     .eq('id', profileId)
     .maybeSingle();
   if (error) throw new Error(`Profile lookup failed: ${error.message}`);
