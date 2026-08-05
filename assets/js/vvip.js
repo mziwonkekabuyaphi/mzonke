@@ -65,7 +65,7 @@
         const { data: booking } = await supabase
             .from('vvip_bookings')
             .select(`id, booking_reference, total_amount, remaining_balance, used_amount, status, table_id, packages:vvip_packages(name, price, description, capacity, benefits), table:vvip_tables(table_number)`)
-            .eq('customer_id', currentProfile.id)
+            .eq('customer_phone', currentProfile.phone)
             .in('status', ['confirmed', 'checked_in', 'seated'])
             .order('created_at', { ascending: false })
             .limit(1)
