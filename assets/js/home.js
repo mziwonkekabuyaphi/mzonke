@@ -62,13 +62,45 @@
         return `R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
     };
 
+    // Shrinks an element's font-size step by step until its text fits its own
+    // box width. Keeps the header-balance-card visually identical (same
+    // padding/height) no matter how long the balance string gets.
+    const fitTextToWidth = (el, maxFontPx, minFontPx = 15) => {
+        if (!el) return;
+        el.style.fontSize = maxFontPx + 'px';
+        requestAnimationFrame(() => {
+            let size = maxFontPx;
+            while (el.scrollWidth > el.clientWidth && size > minFontPx) {
+                size -= 1;
+                el.style.fontSize = size + 'px';
+            }
+        });
+    };
+
     const updateBalance = (newBalance) => {
         const full = `R ${newBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
         const compact = formatBalanceCompact(newBalance);
-        if (DOM.balance()) { DOM.balance().textContent = compact; DOM.balance().title = full; }
+        const balanceEl = DOM.balance();
+        if (balanceEl) {
+            balanceEl.textContent = compact;
+            balanceEl.title = full;
+            const baseFontPx = window.innerWidth <= 480 ? 29 : 38; // matches CSS 1.8rem / 2.4rem
+            fitTextToWidth(balanceEl, baseFontPx);
+        }
         if (DOM.shishaBalance()) { DOM.shishaBalance().textContent = compact; DOM.shishaBalance().title = full; }
     };
     window.updateUserBalance = updateBalance;
+
+    let resizeFitTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeFitTimeout);
+        resizeFitTimeout = setTimeout(() => {
+            const balanceEl = DOM.balance();
+            if (!balanceEl || !balanceEl.textContent) return;
+            const baseFontPx = window.innerWidth <= 480 ? 29 : 38;
+            fitTextToWidth(balanceEl, baseFontPx);
+        }, 150);
+    });
     
     const generateBarcodeFromId = (idString) => {
         const barcodeInner = DOM.barcodeInner();
