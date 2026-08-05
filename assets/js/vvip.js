@@ -36,13 +36,26 @@
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) { window.location.href = '../login.html'; return false; }
         currentUser = session.user;
-        const { data: profile } = await supabase.from('profiles').select('id, name, phone, role').eq('id', currentUser.id).maybeSingle();
+        // profiles.id is NOT guaranteed to equal the auth user id — WhatsApp-registered
+        // customers get a DB-generated profiles.id, linked to auth only via auth_user_id
+        // (see tickets.js / order-now.js / shisha.html for the same pattern). Looking this
+        // up by id=currentUser.id silently failed to find those profiles, which then created
+        // a blank duplicate profile (phone: '') below — so this page could never match the
+        // customer's real vvip_bookings row (queried by customer_phone), even though it
+        // existed. That's why a table bought on WhatsApp never showed up here.
+        let { data: profile } = await supabase.from('profiles').select('id, name, phone, role').eq('auth_user_id', currentUser.id).maybeSingle();
         if (!profile) {
-            await supabase.from('profiles').insert([{ id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '', role: 'user' }]);
-            currentProfile = { id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '', role: 'user' };
+            const fallback = await supabase.from('profiles').select('id, name, phone, role').eq('id', currentUser.id).maybeSingle();
+            profile = fallback.data;
+        }
+        if (!profile) {
+            const { data: newProfile } = await supabase.from('profiles').insert([{ id: currentUser.id, auth_user_id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '', role: 'user' }]).select('id, name, phone, role').single();
+            currentProfile = newProfile || { id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '', role: 'user' };
         } else { currentProfile = profile; }
 
-        const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', currentUser.id).maybeSingle();
+        // wallets.user_id references profiles.id, not auth.users.id — use the resolved
+        // profile id here, not currentUser.id (same reasoning as above).
+        const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', currentProfile.id).maybeSingle();
         isWalletBlocked = (wallet?.status || '').toLowerCase() === 'blocked';
         walletBlockReason = wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
         renderWalletBlockedBanners();
@@ -444,7 +457,7 @@
             .subscribe();
 
         supabase.channel('vvip-wallet-status')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentProfile.id}` }, (payload) => {
                 isWalletBlocked = (payload.new.status || '').toLowerCase() === 'blocked';
                 walletBlockReason = payload.new.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
                 renderWalletBlockedBanners();
