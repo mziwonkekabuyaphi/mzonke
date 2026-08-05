@@ -241,6 +241,8 @@
   .action-btn.info { background: #2563eb; color: white; border: none; }
   .action-btn.delete { background: transparent; color: #dc2626; border: 1px solid #dc2626; }
   .action-btn.delete:hover { background: #dc2626; color: white; }
+  .action-btn.deduct { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+  .action-btn.deduct:hover { background: var(--gold); color: black; }
   .action-btn.small { padding: 3px 12px; font-size: 0.6rem; }
 
   .topup-section {
@@ -714,6 +716,7 @@
         <div class="card-body">
           <div class="action-buttons">
             <button class="action-btn primary" id="topUpBtn"><i class="fas fa-plus-circle"></i> Top Up</button>
+            <button class="action-btn deduct" id="deductBtn"><i class="fas fa-minus-circle"></i> Deduct</button>
             <button class="action-btn danger" id="blockBtn"><i class="fas fa-ban"></i> Block</button>
             <button class="action-btn success" id="unblockBtn"><i class="fas fa-check-circle"></i> Unblock</button>
             <button class="action-btn warning" id="manualRefundBtn"><i class="fas fa-hand-holding-usd"></i> Refund</button>
@@ -774,6 +777,7 @@
                   <option value="topup">Top-ups</option>
                   <option value="purchase">Purchases</option>
                   <option value="refund">Refunds</option>
+                  <option value="deduction">Deductions</option>
                   <option value="adjustment">Adjustments</option>
                 </select>
                 <select id="txDateFilter" class="topup-input" style="width:auto; padding:5px 10px; font-size:0.65rem;">
@@ -863,6 +867,19 @@
       <div class="topup-input-group" style="margin-top:16px;"><input type="number" id="modalTopupAmount" placeholder="Amount" class="topup-input"></div>
       <div class="preset-amounts"><button class="preset-btn" data-modal-amount="50">R50</button><button class="preset-btn" data-modal-amount="100">R100</button><button class="preset-btn" data-modal-amount="200">R200</button><button class="preset-btn" data-modal-amount="500">R500</button><button class="preset-btn" data-modal-amount="1000">R1000</button></div>
       <div class="modal-footer"><button class="modal-btn confirm" id="confirmTopUpBtn">Confirm</button><button class="modal-btn cancel" id="closeTopUpModalBtn">Cancel</button></div>
+    </div>
+  </div>
+
+  <!-- Deduct Modal -->
+  <div id="deductModal" class="simple-modal">
+    <div class="simple-modal-content">
+      <div class="modal-header"><h3><i class="fas fa-minus-circle"></i> Deduct / Correct Balance</h3></div>
+      <div><label style="color:var(--muted);">Account: <span id="deductModalAccountId" style="color:var(--red);">-</span></label></div>
+      <div><label style="color:var(--muted);">Current Balance: <span id="deductModalBalance" style="color:var(--text);">-</span></label></div>
+      <div class="topup-input-group" style="margin-top:16px;"><input type="number" id="modalDeductAmount" placeholder="Amount to deduct" class="topup-input"></div>
+      <div class="preset-amounts"><button class="preset-btn" data-modal-deduct-amount="50">R50</button><button class="preset-btn" data-modal-deduct-amount="100">R100</button><button class="preset-btn" data-modal-deduct-amount="200">R200</button><button class="preset-btn" data-modal-deduct-amount="500">R500</button><button class="preset-btn" data-modal-deduct-amount="1000">R1000</button></div>
+      <div class="topup-input-group" style="margin-top:10px;"><input type="text" id="modalDeductReason" placeholder="Reason (e.g. corrected wrong top-up amount)" class="topup-input"></div>
+      <div class="modal-footer"><button class="modal-btn confirm" id="confirmDeductBtn">Confirm Deduction</button><button class="modal-btn cancel" id="closeDeductModalBtn">Cancel</button></div>
     </div>
   </div>
 
@@ -995,28 +1012,32 @@
     } catch(err) { return []; }
   }
 
-  async function addTransaction(walletId, amount, description) {
+  async function addTransaction(walletId, amount, description, type) {
     try {
       await supabase.from('wallet_transactions').insert({
         wallet_id: walletId,
         amount: amount,
-        type: amount > 0 ? 'topup' : 'adjustment',
+        type: type || (amount > 0 ? 'topup' : 'adjustment'),
         description: description,
         created_at: new Date().toISOString()
       });
     } catch(err) { console.error(err); }
   }
 
-  async function updateWalletBalance(walletId, amountDelta, description) {
-    if (!walletId || amountDelta <= 0) return false;
+  async function updateWalletBalance(walletId, amountDelta, description, type) {
+    if (!walletId || !amountDelta) return false;
     try {
       const { data: wallet } = await supabase.from('wallets').select('balance').eq('id', walletId).single();
       if (!wallet) throw new Error('Wallet not found');
       const newBalance = (wallet.balance || 0) + amountDelta;
+      if (newBalance < 0) {
+        const proceed = await showConfirm(`This will take the balance to ${fmtR(newBalance)} (negative). Continue anyway?`);
+        if (!proceed) return false;
+      }
       await supabase.from('wallets').update({ balance: newBalance }).eq('id', walletId);
-      await addTransaction(walletId, amountDelta, description);
+      await addTransaction(walletId, amountDelta, description, type);
       return true;
-    } catch(err) { showToast('Top-up failed: '+err.message, 'error'); return false; }
+    } catch(err) { showToast('Balance update failed: '+err.message, 'error'); return false; }
   }
 
   async function setWalletStatus(walletId, newStatus) {
@@ -1239,7 +1260,8 @@
         if (typeVal === 'topup') return t === 'topup';
         if (typeVal === 'purchase') return t.includes('purchase') || t.includes('payment');
         if (typeVal === 'refund') return t.includes('refund');
-        if (typeVal === 'adjustment') return t === 'adjustment' || t === '';
+        if (typeVal === 'deduction') return t === 'deduction';
+        if (typeVal === 'adjustment') return (t === 'adjustment' || t === '') ;
         return true;
       });
     }
@@ -1306,13 +1328,15 @@
     document.getElementById('selLastActivity').innerText = transactions.length ? `${transactions[0].date} ${transactions[0].time}` : (joined !== 'N/A' ? `Registered ${joined}` : '-');
     renderTransactionList();
 
-    // Wallet tab: this customer's own funds added / spent / refunds
-    const added = transactions.filter(t => t.amount > 0).reduce((s,t)=>s+t.amount,0);
-    const spent = Math.abs(transactions.filter(t => t.amount < 0).reduce((s,t)=>s+t.amount,0));
+    // Wallet tab: this customer's own funds added / spent / deducted / refunds
+    const added = transactions.filter(t => t.amount > 0 && t.type !== 'refund').reduce((s,t)=>s+t.amount,0);
+    const deducted = Math.abs(transactions.filter(t => t.amount < 0 && t.type === 'deduction').reduce((s,t)=>s+t.amount,0));
+    const spent = Math.abs(transactions.filter(t => t.amount < 0 && t.type !== 'deduction').reduce((s,t)=>s+t.amount,0));
     const custRefunds = refundRequests.filter(r => r.customer_id === acc.user_id && r.status === 'approved').reduce((s,r)=>s+(r.amount||0),0);
     document.getElementById('custWalletStats').innerHTML = `
       <div class="dash-stat-mini"><div class="num">${fmtR(added)}</div><div class="lbl">Total Added</div></div>
       <div class="dash-stat-mini"><div class="num">${fmtR(spent)}</div><div class="lbl">Total Spent</div></div>
+      <div class="dash-stat-mini"><div class="num">${fmtR(deducted)}</div><div class="lbl">Corrections</div></div>
       <div class="dash-stat-mini"><div class="num">${fmtR(custRefunds)}</div><div class="lbl">Refunded</div></div>
     `;
 
@@ -1417,10 +1441,21 @@
 
   // ─── ACTIONS ───
   async function topUp(amount, walletId) {
-    if (!walletId) return false;
-    if (await updateWalletBalance(walletId, amount, `Admin Top Up: +${fmtR(amount)}`)) {
+    if (!walletId || !(amount > 0)) return false;
+    if (await updateWalletBalance(walletId, amount, `Admin Top Up: +${fmtR(amount)}`, 'topup')) {
       await refreshData();
       showToast(`${fmtR(amount)} added`, 'success');
+      return true;
+    }
+    return false;
+  }
+
+  async function deductFunds(amount, walletId, reason) {
+    if (!walletId || !(amount > 0)) return false;
+    const desc = reason ? `Admin Correction: -${fmtR(amount)} (${reason})` : `Admin Correction: -${fmtR(amount)}`;
+    if (await updateWalletBalance(walletId, -amount, desc, 'deduction')) {
+      await refreshData();
+      showToast(`${fmtR(amount)} deducted`, 'success');
       return true;
     }
     return false;
@@ -1501,7 +1536,7 @@
     const activeRecentlyWalletIds = new Set(recentTxGlobal.filter(t => daysAgo(t.created_at) <= 7).map(t => t.wallet_id));
     const activeRecently = activeRecentlyWalletIds.size;
     const fundsAddedToday = recentTxGlobal.filter(t => isToday(t.created_at) && t.amount > 0).reduce((s,t)=>s+t.amount,0);
-    const fundsSpentToday = Math.abs(recentTxGlobal.filter(t => isToday(t.created_at) && t.amount < 0).reduce((s,t)=>s+t.amount,0));
+    const fundsSpentToday = Math.abs(recentTxGlobal.filter(t => isToday(t.created_at) && t.amount < 0 && t.type !== 'deduction').reduce((s,t)=>s+t.amount,0));
     const txToday = recentTxGlobal.filter(t => isToday(t.created_at)).length;
     const pendingRef = refundRequests.filter(r=>r.status==='pending').length;
     const approvedRef = refundRequests.filter(r=>r.status==='approved').length;
@@ -1597,7 +1632,7 @@
     const txEvents = recentTxGlobal.map(t => {
       const name = walletNameMap[t.wallet_id] || 'Customer';
       const positive = t.amount >= 0;
-      const label = t.type === 'topup' ? 'wallet top-up' : (t.type || 'wallet adjustment');
+      const label = t.type === 'topup' ? 'wallet top-up' : t.type === 'deduction' ? 'balance correction' : (t.type || 'wallet adjustment');
       return { ts: t.created_at, icon: positive ? 'fa-arrow-up' : 'fa-arrow-down', color: positive ? 'var(--green)' : 'var(--red)', text: `${name} — ${positive?'+':'-'}${fmtR(Math.abs(t.amount))} ${label}` };
     });
     const refundEvents = refundRequests
@@ -1641,6 +1676,24 @@
       const amt = parseFloat(document.getElementById('quickTopupAmount').value);
       await topUp(amt, selectedAccountId);
     });
+    document.getElementById('deductBtn').addEventListener('click', () => {
+      if (!selectedAccountId) return showToast('Select account', 'error');
+      const acc = accounts.find(a=>a.id===selectedAccountId);
+      document.getElementById('deductModalAccountId').innerText = acc ? fullName(acc) : selectedAccountId;
+      document.getElementById('deductModalBalance').innerText = acc ? fmtR(acc.balance) : '-';
+      document.getElementById('modalDeductAmount').value = '';
+      document.getElementById('modalDeductReason').value = '';
+      document.getElementById('deductModal').classList.add('active');
+    });
+    document.getElementById('closeDeductModalBtn').addEventListener('click', () => document.getElementById('deductModal').classList.remove('active'));
+    document.getElementById('confirmDeductBtn').addEventListener('click', async () => {
+      const amt = parseFloat(document.getElementById('modalDeductAmount').value);
+      const reason = document.getElementById('modalDeductReason').value.trim();
+      if (!(amt > 0)) return showToast('Enter a valid amount', 'error');
+      if (await deductFunds(amt, selectedAccountId, reason)) {
+        document.getElementById('deductModal').classList.remove('active');
+      }
+    });
     document.getElementById('blockBtn').addEventListener('click', () => { if (selectedAccountId) blockAccount(selectedAccountId); else showToast('Select account', 'error'); });
     document.getElementById('unblockBtn').addEventListener('click', () => { if (selectedAccountId) unblockAccount(selectedAccountId); else showToast('Select account', 'error'); });
     document.getElementById('deleteAccountBtn').addEventListener('click', () => { if (selectedAccountId) deleteAccount(selectedAccountId); else showToast('Select account', 'error'); });
@@ -1670,6 +1723,10 @@
     document.querySelectorAll('[data-modal-amount]').forEach(btn => btn.addEventListener('click', () => {
       const amt = btn.dataset.modalAmount;
       if (amt) document.getElementById('modalTopupAmount').value = amt;
+    }));
+    document.querySelectorAll('[data-modal-deduct-amount]').forEach(btn => btn.addEventListener('click', () => {
+      const amt = btn.dataset.modalDeductAmount;
+      if (amt) document.getElementById('modalDeductAmount').value = amt;
     }));
     document.getElementById('globalSearch').addEventListener('input', () => { accountPage = 0; renderAccountList(); });
     document.getElementById('statusFilter').addEventListener('change', () => { accountPage = 0; renderAccountList(); });
