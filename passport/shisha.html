@@ -273,7 +273,6 @@
     // Flavour name -> price (R), loaded from shisha_products so it always
     // matches what's set on the Dashboard instead of a hardcoded value.
     let flavourPrices = {};
-    let coalRefillPrice = null;
 
     let currentBalance = 0;
     let activeSession = null;
@@ -369,14 +368,6 @@
     // ========== LOAD LOCATIONS & FLAVOURS FROM DB ==========
     async function loadLocationsAndFlavours() {
         try {
-            // Load coal refill price (single venue-wide setting, managed on the Dashboard)
-            const { data: settings, error: settingsError } = await supabase
-                .from('venue_settings')
-                .select('coal_refill_price')
-                .maybeSingle();
-            if (settingsError) console.warn('Coal refill price fetch error:', settingsError);
-            coalRefillPrice = settings?.coal_refill_price != null ? Number(settings.coal_refill_price) : null;
-
             // Load locations
             const { data: locations, error: locError } = await supabase
                 .from('shisha_locations')
@@ -610,7 +601,12 @@
 
     async function requestCoalRefill() {
         if (!activeSession) { showToast("No active session", true); return; }
-        const amount = coalRefillPrice != null ? coalRefillPrice : 250;
+        // Refill costs the same as a new session of the same flavour.
+        const amount = flavourPrices[activeSession.flavour] || activeSession.amount || 0;
+        if (!amount) {
+            showToast("Couldn't determine refill price, please try again", true);
+            return;
+        }
         await sendRequestToStaff({ type: 'maintenance', shishaId: activeSession.shishaId, location: activeSession.location, flavour: activeSession.flavour, amount });
     }
     async function requestEndSession() {
