@@ -283,10 +283,14 @@ async function runIdentifierCheck(raw) {
     }
 
     if (!status.exists) {
-      setPasswordStepVisible(false);
-      showIdentifierWarning(
-        `We couldn\u2019t find a Rands Passport for that ${status.type === 'email' ? 'email address' : 'number'}.`,
-      );
+      // This check only knows about customer Passport accounts — admin/staff
+      // (and any account that predates the Passport flow) will always come
+      // back as "not found" here even though they have valid credentials.
+      // Keep the password field available so the classic signIn()/
+      // signInWithPhone() path in signInDirect() still works for them;
+      // only use this as a soft hint, never a hard block.
+      setPasswordStepVisible(true);
+      clearIdentifierWarning();
       return;
     }
 
@@ -313,6 +317,13 @@ function handleIdentifierInput() {
     clearIdentifierWarning();
     return;
   }
+
+  // Always let the customer try a password once the identifier looks valid —
+  // the async check below is a progressive-disclosure nicety for customers
+  // using Passport Key/OTP, not a gate on the classic password path (which
+  // is the only path admin/staff have, and they must never be blocked out
+  // of it by a check that only recognizes customer Passport accounts).
+  setPasswordStepVisible(true);
 
   identifierCheckTimer = setTimeout(() => runIdentifierCheck(raw), 400);
 }
