@@ -1120,143 +1120,6 @@
         </div>
       </div>
 
-      <!-- PRICING -->
-      <div class="edit-section">
-        <div class="edit-section-head" @click="editSections.pricing = !editSections.pricing">
-          <span class="edit-section-title"><i class="fas fa-tag"></i> Pricing</span>
-          <i :class="editSections.pricing ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.7rem;"></i>
-        </div>
-        <div class="edit-section-body" v-show="editSections.pricing">
-          <div class="form-grid">
-            <div class="form-field">
-              <label>Selling Price (R)</label>
-              <input type="number" v-model.number="editingProduct.price" step="0.01" min="0" />
-            </div>
-            <div class="form-field">
-              <label>Cost Price (R)</label>
-              <input type="number" v-model.number="editingProduct.cost_price" step="0.01" min="0" />
-            </div>
-          </div>
-          <!-- Live profit / margin, recalculated on every keystroke via computed getters -->
-          <div class="calc-row">
-            <div class="calc-pill">
-              <div class="calc-val" :class="profitValue >= 0 ? 'pos' : 'neg'">R {{ profitValue.toFixed(2) }}</div>
-              <div class="calc-label">Profit</div>
-            </div>
-            <div class="calc-pill">
-              <div class="calc-val" :class="marginValue >= 0 ? 'pos' : 'neg'">{{ marginValue.toFixed(1) }}%</div>
-              <div class="calc-label">Margin</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- INVENTORY -->
-      <div class="edit-section">
-        <div class="edit-section-head" @click="editSections.inventory = !editSections.inventory">
-          <span class="edit-section-title"><i class="fas fa-boxes"></i> Inventory</span>
-          <i :class="editSections.inventory ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.7rem;"></i>
-        </div>
-        <div class="edit-section-body" v-show="editSections.inventory">
-          <label class="toggle-row">
-            <input type="checkbox" v-model="editingProduct.is_available" style="accent-color:var(--green);" />
-            <i class="fas fa-power-off" style="color:var(--red);font-size:0.8rem;"></i>
-            In Stock (uncheck to mark Out of Stock — always overrides quantity below)
-          </label>
-          <label class="toggle-row">
-            <input type="checkbox" v-model="editingProduct.track_inventory" />
-            <i class="fas fa-warehouse" style="color:var(--red);font-size:0.8rem;"></i>
-            Track Inventory (auto-flip Out of Stock when quantity hits 0)
-          </label>
-          <div v-if="editingProduct.track_inventory">
-            <div class="form-grid">
-              <div class="form-field">
-                <label>Stock Quantity</label>
-                <input type="number" v-model.number="editingProduct.stock_quantity" min="0" step="1" />
-              </div>
-              <div class="form-field">
-                <label>Low Stock Threshold</label>
-                <input type="number" v-model.number="editingProduct.low_stock_threshold" min="0" step="1" />
-              </div>
-              <div class="form-field">
-                <label>Reserved Stock</label>
-                <input type="number" :value="editingProduct.meta.reserved_stock ?? '—'" readonly style="opacity:0.6;cursor:not-allowed;" />
-              </div>
-            </div>
-          </div>
-          <span class="stock-badge" :class="stockStatus.cls">
-            <i class="fas fa-circle" style="font-size:0.5rem;"></i> {{ stockStatus.label }}
-          </span>
-        </div>
-      </div>
-
-      <!-- PRODUCT IMAGES -->
-      <div class="edit-section">
-        <div class="edit-section-head" @click="editSections.images = !editSections.images">
-          <span class="edit-section-title"><i class="fas fa-images"></i> Product Images</span>
-          <i :class="editSections.images ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.7rem;"></i>
-        </div>
-        <div class="edit-section-body" v-show="editSections.images">
-          <div class="gallery-grid">
-            <div
-              v-for="(img, idx) in editingProduct.meta.images"
-              :key="idx"
-              class="gallery-item"
-              :class="{ main: img.isMain }"
-              @click="setMainImage(idx)"
-              title="Click to set as main image"
-            >
-              <img :src="getValidImageUrl(img.url)" />
-              <span class="main-tag" v-if="img.isMain">Main</span>
-              <button class="gallery-remove" @click.stop="removeGalleryImage(idx)" title="Remove"><i class="fas fa-times"></i></button>
-            </div>
-          </div>
-          <label class="btn btn-ghost" style="cursor:pointer;width:fit-content;">
-            <span v-if="uploadingGalleryImage" class="spinner"></span>
-            <i v-else class="fas fa-cloud-upload-alt"></i>
-            {{ uploadingGalleryImage ? 'Uploading…' : 'Add Image' }}
-            <input type="file" accept="image/*" @change="handleGalleryImageUpload" style="display:none;" :disabled="uploadingGalleryImage" />
-          </label>
-        </div>
-      </div>
-
-      <!-- VARIANTS -->
-      <div class="edit-section">
-        <div class="edit-section-head" @click="editSections.variants = !editSections.variants">
-          <span class="edit-section-title"><i class="fas fa-layer-group"></i> Variants</span>
-          <i :class="editSections.variants ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.7rem;"></i>
-        </div>
-        <div class="edit-section-body" v-show="editSections.variants">
-          <div class="repeat-row" v-for="(v, idx) in editingProduct.meta.variants" :key="idx">
-            <img :src="getValidImageUrl(v.image)" class="repeat-thumb" @click="triggerVariantImage(idx)" title="Click to set variant image" />
-            <input type="file" accept="image/*" :ref="'variant_img_'+idx" style="display:none;" @change="handleVariantImage($event, idx)" />
-            <div class="form-field"><label>Size</label><input type="text" v-model="v.size" placeholder="750 ml" /></div>
-            <div class="form-field"><label>SKU</label><input type="text" v-model="v.sku" placeholder="SKU" /></div>
-            <div class="form-field"><label>Price (R)</label><input type="number" v-model.number="v.price" step="0.01" min="0" /></div>
-            <div class="form-field"><label>Stock</label><input type="number" v-model.number="v.stock" min="0" step="1" /></div>
-            <div class="form-field"><label>Barcode</label><input type="text" v-model="v.barcode" placeholder="Barcode" /></div>
-            <button class="btn btn-danger btn-icon btn-sm repeat-remove" @click="editingProduct.meta.variants.splice(idx, 1)" title="Remove variant"><i class="fas fa-trash-alt"></i></button>
-          </div>
-          <button class="btn btn-ghost btn-sm add-row-btn" @click="addVariant"><i class="fas fa-plus"></i> Add Variant</button>
-        </div>
-      </div>
-
-      <!-- PRODUCT OPTIONS -->
-      <div class="edit-section">
-        <div class="edit-section-head" @click="editSections.options = !editSections.options">
-          <span class="edit-section-title"><i class="fas fa-sliders-h"></i> Product Options</span>
-          <i :class="editSections.options ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.7rem;"></i>
-        </div>
-        <div class="edit-section-body" v-show="editSections.options">
-          <div class="repeat-row" v-for="(o, idx) in editingProduct.meta.options" :key="idx">
-            <div class="form-field"><label>Option Name</label><input type="text" v-model="o.name" placeholder="e.g. Size, Weight, Capacity" /></div>
-            <div class="form-field"><label>Value</label><input type="text" v-model="o.value" placeholder="e.g. 1kg" /></div>
-            <button class="btn btn-danger btn-icon btn-sm repeat-remove" @click="editingProduct.meta.options.splice(idx, 1)" title="Remove option"><i class="fas fa-trash-alt"></i></button>
-          </div>
-          <button class="btn btn-ghost btn-sm add-row-btn" @click="addOption"><i class="fas fa-plus"></i> Add Option</button>
-        </div>
-      </div>
-
       <!-- VISIBILITY -->
       <div class="edit-section">
         <div class="edit-section-head" @click="editSections.visibility = !editSections.visibility">
@@ -1297,38 +1160,6 @@
             <div class="analytics-card"><div class="a-val" :class="{ muted: !analyticsDisplay.lastSold }">{{ analyticsDisplay.lastSold }}</div><div class="a-label">Last Sold Date</div></div>
             <div class="analytics-card"><div class="a-val" :class="{ muted: !analyticsDisplay.views }">{{ analyticsDisplay.views }}</div><div class="a-label">Product Views</div></div>
             <div class="analytics-card"><div class="a-val" :class="{ muted: !analyticsDisplay.conversionRate }">{{ analyticsDisplay.conversionRate }}</div><div class="a-label">Conversion Rate</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RELATED PRODUCTS -->
-      <div class="edit-section">
-        <div class="edit-section-head" @click="editSections.related = !editSections.related">
-          <span class="edit-section-title"><i class="fas fa-link"></i> Related Products</span>
-          <i :class="editSections.related ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" style="color:var(--muted);font-size:0.7rem;"></i>
-        </div>
-        <div class="edit-section-body" v-show="editSections.related">
-          <div>
-            <span style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Upsell Products</span>
-            <div class="related-list" style="margin-top:6px;">
-              <label class="related-row" v-for="p in otherProducts" :key="'up-'+p.id">
-                <input type="checkbox" :value="p.id" v-model="editingProduct.meta.related.upsell" style="accent-color:var(--red);" />
-                <img :src="getValidImageUrl(p.image)" />
-                {{ p.name }}
-              </label>
-              <div v-if="!otherProducts.length" style="font-size:0.74rem;color:var(--muted);padding:8px;">No other products yet.</div>
-            </div>
-          </div>
-          <div>
-            <span style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Frequently Bought Together</span>
-            <div class="related-list" style="margin-top:6px;">
-              <label class="related-row" v-for="p in otherProducts" :key="'fbt-'+p.id">
-                <input type="checkbox" :value="p.id" v-model="editingProduct.meta.related.fbt" style="accent-color:var(--red);" />
-                <img :src="getValidImageUrl(p.image)" />
-                {{ p.name }}
-              </label>
-              <div v-if="!otherProducts.length" style="font-size:0.74rem;color:var(--muted);padding:8px;">No other products yet.</div>
-            </div>
           </div>
         </div>
       </div>
@@ -1438,9 +1269,7 @@ createApp({
       savingManage: false,
       uploadingGalleryImage: false,
       editSections: {             // collapsible state per section, mirrors .add-panel pattern
-        general: true, pricing: true, inventory: true, images: false,
-        variants: false, options: false, visibility: false,
-        analytics: false, related: false, quick: false,
+        general: true, visibility: false, analytics: false, quick: false,
       },
     };
   },
