@@ -19,6 +19,8 @@
       pendingQtys: {},
       loggedInUser: null,
       userId: null,
+      userPhone: '',
+      userName: '',
       userEmail: '',
       walletBalance: 0,
       isWalletBlocked: false,
@@ -137,7 +139,7 @@
         // orders.user_id -> profiles.id foreign key outright.
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('id')
+          .select('id, phone, name')
           .eq('auth_user_id', session.user.id)
           .maybeSingle();
         if (profileError || !profile) {
@@ -147,6 +149,8 @@
           return;
         }
         this.userId = profile.id;
+        this.userPhone = profile.phone || '';
+        this.userName = profile.name || '';
         this.userEmail = session.user.email || session.user.user_metadata?.full_name || 'Customer';
         await this.fetchWalletBalance();
       },
@@ -209,13 +213,31 @@
             .from('orders')
             .insert({
               user_id: this.userId,
+              // customer_phone is what every WhatsApp order lookup
+              // (getActiveOrdersForPhone, getLatestOrderForPhone,
+              // getOrderHistoryForPhone, etc.) filters on — NOT user_id.
+              // Leaving this null is why web-placed orders were invisible
+              // to WhatsApp regardless of whether user_id was correct.
+              customer_phone: this.userPhone,
+              phone: this.userPhone,
+              customer_name: this.userName,
+              // total_amount and total are two separate real columns.
+              // WhatsApp's createOrder() always sets total_amount (and
+              // reads it back in every select) — set both so amounts
+              // agree everywhere, not just on this page.
+              total_amount: orderTotal,
               total: orderTotal,
+              original_total: orderTotal,
               status: isScheduled ? 'scheduled' : 'pending',
               payment_method: 'wallet',
               payment_status: 'paid',
+              payment_source: 'wallet',
+              source: 'web',
               scheduled_for: isScheduled ? scheduledFor : null,
-              vendor: vendor,
-              order_number: 'ORD-' + Date.now() + '-' + Math.floor(Math.random() * 10000)
+              vendor: vendor
+              // order_number intentionally omitted — let the DB default
+              // (orders_order_number_seq) assign it, same as WhatsApp's
+              // createOrder(), instead of a separate ad-hoc 'ORD-...' format.
             })
             .select()
             .single();
