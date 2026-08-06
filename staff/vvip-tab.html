@@ -789,6 +789,21 @@ input:focus {
     }
     function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
+    // Generates every reasonable South African phone format for a given input so a lookup
+    // works no matter whether the number was typed/stored as 073..., 27..., or +27....
+    // e.g. "0731234567" -> ["0731234567", "27731234567"]
+    //      "27731234567" -> ["27731234567", "0731234567"]
+    function phoneVariants(raw) {
+        const digits = String(raw || '').replace(/\D/g, ''); // strip spaces, +, dashes, etc.
+        const variants = new Set([digits]);
+        if (digits.startsWith('0') && digits.length === 10) {
+            variants.add('27' + digits.slice(1));
+        } else if (digits.startsWith('27') && digits.length === 11) {
+            variants.add('0' + digits.slice(2));
+        }
+        return [...variants];
+    }
+
     // ---------- LOAD PRODUCTS ----------
     async function loadProductsAndShisha() {
         const { data: products } = await supabase.from('products').select('*').eq('is_available', true);
@@ -1019,7 +1034,8 @@ input:focus {
     async function loadCustomer() {
         const identifier = document.getElementById('customerSearch').value.trim();
         if (!identifier) { showToast('Enter phone or wallet ID', true); return; }
-        let { data: profile } = await supabase.from('profiles').select('*').eq('phone', identifier).maybeSingle();
+        const variants = phoneVariants(identifier);
+        let { data: profile } = await supabase.from('profiles').select('*').in('phone', variants).maybeSingle();
         if (!profile) {
             const { data: byWallet } = await supabase.from('profiles').select('*').eq('wallet_id', identifier).maybeSingle();
             if (byWallet) profile = byWallet;
