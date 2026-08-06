@@ -32,11 +32,16 @@
       --amber: #f59e0b;
     }
 
+    html {
+      height: 100%;
+    }
+
     body {
       background: var(--bg);
       color: var(--text);
       font-family: 'Inter', sans-serif;
       height: 100vh;
+      height: 100dvh; /* accounts for mobile browser chrome so content isn't clipped */
       padding: 16px;
       overflow: hidden;
     }
@@ -169,6 +174,8 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch; /* momentum scrolling on iOS */
+      overscroll-behavior: contain;
       padding: 20px 24px;
       display: flex;
       flex-direction: column;
@@ -324,6 +331,27 @@
       overflow: hidden;
       flex-shrink: 0;
     }
+    .table-wrap table thead th {
+      position: sticky;
+      top: 0;
+      background: var(--s2);
+      z-index: 1;
+    }
+    .qty-input {
+      width: 56px;
+      background: var(--s3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.75rem;
+      padding: 4px 6px;
+      text-align: center;
+    }
+    .qty-input:focus {
+      outline: none;
+      border-color: var(--red-border);
+    }
+    .qty-low { color: var(--amber); font-weight: 700; }
     .table-toolbar {
       display: flex;
       align-items: center;
@@ -920,19 +948,20 @@
                   <th style="width:90px;">Price</th>
                   <th style="width:130px;">Category</th>
                   <th style="width:80px;">Alcohol</th>
+                  <th style="width:70px;">Qty</th>
                   <th style="width:90px;">Stock</th>
                   <th style="width:90px;">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="loading">
-                  <td colspan="9" style="text-align:center;padding:40px;color:var(--muted);">
+                  <td colspan="10" style="text-align:center;padding:40px;color:var(--muted);">
                     <span class="spinner" style="border-color:rgba(255,255,255,0.1);border-top-color:var(--muted);width:20px;height:20px;border-width:3px;"></span>
                     <span style="margin-left:10px;">Loading products…</span>
                   </td>
                 </tr>
                 <tr v-else-if="!filteredProducts.length && !loading">
-                  <td colspan="9">
+                  <td colspan="10">
                     <div class="empty-state">
                       <i class="fas fa-box-open"></i>
                       <p>No products found{{ searchQuery || filterCategory ? ' matching your filters' : '' }}.</p>
@@ -1003,6 +1032,19 @@
                         {{ product.alcohol ? 'Yes' : 'No' }}
                       </span>
                     </label>
+                  </td>
+                  <td>
+                    <input
+                      class="qty-input"
+                      :class="{ 'qty-low': product.track_inventory && Number(product.stock_quantity) <= Number(product.low_stock_threshold || 0) }"
+                      type="number"
+                      min="0"
+                      step="1"
+                      v-model.number="product.stock_quantity"
+                      @focus="editingId = product.id"
+                      @blur="saveProduct(product); editingId = null"
+                      title="Stock quantity"
+                    />
                   </td>
                   <td>
                     <label style="cursor:pointer;display:flex;align-items:center;gap:6px;" @change="saveProduct(product)" title="Toggle whether this product can be ordered">
@@ -1440,6 +1482,7 @@ createApp({
           alcohol: product.alcohol,
           image: product.image,
           is_available: product.is_available,
+          stock_quantity: product.stock_quantity,
         }).eq('id', product.id);
         if (error) throw error;
         this.showToast('Saved', 'success');
