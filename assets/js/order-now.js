@@ -277,7 +277,7 @@
 
       async fetchUserActiveOrders() {
         if (!this.userId) return [];
-        const { data, error } = await supabase.from('orders').select(`*, order_items(*)`).eq('user_id', this.userId).in('status', ['pending', 'preparing', 'ready']).order('created_at', { ascending: false });
+        const { data, error } = await supabase.from('orders').select(`*, order_items(*)`).eq('user_id', this.userId).in('status', ['pending', 'placed', 'preparing', 'ready']).order('created_at', { ascending: false });
         if (error) { console.error(error); return []; }
         return data || [];
       },
@@ -313,7 +313,7 @@
             { key:'preparing', label:'Preparing', icon:'fas fa-fire' },
             { key:'ready', label:'Ready', icon:'fas fa-hand-peace' }
           ];
-          let activeIdx = order.status === 'pending' ? 0 : (order.status === 'preparing' ? 1 : 2);
+          let activeIdx = (order.status === 'pending' || order.status === 'placed') ? 0 : (order.status === 'preparing' ? 1 : 2);
           const itemsList = order.order_items?.map(it => `${it.quantity}x ${it.product_name}`).join(', ') || '';
           ordersHtml += `<div class="order-card ${order.status === 'ready' ? 'ready-glow' : ''}"><div class="card-header"><span>#${order.order_number}</span><span><i class="fas ${order.vendor === 'Rands Smart Counter' ? 'fa-beer-mug-empty' : 'fa-utensils'}"></i> ${order.vendor === 'Rands Smart Counter' ? 'Smart Counter' : 'Kitchen'}</span><span>${order.status.toUpperCase()}</span></div><div class="timeline"><div class="step-row">${steps.map((s,idx) => `<div class="step ${idx<activeIdx ? 'completed' : (idx===activeIdx ? 'active' : '')}"><div class="step-icon"><i class="${s.icon}"></i></div><div>${s.label}</div></div>`).join('')}</div></div><div style="padding:12px;">${itemsList}<div style="font-weight:bold; margin-top:8px; color:var(--red);">R${order.total.toFixed(2)}</div></div></div>`;
         }
