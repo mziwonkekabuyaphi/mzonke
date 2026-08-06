@@ -887,32 +887,22 @@ input:focus {
     }
 
     function renderShishaCustomizer(container) {
-        // Also exclude devices already added to the current cart but not yet checked out —
-        // otherwise the same device could be picked twice before the DB status flips to in_use.
-        const cartDeviceIds = new Set(currentCart.filter(i => i.isShisha).map(i => i.deviceId));
-        const pickableDevices = shishaDevices.filter(d => !cartDeviceIds.has(d.id));
-
-        if (!shishaFlavours.length || !shishaDevices.length) {
+        // No device picker here on purpose: which physical hookah is free is
+        // decided by staff at approval time in the Shisha Console (same as
+        // the customer-facing Shisha Web App), not reserved up front here.
+        // That's what fixed the false "no hookah available" block — this
+        // screen no longer needs any device to actually be free to submit.
+        if (!shishaFlavours.length) {
             container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text2);"><i class="fas fa-exclamation-triangle"></i> Shisha setup incomplete</div>';
-            return;
-        }
-        if (!pickableDevices.length) {
-            container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text2);"><i class="fas fa-smoking"></i> All hookah devices are currently in session. None available to book right now.</div>';
             return;
         }
         container.innerHTML = `
             <div class="shisha-customizer">
-                <h4 style="margin-bottom:16px;"><i class="fas fa-smoking"></i> Custom Hookah Session</h4>
+                <h4 style="margin-bottom:16px;"><i class="fas fa-smoking"></i> Request Hookah Session</h4>
                 <div class="customizer-group">
                     <label><i class="fas fa-leaf"></i> Flavour</label>
                     <select id="shishaFlavour">
                         ${shishaFlavours.map(f => `<option value="${f.id}" data-price="${f.price}" data-name="${escapeHtml(f.name)}">${escapeHtml(f.name)} - R${f.price}</option>`).join('')}
-                    </select>
-                </div>
-                <div class="customizer-group">
-                    <label><i class="fas fa-smoking"></i> Hookah Device <span style="color:var(--green); font-weight:400;">(${pickableDevices.length} available)</span></label>
-                    <select id="shishaDevice">
-                        ${pickableDevices.map(d => `<option value="${d.id}" data-code="${d.device_code}">${d.device_code}</option>`).join('')}
                     </select>
                 </div>
                 <div class="customizer-group">
@@ -922,7 +912,8 @@ input:focus {
                     </select>
                 </div>
                 <div class="preview-price" id="shishaPreviewPrice"><i class="fas fa-tag"></i> R${shishaFlavours[0]?.price || 0}</div>
-                <button class="add-btn" id="addShishaBtn"><i class="fas fa-cart-plus"></i> Add Hookah Session</button>
+                <button class="add-btn" id="addShishaBtn"><i class="fas fa-paper-plane"></i> Send Request to Staff</button>
+                <p style="margin-top:10px; font-size:0.75rem; color:var(--text2);">Sent to the Shisha Console for approval. Nothing is charged to the tab until staff accept it and assign a hookah.</p>
             </div>
         `;
         document.getElementById('shishaFlavour').addEventListener('change', (e) => {
@@ -931,37 +922,43 @@ input:focus {
         });
         document.getElementById('addShishaBtn').addEventListener('click', () => {
             const flavourId = document.getElementById('shishaFlavour').value;
-            const deviceId = document.getElementById('shishaDevice').value;
             const locationId = document.getElementById('shishaLocation').value;
             const flavour = shishaFlavours.find(f => f.id == flavourId);
-            const device = pickableDevices.find(d => d.id == deviceId);
             const location = shishaLocations.find(l => l.id == locationId);
-            if (!flavour || !device) { showToast('Select flavour and device', true); return; }
-            addShishaToCart(flavour, device, location);
+            if (!flavour) { showToast('Select a flavour', true); return; }
+            sendShishaRequest(flavour, location);
         });
     }
 
-    function addShishaToCart(flavour, device, location) {
+    // Mirrors shisha.html's sendRequestToStaff for request_type: 'order_session' —
+    // same table, same shape — so the Shisha Console handles both sources
+    // identically. paymentMethod: 'vvip_tab' + accountId: profile id tells
+    // the console to deduct from this customer's VVIP tab (booking or
+    // standalone account) on approval, instead of a wallet.
+    async function sendShishaRequest(flavour, location) {
         if (!currentCustomer) { showToast('Load a customer first', true); return; }
-        const sessionId = 'SHS-' + Date.now() + '-' + Math.random().toString(36).substr(2,4);
-        currentCart.push({
-            id: sessionId,
-            name: `${flavour.name} Hookah`,
-            price: flavour.price,
-            vendor: 'Shisha Lounge',
-            quantity: 1,
-            productId: `shisha_${flavour.id}`,
-            flavourId: flavour.id,
-            deviceId: device.id,
-            deviceCode: device.device_code,
-            locationId: location?.id,
-            locationName: location?.name,
-            sessionId: sessionId,
-            isShisha: true
+        if (!currentCustomer.phone) { showToast('Customer phone number missing for shisha request', true); return; }
+        const btn = document.getElementById('addShishaBtn');
+        if (btn) btn.disabled = true;
+        const { error } = await supabase.from('shisha_requests').insert({
+            request_type: 'order_session',
+            session_id: null,
+            location_name: location?.name || null,
+            flavour_name: flavour.name,
+            device_code: null,
+            amount: flavour.price,
+            customer_phone: currentCustomer.phone,
+            customer_profile_id: currentCustomer.id,
+            request_data: { paymentMethod: 'vvip_tab', accountId: currentCustomer.id },
+            status: 'pending'
         });
-        updateCartUI();
-        renderMenu(); // drop this device out of the picker immediately, before checkout even runs
-        showToast(`Added ${flavour.name} hookah (${device.device_code})`);
+        if (btn) btn.disabled = false;
+        if (error) {
+            console.error('Shisha request error:', error);
+            showToast('Failed to send request: ' + error.message, true);
+            return;
+        }
+        showToast(`Sent ${flavour.name} request to staff — awaiting approval`);
     }
 
     function addToCart(name, price, vendor, productId) {
@@ -1182,36 +1179,11 @@ input:focus {
             return;
         }
 
-        const shishaItems = currentCart.filter(i => i.isShisha);
-        for (const shItem of shishaItems) {
-            const customerPhone = currentCustomer.phone || '';
-            if (!customerPhone) {
-                showToast('Customer phone number missing for shisha session', true);
-                return;
-            }
-            const { error: sessionError } = await supabase.from('shisha_sessions').insert([{
-                customer_phone: customerPhone,
-                device_id: shItem.deviceId,
-                product_id: shItem.flavourId,
-                location_id: shItem.locationId || null,
-                start_time: new Date().toISOString(),
-                last_refill_time: new Date().toISOString(),
-                remaining_time_seconds: 3600,
-                total_amount: shItem.price,
-                refill_count: 0,
-                status: 'active',
-                paused: false,
-                created_at: new Date(),
-                payment_method: 'vvip_tab'
-            }]);
-            if (sessionError) {
-                console.error('Shisha session error:', sessionError);
-                showToast('Failed to create shisha session: ' + sessionError.message, true);
-                return;
-            }
-            await supabase.from('hookah_devices').update({ status: 'in_use' }).eq('id', shItem.deviceId);
-        }
-        if (shishaItems.length) await loadHookahDevices(); // don't wait on the realtime round-trip to reflect this
+        // Shisha is request-only now (see sendShishaRequest) — it never
+        // lands in currentCart, so there's nothing shisha-specific to do
+        // here. Sessions get created, devices get assigned, and the tab
+        // gets charged only once staff approve the request in the Shisha
+        // Console (deduct_vvip_tab RPC), not at this POS checkout.
 
         const vendorGroups = new Map();
         currentCart.forEach(item => {

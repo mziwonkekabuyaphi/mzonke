@@ -553,6 +553,28 @@
         // new risk, just surfaced as an error instead of swallowed.
         if (txError) throw new Error('Wallet charged but failed to record transaction: ' + txError.message);
       }
+    } else if (paymentMethod === 'vvip_tab') {
+      // account_id on shisha_sessions is text, holding whatever id was
+      // passed at order time — for vvip_tab that's the customer's profile
+      // id (see handleNewOrder), not a phone number.
+      const customerId = cur?.account_id || session.account_id;
+      if (!customerId) throw new Error('No VVIP customer on file for this refill');
+
+      const { error: deductError } = await supabase.rpc('deduct_vvip_tab', {
+        p_customer_id: customerId,
+        p_amount: price,
+        p_reference: req.id,
+        p_description: `Shisha refill - ${session.device_code}`
+      });
+      if (deductError) {
+        throw new Error(
+          deductError.message?.includes('Insufficient')
+            ? `Insufficient VVIP tab balance for ${session.device_code} (needs R${price} refill)`
+            : deductError.message?.includes('No active VVIP booking')
+              ? 'No active VVIP booking or tab found for this customer'
+              : 'VVIP tab debit failed: ' + deductError.message
+        );
+      }
     }
 
     const newTotal = session.total_amount + price;
@@ -684,11 +706,37 @@
       }
 
       walletAccountId = phone;
+    } else if (paymentMethod === 'vvip_tab') {
+      // VVIP POS-originated order_session request: request_data.accountId is
+      // the customer's profile id (set by vvip-tab.html), not a phone number.
+      // deduct_vvip_tab is idempotent on p_reference itself (DB-side unique
+      // index on vvip_tab_transactions.reference), so no separate pre-check
+      // is needed here the way wallet's provider_reference lookup is.
+      const customerId = req.request_data?.accountId || req.customer_profile_id;
+      if (!customerId) throw new Error('No VVIP customer on file for this order');
+
+      const { data: newBalance, error: deductError } = await supabase.rpc('deduct_vvip_tab', {
+        p_customer_id: customerId,
+        p_amount: price,
+        p_reference: req.id,
+        p_description: `Shisha - ${req.flavour_name} @ ${req.location_name}`
+      });
+      if (deductError) {
+        throw new Error(
+          deductError.message?.includes('Insufficient')
+            ? `Insufficient VVIP tab balance (needs R${price})`
+            : deductError.message?.includes('No active VVIP booking')
+              ? 'No active VVIP booking or tab found for this customer'
+              : 'VVIP tab debit failed: ' + deductError.message
+        );
+      }
+
+      walletAccountId = customerId;
     }
-    // If this ever needs to support other request_data.paymentMethod
-    // values (e.g. 'vvip_tab', seen elsewhere in shisha_sessions data),
-    // add another branch above rather than falling through — falling
-    // through silently would recreate exactly this bug for that method.
+    // If this ever needs to support another request_data.paymentMethod
+    // value, add another branch above rather than falling through —
+    // falling through silently would recreate exactly this bug for that
+    // method.
 
     const { error } = await supabase.from('shisha_sessions').insert({
       device_id: free.id,
