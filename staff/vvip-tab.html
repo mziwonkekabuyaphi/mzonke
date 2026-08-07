@@ -1190,10 +1190,12 @@ input:focus {
             if (!vendorGroups.has(item.vendor)) vendorGroups.set(item.vendor, []);
             vendorGroups.get(item.vendor).push(item);
         });
-        const newBalance = currentTabBalance - total;
+
+        let newBalance = currentTabBalance;
         try {
             for (const [vendorName, items] of vendorGroups.entries()) {
                 const orderNumber = `${vendorName === 'Rands Smart Counter' ? 'SC' : vendorName === 'The Butcher Shop' ? 'BT' : 'SH'}-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+                const orderTotal = items.reduce((s,i) => s + i.price * i.quantity, 0);
                 const orderItems = items.map(i => ({
                     product_name: i.name,
                     quantity: i.quantity,
@@ -1206,7 +1208,7 @@ input:focus {
                     order_number: orderNumber,
                     customer_phone: currentCustomer.phone || '',
                     customer_name: currentCustomer.name || 'Guest',
-                    total: items.reduce((s,i) => s + i.price * i.quantity, 0),
+                    total: orderTotal,
                     payment_method: 'vvip_tab',
                     payment_status: 'paid',
                     status: 'pending',
@@ -1217,29 +1219,36 @@ input:focus {
                     created_at: new Date()
                 }]);
                 if (error) throw error;
-            }
 
-            if (currentPackageInfo?.bookingId) {
-                const { error: updateError } = await supabase
-                    .from('vvip_bookings')
-                    .update({ remaining_balance: newBalance })
-                    .eq('id', currentPackageInfo.bookingId);
-                if (updateError) throw updateError;
-            } else {
-                const { data: tabAcc } = await supabase
-                    .from('vvip_tab_accounts')
-                    .select('id, balance')
-                    .eq('user_id', currentCustomer.id)
-                    .single();
-                if (tabAcc) {
-                    const { error: updateTab } = await supabase
-                        .from('vvip_tab_accounts')
-                        .update({ balance: newBalance })
-                        .eq('id', tabAcc.id);
-                    if (updateTab) throw updateTab;
-                } else {
-                    throw new Error('No tab account found to deduct from');
+                // Charge the VVIP tab for THIS order. deduct_vvip_tab updates
+                // vvip_bookings.remaining_balance / vvip_tab_accounts.balance
+                // AND inserts into vvip_tab_transactions in one atomic,
+                // row-locked call — that ledger insert is what triggers the
+                // vvip_tab_charge WhatsApp notification automatically.
+                // p_reference = this order's order_number, which the
+                // notification trigger uses to pull the real item list back
+                // out of `orders`, and which also makes this call idempotent
+                // if it's ever retried (same reference = no double charge).
+                const { data: chargeResult, error: chargeError } = await supabase.rpc('deduct_vvip_tab', {
+                    p_customer_id: currentCustomer.id,
+                    p_amount: orderTotal,
+                    p_reference: orderNumber,
+                    p_description: vendorName,
+                });
+
+                if (chargeError) {
+                    // The order row exists and was marked payment_status:
+                    // 'paid' above, but the tab was NOT actually charged.
+                    // Walk it back so nobody walks away with items that
+                    // were never paid for.
+                    await supabase
+                        .from('orders')
+                        .update({ payment_status: 'failed', status: 'cancelled' })
+                        .eq('order_number', orderNumber);
+                    throw chargeError;
                 }
+
+                newBalance = chargeResult;
             }
 
             currentTabBalance = newBalance;
@@ -1252,6 +1261,10 @@ input:focus {
         } catch (err) {
             console.error('Checkout error:', err);
             showToast('Checkout failed: ' + err.message, true);
+            // If some orders in this cart succeeded before one failed,
+            // currentTabBalance is now stale — re-pull the real balance
+            // from the DB rather than trust local state.
+            if (currentCustomer) await loadCustomer();
         }
     }
     document.getElementById('checkoutBtn').onclick = checkout;
