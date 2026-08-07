@@ -12,7 +12,7 @@
     data: {
       searchQuery: '',
       activeCategory: 'all',
-      activeSub: 'rum',
+      activeSub: 'vodka',
       products: [],
       loadingProducts: true,
       cart: [],
@@ -32,6 +32,7 @@
       timeSlots: [],
       selectedSlot: null,
       trackModalVisible: false,
+      currentCheckoutAttemptId: null,
     },
     computed: {
       cartItemCount() { return this.cart.reduce((s,i)=>s+i.quantity,0); },
@@ -40,23 +41,39 @@
         let list = this.products;
         if (this.activeCategory !== 'all') {
           if (this.activeCategory === 'spirits') list = list.filter(p => p.category === this.activeSub);
-          else list = list.filter(p => p.category === this.activeCategory);
+          else {
+            const cat = this.mainCategories.find(c => c.id === this.activeCategory);
+            const dbCats = cat ? cat.dbCategories : [this.activeCategory];
+            list = list.filter(p => dbCats.includes(p.category));
+          }
         }
         if (this.searchQuery) list = list.filter(p => p.name.toLowerCase().includes(this.searchQuery.toLowerCase()));
         return list;
       },
+      // NOTE: these ids used to be 'beer'/'wine'/'non-alc' etc, which never
+      // matched anything — actual products.category values in the DB are
+      // 'beers', 'ciders', 'champagne', 'sparkling wine', 'cognac', 'gin',
+      // 'liqueur', 'tequila', 'vodka', 'whiskey', 'soft drinks', 'butcher'.
+      // Every tab except Butcher was silently showing zero products.
       mainCategories() {
         return [
-          { id:'all', name:'All', icon:'fas fa-border-all' },
-          { id:'beer', name:'Beer', icon:'fas fa-beer-mug-empty' },
-          { id:'wine', name:'Wine', icon:'fas fa-wine-glass' },
-          { id:'spirits', name:'Spirits', icon:'fas fa-crown' },
-          { id:'non-alc', name:'Non-Alc', icon:'fas fa-droplet' },
-          { id:'butcher', name:'Butcher', icon:'fas fa-utensils' }
+          { id:'all', name:'All', icon:'fas fa-border-all', dbCategories: [] },
+          { id:'beer', name:'Beer & Cider', icon:'fas fa-beer-mug-empty', dbCategories: ['beers','ciders'] },
+          { id:'wine', name:'Wine & Bubbly', icon:'fas fa-wine-glass', dbCategories: ['champagne','sparkling wine'] },
+          { id:'spirits', name:'Spirits', icon:'fas fa-crown', dbCategories: ['cognac','gin','liqueur','tequila','vodka','whiskey'] },
+          { id:'soft drinks', name:'Non-Alc', icon:'fas fa-droplet', dbCategories: ['soft drinks'] },
+          { id:'butcher', name:'Butcher', icon:'fas fa-utensils', dbCategories: ['butcher'] }
         ];
       },
       spiritSubs() {
-        return [{ id:'rum', name:'Rum', icon:'fas fa-umbrella-beach' },{ id:'vodka', name:'Vodka', icon:'fas fa-snowflake' },{ id:'whisky', name:'Whisky', icon:'fas fa-whiskey-glass' },{ id:'cognac', name:'Cognac', icon:'fas fa-wine-bottle' }];
+        return [
+          { id:'vodka', name:'Vodka', icon:'fas fa-snowflake' },
+          { id:'whiskey', name:'Whiskey', icon:'fas fa-whiskey-glass' },
+          { id:'gin', name:'Gin', icon:'fas fa-martini-glass' },
+          { id:'cognac', name:'Cognac', icon:'fas fa-wine-bottle' },
+          { id:'tequila', name:'Tequila', icon:'fas fa-pepper-hot' },
+          { id:'liqueur', name:'Liqueur', icon:'fas fa-flask' }
+        ];
       },
       currentCategoryLabel() {
         if (this.searchQuery) return 'Search Results';
@@ -78,18 +95,17 @@
       incrementQty(p) { this.$set(this.pendingQtys, p.id, (this.pendingQtys[p.id]||0) + 1); },
       decrementQty(p) { let q = this.pendingQtys[p.id]||0; if (q>0) this.$set(this.pendingQtys, p.id, q-1); },
       
-      mapCategoryToProductType(category) {
-        const map = { 'beer':'beer', 'wine':'wine', 'spirits':'spirits', 'butcher':'butcher', 'non-alc':'food' };
-        return map[category] || 'other';
-      },
-      
+      // Vendor here is only for the cart UI (grouping/labels + the tracker
+      // modal's icon logic below) — the authoritative vendor/product_type
+      // used to actually create the order is recomputed server-side inside
+      // place_web_order() from the live product row, so a stale cart can
+      // never write a wrong/stale value.
       addToCart(p) {
         let qty = this.pendingQtys[p.id] || 1;
         let vendor = (p.category === 'butcher') ? 'The Butcher Shop' : 'Rands Smart Counter';
-        let product_type = this.mapCategoryToProductType(p.category);
         let existing = this.cart.find(i => i.id === p.id && i.vendor === vendor);
         if (existing) existing.quantity += qty;
-        else this.cart.push({ ...p, quantity: qty, vendor, product_type });
+        else this.cart.push({ ...p, quantity: qty, vendor });
         this.$set(this.pendingQtys, p.id, 0);
         this.showToast(`${p.name} added`);
       },
@@ -193,74 +209,52 @@
         if (this.walletBalance < total) { this.showToast(`Insufficient balance. Available: R${this.formatPrice(this.walletBalance)}`); return; }
         this.pendingTotal = total;
         this.pendingCartSnapshot = [...this.cart];
+        this.currentCheckoutAttemptId = crypto.randomUUID();
         this.collectModalVisible = true;
       },
 
+      // Single atomic call: place_web_order() re-prices every line against
+      // the live products table, splits into one order per vendor, writes
+      // both orders.items (so booze/butcher shop-floor screens can see it)
+      // and order_items (for customer-facing tracking), and debits the
+      // wallet — all inside one Postgres transaction. If anything fails
+      // partway (bad product, insufficient funds, etc.) NOTHING is
+      // written, including the wallet debit — this replaces the old
+      // deduct-then-insert sequence that could leave someone charged with
+      // no order if a later step failed.
+      //
+      // p_payment_attempt_id makes retries safe: if this call is
+      // resubmitted (e.g. flaky connection) with the same attempt id, the
+      // DB returns the original result instead of charging twice.
       async processOrderDeductionAndCreate(scheduledFor = null) {
         if (!this.pendingCartSnapshot.length) throw new Error('Cart empty');
-        const total = this.pendingTotal;
-        const { data: newBalance, error: deductError } = await supabase.rpc('deduct_wallet_balance', { p_user_id: this.userId, p_amount: total });
-        if (deductError) throw new Error(deductError.message);
-        this.walletBalance = newBalance;
-        
-        const ordersByVendor = {};
-        this.pendingCartSnapshot.forEach(item => { if (!ordersByVendor[item.vendor]) ordersByVendor[item.vendor] = []; ordersByVendor[item.vendor].push(item); });
-        const isScheduled = !!scheduledFor;
-        
-        for (const [vendor, items] of Object.entries(ordersByVendor)) {
-          const orderTotal = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-          const { data: orderData, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              user_id: this.userId,
-              // customer_phone is what every WhatsApp order lookup
-              // (getActiveOrdersForPhone, getLatestOrderForPhone,
-              // getOrderHistoryForPhone, etc.) filters on — NOT user_id.
-              // Leaving this null is why web-placed orders were invisible
-              // to WhatsApp regardless of whether user_id was correct.
-              customer_phone: this.userPhone,
-              phone: this.userPhone,
-              customer_name: this.userName,
-              // total_amount and total are two separate real columns.
-              // WhatsApp's createOrder() always sets total_amount (and
-              // reads it back in every select) — set both so amounts
-              // agree everywhere, not just on this page.
-              total_amount: orderTotal,
-              total: orderTotal,
-              original_total: orderTotal,
-              status: isScheduled ? 'scheduled' : 'pending',
-              payment_method: 'wallet',
-              payment_status: 'paid',
-              payment_source: 'wallet',
-              source: 'web',
-              scheduled_for: isScheduled ? scheduledFor : null,
-              vendor: vendor
-              // order_number intentionally omitted — let the DB default
-              // (orders_order_number_seq) assign it, same as WhatsApp's
-              // createOrder(), instead of a separate ad-hoc 'ORD-...' format.
-            })
-            .select()
-            .single();
-          if (orderError) throw new Error(`Order insert failed: ${orderError.message}`);
-          
-          const orderItems = items.map(item => ({
-            order_id: orderData.id,
-            product_type: item.product_type,
-            product_id: String(item.id),
-            product_name: item.name,
-            quantity: Number(item.quantity),
-            unit_price: Number(item.price),
-            subtotal: Number(item.price) * Number(item.quantity)
-          }));
-          const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
-          if (itemsError) throw new Error(`Order items insert failed: ${itemsError.message}`);
-        }
+        const attemptId = this.currentCheckoutAttemptId || (this.currentCheckoutAttemptId = crypto.randomUUID());
+        const items = this.pendingCartSnapshot.map(item => ({ product_id: item.id, quantity: item.quantity }));
+
+        const { data, error } = await supabase.rpc('place_web_order', {
+          p_items: items,
+          p_scheduled_for: scheduledFor,
+          p_payment_attempt_id: attemptId
+        });
+        if (error) throw new Error(this.friendlyCheckoutError(error.message));
+
+        this.currentCheckoutAttemptId = null;
         this.cart = [];
         this.pendingCartSnapshot = [];
         this.collectModalVisible = false;
+        if (typeof data?.wallet_balance === 'number') this.walletBalance = data.wallet_balance;
         this.showToast(scheduledFor ? `Order scheduled for ${scheduledFor}` : 'Order placed!');
         await this.fetchWalletBalance();
         this.openTrackModal();
+      },
+      friendlyCheckoutError(msg) {
+        if (!msg) return 'Something went wrong, please try again';
+        if (msg.includes('INSUFFICIENT_FUNDS')) return 'Insufficient wallet balance';
+        if (msg.includes('WALLET_BLOCKED')) return msg.split('WALLET_BLOCKED:')[1]?.trim() || 'Your wallet is blocked';
+        if (msg.includes('PRODUCT_UNAVAILABLE')) return `No longer available: ${msg.split('PRODUCT_UNAVAILABLE:')[1]?.trim() || 'an item in your cart'}`;
+        if (msg.includes('PRODUCT_NOT_FOUND')) return 'An item in your cart no longer exists';
+        if (msg.includes('CART_EMPTY')) return 'Your cart is empty';
+        return msg;
       },
 
       async collectNow() { try { await this.processOrderDeductionAndCreate(null); } catch (err) { this.showToast(`Payment failed: ${err.message}`); await this.fetchWalletBalance(); } },
@@ -273,7 +267,7 @@
         if (scheduledDate <= now) scheduledDate.setDate(scheduledDate.getDate() + 1);
         try { await this.processOrderDeductionAndCreate(scheduledDate.toISOString()); this.selectedSlot = null; } catch (err) { this.showToast(`Scheduling failed: ${err.message}`); await this.fetchWalletBalance(); }
       },
-      closeCollectModal() { this.collectModalVisible = false; this.pendingCartSnapshot = []; },
+      closeCollectModal() { this.collectModalVisible = false; this.pendingCartSnapshot = []; this.currentCheckoutAttemptId = null; },
 
       async fetchUserActiveOrders() {
         if (!this.userId) return [];
