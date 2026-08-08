@@ -67,9 +67,12 @@ async function render(path) {
 }
 
 // Routes that hide the shared bottom nav — either because the old
-// multi-page version never included it (home), or because the page has
-// its own fixed bottom bar that would collide with it (order's cart-bar).
-const NAV_HIDDEN_ROUTES = new Set(['home', 'order']);
+// multi-page version never included it (home), because the page has
+// its own fixed bottom bar that would collide with it (order's cart-bar),
+// or because it's a standalone flow rather than a tab-bar destination
+// (pay-now, festival-banner, payment-success — none of the original static
+// pages embedded the nav).
+const NAV_HIDDEN_ROUTES = new Set(['home', 'order', 'pay-now', 'festival-banner', 'payment-success']);
 
 function updateActiveNavItem(path) {
     document.querySelectorAll('#bottom-nav .bottom-nav__item').forEach(el => {

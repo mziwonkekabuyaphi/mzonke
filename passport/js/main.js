@@ -44,10 +44,34 @@ registerRoute('deposit', {
     module: () => import('../pages/deposit.js')
 });
 
+registerRoute('lockers', {
+    fragment: 'fragments/lockers.html',
+    module: () => import('../pages/lockers.js')
+});
+
+registerRoute('pay-now', {
+    fragment: 'fragments/pay-now.html',
+    module: () => import('../pages/pay-now.js')
+});
+
+registerRoute('statement', {
+    fragment: 'fragments/statement.html',
+    module: () => import('../pages/statement.js')
+});
+
+registerRoute('festival-banner', {
+    fragment: 'fragments/festival-banner.html',
+    module: () => import('../pages/festival-banner.js')
+});
+
+registerRoute('payment-success', {
+    fragment: 'fragments/payment-success.html',
+    module: () => import('../pages/payment-success.js')
+});
+
 // --- Not yet converted — placeholders so nav links don't dead-end.
 // Convert these one at a time using the same 3-step pattern as home.js.
-['butcher', 'pre-order', 'statement',
- 'pay-now', 'festival-banner'].forEach((path) => {
+['butcher', 'pre-order'].forEach((path) => {
     registerRoute(path, {
         fragment: `fragments/${path}.html`,   // create this file when you migrate the page
         module: () => Promise.resolve({ default: { init(){}, destroy(){} } })
