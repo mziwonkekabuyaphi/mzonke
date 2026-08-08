@@ -33,6 +33,16 @@
       selectedSlot: null,
       trackModalVisible: false,
       currentCheckoutAttemptId: null,
+      // Business hours — shared by generateTimeSlots() and isBusinessOpen so
+      // the "open now" gate and the schedule picker's slot window can never
+      // drift apart.
+      OPEN_HOUR: 12,
+      CLOSE_HOUR: 22,
+      // Ticks forward every 30s purely to force isBusinessOpen (and any
+      // button bound to it) to re-evaluate live — without this, a customer
+      // who has the page open right as closing time hits would still see
+      // "Collect Now" enabled until their next unrelated re-render.
+      nowTick: Date.now(),
     },
     computed: {
       cartItemCount() { return this.cart.reduce((s,i)=>s+i.quantity,0); },
@@ -84,6 +94,17 @@
         if (this.activeCategory === 'spirits') return 'Spirits: '+this.activeSub;
         const c = this.mainCategories.find(c=>c.id===this.activeCategory);
         return c ? c.name : '';
+      },
+      // True only between OPEN_HOUR and CLOSE_HOUR, same-day. Both checkout
+      // buttons (Collect Now + Schedule Later) bind to this in the template
+      // — outside these hours the venue takes no orders at all, immediate
+      // or scheduled, so both go disabled together rather than just hiding
+      // the "now" option.
+      isBusinessOpen() {
+        void this.nowTick; // dependency so this recomputes on the timer tick below
+        const now = new Date();
+        const hour = now.getHours() + now.getMinutes() / 60;
+        return hour >= this.OPEN_HOUR && hour < this.CLOSE_HOUR;
       }
     },
     async mounted() {
@@ -91,6 +112,9 @@
       await this.loadProductsFromSupabase();
       this.generateTimeSlots();
       this.startPollingOrders();
+      // Keeps isBusinessOpen (and the two checkout buttons bound to it) live
+      // across the open/close boundary without needing a page refresh.
+      setInterval(() => { this.nowTick = Date.now(); }, 30000);
     },
     methods: {
       formatPrice(n) { return Number(n).toFixed(2); },
@@ -205,16 +229,14 @@
       // orders end today" — a past slot is filtered out entirely, never
       // offered and never rolled forward.
       generateTimeSlots() {
-        const OPEN_HOUR = 12;
-        const CLOSE_HOUR = 22;
         const MIN_LEAD_MINUTES = 15;
 
         const now = new Date();
         const earliest = new Date(now.getTime() + MIN_LEAD_MINUTES * 60000);
 
         let times = [];
-        for (let h = OPEN_HOUR; h <= CLOSE_HOUR; h++) {
-          for (const m of h === CLOSE_HOUR ? [0] : [0, 30]) {
+        for (let h = this.OPEN_HOUR; h <= this.CLOSE_HOUR; h++) {
+          for (const m of h === this.CLOSE_HOUR ? [0] : [0, 30]) {
             const slot = new Date(now);
             slot.setHours(h, m, 0, 0);
             if (slot >= earliest) times.push(`${h}:${m === 0 ? '00' : '30'}`);
@@ -293,8 +315,15 @@
         return msg;
       },
 
-      async collectNow() { try { await this.processOrderDeductionAndCreate(null); } catch (err) { this.showToast(`Payment failed: ${err.message}`); await this.fetchWalletBalance(); } },
+      async collectNow() {
+        // Backstop for the disabled button — covers a modal left open
+        // across the closing-time boundary, or the button being reached
+        // some other way than a live-bound click.
+        if (!this.isBusinessOpen) { this.showToast("We're closed right now — please check back during business hours"); return; }
+        try { await this.processOrderDeductionAndCreate(null); } catch (err) { this.showToast(`Payment failed: ${err.message}`); await this.fetchWalletBalance(); }
+      },
       async scheduleLater() {
+        if (!this.isBusinessOpen) { this.showToast("We're closed right now — please check back during business hours"); return; }
         if (!this.selectedSlot) { this.showToast('Select a time slot'); return; }
         const now = new Date();
         const [hour, minute] = this.selectedSlot.split(':').map(Number);
