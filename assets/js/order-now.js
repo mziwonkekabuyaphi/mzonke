@@ -55,6 +55,9 @@
       // 'beers', 'ciders', 'champagne', 'sparkling wine', 'cognac', 'gin',
       // 'liqueur', 'tequila', 'vodka', 'whiskey', 'soft drinks', 'butcher'.
       // Every tab except Butcher was silently showing zero products.
+      //
+      // 'shisha' has no tab on purpose — shisha is handled by its own
+      // separate system, not through this products table/menu.
       mainCategories() {
         return [
           { id:'all', name:'All', icon:'fas fa-border-all', dbCategories: [] },
@@ -194,9 +197,29 @@
         finally { this.loadingProducts = false; }
       },
 
+      // Same-day only, and only slots that haven't passed yet. Used to build
+      // a static 12:00-22:00 list regardless of the current time, so at (say)
+      // 3pm the dropdown still offered 12:00/1:00/2:00 — picking one of those
+      // used to silently roll scheduleLater() into TOMORROW at that hour,
+      // which is wrong: this venue doesn't take next-day bookings. "Today
+      // orders end today" — a past slot is filtered out entirely, never
+      // offered and never rolled forward.
       generateTimeSlots() {
+        const OPEN_HOUR = 12;
+        const CLOSE_HOUR = 22;
+        const MIN_LEAD_MINUTES = 15;
+
+        const now = new Date();
+        const earliest = new Date(now.getTime() + MIN_LEAD_MINUTES * 60000);
+
         let times = [];
-        for (let h=12; h<=22; h++) { times.push(`${h}:00`); if (h !== 22) times.push(`${h}:30`); }
+        for (let h = OPEN_HOUR; h <= CLOSE_HOUR; h++) {
+          for (const m of h === CLOSE_HOUR ? [0] : [0, 30]) {
+            const slot = new Date(now);
+            slot.setHours(h, m, 0, 0);
+            if (slot >= earliest) times.push(`${h}:${m === 0 ? '00' : '30'}`);
+          }
+        }
         this.timeSlots = times;
       },
 
@@ -210,6 +233,11 @@
         this.pendingTotal = total;
         this.pendingCartSnapshot = [...this.cart];
         this.currentCheckoutAttemptId = crypto.randomUUID();
+        // Re-generate here, not just once at mounted() — a customer who
+        // loaded the page at noon and checks out at 6pm must not still see
+        // noon's now-past slots.
+        this.generateTimeSlots();
+        this.selectedSlot = null;
         this.collectModalVisible = true;
       },
 
@@ -243,7 +271,15 @@
         this.pendingCartSnapshot = [];
         this.collectModalVisible = false;
         if (typeof data?.wallet_balance === 'number') this.walletBalance = data.wallet_balance;
-        this.showToast(scheduledFor ? `Order scheduled for ${scheduledFor}` : 'Order placed!');
+        // scheduledFor is a UTC ISO string (correct for storage — see
+        // scheduleLater's .toISOString()) but showing that raw string to the
+        // customer displayed the wrong-looking hour (2 hours "behind" in
+        // SAST/UTC+2). new Date(...).toLocaleTimeString() converts it back
+        // to the browser's local time for display, same moment either way.
+        const scheduledLabel = scheduledFor
+          ? new Date(scheduledFor).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : null;
+        this.showToast(scheduledLabel ? `Order scheduled for ${scheduledLabel}` : 'Order placed!');
         await this.fetchWalletBalance();
         this.openTrackModal();
       },
@@ -264,7 +300,17 @@
         const [hour, minute] = this.selectedSlot.split(':').map(Number);
         const scheduledDate = new Date(now);
         scheduledDate.setHours(hour, minute, 0, 0);
-        if (scheduledDate <= now) scheduledDate.setDate(scheduledDate.getDate() + 1);
+        // Defensive re-check, not a fallback path: generateTimeSlots() should
+        // never have offered a past slot in the first place, but if this modal
+        // was left open across the cutoff (e.g. it was 2:50 when opened, it's
+        // 3:05 now), the previously-valid "3:00" selection is now stale.
+        // Reject outright — same-day only, never roll into tomorrow.
+        if (scheduledDate <= now) {
+          this.showToast("That time's already passed — please pick a later slot");
+          this.generateTimeSlots();
+          this.selectedSlot = null;
+          return;
+        }
         try { await this.processOrderDeductionAndCreate(scheduledDate.toISOString()); this.selectedSlot = null; } catch (err) { this.showToast(`Scheduling failed: ${err.message}`); await this.fetchWalletBalance(); }
       },
       closeCollectModal() { this.collectModalVisible = false; this.pendingCartSnapshot = []; this.currentCheckoutAttemptId = null; },
