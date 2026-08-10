@@ -49,6 +49,7 @@
     function closeConfirmModal(confirmed) { document.getElementById('confirmationModal').classList.remove('show'); if(confirmResolver) { confirmResolver(confirmed); confirmResolver = null; } }
 
     let currentUser = null, userProfile = null, events = [], selectedEventId = null, currentTicketTypes = [], transferTicketId = null, isPurchasing = false, isWalletBlocked = false, walletBlockReason = '';
+    let walletChannel = null;
 
     async function initAuth() {
         const { data: { session } } = await supabase.auth.getSession();
@@ -249,7 +250,10 @@
     async function init() { 
         if(!(await initAuth())) return; 
         await loadEvents(); 
-        document.getElementById('homeIconBtn').addEventListener('click', () => window.location.href = 'home.html'); 
+        // homeIconBtn already has data-link="home" in the HTML — router.js's
+        // global click delegation (initRouter) handles that via navigate().
+        // A manual window.location.href here would force a full page reload
+        // on top of the SPA nav, so it's intentionally not wired up again.
         document.getElementById('eventsTabBtn').addEventListener('click', () => switchTab('events')); 
         document.getElementById('myTicketsTabBtn').addEventListener('click', () => switchTab('myTickets')); 
         document.getElementById('closeTransferModal').addEventListener('click', () => document.getElementById('transferModal').classList.remove('show')); 
@@ -258,6 +262,21 @@
         document.getElementById('closeConfirmModal').addEventListener('click', () => closeConfirmModal(false)); 
         document.getElementById('confirmModalCancelBtn').addEventListener('click', () => closeConfirmModal(false)); 
         document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => closeConfirmModal(true)); 
-        supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe(); 
+        walletChannel = supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe(); 
     }
-    init();
+
+    // The router (router.js) fetches this page's HTML fragment and imports
+    // this module IN PARALLEL, then injects the fragment into the DOM, and
+    // only THEN calls default.init(). Previously this file called init()
+    // itself at module-load time (a leftover from the old plain-<script>
+    // pages) — that ran before the fragment HTML existed in the DOM at all,
+    // so every getElementById() inside init()/initAuth() returned null and
+    // threw, silently killing init() before it ever attached the "Get
+    // Tickets" click listeners. Exporting { init, destroy } instead lets the
+    // router call init() at the right time, once the DOM is actually there.
+    function destroy() {
+        if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; }
+        confirmResolver = null;
+    }
+
+    export default { init, destroy };
