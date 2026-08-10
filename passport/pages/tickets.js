@@ -147,22 +147,51 @@ async function renderStoreTickets() {
     const currentEvent = events.find(ev => ev.id === selectedEventId);
     const banner = bannerMarkup(currentEvent);
     container.innerHTML = currentTicketTypes.map(tt => { const remaining = Math.max(0, (tt.capacity || 0) - (tt.sold || 0)); const soldOut = remaining <= 0; const isVip = isVipTicket(tt.name); const disabled = soldOut || isWalletBlocked; const btnLabel = isWalletBlocked ? '<i class="fas fa-ban"></i> Wallet Blocked' : (soldOut ? 'Sold Out' : '<i class="fas fa-ticket-alt"></i> Get Tickets'); return `<div class="ticket-card">${isVip ? `<div class="vip-ribbon"><i class="fas fa-crown"></i> VIP</div>` : ''}${banner}<div class="ticket-header"><div class="ticket-type">${escapeHtml(tt.name)}${isVip ? ' <i class="fas fa-gem" style="color:#FFD700;"></i>' : ''}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div class="ticket-desc">${soldOut ? 'SOLD OUT' : `${remaining} left`}</div></div><div class="ticket-body"><button class="buy-btn purchase-btn" data-type-id="${tt.id}" data-price="${tt.price}" ${disabled ? 'disabled' : ''}>${btnLabel}</button></div></div>`; }).join('');
-    document.querySelectorAll('.purchase-btn:not(:disabled)').forEach(btn => btn.addEventListener('click', async (e) => { if(isPurchasing) return; const typeId = btn.dataset.typeId; const price = parseFloat(btn.dataset.price); await purchaseTicket(typeId, price); }));
+    document.querySelectorAll('.purchase-btn:not(:disabled)').forEach(btn => btn.addEventListener('click', async (e) => {
+        console.log('[Tickets] purchase-btn clicked', { typeId: btn.dataset.typeId, isPurchasing });
+        if(isPurchasing) { console.warn('[Tickets] ignored click — a purchase is already in progress (isPurchasing=true)'); return; }
+        const typeId = btn.dataset.typeId;
+        const price = parseFloat(btn.dataset.price);
+        await purchaseTicket(typeId, price);
+    }));
 }
 
 async function purchaseTicket(ticketTypeId, price) {
+    console.log('[Tickets] purchaseTicket() called', { ticketTypeId, price, isWalletBlocked, userProfile, isPurchasing });
     if(isWalletBlocked) { showToast(walletBlockReason, true); return; }
-    if(isPurchasing || !userProfile || userProfile.wallet_balance < price) { if(userProfile?.wallet_balance < price) showToast(`Insufficient balance. Need R${price.toLocaleString()}`, true); return; }
+    if(isPurchasing || !userProfile || userProfile.wallet_balance < price) {
+        if(!userProfile) console.error('[Tickets] Aborting — userProfile is null. initAuth() likely failed or has not finished.');
+        if(userProfile?.wallet_balance < price) showToast(`Insufficient balance. Need R${price.toLocaleString()}`, true);
+        return;
+    }
     const confirmed = await showConfirmModal(`Buy this ticket for R${price.toLocaleString()}?`, "Confirm Purchase");
+    console.log('[Tickets] confirm modal resolved with', confirmed);
     if(!confirmed) return;
     const btn = document.querySelector(`.purchase-btn[data-type-id="${ticketTypeId}"]`);
     if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
     isPurchasing = true;
-    const { error } = await supabase.rpc('purchase_ticket', { p_user_id: userProfile.id, p_ticket_type_id: ticketTypeId });
-    if(error) showToast(error.message.includes('Insufficient') ? 'Insufficient wallet balance' : error.message.includes('sold out') ? 'Sold out' : 'Purchase failed', true);
-    else { showToast('✅ Ticket purchased!'); await refreshUserBalance(); await renderStoreTickets(); await updateMyTicketsCount(); if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull(); }
-    isPurchasing = false;
-    if(btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ticket-alt"></i> Get Tickets'; }
+    try {
+        const { error } = await supabase.rpc('purchase_ticket', { p_user_id: userProfile.id, p_ticket_type_id: ticketTypeId });
+        if(error) {
+            console.error('[Tickets] purchase_ticket RPC returned an error:', error);
+            showToast(error.message.includes('Insufficient') ? 'Insufficient wallet balance' : error.message.includes('sold out') ? 'Sold out' : 'Purchase failed', true);
+        } else {
+            showToast('✅ Ticket purchased!');
+            await refreshUserBalance();
+            await renderStoreTickets();
+            await updateMyTicketsCount();
+            if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull();
+        }
+    } catch (err) {
+        // Previously uncaught — a thrown/rejected RPC call (network error,
+        // timeout, etc.) would leave isPurchasing stuck `true` forever,
+        // silently disabling every future click with zero feedback.
+        console.error('[Tickets] purchase_ticket threw an exception:', err);
+        showToast('Purchase failed — please try again', true);
+    } finally {
+        isPurchasing = false;
+        if(btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ticket-alt"></i> Get Tickets'; }
+    }
 }
 
 async function renderMyTicketsFull() {
