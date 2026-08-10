@@ -9,6 +9,7 @@ const onCleanup = (fn) => cleanup.push(fn);
 // Module-scope so a navigate-away-and-back reuses state instead of
 // refetching (dynamic import() caches the module — see tickets.js note).
 let currentCustomer = null;   // { id, name, phone }
+let currentAuthUserId = null; // session.user.id — wallets.user_id keys off this, NOT currentCustomer.id
 let currentBalance = 0;
 let holdings = [];            // all vault_holdings + nested items for this customer
 let availableProducts = [];   // from vault_get_available_products
@@ -71,6 +72,7 @@ async function initAuth() {
     const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userId).maybeSingle();
     currentBalance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
     currentCustomer = { id: profile.id, name: profile.name, phone: profile.phone };
+    currentAuthUserId = userId;
     updateWalletDisplay();
     return true;
 }
@@ -393,7 +395,7 @@ export default {
 
         walletChannel = supabase
             .channel('vault-wallet-balance')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentCustomer.id}` }, (payload) => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentAuthUserId}` }, (payload) => {
                 if (payload.new.balance !== undefined) {
                     currentBalance = payload.new.balance;
                     updateWalletDisplay();
