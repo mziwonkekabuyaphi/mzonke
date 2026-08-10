@@ -6,7 +6,7 @@
 // NOT on every page mount.
 // ============================================
 
-import { supabase } from '../../../config/supabase.js';
+import { supabase } from '../../config/supabase.js';
 
 export const appState = {
     session: null,
