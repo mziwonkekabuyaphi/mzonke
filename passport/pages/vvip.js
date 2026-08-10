@@ -56,8 +56,19 @@ async function loadUserAndPackageCredit() {
     // it rather than silently changing auth-lookup behavior in this pass.
     const { data: profile } = await supabase.from('profiles').select('id, name, phone, role').eq('id', currentUser.id).maybeSingle();
     if (!profile) {
-        await supabase.from('profiles').insert([{ id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '', role: 'user' }]);
-        currentProfile = { id: currentUser.id, name: currentUser.user_metadata?.full_name || 'Member', phone: '', role: 'user' };
+        const { data: newProfile, error: insertError } = await supabase.from('profiles').insert([{
+            id: currentUser.id,
+            auth_user_id: currentUser.id,
+            name: currentUser.user_metadata?.full_name || 'Member',
+            phone: '',
+            role: 'user'
+        }]).select('id, name, phone, role').single();
+        if (insertError) {
+            console.error('[vvip] Profile creation failed:', insertError);
+            showToastMsg('Could not set up your profile — please try again', true);
+            return false;
+        }
+        currentProfile = newProfile;
     } else { currentProfile = profile; }
 
     const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', currentUser.id).maybeSingle();
