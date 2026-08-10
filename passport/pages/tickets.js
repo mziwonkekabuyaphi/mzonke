@@ -1,8 +1,12 @@
-    // pages/tickets.js sits one level below the app root (sibling of
-    // js/, fragments/, css/ — see main.js's `import('../pages/tickets.js')`
-    // resolved against js/main.js). Adjust this if config/ actually lives
-    // somewhere else relative to pages/.
-    import { supabase } from '../../config/supabase.js';
+    // pages/ and js/ are both direct children of passport/, so this
+    // resolves the same way state.js's own import does.
+    import { supabase } from '../../../config/supabase.js';
+    // Single source of truth for session/profile/wallet — see state.js.
+    // Pages read appState instead of re-querying Supabase for the same
+    // data on every navigation, and share ONE realtime wallet
+    // subscription for the whole app session instead of each page opening
+    // (and needing to tear down) its own.
+    import { appState, onStateChange, refreshSession, refreshWallet, setupWalletRealtime } from '../js/state.js';
 
     // QRCode (qrcodejs) and html2canvas used to be plain <script src="...">
     // tags in the old standalone tickets.html <head>. Those don't survive
@@ -79,54 +83,48 @@
     function showConfirmModal(message, title = "Confirm") { return new Promise((resolve) => { confirmResolver = resolve; document.getElementById('confirmModalMessage').innerText = message; document.getElementById('confirmModalTitle').innerHTML = `<i class="fas fa-question-circle"></i> ${title}`; document.getElementById('confirmationModal').classList.add('show'); }); }
     function closeConfirmModal(confirmed) { document.getElementById('confirmationModal').classList.remove('show'); if(confirmResolver) { confirmResolver(confirmed); confirmResolver = null; } }
 
-    let currentUser = null, userProfile = null, events = [], selectedEventId = null, currentTicketTypes = [], transferTicketId = null, isPurchasing = false, isWalletBlocked = false, walletBlockReason = '';
-    let walletChannel = null;
+    let events = [], selectedEventId = null, currentTicketTypes = [], transferTicketId = null, isPurchasing = false;
+    let unsubscribeState = null;
+
+    // Read live off appState rather than caching a local copy, so a wallet
+    // status change pushed mid-session (block, balance update) is reflected
+    // immediately everywhere these are checked.
+    function walletBalance() { return appState.wallet?.balance ?? 0; }
+    function isWalletBlocked() { return (appState.wallet?.status || '').toLowerCase() === 'blocked'; }
+    function walletBlockReason() { return appState.wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.'; }
 
     async function initAuth() {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { showToast('Please log in first', true); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return false; }
-        currentUser = session.user;
-        // profiles.id is NOT guaranteed to equal the auth user id —
-        // WhatsApp-registered customers get a DB-generated profiles.id,
-        // linked to auth only via auth_user_id (see home.html for the
-        // same pattern). Looking this up by id=currentUser.id silently
-        // failed to find those profiles, which then made the fallback
-        // insert below collide, leaving `profile` null and crashing on
-        // `profile.phone` — which is why nothing on this page loaded at all.
-        let { data: profile } = await supabase.from('profiles').select('id, phone, name').eq('auth_user_id', currentUser.id).maybeSingle();
-        if (!profile) {
-            const fallback = await supabase.from('profiles').select('id, phone, name').eq('id', currentUser.id).maybeSingle();
-            profile = fallback.data;
+        if (!appState.session) {
+            const session = await refreshSession();
+            if (!session) { showToast('Please log in first', true); setTimeout(() => { location.hash = '#/login'; }, 1500); return false; }
         }
-        if (!profile) {
-            const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({ id: currentUser.id, auth_user_id: currentUser.id, name: currentUser.user_metadata?.full_name || 'User', email: currentUser.email, phone: currentUser.user_metadata?.phone || '', role: 'customer' }).select('id, phone, name').single();
-            if (insertError) console.error('Profile creation failed:', insertError);
-            profile = newProfile;
-        }
-        if (!profile) {
+        if (!appState.profile) {
             showToast('Could not load your account. Please contact support.', true);
             return false;
         }
-        const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', profile.id).maybeSingle();
-        userProfile = { id: profile.id, phone: profile.phone, name: profile.name, wallet_balance: wallet?.balance ?? 0 };
-        isWalletBlocked = (wallet?.status || '').toLowerCase() === 'blocked';
-        walletBlockReason = wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
-        document.getElementById('walletBalance').innerText = `R${userProfile.wallet_balance.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+        if (!appState.wallet) await refreshWallet();
+        setupWalletRealtime(); // no-op if already set up elsewhere this session
+        unsubscribeState = onStateChange(() => { updateWalletDisplay(); renderWalletBlockedBanners(); });
+        updateWalletDisplay();
         renderWalletBlockedBanners();
         await updateMyTicketsCount();
         return true;
     }
+    function updateWalletDisplay() {
+        const el = document.getElementById('walletBalance');
+        if (el) el.innerText = `R${walletBalance().toLocaleString(undefined, {minimumFractionDigits:2})}`;
+    }
     function renderWalletBlockedBanners() {
-        const bannerHtml = isWalletBlocked ? `<div class="wallet-blocked-banner"><i class="fas fa-ban"></i><span>${escapeHtml(walletBlockReason)}</span></div>` : '';
+        const blocked = isWalletBlocked();
+        const bannerHtml = blocked ? `<div class="wallet-blocked-banner"><i class="fas fa-ban"></i><span>${escapeHtml(walletBlockReason())}</span></div>` : '';
         document.querySelectorAll('.wallet-blocked-banner').forEach(el => el.remove());
-        if (!isWalletBlocked) return;
+        if (!blocked) return;
         const eventsPanel = document.getElementById('eventsPanel');
         const myPanel = document.getElementById('myTicketsPanel');
         if (eventsPanel) eventsPanel.insertAdjacentHTML('afterbegin', bannerHtml);
         if (myPanel) myPanel.insertAdjacentHTML('afterbegin', bannerHtml);
     }
-    async function updateMyTicketsCount() { if (!userProfile?.phone) return; const { count } = await supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('customer_phone', userProfile.phone).eq('status', 'issued'); if(count !== undefined) document.getElementById('myTicketsCountStat').textContent = count || 0; }
-    async function refreshUserBalance() { const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userProfile.id).maybeSingle(); if(wallet) { userProfile.wallet_balance = wallet.balance; document.getElementById('walletBalance').innerText = `R${wallet.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }
+    async function updateMyTicketsCount() { if (!appState.profile?.phone) return; const { count } = await supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('customer_phone', appState.profile.phone).eq('status', 'issued'); if(count !== undefined) document.getElementById('myTicketsCountStat').textContent = count || 0; }
 
     async function loadEvents() {
         const { data, error } = await supabase.from('events').select('*').order('start_time', { ascending: true });
@@ -153,22 +151,23 @@
         currentTicketTypes = data;
         const currentEvent = events.find(ev => ev.id === selectedEventId);
         const banner = bannerMarkup(currentEvent);
-        container.innerHTML = currentTicketTypes.map(tt => { const remaining = Math.max(0, (tt.capacity || 0) - (tt.sold || 0)); const soldOut = remaining <= 0; const isVip = isVipTicket(tt.name); const disabled = soldOut || isWalletBlocked; const btnLabel = isWalletBlocked ? '<i class="fas fa-ban"></i> Wallet Blocked' : (soldOut ? 'Sold Out' : '<i class="fas fa-ticket-alt"></i> Get Tickets'); return `<div class="ticket-card">${isVip ? `<div class="vip-ribbon"><i class="fas fa-crown"></i> VIP</div>` : ''}${banner}<div class="ticket-header"><div class="ticket-type">${escapeHtml(tt.name)}${isVip ? ' <i class="fas fa-gem" style="color:#FFD700;"></i>' : ''}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div class="ticket-desc">${soldOut ? 'SOLD OUT' : `${remaining} left`}</div></div><div class="ticket-body"><button class="buy-btn purchase-btn" data-type-id="${tt.id}" data-price="${tt.price}" ${disabled ? 'disabled' : ''}>${btnLabel}</button></div></div>`; }).join('');
+        const blocked = isWalletBlocked();
+        container.innerHTML = currentTicketTypes.map(tt => { const remaining = Math.max(0, (tt.capacity || 0) - (tt.sold || 0)); const soldOut = remaining <= 0; const isVip = isVipTicket(tt.name); const disabled = soldOut || blocked; const btnLabel = blocked ? '<i class="fas fa-ban"></i> Wallet Blocked' : (soldOut ? 'Sold Out' : '<i class="fas fa-ticket-alt"></i> Get Tickets'); return `<div class="ticket-card">${isVip ? `<div class="vip-ribbon"><i class="fas fa-crown"></i> VIP</div>` : ''}${banner}<div class="ticket-header"><div class="ticket-type">${escapeHtml(tt.name)}${isVip ? ' <i class="fas fa-gem" style="color:#FFD700;"></i>' : ''}</div><div class="ticket-price">R${Number(tt.price).toLocaleString()}</div><div class="ticket-desc">${soldOut ? 'SOLD OUT' : `${remaining} left`}</div></div><div class="ticket-body"><button class="buy-btn purchase-btn" data-type-id="${tt.id}" data-price="${tt.price}" ${disabled ? 'disabled' : ''}>${btnLabel}</button></div></div>`; }).join('');
         document.querySelectorAll('.purchase-btn:not(:disabled)').forEach(btn => btn.addEventListener('click', async (e) => { if(isPurchasing) return; const typeId = btn.dataset.typeId; const price = parseFloat(btn.dataset.price); await purchaseTicket(typeId, price); }));
     }
 
     async function purchaseTicket(ticketTypeId, price) {
-        if(isWalletBlocked) { showToast(walletBlockReason, true); return; }
-        if(isPurchasing || !userProfile || userProfile.wallet_balance < price) { if(userProfile?.wallet_balance < price) showToast(`Insufficient balance. Need R${price.toLocaleString()}`, true); return; }
+        if(isWalletBlocked()) { showToast(walletBlockReason(), true); return; }
+        if(isPurchasing || !appState.profile || walletBalance() < price) { if(walletBalance() < price) showToast(`Insufficient balance. Need R${price.toLocaleString()}`, true); return; }
         const confirmed = await showConfirmModal(`Buy this ticket for R${price.toLocaleString()}?`, "Confirm Purchase");
         if(!confirmed) return;
         const btn = document.querySelector(`.purchase-btn[data-type-id="${ticketTypeId}"]`);
         if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
         isPurchasing = true;
         try {
-            const { error } = await supabase.rpc('purchase_ticket', { p_user_id: userProfile.id, p_ticket_type_id: ticketTypeId });
+            const { error } = await supabase.rpc('purchase_ticket', { p_user_id: appState.profile.id, p_ticket_type_id: ticketTypeId });
             if(error) showToast(error.message.includes('Insufficient') ? 'Insufficient wallet balance' : error.message.toLowerCase().includes('sold out') ? 'Sold out' : 'Purchase failed', true);
-            else { showToast('✅ Ticket purchased!'); await refreshUserBalance(); await renderStoreTickets(); await updateMyTicketsCount(); if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull(); }
+            else { showToast('✅ Ticket purchased!'); await refreshWallet(); await renderStoreTickets(); await updateMyTicketsCount(); if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull(); }
         } catch (err) {
             // A thrown/network error here used to leave isPurchasing stuck
             // `true` forever, silently bricking every future click on this
@@ -184,7 +183,7 @@
     async function renderMyTicketsFull() {
         const container = document.getElementById('myTicketsListFull');
         container.innerHTML = '<div class="skeleton skeleton-card"></div>';
-        const { data, error } = await supabase.from('tickets').select(`id, qr_token, ticket_number, issued_at, status, event_id, ticket_type_id, customer_phone, ticket_types(name, price), events(name, start_time, location, image_url)`).eq('customer_phone', userProfile.phone).order('issued_at', { ascending: false });
+        const { data, error } = await supabase.from('tickets').select(`id, qr_token, ticket_number, issued_at, status, event_id, ticket_type_id, customer_phone, ticket_types(name, price), events(name, start_time, location, image_url)`).eq('customer_phone', appState.profile.phone).order('issued_at', { ascending: false });
         if(error || !data?.length) { container.innerHTML = '<div class="empty-state"><i class="fas fa-ticket-alt"></i><p>You have no tickets yet.<br>Buy one from the store!</p></div>'; return; }
         container.innerHTML = '';
         // Make sure the QR lib is actually present before we try to render
@@ -200,7 +199,7 @@
             const statusLabel = ticket.status === 'used' ? 'Used' : (ticket.status === 'cancelled' ? 'Cancelled' : 'Valid');
             const isVip = isVipTicket(ticketType.name);
             const banner = bannerMarkup(event, event.name);
-            const canTransfer = ticket.status !== 'cancelled' && !isWalletBlocked;
+            const canTransfer = ticket.status !== 'cancelled' && !isWalletBlocked();
             const card = document.createElement('div'); card.className = 'ticket-card-wallet'; card.setAttribute('data-ticket-id', ticket.id);
             card.innerHTML = `${isVip ? `<div class="vip-ribbon"><i class="fas fa-crown"></i> VIP</div>` : ''}${banner}<div class="ticket-header-wallet"><div class="event-name-tag">${escapeHtml(event.name || 'Event')}</div><div class="ticket-title">${escapeHtml(ticketType.name || 'Ticket')}</div><div style="font-size:0.7rem; color:rgba(255,255,255,0.9);">R${Number(ticketType.price || 0).toLocaleString()}</div></div><div class="wallet-body"><div class="wallet-detail-row"><i class="fas fa-calendar-alt"></i> ${escapeHtml(eventDate)}</div><div class="wallet-detail-row"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(event.location || 'Venue TBA')}</div><div class="wallet-detail-row"><i class="fas fa-phone"></i> ${escapeHtml(ticket.customer_phone)}</div><div class="wallet-detail-row"><i class="fas fa-clock"></i> Issued ${formatDate(ticket.issued_at)}</div><div class="wallet-detail-row"><span><i class="fas fa-info-circle"></i> Status</span><span class="status-pill ${statusClass}">${statusLabel}</span></div><div class="ticket-actions">${canTransfer ? `<button class="ticket-action-btn transfer-ticket" data-id="${ticket.id}"><i class="fas fa-paper-plane"></i> Send</button>` : ''}<button class="ticket-action-btn download-ticket-full" data-id="${ticket.id}"><i class="fas fa-download"></i> Download Ticket</button></div></div><div class="qr-section"><div id="qr-${ticket.id}" class="qr-container"></div><div style="font-size:0.7rem; margin-top:8px;">Ticket Number: ${escapeHtml(ticket.ticket_number || ticket.id.slice(0,8).toUpperCase())}</div></div><div class="ticket-footer-wallet"><span><i class="fas fa-qrcode"></i> Scan for entry</span><span>${statusLabel}</span></div>`;
             container.appendChild(card);
@@ -214,7 +213,7 @@
         document.querySelectorAll('.transfer-ticket').forEach(btn => { btn.removeEventListener('click', handleTransfer); btn.addEventListener('click', handleTransfer); });
         document.querySelectorAll('.download-ticket-full').forEach(btn => { btn.removeEventListener('click', handleFullDownload); btn.addEventListener('click', handleFullDownload); });
     }
-    function handleTransfer(e) { if(isWalletBlocked) { showToast(walletBlockReason, true); return; } transferTicketId = e.currentTarget.dataset.id; document.getElementById('transferModal').classList.add('show'); }
+    function handleTransfer(e) { if(isWalletBlocked()) { showToast(walletBlockReason(), true); return; } transferTicketId = e.currentTarget.dataset.id; document.getElementById('transferModal').classList.add('show'); }
     async function handleFullDownload(e) {
         const ticketId = e.currentTarget.dataset.id;
         const ticketEl = document.querySelector(`.ticket-card-wallet[data-ticket-id="${ticketId}"]`);
@@ -272,15 +271,15 @@
     }
 
     async function transferTicketToPhone(ticketId, targetPhone) {
-        if(isWalletBlocked) { showToast(walletBlockReason, true); return false; }
+        if(isWalletBlocked()) { showToast(walletBlockReason(), true); return false; }
         let digits = targetPhone.replace(/\D/g, '');
         if(digits.startsWith('0')) digits = '27' + digits.slice(1);
         // Canonical form matches what profiles.phone / tickets.customer_phone
         // store in the DB (no leading '+') and what transfer_ticket's own
         // normalisation produces.
         const finalPhone = digits;
-        if(finalPhone === userProfile.phone) { showToast('Cannot transfer to yourself', true); return false; }
-        const { error } = await supabase.rpc('transfer_ticket', { p_ticket_id: ticketId, p_from_user_id: userProfile.id, p_to_phone: finalPhone });
+        if(finalPhone === appState.profile.phone) { showToast('Cannot transfer to yourself', true); return false; }
+        const { error } = await supabase.rpc('transfer_ticket', { p_ticket_id: ticketId, p_from_user_id: appState.profile.id, p_to_phone: finalPhone });
         if(error) { showToast(error.message, true); return false; }
         showToast('Ticket transferred'); await renderMyTicketsFull(); await updateMyTicketsCount(); return true;
     }
@@ -306,7 +305,10 @@
         document.getElementById('closeConfirmModal').addEventListener('click', () => closeConfirmModal(false));
         document.getElementById('confirmModalCancelBtn').addEventListener('click', () => closeConfirmModal(false));
         document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => closeConfirmModal(true));
-        walletChannel = supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe();
+        // No page-local realtime subscription here — state.js owns ONE
+        // wallet channel for the whole app session (setupWalletRealtime(),
+        // called above in initAuth()); this page just reacts to it via the
+        // onStateChange() listener also registered in initAuth().
         // Preload QR/canvas libs in the background so the "My Tickets" tab
         // and downloads feel instant instead of waiting on a CDN fetch the
         // first time they're needed.
@@ -319,7 +321,10 @@
     // self-invoked at module load time (that would run before the DOM
     // existed and silently kill every getElementById() call in here).
     function destroy() {
-        if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; }
+        // Don't touch state.js's shared wallet channel here — it's owned
+        // by (and outlives) the whole app session, not this page. Only
+        // unsubscribe this page's own onStateChange() listener.
+        if (unsubscribeState) { unsubscribeState(); unsubscribeState = null; }
         confirmResolver = null;
     }
 
