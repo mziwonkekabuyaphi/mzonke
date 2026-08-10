@@ -48,13 +48,17 @@ async function loadUserAndPackageCredit() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { window.location.href = '../login.html'; return false; }
     currentUser = session.user;
-    // NOTE: unlike home.js/tickets.js, this only looks profiles up by
-    // `id = currentUser.id` — it doesn't fall back to `auth_user_id` for
-    // WhatsApp-registered customers whose profiles.id was DB-generated
-    // (see tickets.js's initAuth comment for the same bug, already fixed
-    // there). Carried over unchanged from the original vvip.js; flagging
-    // it rather than silently changing auth-lookup behavior in this pass.
-    const { data: profile } = await supabase.from('profiles').select('id, name, phone, role').eq('id', currentUser.id).maybeSingle();
+    // Look up by auth_user_id first — WhatsApp-registered customers have a
+    // DB-generated profiles.id that differs from auth_user_id. Falling back
+    // to `id = currentUser.id` covers profiles created before auth_user_id
+    // was populated. Matches the pattern already used in tickets.js; without
+    // this, those users hit a 409 (profiles_auth_user_id_unique) on insert
+    // below because a row already exists under a different id.
+    let { data: profile } = await supabase.from('profiles').select('id, name, phone, role').eq('auth_user_id', currentUser.id).maybeSingle();
+    if (!profile) {
+        const { data: fallbackProfile } = await supabase.from('profiles').select('id, name, phone, role').eq('id', currentUser.id).maybeSingle();
+        profile = fallbackProfile;
+    }
     if (!profile) {
         const { data: newProfile, error: insertError } = await supabase.from('profiles').insert([{
             id: currentUser.id,
