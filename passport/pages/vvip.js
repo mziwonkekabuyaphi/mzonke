@@ -61,7 +61,7 @@ async function loadUserAndPackageCredit() {
             auth_user_id: currentUser.id,
             name: currentUser.user_metadata?.full_name || 'Member',
             phone: '',
-            role: 'user'
+            role: 'customer'
         }]).select('id, name, phone, role').single();
         if (insertError) {
             console.error('[vvip] Profile creation failed:', insertError);
