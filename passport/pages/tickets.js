@@ -2,7 +2,7 @@
     // js/, fragments/, css/ — see main.js's `import('../pages/tickets.js')`
     // resolved against js/main.js). Adjust this if config/ actually lives
     // somewhere else relative to pages/.
-    import { supabase } from '../config/supabase.js';
+    import { supabase } from '../../config/supabase.js';
 
     // QRCode (qrcodejs) and html2canvas used to be plain <script src="...">
     // tags in the old standalone tickets.html <head>. Those don't survive
