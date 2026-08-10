@@ -81,26 +81,163 @@ function updateGreeting() {
 async function loadRecentTransactions(walletId) {
     const list = $('txList');
     if (!list) return;
+    if (!walletId) { list.innerHTML = '<div class="tx-empty">No wallet found.</div>'; return; }
     try {
+        // Transaction history lives in `wallet_transactions`, not `transactions`.
+        // Columns are amount/type/direction/description/created_at.
         const { data, error } = await supabase
-            .from('transactions')
-            .select('id, type, amount, created_at')
+            .from('wallet_transactions')
+            .select('amount, type, direction, description, created_at')
             .eq('wallet_id', walletId)
             .order('created_at', { ascending: false })
             .limit(10);
         if (error) throw error;
         if (!data?.length) { list.innerHTML = '<div class="tx-empty">No transactions yet.</div>'; return; }
         list.innerHTML = data.map(tx => {
-            const isCredit = tx.type === 'credit' || tx.type === 'topup';
-            return `<div class="tx-row">
-                <div class="tx-desc">${tx.type}</div>
-                <div class="tx-amount ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '-'}R${Number(tx.amount).toFixed(2)}</div>
+            const isCredit = (tx.direction || tx.type || '').toLowerCase() === 'credit';
+            const cls = isCredit ? 'credit' : 'debit';
+            const icon = isCredit ? 'fa-arrow-down' : 'fa-arrow-up';
+            const sign = isCredit ? '+' : '-';
+            const amt = Math.abs(parseFloat(tx.amount || 0)).toFixed(2);
+            const desc = (tx.description || (isCredit ? 'Top-up' : 'Payment')).replace(/</g, '&lt;');
+            const date = new Date(tx.created_at).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return `<div class="tx-item">
+                <div class="tx-icon-wrap ${cls}"><i class="fas ${icon}"></i></div>
+                <div class="tx-info">
+                    <div class="tx-desc">${desc}</div>
+                    <div class="tx-date">${date}</div>
+                </div>
+                <div class="tx-amount ${cls}">${sign}R${amt}</div>
             </div>`;
         }).join('');
     } catch (err) {
         console.error('Transaction load error:', err);
         list.innerHTML = '<div class="tx-empty">Could not load transactions.</div>';
     }
+}
+
+// ===== VIBE METER =====
+let currentEventId = null;
+let vibeUpdateInterval = null;
+let vibeEventChannel = null;
+
+async function loadCurrentEvent() {
+    try {
+        const { data: event, error } = await supabase
+            .from('events')
+            .select('id, name, start_time, end_time, status, is_active')
+            .eq('is_active', true)
+            .order('start_time', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        if (error) throw error;
+
+        const statusEl = $('vibeEventStatus');
+        if (!event) {
+            if ($('vibeEventName')) $('vibeEventName').textContent = 'No active events';
+            if (statusEl) { statusEl.innerHTML = '<i class="fas fa-calendar-alt"></i> No Event'; statusEl.style.background = '#e5e7eb'; statusEl.style.color = '#6b7280'; }
+            return null;
+        }
+
+        currentEventId = event.id;
+        if ($('vibeEventName')) $('vibeEventName').textContent = event.name;
+        const eventDate = new Date(event.start_time);
+        if ($('vibeEventDate')) $('vibeEventDate').textContent = eventDate.toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        const now = new Date();
+        const startTime = new Date(event.start_time);
+        const endTime = event.end_time ? new Date(event.end_time) : null;
+        const isLive = now >= startTime && (!endTime || now <= endTime);
+        const isPast = endTime ? now > endTime : now > startTime;
+        if (statusEl) {
+            if (isLive) { statusEl.innerHTML = '<i class="fas fa-calendar-day"></i> LIVE NOW'; statusEl.style.background = '#10b981'; statusEl.style.color = 'white'; }
+            else if (isPast) { statusEl.innerHTML = '<i class="fas fa-calendar-check"></i> Past Event'; statusEl.style.background = '#9ca3af'; statusEl.style.color = 'white'; }
+            else { statusEl.innerHTML = '<i class="fas fa-calendar-alt"></i> Upcoming'; statusEl.style.background = '#f3f4f6'; statusEl.style.color = '#E30613'; }
+        }
+        return event;
+    } catch (err) {
+        console.error('[VibeMeter] Error loading event:', err);
+        if ($('vibeEventName')) $('vibeEventName').textContent = 'Error loading event';
+        return null;
+    }
+}
+
+async function getTotalTicketsSold(eventId) {
+    const { data, error } = await supabase
+        .from('ticket_types')
+        .select('sold')
+        .eq('event_id', eventId);
+    if (error) { console.error('[VibeMeter] Error getting ticket sales:', error); return 0; }
+    return data.reduce((total, tt) => total + (tt.sold || 0), 0);
+}
+
+function updateVibeDisplay(totalSold, checkedIn) {
+    let vibePercent = 0;
+    if (totalSold > 0) vibePercent = Math.min(100, Math.round((checkedIn / totalSold) * 100));
+
+    const percentSpan = $('vibePercentage');
+    const vibeBarFill = $('vibeBarFill');
+    const statsSpan = $('vibeStatsText');
+
+    if (percentSpan) percentSpan.textContent = `${vibePercent}%`;
+    if (vibeBarFill) {
+        vibeBarFill.style.width = `${vibePercent}%`;
+        if (vibePercent < 30) vibeBarFill.style.background = 'linear-gradient(90deg, #E30613, #ff6b6b)';
+        else if (vibePercent < 70) vibeBarFill.style.background = 'linear-gradient(90deg, #ff8c00, #ffd700)';
+        else vibeBarFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
+    }
+    if (statsSpan) {
+        if (vibePercent < 30) statsSpan.innerHTML = '😴 Low Energy • Need more people inside!';
+        else if (vibePercent < 70) statsSpan.innerHTML = '🎵 Building Up • Getting lively!';
+        else if (vibePercent < 90) statsSpan.innerHTML = '🔥 High Energy • The party is on!';
+        else statsSpan.innerHTML = '⚡ MAXIMUM VIBE • ABSOLUTE MADNESS!';
+    }
+}
+
+async function updateVibeMeter() {
+    if (!currentEventId) return;
+    try {
+        const totalSold = await getTotalTicketsSold(currentEventId);
+        const { count: checkedIn, error: checkError } = await supabase
+            .from('checkins')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', currentEventId)
+            .eq('status', 'valid');
+
+        let checkedInCount = 0;
+        if (checkError) {
+            console.warn('[VibeMeter] checkins query failed, falling back to tickets.checked_in:', checkError);
+            const { count: ticketCheckins, error: ticketError } = await supabase
+                .from('tickets')
+                .select('*', { count: 'exact', head: true })
+                .eq('event_id', currentEventId)
+                .eq('checked_in', true);
+            if (!ticketError) checkedInCount = ticketCheckins || 0;
+        } else {
+            checkedInCount = checkedIn || 0;
+        }
+        updateVibeDisplay(totalSold, checkedInCount);
+    } catch (err) {
+        console.error('[VibeMeter] Error updating vibe meter:', err);
+    }
+}
+
+function setupVibeRealtime() {
+    if (!currentEventId) return;
+    vibeEventChannel = supabase.channel(`vibe-${currentEventId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checkins', filter: `event_id=eq.${currentEventId}` }, () => updateVibeMeter())
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ticket_types', filter: `event_id=eq.${currentEventId}` }, () => updateVibeMeter())
+        .subscribe();
+    onCleanup(() => { if (vibeEventChannel) { supabase.removeChannel(vibeEventChannel); vibeEventChannel = null; } });
+}
+
+async function initVibeMeter() {
+    const event = await loadCurrentEvent();
+    if (!event) return;
+    await updateVibeMeter();
+    setupVibeRealtime();
+    vibeUpdateInterval = setInterval(updateVibeMeter, 30000);
+    onCleanup(() => { if (vibeUpdateInterval) { clearInterval(vibeUpdateInterval); vibeUpdateInterval = null; } });
 }
 
 function wireCardFlip() {
@@ -171,11 +308,14 @@ export default {
         setupWalletRealtime(); // no-op if already subscribed
 
         if (appState.wallet?.id) loadRecentTransactions(appState.wallet.id);
+
+        initVibeMeter();
     },
 
     destroy() {
         cleanup.forEach(fn => fn());
         cleanup = [];
+        currentEventId = null;
         // Note: we deliberately do NOT tear down appState.channels.wallet here —
         // that's app-lifetime, not page-lifetime. See state.js.
     }
