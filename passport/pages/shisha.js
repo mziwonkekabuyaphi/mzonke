@@ -62,13 +62,6 @@ function updateCoalsUsedStat() {
     coalsElem.innerText = totalCoals;
 }
 
-// FLAG: profile lookup is by `.eq('id', userId)` only — no fallback to
-// `auth_user_id` for WhatsApp-registered customers whose profiles.id was
-// DB-generated. This is the exact bug tickets.js's initAuth() comment
-// documents and fixes on that page; vvip.js has it too and is flagged
-// there. Carried over unchanged here — not silently fixed, since I can't
-// confirm shisha_* tables key off the same profiles relationship without
-// checking with you first.
 async function loadCurrentCustomerAndBalance() {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
@@ -89,15 +82,30 @@ async function loadCurrentCustomerAndBalance() {
     const balance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
     currentBalance = balance;
 
-    const { data: profile, error: profileErr } = await supabase
+    // Look up by auth_user_id first — WhatsApp-registered customers have a
+    // DB-generated profiles.id that differs from the auth user id. Falling
+    // back to `id = userId` covers profiles created before auth_user_id was
+    // populated. shisha_requests.customer_profile_id has a FK to profiles.id,
+    // so currentCustomer.id must be the *profile's* id, not the auth id —
+    // using the auth id here caused a 23503 FK violation for those users.
+    let { data: profile, error: profileErr } = await supabase
         .from('profiles')
-        .select('name, phone')
-        .eq('id', userId)
+        .select('id, name, phone')
+        .eq('auth_user_id', userId)
         .maybeSingle();
     if (profileErr) console.warn("Profile fetch error:", profileErr);
+    if (!profile) {
+        const { data: fallbackProfile, error: fallbackErr } = await supabase
+            .from('profiles')
+            .select('id, name, phone')
+            .eq('id', userId)
+            .maybeSingle();
+        if (fallbackErr) console.warn("Profile fallback fetch error:", fallbackErr);
+        profile = fallbackProfile;
+    }
 
     currentCustomer = {
-        id: userId,
+        id: profile?.id || userId,
         walletId: wallet?.id || null,
         phone: profile?.phone || session.user.user_metadata?.phone || session.user.email || '',
         name: profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Member'
