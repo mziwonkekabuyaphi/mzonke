@@ -1,4 +1,37 @@
-    import { supabase } from '../../config/supabase.js';
+    // pages/tickets.js sits one level below the app root (sibling of
+    // js/, fragments/, css/ — see main.js's `import('../pages/tickets.js')`
+    // resolved against js/main.js). Adjust this if config/ actually lives
+    // somewhere else relative to pages/.
+    import { supabase } from '../config/supabase.js';
+
+    // QRCode (qrcodejs) and html2canvas used to be plain <script src="...">
+    // tags in the old standalone tickets.html <head>. Those don't survive
+    // being part of a fragment injected via innerHTML (script tags inserted
+    // that way are inert), so they're lazy-loaded here instead, once, only
+    // when the tickets page actually needs them — no reason to make every
+    // other page pay for these on load.
+    function loadScriptOnce(src, isLoaded) {
+        return new Promise((resolve, reject) => {
+            if (isLoaded()) return resolve();
+            const existing = document.querySelector(`script[src="${src}"]`);
+            if (existing) {
+                existing.addEventListener('load', () => resolve());
+                existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)));
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load ${src}`));
+            document.head.appendChild(script);
+        });
+    }
+    async function ensureTicketLibs() {
+        await Promise.all([
+            loadScriptOnce('https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js', () => !!window.QRCode),
+            loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', () => !!window.html2canvas)
+        ]);
+    }
 
     const showToast = (message, isError = false) => {
         const toast = document.getElementById('customToast');
@@ -20,8 +53,6 @@
     // home.html: an event with an end_time is only expired once end_time
     // has passed (so it stays visible while live). Only events with no
     // end_time at all fall back to expiring at start_time.
-    // Previously this only checked start_time, so any event that had
-    // already started — even one still in progress — was hidden here.
     function isEventExpired(event) {
         if (!event || !event.start_time) return true;
         const start = new Date(event.start_time);
@@ -60,10 +91,8 @@
         // linked to auth only via auth_user_id (see home.html for the
         // same pattern). Looking this up by id=currentUser.id silently
         // failed to find those profiles, which then made the fallback
-        // insert below collide (and get blocked by RLS, since there's no
-        // INSERT policy for a user's own profile row), leaving `profile`
-        // null and crashing on `profile.phone` — which is why nothing on
-        // this page loaded at all.
+        // insert below collide, leaving `profile` null and crashing on
+        // `profile.phone` — which is why nothing on this page loaded at all.
         let { data: profile } = await supabase.from('profiles').select('id, phone, name').eq('auth_user_id', currentUser.id).maybeSingle();
         if (!profile) {
             const fallback = await supabase.from('profiles').select('id, phone, name').eq('id', currentUser.id).maybeSingle();
@@ -136,11 +165,20 @@
         const btn = document.querySelector(`.purchase-btn[data-type-id="${ticketTypeId}"]`);
         if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
         isPurchasing = true;
-        const { error } = await supabase.rpc('purchase_ticket', { p_user_id: userProfile.id, p_ticket_type_id: ticketTypeId });
-        if(error) showToast(error.message.includes('Insufficient') ? 'Insufficient wallet balance' : error.message.includes('sold out') ? 'Sold out' : 'Purchase failed', true);
-        else { showToast('✅ Ticket purchased!'); await refreshUserBalance(); await renderStoreTickets(); await updateMyTicketsCount(); if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull(); }
-        isPurchasing = false;
-        if(btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ticket-alt"></i> Get Tickets'; }
+        try {
+            const { error } = await supabase.rpc('purchase_ticket', { p_user_id: userProfile.id, p_ticket_type_id: ticketTypeId });
+            if(error) showToast(error.message.includes('Insufficient') ? 'Insufficient wallet balance' : error.message.toLowerCase().includes('sold out') ? 'Sold out' : 'Purchase failed', true);
+            else { showToast('✅ Ticket purchased!'); await refreshUserBalance(); await renderStoreTickets(); await updateMyTicketsCount(); if(document.getElementById('myTicketsTabBtn').classList.contains('active')) await renderMyTicketsFull(); }
+        } catch (err) {
+            // A thrown/network error here used to leave isPurchasing stuck
+            // `true` forever, silently bricking every future click on this
+            // button — see the finally block below for the actual fix.
+            console.error('[purchase] Unexpected error', err);
+            showToast('Purchase failed', true);
+        } finally {
+            isPurchasing = false;
+            if(btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ticket-alt"></i> Get Tickets'; }
+        }
     }
 
     async function renderMyTicketsFull() {
@@ -149,6 +187,12 @@
         const { data, error } = await supabase.from('tickets').select(`id, qr_token, ticket_number, issued_at, status, event_id, ticket_type_id, customer_phone, ticket_types(name, price), events(name, start_time, location, image_url)`).eq('customer_phone', userProfile.phone).order('issued_at', { ascending: false });
         if(error || !data?.length) { container.innerHTML = '<div class="empty-state"><i class="fas fa-ticket-alt"></i><p>You have no tickets yet.<br>Buy one from the store!</p></div>'; return; }
         container.innerHTML = '';
+        // Make sure the QR lib is actually present before we try to render
+        // any codes — previously this just checked `window.QRCode` and
+        // silently skipped drawing the QR entirely if it wasn't loaded yet
+        // (or never loaded at all, once the <script> tag stopped surviving
+        // the move into a fragment). Now we actively wait for it.
+        try { await ensureTicketLibs(); } catch (err) { console.error('[tickets] Failed to load QR/canvas libs', err); }
         for(const ticket of data) {
             const event = ticket.events || {}, ticketType = ticket.ticket_types || {};
             const eventDate = event.start_time ? formatDate(event.start_time) + ' · ' + formatTime(event.start_time) : 'Date TBA';
@@ -171,22 +215,24 @@
         document.querySelectorAll('.download-ticket-full').forEach(btn => { btn.removeEventListener('click', handleFullDownload); btn.addEventListener('click', handleFullDownload); });
     }
     function handleTransfer(e) { if(isWalletBlocked) { showToast(walletBlockReason, true); return; } transferTicketId = e.currentTarget.dataset.id; document.getElementById('transferModal').classList.add('show'); }
-    async function handleFullDownload(e) { 
-        const ticketId = e.currentTarget.dataset.id; 
-        const ticketEl = document.querySelector(`.ticket-card-wallet[data-ticket-id="${ticketId}"]`); 
-        if(!ticketEl) return; 
-        
+    async function handleFullDownload(e) {
+        const ticketId = e.currentTarget.dataset.id;
+        const ticketEl = document.querySelector(`.ticket-card-wallet[data-ticket-id="${ticketId}"]`);
+        if(!ticketEl) return;
+
+        try { await ensureTicketLibs(); } catch (err) { console.error('[download] Failed to load html2canvas', err); showToast('Download failed', true); return; }
+
         // Clone the ticket element for export
-        const clone = ticketEl.cloneNode(true); 
+        const clone = ticketEl.cloneNode(true);
         clone.classList.add('export-ticket-template');
-        clone.style.position = 'absolute'; 
-        clone.style.top = '-9999px'; 
-        clone.style.left = '-9999px'; 
-        clone.style.width = '400px'; 
-        clone.style.background = 'white'; 
-        clone.style.borderRadius = '24px'; 
-        clone.style.boxShadow = 'none'; 
-        
+        clone.style.position = 'absolute';
+        clone.style.top = '-9999px';
+        clone.style.left = '-9999px';
+        clone.style.width = '400px';
+        clone.style.background = 'white';
+        clone.style.borderRadius = '24px';
+        clone.style.boxShadow = 'none';
+
         // Remove any action buttons from clone
         const actionButtons = clone.querySelectorAll('.ticket-actions, .ticket-action-btn, .transfer-ticket, .download-ticket-full');
         actionButtons.forEach(btn => btn.remove());
@@ -207,22 +253,22 @@
             img.onerror = () => resolve(); // don't let a broken image block the download
             img.src = src; // re-trigger load with crossOrigin now set
         }));
-        
-        document.body.appendChild(clone); 
-        try { 
+
+        document.body.appendChild(clone);
+        try {
             await Promise.all(imageLoadPromises);
-            const canvas = await html2canvas(clone, { scale: 2, backgroundColor: '#ffffff', useCORS: true }); 
-            const link = document.createElement('a'); 
-            link.download = `ticket_${ticketId}.png`; 
-            link.href = canvas.toDataURL(); 
-            link.click(); 
-            showToast('Ticket downloaded as PNG'); 
-        } catch(err) { 
+            const canvas = await html2canvas(clone, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+            const link = document.createElement('a');
+            link.download = `ticket_${ticketId}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+            showToast('Ticket downloaded as PNG');
+        } catch(err) {
             console.error('[download] Ticket PNG export failed', err);
-            showToast('Download failed', true); 
-        } finally { 
-            document.body.removeChild(clone); 
-        } 
+            showToast('Download failed', true);
+        } finally {
+            document.body.removeChild(clone);
+        }
     }
 
     async function transferTicketToPhone(ticketId, targetPhone) {
@@ -231,8 +277,7 @@
         if(digits.startsWith('0')) digits = '27' + digits.slice(1);
         // Canonical form matches what profiles.phone / tickets.customer_phone
         // store in the DB (no leading '+') and what transfer_ticket's own
-        // normalisation produces — see that function's comment for why the
-        // '+' prefix was removed here too.
+        // normalisation produces.
         const finalPhone = digits;
         if(finalPhone === userProfile.phone) { showToast('Cannot transfer to yourself', true); return false; }
         const { error } = await supabase.rpc('transfer_ticket', { p_ticket_id: ticketId, p_from_user_id: userProfile.id, p_to_phone: finalPhone });
@@ -247,33 +292,32 @@
         else { eventsPanel.style.display = 'none'; myPanel.style.display = 'block'; eventsBtn.classList.remove('active'); myBtn.classList.add('active'); renderMyTicketsFull(); }
     }
 
-    async function init() { 
-        if(!(await initAuth())) return; 
-        await loadEvents(); 
-        // homeIconBtn already has data-link="home" in the HTML — router.js's
-        // global click delegation (initRouter) handles that via navigate().
-        // A manual window.location.href here would force a full page reload
-        // on top of the SPA nav, so it's intentionally not wired up again.
-        document.getElementById('eventsTabBtn').addEventListener('click', () => switchTab('events')); 
-        document.getElementById('myTicketsTabBtn').addEventListener('click', () => switchTab('myTickets')); 
-        document.getElementById('closeTransferModal').addEventListener('click', () => document.getElementById('transferModal').classList.remove('show')); 
-        document.getElementById('cancelTransferBtn').addEventListener('click', () => document.getElementById('transferModal').classList.remove('show')); 
-        document.getElementById('confirmTransferBtn').addEventListener('click', async () => { const phone = document.getElementById('transferPhone').value.trim(); if(phone && transferTicketId) { await transferTicketToPhone(transferTicketId, phone); document.getElementById('transferModal').classList.remove('show'); } else showToast('Enter phone number', true); }); 
-        document.getElementById('closeConfirmModal').addEventListener('click', () => closeConfirmModal(false)); 
-        document.getElementById('confirmModalCancelBtn').addEventListener('click', () => closeConfirmModal(false)); 
-        document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => closeConfirmModal(true)); 
-        walletChannel = supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe(); 
+    async function init() {
+        if(!(await initAuth())) return;
+        await loadEvents();
+        // homeIconBtn and .brand both carry data-link="home" in the
+        // fragment — router.js's global click delegation (initRouter)
+        // handles navigation for them. No manual listener needed here.
+        document.getElementById('eventsTabBtn').addEventListener('click', () => switchTab('events'));
+        document.getElementById('myTicketsTabBtn').addEventListener('click', () => switchTab('myTickets'));
+        document.getElementById('closeTransferModal').addEventListener('click', () => document.getElementById('transferModal').classList.remove('show'));
+        document.getElementById('cancelTransferBtn').addEventListener('click', () => document.getElementById('transferModal').classList.remove('show'));
+        document.getElementById('confirmTransferBtn').addEventListener('click', async () => { const phone = document.getElementById('transferPhone').value.trim(); if(phone && transferTicketId) { await transferTicketToPhone(transferTicketId, phone); document.getElementById('transferModal').classList.remove('show'); } else showToast('Enter phone number', true); });
+        document.getElementById('closeConfirmModal').addEventListener('click', () => closeConfirmModal(false));
+        document.getElementById('confirmModalCancelBtn').addEventListener('click', () => closeConfirmModal(false));
+        document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => closeConfirmModal(true));
+        walletChannel = supabase.channel('wallet-balance').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => { if(payload.new.balance !== undefined) { userProfile.wallet_balance = payload.new.balance; document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }).subscribe();
+        // Preload QR/canvas libs in the background so the "My Tickets" tab
+        // and downloads feel instant instead of waiting on a CDN fetch the
+        // first time they're needed.
+        ensureTicketLibs().catch(err => console.error('[tickets] Preload failed', err));
     }
 
-    // The router (router.js) fetches this page's HTML fragment and imports
-    // this module IN PARALLEL, then injects the fragment into the DOM, and
-    // only THEN calls default.init(). Previously this file called init()
-    // itself at module-load time (a leftover from the old plain-<script>
-    // pages) — that ran before the fragment HTML existed in the DOM at all,
-    // so every getElementById() inside init()/initAuth() returned null and
-    // threw, silently killing init() before it ever attached the "Get
-    // Tickets" click listeners. Exporting { init, destroy } instead lets the
-    // router call init() at the right time, once the DOM is actually there.
+    // The router (router.js) fetches this page's fragment HTML and imports
+    // this module IN PARALLEL, injects the fragment into the DOM, and only
+    // THEN calls default.init() — so init() must be exported, not
+    // self-invoked at module load time (that would run before the DOM
+    // existed and silently kill every getElementById() call in here).
     function destroy() {
         if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; }
         confirmResolver = null;
