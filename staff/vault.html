@@ -1,745 +1,414 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Vault · Rands Staff Console</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    /* ========== DARK THEME – MATCH STAFF CONSOLE ========== */
-    :root {
-      --red: #E30613;
-      --red-dark: #a0010e;
-      --red-dim: rgba(227,6,19,0.12);
-      --red-border: rgba(227,6,19,0.25);
-      --bg: #0D0F12;
-      --surface: #141720;
-      --surface2: #1C2030;
-      --surface3: #232840;
-      --border: rgba(255,255,255,0.06);
-      --border2: rgba(255,255,255,0.1);
-      --text: #F0F2F8;
-      --text2: #8B92A8;
-      --text3: #555E78;
-      --green: #22C55E;
-      --amber: #F59E0B;
-      --blue: #3B82F6;
-      --shadow-sm: 0 2px 6px rgba(0,0,0,0.4);
-      --shadow-md: 0 8px 20px -6px rgba(0,0,0,0.5);
-      --radius-full: 9999px;
-      --radius-lg: 24px;
-      --radius-md: 20px;
-      --transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>My Vault · Staff</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
+</script>
+<style>
+/* Matches console.html's dark theme variables so this reads consistently inside the iframe */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --red: #E30613; --red-dim: rgba(227,6,19,0.08); --red-border: rgba(227,6,19,0.2);
+  --bg: #0D0F12; --surface: #141720; --surface2: #1C2030; --surface3: #232840;
+  --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.1);
+  --text: #F0F2F8; --text2: #8B92A8; --text3: #555E78;
+  --green: #22C55E; --amber: #F59E0B; --blue: #3B82F6;
+}
+html, body { height: 100%; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; padding-bottom: 40px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
+.vault-header { padding: 16px 18px 0 18px; }
+.vault-title { font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.vault-title i { color: var(--red); }
+.vault-sub { font-size: 0.75rem; color: var(--text2); margin-top: 2px; }
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      overflow-x: hidden;
-      background: var(--bg);
-      font-family: 'Inter', sans-serif;
-    }
+.vault-tabs { display: flex; gap: 4px; padding: 14px 18px 0 18px; overflow-x: auto; }
+.vault-tab { flex-shrink: 0; padding: 8px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.vault-tab:hover { background: var(--surface2); }
+.vault-tab.active { background: var(--red-dim); color: var(--text); }
+.vault-tab-badge { background: var(--red); color: white; font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 99px; min-width: 16px; text-align: center; }
 
-    body {
-      min-height: 100%;
-      padding: 20px;
-      color: var(--text);
-    }
+.vault-content { padding: 16px 18px; }
+.vault-empty { text-align: center; padding: 50px 20px; color: var(--text3); }
+.vault-empty i { font-size: 1.8rem; margin-bottom: 10px; display: block; }
 
-    .vault-dashboard {
-      max-width: 1400px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+.req-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.req-card-header { padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface2); flex-wrap: wrap; gap: 6px; }
+.req-customer { font-weight: 700; }
+.req-customer-sub { font-size: 0.72rem; color: var(--text2); }
+.req-badge { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 9px; border-radius: 99px; }
+.req-badge.pending { background: rgba(245,158,11,0.15); color: var(--amber); }
+.req-badge.stored { background: rgba(34,197,94,0.15); color: var(--green); }
+.req-badge.ready { background: rgba(59,130,246,0.15); color: var(--blue); }
+.req-badge.collected { background: var(--surface3); color: var(--text2); }
+.req-badge.rejected { background: rgba(227,6,19,0.15); color: var(--red); }
+.req-body { padding: 12px 14px; }
+.req-item-row { display: flex; justify-content: space-between; font-size: 0.82rem; padding: 4px 0; color: var(--text2); }
+.req-item-row b { color: var(--text); font-weight: 600; }
+.req-value-row { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border2); font-weight: 700; }
+.req-meta { font-size: 0.68rem; color: var(--text3); margin-top: 8px; }
+.req-actions { display: flex; gap: 8px; padding: 0 14px 14px 14px; }
+.btn { flex: 1; padding: 9px; border-radius: 8px; border: none; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-approve { background: var(--green); color: #06210f; }
+.btn-approve:hover { filter: brightness(1.08); }
+.btn-reject { background: var(--surface3); color: var(--text); border: 1px solid var(--border2); }
+.btn-reject:hover { background: rgba(227,6,19,0.15); color: var(--red); }
+.btn-release { background: var(--blue); color: #05122b; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-md);
-    }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 10px 18px; border-radius: 10px; font-size: 0.8rem; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.toast.error { border-color: rgba(227,6,19,0.4); color: #ff8a8a; }
 
-    .card-header {
-      padding: 16px 20px;
-      background: var(--surface2);
-      border-bottom: 1px solid var(--border);
-      font-weight: 700;
-      font-size: 0.9rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      color: var(--text);
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .card-header i {
-      color: var(--red);
-      margin-right: 8px;
-    }
-
-    .card-body {
-      padding: 20px;
-    }
-
-    .stats-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: space-between;
-      margin-bottom: 0;
-    }
-
-    .stat-chip {
-      background: var(--surface2);
-      border-radius: var(--radius-md);
-      padding: 10px 16px;
-      flex: 1;
-      text-align: center;
-      min-width: 100px;
-      border: 1px solid var(--border);
-    }
-
-    .stat-value {
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: var(--red);
-    }
-
-    .stat-label {
-      font-size: 0.7rem;
-      color: var(--text2);
-      margin-top: 4px;
-    }
-
-    .two-factor-badge {
-      background: var(--red-dim);
-      border-left: 3px solid var(--red);
-      padding: 10px 14px;
-      border-radius: var(--radius-md);
-      margin-bottom: 18px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    .input-group {
-      margin-bottom: 16px;
-    }
-
-    .input-group label {
-      display: block;
-      font-weight: 600;
-      font-size: 0.75rem;
-      margin-bottom: 6px;
-      color: var(--text2);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    input, select {
-      width: 100%;
-      padding: 10px 14px;
-      border-radius: var(--radius-full);
-      border: 1px solid var(--border);
-      background: var(--surface3);
-      color: var(--text);
-      font-family: 'Inter', monospace;
-      font-size: 0.85rem;
-      transition: var(--transition);
-    }
-
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--red);
-      box-shadow: 0 0 0 2px var(--red-dim);
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--red), var(--red-dark));
-      color: white;
-      border: none;
-      padding: 10px 18px;
-      border-radius: var(--radius-full);
-      font-weight: 700;
-      cursor: pointer;
-      transition: var(--transition);
-      width: 100%;
-    }
-
-    .btn-primary:active { transform: scale(0.97); }
-    .btn-success { background: linear-gradient(135deg, var(--green), #1a9c4a); }
-    .btn-warning { background: linear-gradient(135deg, var(--amber), #d97706); }
-
-    .result-card {
-      margin-top: 18px;
-      border-radius: var(--radius-md);
-      padding: 16px;
-      border-left: 4px solid;
-    }
-
-    .result-success {
-      background: rgba(34,197,94,0.08);
-      border-left-color: var(--green);
-    }
-
-    .result-error {
-      background: rgba(227,6,19,0.08);
-      border-left-color: var(--red);
-    }
-
-    .item-list {
-      background: var(--surface2);
-      border-radius: var(--radius-md);
-      padding: 10px;
-      margin: 10px 0;
-      max-height: 180px;
-      overflow-y: auto;
-      border: 1px solid var(--border);
-    }
-
-    .pre-reg-grid, .locker-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 14px;
-      margin-top: 14px;
-    }
-
-    .pre-card, .locker-card {
-      background: var(--surface2);
-      border-radius: var(--radius-md);
-      padding: 14px;
-      border: 1px solid var(--border);
-      transition: var(--transition);
-    }
-
-    .pre-card { border-left: 4px solid var(--amber); }
-    .locker-card.available { border-left: 4px solid var(--green); }
-    .locker-card.rented { border-left: 4px solid var(--red); }
-
-    .card-title {
-      font-weight: 800;
-      color: var(--text);
-      margin-bottom: 8px;
-    }
-
-    .badge-status {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: var(--radius-full);
-      font-size: 0.65rem;
-      font-weight: 600;
-    }
-
-    .badge-available { background: rgba(34,197,94,0.15); color: var(--green); }
-    .badge-rented { background: rgba(227,6,19,0.15); color: var(--red); }
-    .badge-pending { background: rgba(245,158,11,0.15); color: var(--amber); }
-    .badge-maintenance { background: rgba(227,6,19,0.1); color: var(--red); }
-
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.85);
-      backdrop-filter: blur(8px);
-      z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      animation: fadeIn 0.2s ease;
-    }
-
-    .modal-card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      max-width: 550px;
-      width: 90%;
-      max-height: 85vh;
-      overflow-y: auto;
-      padding: 24px;
-      border: 2px solid var(--red);
-      box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-    }
-
-    .modal-card h3 { color: var(--red); margin-bottom: 16px; }
-    .close-modal {
-      float: right;
-      font-size: 24px;
-      cursor: pointer;
-      color: var(--text2);
-    }
-
-    .close-modal:hover { color: var(--red); }
-
-    .flex-buttons { display: flex; gap: 12px; margin-top: 20px; }
-
-    .toast-pos {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(100px);
-      background: var(--surface2);
-      border-left: 3px solid var(--red);
-      color: var(--text);
-      padding: 10px 20px;
-      border-radius: var(--radius-full);
-      z-index: 10002;
-      transition: transform 0.2s ease;
-      opacity: 0;
-      pointer-events: none;
-      font-size: 0.8rem;
-    }
-
-    .toast-pos.show {
-      transform: translateX(-50%) translateY(0);
-      opacity: 1;
-    }
-
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-    @media (max-width: 700px) {
-      body { padding: 16px; }
-      .stats-row { flex-direction: column; }
-    }
-
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
-  </style>
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; width: 90%; max-width: 380px; padding: 18px; }
+.modal-box h4 { margin-bottom: 10px; }
+.modal-box textarea { width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; color: var(--text); padding: 8px; font-family: inherit; font-size: 0.8rem; min-height: 70px; margin-bottom: 12px; }
+.modal-actions { display: flex; gap: 8px; }
+</style>
 </head>
 <body>
 
-<div class="vault-dashboard">
-  <div class="card">
-    <div class="card-header">
-      <span><i class="fas fa-shield-alt"></i> Rands Vault · Two‑Factor Locker System</span>
-      <div><button id="refreshGlobalBtn" class="btn-primary" style="padding:6px 16px; width:auto;"><i class="fas fa-sync-alt"></i> Refresh</button></div>
-    </div>
-    <div class="card-body">
-      <div class="stats-row" id="statsContainer"></div>
-    </div>
-  </div>
+<div class="vault-header">
+  <div class="vault-title"><i class="fas fa-box-archive"></i> My Vault</div>
+  <div class="vault-sub">Independent of the old locker/Booze Vault system — do not confuse the two.</div>
+</div>
 
-  <div class="card">
-    <div class="card-header">
-      <span><i class="fas fa-unlock-alt"></i> Unlock locker · WhatsApp + PIN</span>
-    </div>
-    <div class="card-body">
-      <div class="two-factor-badge">
-        <i class="fas fa-lock"></i> TWO‑FACTOR AUTHENTICATION – Both WhatsApp number AND 4‑digit PIN must match
-      </div>
-      <div class="input-group">
-        <label><i class="fab fa-whatsapp"></i> WhatsApp number</label>
-        <input type="tel" id="unlockPhone" placeholder="0712345678">
-      </div>
-      <div class="input-group">
-        <label><i class="fas fa-key"></i> 4‑digit PIN</label>
-        <input type="password" id="unlockPin" maxlength="4" inputmode="numeric" pattern="\d*" placeholder="****">
-      </div>
-      <button id="unlockBtn" class="btn-primary btn-success"><i class="fas fa-check-circle"></i> Unlock with 2FA</button>
-      <div id="unlockResult"></div>
-    </div>
-  </div>
+<div class="vault-tabs">
+  <div class="vault-tab active" data-tab="pending_storage">Pending Storage <span class="vault-tab-badge" id="badge_pending_storage">0</span></div>
+  <div class="vault-tab" data-tab="active_holdings">Active Holdings</div>
+  <div class="vault-tab" data-tab="pending_collections">Pending Collections <span class="vault-tab-badge" id="badge_pending_collections">0</span></div>
+  <div class="vault-tab" data-tab="ready_for_collection">Ready for Collection</div>
+  <div class="vault-tab" data-tab="history">History</div>
+</div>
 
-  <div class="card">
-    <div class="card-header">
-      <span><i class="fas fa-clock"></i> Awaiting confirmation (pre‑registrations)</span>
-      <button id="refreshPreRegBtn" class="btn-primary" style="padding:6px 16px; width:auto; background:var(--amber);">Refresh</button>
-    </div>
-    <div class="card-body">
-      <div id="preRegGrid" class="pre-reg-grid"></div>
-    </div>
-  </div>
+<div class="vault-content" id="vaultContent"></div>
 
-  <div class="card">
-    <div class="card-header">
-      <span><i class="fas fa-archive"></i> Rands Vault lockers</span>
-      <div><button id="createLockerBtn" class="btn-primary" style="background:var(--green); padding:6px 16px; width:auto;"><i class="fas fa-plus"></i> New locker</button></div>
-    </div>
-    <div class="card-body">
-      <div id="lockerGrid" class="locker-grid"></div>
+<div class="modal-overlay" id="reasonModal">
+  <div class="modal-box">
+    <h4 id="reasonModalTitle">Reject Request</h4>
+    <textarea id="reasonInput" placeholder="Reason (shown to the customer)..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-reject" id="reasonCancelBtn">Cancel</button>
+      <button class="btn btn-approve" id="reasonConfirmBtn">Confirm Reject</button>
     </div>
   </div>
 </div>
 
-<div id="assignModal" class="modal-overlay" style="display:none;">
-  <div class="modal-card">
-    <span class="close-modal" onclick="closeAssignModal()">&times;</span>
-    <h3><i class="fas fa-exchange-alt"></i> Assign locker</h3>
-    <div id="assignModalContent"></div>
-  </div>
-</div>
-
-<div id="lockerDetailModal" class="modal-overlay" style="display:none;">
-  <div class="modal-card">
-    <span class="close-modal" onclick="closeLockerModal()">&times;</span>
-    <h3><i class="fas fa-info-circle"></i> Vault details</h3>
-    <div id="lockerDetailContent"></div>
-  </div>
-</div>
-
-<div id="createLockerModal" class="modal-overlay" style="display:none;">
-  <div class="modal-card">
-    <span class="close-modal" onclick="closeCreateLockerModal()">&times;</span>
-    <h3><i class="fas fa-plus-circle"></i> Create new locker</h3>
-    <div class="input-group"><label>Locker number (unique)</label><input type="text" id="newLockerNumber" placeholder="e.g., L-001, VIP-01"></div>
-    <div class="input-group"><label>QR code (optional)</label><input type="text" id="newLockerQr" placeholder="auto‑generated if empty"></div>
-    <div class="input-group"><label>Location (optional)</label><input type="text" id="newLockerLocation" placeholder="Main Hall, VIP Section"></div>
-    <div class="input-group"><label>Size</label><select id="newLockerSize"><option>Small</option><option>Medium</option><option>Large</option></select></div>
-    <div class="input-group"><label>Price per hour (R)</label><input type="number" step="0.50" id="newLockerPrice" value="10.00"></div>
-    <button id="confirmCreateLockerBtn" class="btn-primary" style="background:var(--green);">Create locker</button>
-    <button onclick="closeCreateLockerModal()" class="btn-primary" style="background:#6b7280; margin-top:8px;">Cancel</button>
-  </div>
-</div>
-
-<div id="alertModal" class="modal-overlay" style="display:none;">
-  <div class="modal-card" style="text-align:center;">
-    <h3 id="alertTitle">Notice</h3>
-    <p id="alertMessage" style="margin:20px 0;"></p>
-    <button id="alertOkBtn" class="btn-primary" style="background:var(--red);">OK</button>
-  </div>
-</div>
-
-<div id="toastMsg" class="toast-pos"></div>
+<div class="toast" id="toast"></div>
 
 <script type="module">
-  import { supabase } from '../config/supabase.js';
+import { supabase } from '../config/supabase.js';
 
-  let lockers = [];
-  let preRegistrations = [];
+let staffProfile = null; // { id, role, name }
+let currentTab = 'pending_storage';
+let reasonCallback = null;
 
-  function showToast(msg, isError = false) {
-    const toast = document.getElementById('toastMsg');
-    toast.innerText = msg;
-    toast.style.borderLeftColor = isError ? 'var(--red)' : 'var(--green)';
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2000);
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.innerText = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function fmtMoney(n) { return `R${(Number(n) || 0).toFixed(2)}`; }
+function fmtDate(d) { return d ? new Date(d).toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
+function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+
+function openReasonModal(title, onConfirm) {
+  document.getElementById('reasonModalTitle').innerText = title;
+  document.getElementById('reasonInput').value = '';
+  document.getElementById('reasonModal').classList.add('show');
+  reasonCallback = onConfirm;
+}
+function closeReasonModal() { document.getElementById('reasonModal').classList.remove('show'); reasonCallback = null; }
+document.getElementById('reasonCancelBtn').onclick = closeReasonModal;
+document.getElementById('reasonConfirmBtn').onclick = () => {
+  const reason = document.getElementById('reasonInput').value.trim();
+  const cb = reasonCallback;
+  closeReasonModal();
+  if (cb) cb(reason);
+};
+
+async function loadStaffProfile() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { staffProfile = null; return; }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, name, role, staff_role')
+    .eq('auth_user_id', session.user.id)
+    .maybeSingle();
+  if (profile && ['staff', 'admin'].includes(profile.role)) {
+    staffProfile = profile;
+  } else {
+    staffProfile = null;
   }
+}
 
-  function showAlert(title, message) {
-    document.getElementById('alertTitle').innerText = title;
-    document.getElementById('alertMessage').innerHTML = message;
-    document.getElementById('alertModal').style.display = 'flex';
+// ─────────────────────────────────────────────────────────
+// DATA FETCHERS (staff can SELECT all Vault rows per RLS policy)
+// ─────────────────────────────────────────────────────────
+async function fetchRequests(requestType, status) {
+  const { data, error } = await supabase
+    .from('vault_requests')
+    .select(`
+      id, request_type, status, requested_at, approved_at, rejection_reason,
+      customer_profile_id,
+      profiles!vault_requests_customer_profile_id_fkey ( name, phone ),
+      vault_holdings (
+        id, status, total_value,
+        vault_items ( id, product_name, quantity, unit_value, total_value )
+      )
+    `)
+    .eq('request_type', requestType)
+    .eq('status', status)
+    .order('requested_at', { ascending: true });
+  if (error) { console.error(error); return []; }
+  return data || [];
+}
+
+async function fetchHoldings(statusList) {
+  const { data, error } = await supabase
+    .from('vault_holdings')
+    .select(`
+      id, status, total_value, requested_at, stored_at, collection_approved_at, collected_at,
+      rejected_at, rejection_reason, collection_rejection_reason,
+      customer_profile_id,
+      profiles!vault_holdings_customer_profile_id_fkey ( name, phone ),
+      vault_items ( id, product_name, quantity, unit_value, total_value )
+    `)
+    .in('status', statusList)
+    .order('requested_at', { ascending: false });
+  if (error) { console.error(error); return []; }
+  return data || [];
+}
+
+function renderItems(items) {
+  return (items || []).map(i => `
+    <div class="req-item-row"><span><b>${i.quantity} &times;</b> ${escapeHtml(i.product_name)}</span><span>${fmtMoney(i.total_value)}</span></div>
+  `).join('');
+}
+
+// ─────────────────────────────────────────────────────────
+// TAB RENDERERS
+// ─────────────────────────────────────────────────────────
+async function renderPendingStorage() {
+  const requests = await fetchRequests('STORE', 'PENDING');
+  document.getElementById('badge_pending_storage').innerText = requests.length;
+  const container = document.getElementById('vaultContent');
+  if (requests.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-check-circle"></i>No pending storage requests.</div>`;
+    return;
   }
-  function closeAlert() { document.getElementById('alertModal').style.display = 'none'; }
-  document.getElementById('alertOkBtn').addEventListener('click', closeAlert);
+  container.innerHTML = requests.map(r => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(r.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(r.profiles?.phone || '')}</div></div>
+        <span class="req-badge pending">Pending Approval</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(r.vault_holdings?.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(r.vault_holdings?.total_value)}</span></div>
+        <div class="req-meta">Requested ${fmtDate(r.requested_at)}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-approve" data-approve-store="${r.id}"><i class="fas fa-check"></i> Approve</button>
+        <button class="btn btn-reject" data-reject-store="${r.id}"><i class="fas fa-times"></i> Reject</button>
+      </div>
+    </div>
+  `).join('');
 
-  function formatDuration(timestamp) {
-    if (!timestamp) return '—';
-    const now = new Date();
-    const diff = now - new Date(timestamp);
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins} min${mins !== 1 ? 's' : ''} ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-    const days = Math.floor(hours / 24);
-    return `${days} day${days !== 1 ? 's' : ''} ago`;
+  container.querySelectorAll('[data-approve-store]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('vault_approve_store', { p_vault_request_id: btn.dataset.approveStore });
+      if (error) { showToast(error.message || 'Approval failed', true); btn.disabled = false; return; }
+      showToast('Storage approved — items are now STORED.');
+      renderCurrentTab();
+    };
+  });
+  container.querySelectorAll('[data-reject-store]').forEach(btn => {
+    btn.onclick = () => {
+      openReasonModal('Reject Storage Request', async (reason) => {
+        const { error } = await supabase.rpc('vault_reject_store', { p_vault_request_id: btn.dataset.rejectStore, p_reason: reason || null });
+        if (error) { showToast(error.message || 'Rejection failed', true); return; }
+        showToast('Storage request rejected.');
+        renderCurrentTab();
+      });
+    };
+  });
+}
+
+async function renderActiveHoldings() {
+  const holdings = await fetchHoldings(['STORED']);
+  const container = document.getElementById('vaultContent');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-box-open"></i>No active holdings right now.</div>`;
+    return;
   }
+  container.innerHTML = holdings.map(h => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(h.profiles?.phone || '')}</div></div>
+        <span class="req-badge stored">Stored</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(h.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(h.total_value)}</span></div>
+        <div class="req-meta">Stored ${fmtDate(h.stored_at)} &middot; ID: ${h.id.slice(0,8)}</div>
+      </div>
+    </div>
+  `).join('');
+}
 
-  async function loadLockers() {
-    const { data, error } = await supabase.from('lockers').select('*').order('locker_number');
-    if (error) { showAlert('DB Error', error.message); return []; }
-    lockers = data || [];
-    return lockers;
+async function renderPendingCollections() {
+  const requests = await fetchRequests('COLLECT', 'PENDING');
+  document.getElementById('badge_pending_collections').innerText = requests.length;
+  const container = document.getElementById('vaultContent');
+  if (requests.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-check-circle"></i>No pending collection requests.</div>`;
+    return;
   }
+  container.innerHTML = requests.map(r => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(r.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(r.profiles?.phone || '')}</div></div>
+        <span class="req-badge pending">Collection Pending</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(r.vault_holdings?.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(r.vault_holdings?.total_value)}</span></div>
+        <div class="req-meta">Requested ${fmtDate(r.requested_at)} &middot; Holding: ${r.vault_holdings?.id?.slice(0,8)}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-approve" data-approve-collect="${r.id}"><i class="fas fa-check"></i> Approve Unlock</button>
+        <button class="btn btn-reject" data-reject-collect="${r.id}"><i class="fas fa-times"></i> Reject</button>
+      </div>
+    </div>
+  `).join('');
 
-  async function loadPreRegistrations() {
-    const { data, error } = await supabase.from('pre_registrations').select('*').eq('status', 'pending').order('created_at');
-    if (error) { console.error(error); return []; }
-    preRegistrations = data || [];
-    return preRegistrations;
+  container.querySelectorAll('[data-approve-collect]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('vault_approve_collect', { p_vault_request_id: btn.dataset.approveCollect });
+      if (error) { showToast(error.message || 'Approval failed', true); btn.disabled = false; return; }
+      showToast('Collection approved — ready for the customer.');
+      renderCurrentTab();
+    };
+  });
+  container.querySelectorAll('[data-reject-collect]').forEach(btn => {
+    btn.onclick = () => {
+      openReasonModal('Reject Collection Request', async (reason) => {
+        const { error } = await supabase.rpc('vault_reject_collect', { p_vault_request_id: btn.dataset.rejectCollect, p_reason: reason || null });
+        if (error) { showToast(error.message || 'Rejection failed', true); return; }
+        showToast('Collection request rejected — holding returned to Stored.');
+        renderCurrentTab();
+      });
+    };
+  });
+}
+
+async function renderReadyForCollection() {
+  const holdings = await fetchHoldings(['READY_FOR_COLLECTION']);
+  const container = document.getElementById('vaultContent');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-hand-holding"></i>Nothing ready for collection right now.</div>`;
+    return;
   }
+  container.innerHTML = holdings.map(h => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(h.profiles?.phone || '')}</div></div>
+        <span class="req-badge ready">Ready</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(h.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(h.total_value)}</span></div>
+        <div class="req-meta">Approved ${fmtDate(h.collection_approved_at)} &middot; ID: ${h.id.slice(0,8)}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn btn-release" data-release="${h.id}"><i class="fas fa-hand-holding-heart"></i> Release to Customer</button>
+      </div>
+    </div>
+  `).join('');
 
-  async function refreshAll() {
-    await loadLockers();
-    await loadPreRegistrations();
-    renderStats();
-    renderPreRegistrations();
-    renderLockers();
+  container.querySelectorAll('[data-release]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const { error } = await supabase.rpc('vault_release', { p_vault_holding_id: btn.dataset.release });
+      if (error) { showToast(error.message || 'Release failed', true); btn.disabled = false; return; }
+      showToast('Released — holding marked as Collected.');
+      renderCurrentTab();
+    };
+  });
+}
+
+async function renderHistory() {
+  const holdings = await fetchHoldings(['COLLECTED', 'REJECTED']);
+  const container = document.getElementById('vaultContent');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="vault-empty"><i class="fas fa-clock-rotate-left"></i>No historical Vault holdings yet.</div>`;
+    return;
   }
-
-  function renderStats() {
-    const total = lockers.length;
-    const available = lockers.filter(l => l.status === 'available').length;
-    const rented = lockers.filter(l => l.status === 'rented').length;
-    const totalValue = lockers.reduce((s, l) => s + (l.total_value || 0), 0);
-    document.getElementById('statsContainer').innerHTML = `
-      <div class="stat-chip"><div class="stat-value">${total}</div><div class="stat-label">Total lockers</div></div>
-      <div class="stat-chip"><div class="stat-value" style="color:var(--green);">${available}</div><div class="stat-label">Available</div></div>
-      <div class="stat-chip"><div class="stat-value" style="color:var(--red);">${rented}</div><div class="stat-label">Rented</div></div>
-      <div class="stat-chip"><div class="stat-value">R${totalValue.toFixed(2)}</div><div class="stat-label">Total value</div></div>
-    `;
-  }
-
-  function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, m => m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'); }
-
-  function renderPreRegistrations() {
-    const grid = document.getElementById('preRegGrid');
-    if (!preRegistrations.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text3);">No pending pre‑registrations</div>';
-      return;
-    }
-    grid.innerHTML = preRegistrations.map(reg => {
-      let itemsSummary = '';
-      if (reg.items && Array.isArray(reg.items)) itemsSummary = reg.items.map(i => `${i.name} x${i.quantity}`).join(', ');
-      else itemsSummary = String(reg.items || '—');
-      return `
-        <div class="pre-card">
-          <div class="card-title">📝 Pre-registration</div>
-          <div><strong>👤 ${escapeHtml(reg.customer_name)}</strong></div>
-          <div><i class="fab fa-whatsapp"></i> ${escapeHtml(reg.customer_phone)}</div>
-          <div><i class="fas fa-key"></i> PIN: <span class="badge-status badge-pending">****</span></div>
-          <div><small>📦 ${escapeHtml(itemsSummary)}</small></div>
-          <div><small>⏱️ ${formatDuration(reg.created_at)}</small></div>
-          <button class="btn-primary" style="margin-top:12px; background:var(--amber);" onclick="window.showAssignModal('${reg.id}')">Assign locker</button>
+  container.innerHTML = holdings.map(h => `
+    <div class="req-card">
+      <div class="req-card-header">
+        <div><div class="req-customer">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="req-customer-sub">${escapeHtml(h.profiles?.phone || '')}</div></div>
+        <span class="req-badge ${h.status === 'COLLECTED' ? 'collected' : 'rejected'}">${h.status === 'COLLECTED' ? 'Collected' : 'Rejected'}</span>
+      </div>
+      <div class="req-body">
+        ${renderItems(h.vault_items)}
+        <div class="req-value-row"><span>Total Value</span><span>${fmtMoney(h.total_value)}</span></div>
+        <div class="req-meta">
+          ${h.status === 'COLLECTED' ? `Collected ${fmtDate(h.collected_at)}` : `Rejected ${fmtDate(h.rejected_at)}${h.rejection_reason ? ': ' + escapeHtml(h.rejection_reason) : ''}`}
+          &middot; ID: ${h.id.slice(0,8)}
         </div>
-      `;
-    }).join('');
-  }
-
-  function renderLockers() {
-    const grid = document.getElementById('lockerGrid');
-    if (!lockers.length) { grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text3);">No lockers</div>'; return; }
-    grid.innerHTML = lockers.map(l => {
-      if (l.status === 'available') {
-        return `
-          <div class="locker-card available">
-            <div class="card-title">📭 Locker ${escapeHtml(String(l.locker_number))}</div>
-            <div><span class="badge-status badge-available">Available</span></div>
-            ${l.location ? `<div><i class="fas fa-location-dot"></i> ${escapeHtml(l.location)}</div>` : ''}
-            ${l.size ? `<div><i class="fas fa-expand"></i> ${escapeHtml(l.size)}</div>` : ''}
-            <div><small>R${(l.price_per_hour || 0).toFixed(2)}/hour</small></div>
-          </div>
-        `;
-      } else {
-        return `
-          <div class="locker-card rented">
-            <div class="card-title">🔐 Locker ${escapeHtml(String(l.locker_number))}</div>
-            <div><span class="badge-status badge-rented">Rented</span></div>
-            <div><i class="fas fa-user"></i> ${escapeHtml(l.customer_name || '—')}</div>
-            <div><i class="fab fa-whatsapp"></i> ${escapeHtml(l.customer_phone || '—')}</div>
-            <div><span class="badge-status">💰 R${(l.total_value || 0).toFixed(2)}</span></div>
-            <div><small>⏱️ ${formatDuration(l.occupied_at)}</small></div>
-            <button class="btn-primary" style="margin-top:10px;" onclick="window.viewLockerDetails('${l.id}')">View vault</button>
-          </div>
-        `;
-      }
-    }).join('');
-  }
-
-  // Assign locker from pre-registration
-  window.showAssignModal = async function(preRegId) {
-    const reg = preRegistrations.find(r => r.id === preRegId);
-    if (!reg) return;
-    const availableLockers = lockers.filter(l => l.status === 'available');
-    if (!availableLockers.length) { showAlert('No lockers', 'All lockers are rented. Please release one first.'); return; }
-    const modal = document.getElementById('assignModal');
-    const content = document.getElementById('assignModalContent');
-    let options = '';
-    availableLockers.forEach(l => { options += `<option value="${l.id}">Locker ${escapeHtml(String(l.locker_number))}${l.location ? ` (${l.location})` : ''}</option>`; });
-    content.innerHTML = `
-      <p>Assign to <strong>${escapeHtml(reg.customer_name)}</strong> (${escapeHtml(reg.customer_phone)})</p>
-      <select id="assignLockerSelect" style="width:100%; margin:10px 0;">${options}</select>
-      <div style="background:var(--surface3); padding:10px; border-radius:var(--radius-md); margin:10px 0;">
-        <strong>Items:</strong> ${reg.items ? (Array.isArray(reg.items) ? reg.items.map(i => `${i.name} x${i.quantity}`).join(', ') : reg.items) : '—'}
       </div>
-      <button id="doAssignBtn" class="btn-primary" style="background:var(--green);">Confirm assignment</button>
-    `;
-    modal.style.display = 'flex';
-    document.getElementById('doAssignBtn').onclick = async () => {
-      const lockerId = document.getElementById('assignLockerSelect').value;
-      const locker = lockers.find(l => l.id === lockerId && l.status === 'available');
-      if (!locker) { showAlert('Error', 'Locker no longer available'); closeAssignModal(); return; }
-      
-      const newQr = `QL-${Date.now()}-${Math.floor(Math.random()*900+100)}`;
-      
-      const { error: updateErr } = await supabase.from('lockers').update({
-        status: 'rented',
-        customer_name: reg.customer_name,
-        customer_phone: reg.customer_phone,
-        customer_pin_hash: reg.pin_hash,
-        total_value: reg.total_value,
-        total_items: reg.items ? (Array.isArray(reg.items) ? reg.items.length : 1) : 0,
-        occupied_at: new Date().toISOString(),
-        qr_code: newQr,
-        updated_at: new Date().toISOString()
-      }).eq('id', locker.id);
-      
-      if (updateErr) { showAlert('DB Error', updateErr.message); return; }
-      
-      if (reg.items && Array.isArray(reg.items) && reg.items.length) {
-        const transactions = reg.items.map(item => ({
-          locker_id: locker.id,
-          product_id: null,
-          quantity: item.quantity,
-          type: 'add'
-        }));
-        await supabase.from('vault_transactions').insert(transactions);
-      }
-      
-      await supabase.from('pre_registrations').update({ status: 'assigned' }).eq('id', reg.id);
-      await refreshAll();
-      closeAssignModal();
-      showAlert('Locker assigned', `Locker ${locker.locker_number} assigned to ${reg.customer_name}.`);
-    };
+    </div>
+  `).join('');
+}
+
+async function renderCurrentTab() {
+  const renderers = {
+    pending_storage: renderPendingStorage,
+    active_holdings: renderActiveHoldings,
+    pending_collections: renderPendingCollections,
+    ready_for_collection: renderReadyForCollection,
+    history: renderHistory
   };
-  
-  window.closeAssignModal = () => document.getElementById('assignModal').style.display = 'none';
+  await renderers[currentTab]();
+  // Keep badge counts fresh even when viewing a different tab
+  fetchRequests('STORE', 'PENDING').then(r => document.getElementById('badge_pending_storage').innerText = r.length);
+  fetchRequests('COLLECT', 'PENDING').then(r => document.getElementById('badge_pending_collections').innerText = r.length);
+}
 
-  // Unlock with WhatsApp + PIN
-  document.getElementById('unlockBtn').addEventListener('click', async () => {
-    const phone = document.getElementById('unlockPhone').value.trim();
-    const pin = document.getElementById('unlockPin').value.trim();
-    const resultDiv = document.getElementById('unlockResult');
-    if (!phone || !pin) { showAlert('Missing', 'Enter both WhatsApp and PIN'); return; }
-    if (pin.length !== 4 || !/^\d+$/.test(pin)) { showAlert('Invalid PIN', 'PIN must be 4 digits'); return; }
-    
-    const locker = lockers.find(l => l.status === 'rented' && l.customer_phone === phone && l.customer_pin_hash === pin);
-    if (!locker) {
-      const phoneMatch = lockers.find(l => l.status === 'rented' && l.customer_phone === phone);
-      if (phoneMatch) resultDiv.innerHTML = `<div class="result-card result-error"><i class="fas fa-times-circle"></i> Incorrect PIN for ${phone}. Customer: ${phoneMatch.customer_name}</div>`;
-      else resultDiv.innerHTML = `<div class="result-card result-error">No active locker found for ${phone} with that PIN.</div>`;
-      return;
-    }
-    
-    const { data: transactions } = await supabase.from('vault_transactions').select('*').eq('locker_id', locker.id).eq('type', 'add');
-    let itemsHtml = '<div class="item-list">';
-    if (transactions?.length) {
-      transactions.forEach(t => { itemsHtml += `<div>• Product x${t.quantity}</div>`; });
-    } else {
-      itemsHtml += '<div>No items recorded</div>';
-    }
-    itemsHtml += '</div>';
-    
-    resultDiv.innerHTML = `
-      <div class="result-card result-success">
-        <strong><i class="fas fa-check-circle"></i> Customer verified!</strong> Locker ${locker.locker_number}<br>
-        👤 ${escapeHtml(locker.customer_name)}<br>
-        💰 Total value: R${(locker.total_value || 0).toFixed(2)}<br>
-        📦 Items: ${itemsHtml}
-        <button id="confirmUnlockBtn" class="btn-primary" style="background:var(--green); margin-top:12px;">Confirm & unlock locker</button>
-      </div>
-    `;
-    
-    document.getElementById('confirmUnlockBtn').onclick = async () => {
-      await unlockAndReleaseLocker(locker.id);
-      resultDiv.innerHTML = `<div class="result-card result-success">✅ Locker ${locker.locker_number} unlocked and released.</div>`;
-      document.getElementById('unlockPhone').value = '';
-      document.getElementById('unlockPin').value = '';
-      await refreshAll();
-    };
+document.querySelectorAll('.vault-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.vault-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTab = tab.dataset.tab;
+    renderCurrentTab();
   });
+});
 
-  async function unlockAndReleaseLocker(lockerId) {
-    const { error } = await supabase.from('lockers').update({
-      status: 'available',
-      customer_name: null, customer_phone: null, customer_pin_hash: null,
-      total_value: 0, total_items: 0, occupied_at: null,
-      updated_at: new Date().toISOString(),
-      qr_code: `QL-${Date.now()}-${Math.floor(Math.random()*900+100)}`
-    }).eq('id', lockerId);
-    if (error) throw error;
-    await supabase.from('vault_transactions').delete().eq('locker_id', lockerId);
-    showToast('Locker released');
-  }
-
-  window.viewLockerDetails = async function(lockerId) {
-    const locker = lockers.find(l => l.id === lockerId);
-    if (!locker) return;
-    const { data: transactions } = await supabase.from('vault_transactions').select('*').eq('locker_id', lockerId);
-    const modal = document.getElementById('lockerDetailModal');
-    const content = document.getElementById('lockerDetailContent');
-    let itemsHtml = '';
-    if (transactions?.length) {
-      transactions.forEach(t => { itemsHtml += `<div>• Product (ID: ${t.product_id || 'N/A'}) x${t.quantity} – Type: ${t.type}</div>`; });
-    } else {
-      itemsHtml = '<div>No items</div>';
-    }
-    content.innerHTML = `
-      <p><strong>Locker ${escapeHtml(String(locker.locker_number))}</strong></p>
-      ${locker.location ? `<p><i class="fas fa-location-dot"></i> ${escapeHtml(locker.location)}</p>` : ''}
-      ${locker.size ? `<p><i class="fas fa-expand"></i> ${escapeHtml(locker.size)}</p>` : ''}
-      <p><strong>Price:</strong> R${(locker.price_per_hour || 0).toFixed(2)}/hour</p>
-      <p><i class="fas fa-user"></i> ${escapeHtml(locker.customer_name || '—')}</p>
-      <p><i class="fab fa-whatsapp"></i> ${escapeHtml(locker.customer_phone || '—')}</p>
-      <p><i class="fas fa-key"></i> PIN: ${locker.customer_pin_hash ? '****' : '—'}</p>
-      <p><strong>Value:</strong> R${(locker.total_value || 0).toFixed(2)}</p>
-      <div class="item-list"><strong>Vault Transactions:</strong><br>${itemsHtml}</div>
-      <div class="two-factor-badge"><i class="fas fa-shield-alt"></i> Two‑factor protected (WhatsApp + PIN)</div>
-    `;
-    modal.style.display = 'flex';
-  };
-  
-  window.closeLockerModal = () => document.getElementById('lockerDetailModal').style.display = 'none';
-
-  // Create new locker
-  document.getElementById('createLockerBtn').addEventListener('click', () => {
-    document.getElementById('newLockerNumber').value = '';
-    document.getElementById('newLockerQr').value = '';
-    document.getElementById('newLockerLocation').value = '';
-    document.getElementById('newLockerPrice').value = '10.00';
-    document.getElementById('createLockerModal').style.display = 'flex';
-  });
-  
-  window.closeCreateLockerModal = () => document.getElementById('createLockerModal').style.display = 'none';
-  
-  document.getElementById('confirmCreateLockerBtn').addEventListener('click', async () => {
-    let lockerNumber = document.getElementById('newLockerNumber').value.trim();
-    const customQr = document.getElementById('newLockerQr').value.trim();
-    const location = document.getElementById('newLockerLocation').value.trim();
-    const size = document.getElementById('newLockerSize').value;
-    const pricePerHour = parseFloat(document.getElementById('newLockerPrice').value) || 10;
-    if (!lockerNumber) { showAlert('Invalid', 'Locker number is required'); return; }
-    if (lockers.some(l => String(l.locker_number) === lockerNumber)) { showAlert('Duplicate', `Locker ${lockerNumber} already exists`); return; }
-    const qr = customQr || `QL-${Date.now()}-${Math.floor(Math.random()*9000+1000)}`;
-    const { error } = await supabase.from('lockers').insert({
-      locker_number: lockerNumber,
-      qr_code: qr,
-      status: 'available',
-      location: location || null,
-      size: size,
-      price_per_hour: pricePerHour,
-      customer_name: null, customer_phone: null, customer_pin_hash: null,
-      total_value: 0, total_items: 0, occupied_at: null,
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-    });
-    if (error) showAlert('Error', error.message);
-    else { await refreshAll(); closeCreateLockerModal(); showToast(`Locker ${lockerNumber} created`); }
-  });
-
-  // Pending unlocks from localStorage (for external unlock requests)
-  let pendingInterval;
-  function checkPendingUnlocks() {
-    const pending = JSON.parse(localStorage.getItem('rands_pending_unlocks') || '[]');
-    if (pending.length) {
-      const req = pending[0];
-      showAlert('Pending unlock request', `Customer ${req.customer} (${req.phone}) requested unlock. Please verify at the counter.`);
-      localStorage.setItem('rands_pending_unlocks', JSON.stringify(pending.slice(1)));
-    }
-  }
-  pendingInterval = setInterval(checkPendingUnlocks, 5000);
-  window.addEventListener('beforeunload', () => clearInterval(pendingInterval));
-
-  document.getElementById('refreshGlobalBtn').addEventListener('click', async () => { await refreshAll(); showToast('Data refreshed'); });
-  document.getElementById('refreshPreRegBtn').addEventListener('click', async () => { await loadPreRegistrations(); renderPreRegistrations(); showToast('Pre-registrations updated'); });
-
-  await refreshAll();
-  setInterval(() => refreshAll(), 8000);
+// ─────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────
+await loadStaffProfile();
+if (!staffProfile) {
+  document.getElementById('vaultContent').innerHTML = `<div class="vault-empty"><i class="fas fa-lock"></i>Staff/admin sign-in required to use My Vault.</div>`;
+  document.querySelector('.vault-tabs').style.display = 'none';
+} else {
+  renderCurrentTab();
+  setInterval(renderCurrentTab, 20000); // light auto-refresh, same cadence as your other staff modules
+}
 </script>
 </body>
 </html>
