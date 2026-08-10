@@ -1,6 +1,6 @@
     // pages/ and js/ are both direct children of passport/, so this
     // resolves the same way state.js's own import does.
-    import { supabase } from '../../../config/supabase.js';
+    import { supabase } from '../../config/supabase.js';
     // Single source of truth for session/profile/wallet — see state.js.
     // Pages read appState instead of re-querying Supabase for the same
     // data on every navigation, and share ONE realtime wallet
