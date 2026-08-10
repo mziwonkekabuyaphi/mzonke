@@ -49,6 +49,26 @@ export async function refreshSession() {
         profile = fallback.data;
     }
 
+    if (!profile) {
+        // First-time login: no profiles row yet under either lookup path.
+        // This used to live duplicated inside tickets.js's own initAuth();
+        // moved here since every page relies on appState.profile existing,
+        // not just tickets.
+        const { data: newProfile, error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+                id: session.user.id,
+                auth_user_id: session.user.id,
+                name: session.user.user_metadata?.full_name || 'User',
+                phone: session.user.user_metadata?.phone || '',
+                role: 'customer'
+            })
+            .select('id, name, surname, phone, card_number, card_cvv')
+            .single();
+        if (insertError) console.error('[state] Profile creation failed:', insertError);
+        profile = newProfile || null;
+    }
+
     appState.profile = profile;
     notify();
     return session;
@@ -60,7 +80,7 @@ export async function refreshWallet() {
 
     const { data: wallet } = await supabase
         .from('wallets')
-        .select('id, balance, status')
+        .select('id, balance, status, block_reason')
         .eq('user_id', profileId)
         .maybeSingle();
 
