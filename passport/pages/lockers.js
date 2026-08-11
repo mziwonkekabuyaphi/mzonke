@@ -16,6 +16,7 @@ let availableProducts = [];   // from vault_get_available_products
 let selection = {};           // order_item_id -> { qty, product }
 let walletChannel = null;
 let vaultChannel = null;
+let expiryTickInterval = null; // re-renders Keep Products countdowns + drops expired items, no network call
 
 const ACTIVE_STATUSES = ['PENDING_APPROVAL', 'STORED', 'PENDING_COLLECTION_APPROVAL', 'READY_FOR_COLLECTION'];
 const HISTORY_STATUSES = ['COLLECTED', 'REJECTED'];
@@ -29,6 +30,24 @@ function showToast(message, isError = false) {
 }
 
 function fmtMoney(n) { return `R${(Number(n) || 0).toFixed(2)}`; }
+
+// Purely client-side clock math off the server-computed expires_at — never
+// used to decide whether a request is allowed (the RPC re-checks that),
+// just to drive the "time left" label and hide items once they lapse.
+function fmtTimeLeft(expiresAt) {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (ms <= 0) return null;
+    const totalMins = Math.ceil(ms / 60000);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    if (h <= 0) return `${m}m left`;
+    if (m === 0) return `${h}h left`;
+    return `${h}h ${m}m left`;
+}
+function isExpiringSoon(expiresAt) {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    return ms > 0 && ms <= 60 * 60 * 1000; // under 1h left
+}
 function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
 
 let confirmResolver = null;
@@ -247,6 +266,7 @@ function renderAvailableProducts() {
                 <div class="product-info">
                     <div class="product-name">${escapeHtml(p.product_name)}</div>
                     <div class="product-sub">${fmtMoney(p.unit_price)} each &middot; ${p.available_quantity} available</div>
+                    ${p.expires_at ? `<div class="product-expiry" data-expiry="${p.order_item_id}" style="font-size:12px;margin-top:2px;color:${isExpiringSoon(p.expires_at) ? '#b71c1c' : '#64748b'};${isExpiringSoon(p.expires_at) ? 'font-weight:600;' : ''}"><i class="fas fa-clock"></i> ${fmtTimeLeft(p.expires_at) || 'Expired'}</div>` : ''}
                 </div>
                 <div class="qty-stepper">
                     <button class="qty-btn" data-dec="${p.order_item_id}" ${qty <= 0 ? 'disabled' : ''}>&minus;</button>
@@ -266,6 +286,42 @@ function renderAvailableProducts() {
     container.querySelectorAll('[data-dec]').forEach(el => {
         el.addEventListener('click', () => changeQty(el.dataset.dec, -1));
     });
+}
+
+// Runs every 30s while the Keep Products tab is open. Updates the visible
+// countdown text in place (no full re-render, so mid-selection qty steppers
+// aren't disturbed), and drops any item whose 12h window has just lapsed —
+// the RPC would reject it anyway, this just avoids the dead-end click.
+function tickExpiries() {
+    let anyExpired = false;
+    availableProducts.forEach(p => {
+        if (!p.expires_at) return;
+        const label = fmtTimeLeft(p.expires_at);
+        if (label === null) {
+            anyExpired = true;
+            return;
+        }
+        const el = document.querySelector(`[data-expiry="${p.order_item_id}"]`);
+        if (el) {
+            el.innerHTML = `<i class="fas fa-clock"></i> ${label}`;
+            el.style.color = isExpiringSoon(p.expires_at) ? '#b71c1c' : '#64748b';
+            el.style.fontWeight = isExpiringSoon(p.expires_at) ? '600' : 'normal';
+        }
+    });
+
+    if (anyExpired) {
+        const expiredNames = availableProducts
+            .filter(p => p.expires_at && fmtTimeLeft(p.expires_at) === null)
+            .map(p => p.product_name);
+        availableProducts = availableProducts.filter(p => !p.expires_at || fmtTimeLeft(p.expires_at) !== null);
+        // selection is keyed by order_item_id — drop any that no longer exist
+        Object.keys(selection).forEach(orderItemId => {
+            if (!availableProducts.find(p => p.order_item_id === orderItemId)) delete selection[orderItemId];
+        });
+        renderAvailableProducts();
+        updateSelectionSummary();
+        showToast(`${expiredNames.length === 1 ? expiredNames[0] : expiredNames.length + ' items'} expired — the 12h window to keep ${expiredNames.length === 1 ? 'it' : 'them'} has passed.`, true);
+    }
 }
 
 function toggleProduct(orderItemId) {
@@ -353,6 +409,7 @@ function switchToMyVault() {
     document.getElementById('selectionSummary').style.display = 'none';
     document.getElementById('myVaultTabBtn').classList.add('active');
     document.getElementById('keepProductsTabBtn').classList.remove('active');
+    if (expiryTickInterval) { clearInterval(expiryTickInterval); expiryTickInterval = null; }
     loadHoldings();
 }
 function switchToKeepProducts() {
@@ -361,6 +418,8 @@ function switchToKeepProducts() {
     document.getElementById('myVaultTabBtn').classList.remove('active');
     document.getElementById('keepProductsTabBtn').classList.add('active');
     loadAvailableProducts();
+    if (expiryTickInterval) clearInterval(expiryTickInterval);
+    expiryTickInterval = setInterval(tickExpiries, 30000);
 }
 
 function wireStaticListeners() {
@@ -414,6 +473,7 @@ export default {
     },
 
     destroy() {
+        if (expiryTickInterval) { clearInterval(expiryTickInterval); expiryTickInterval = null; }
         cleanup.forEach(fn => fn());
         cleanup = [];
     }
