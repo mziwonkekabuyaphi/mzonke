@@ -266,7 +266,7 @@ function renderAvailableProducts() {
                 <div class="product-info">
                     <div class="product-name">${escapeHtml(p.product_name)}</div>
                     <div class="product-sub">${fmtMoney(p.unit_price)} each &middot; ${p.available_quantity} available</div>
-                    ${p.expires_at ? `<div class="product-expiry" data-expiry="${p.order_item_id}" style="font-size:12px;margin-top:2px;color:${isExpiringSoon(p.expires_at) ? '#b71c1c' : '#64748b'};${isExpiringSoon(p.expires_at) ? 'font-weight:600;' : ''}"><i class="fas fa-clock"></i> ${fmtTimeLeft(p.expires_at) || 'Expired'}</div>` : ''}
+                    ${p.expires_at ? `<div class="product-expiry${isExpiringSoon(p.expires_at) ? ' expiring-soon' : ''}" data-expiry="${p.order_item_id}"><i class="fas fa-clock"></i> ${fmtTimeLeft(p.expires_at) || 'Expired'}</div>` : ''}
                 </div>
                 <div class="qty-stepper">
                     <button class="qty-btn" data-dec="${p.order_item_id}" ${qty <= 0 ? 'disabled' : ''}>&minus;</button>
@@ -304,8 +304,7 @@ function tickExpiries() {
         const el = document.querySelector(`[data-expiry="${p.order_item_id}"]`);
         if (el) {
             el.innerHTML = `<i class="fas fa-clock"></i> ${label}`;
-            el.style.color = isExpiringSoon(p.expires_at) ? '#b71c1c' : '#64748b';
-            el.style.fontWeight = isExpiringSoon(p.expires_at) ? '600' : 'normal';
+            el.classList.toggle('expiring-soon', isExpiringSoon(p.expires_at));
         }
     });
 
