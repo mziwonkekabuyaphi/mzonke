@@ -321,6 +321,35 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
 
+    /* ===== PRINT-ONLY RECEIPT ===== */
+    .print-receipt { display: none; }
+    @media print {
+      body * { visibility: hidden; }
+      .print-receipt, .print-receipt * { visibility: visible; }
+      .print-receipt {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 78mm; /* standard thermal roll width, adjust to 58mm if needed */
+        padding: 4mm;
+        font-family: 'Courier New', monospace;
+        color: #000;
+        background: #fff;
+      }
+      .print-receipt .pr-center { text-align: center; }
+      .print-receipt .pr-title { font-size: 14px; font-weight: 700; margin-bottom: 2mm; }
+      .print-receipt .pr-sub { font-size: 10px; margin-bottom: 4mm; }
+      .print-receipt hr { border: none; border-top: 1px dashed #000; margin: 3mm 0; }
+      .print-receipt .pr-row { display: flex; justify-content: space-between; font-size: 11px; margin: 1mm 0; }
+      .print-receipt .pr-items { margin: 3mm 0; }
+      .print-receipt .pr-item { font-size: 11px; margin: 1mm 0; }
+      .print-receipt .pr-item .pr-item-line { display: flex; justify-content: space-between; }
+      .print-receipt .pr-total { font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; margin-top: 3mm; }
+      .print-receipt .pr-footer { text-align: center; font-size: 10px; margin-top: 5mm; }
+      @page { margin: 0; size: 80mm auto; }
+    }
+
     /* Walk-in POS styles */
     .walkin-pos {
       background: var(--surface2);
@@ -532,6 +561,9 @@
   </div>
 </div>
 
+<!-- Hidden print-only receipt (used by window.print(), formatted for a thermal printer) -->
+<div class="print-receipt" id="printReceipt"></div>
+
 <script type="module">
   import { supabase } from '../config/supabase.js';
 
@@ -661,7 +693,33 @@
     await showReceipt(selectedOrder, paymentMethod);
   }
 
+  function renderPrintReceipt(order, paymentMethod) {
+    const printEl = document.getElementById('printReceipt');
+    const itemsHtml = (order.items || []).map(i => {
+      const lineTotal = (i.subtotal ?? (i.unit_price ?? i.price ?? 0) * i.quantity) || 0;
+      return `
+        <div class="pr-item">
+          <div class="pr-item-line"><span>${i.quantity}x ${escapeHtml(i.name)}</span><span>R${lineTotal.toFixed(2)}</span></div>
+        </div>`;
+    }).join('');
+    printEl.innerHTML = `
+      <div class="pr-center pr-title">The Butcher Shop</div>
+      <div class="pr-center pr-sub">${new Date().toLocaleString()}</div>
+      <hr>
+      <div class="pr-row"><span>Order #</span><span>${escapeHtml(order.order_number || order.id.slice(0,8))}</span></div>
+      <div class="pr-row"><span>Customer</span><span>${escapeHtml(order.customer_name || 'Guest')}</span></div>
+      <div class="pr-row"><span>Type</span><span>${order.source === 'butcher_preorder' ? 'Pre-order' : 'Walk-in'}</span></div>
+      <div class="pr-row"><span>Payment</span><span>${paymentMethod.toUpperCase()}</span></div>
+      <hr>
+      <div class="pr-items">${itemsHtml || '<div class="pr-item">No items listed</div>'}</div>
+      <hr>
+      <div class="pr-total"><span>TOTAL</span><span>R${(order.total_amount || 0).toFixed(2)}</span></div>
+      <div class="pr-footer">Thank you for your order!</div>
+    `;
+  }
+
   async function showReceipt(order, paymentMethod) {
+    renderPrintReceipt(order, paymentMethod);
     const receiptHtml = `
       <div style="text-align:center;">
         <i class="fas fa-receipt" style="font-size: 48px; color: var(--red); margin-bottom: 16px;"></i>
@@ -990,26 +1048,52 @@
     const name = document.getElementById('walkinCustomerName').value.trim() || 'Walk‑in';
     const phone = document.getElementById('walkinCustomerPhone').value.trim() || '0000000000';
     const total = walkinCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const orderNumber = 'WALK' + Date.now().toString().slice(-6);
+    // NOTE: items here must use product_id/unit_price (or productId/unitPrice) —
+    // that's what the butcher_shop_orders view's inner join to products
+    // requires to categorize and total the line. The old code used
+    // {id, name, quantity, price}, which the join never matches, so the
+    // whole order silently never appeared on the kitchen screen. Also
+    // setting `total`/`original_total` here, not just `total_amount` —
+    // butcher-order-display.html reads `order.total` directly.
     const orderData = {
-      order_number: orderNumber,
       customer_name: name,
       customer_phone: phone,
+      phone: phone,
       total_amount: total,
+      total: total,
+      original_total: total,
       source: 'walkin',
       status: 'pending',
       payment_status: 'pending',
       items: walkinCart.map(item => ({
-        id: item.id,
+        product_id: item.id,
         name: item.name,
         quantity: item.quantity,
-        price: item.price
+        unit_price: item.price,
+        subtotal: item.price * item.quantity
       })),
       vendor: 'The Butcher Shop',
       created_at: new Date().toISOString()
+      // order_number intentionally omitted — let the DB default
+      // (orders_order_number_seq) assign it, same as every other order
+      // creation path, instead of the ad-hoc 'WALK123456' format.
     };
     const { data, error } = await supabase.from('orders').insert(orderData).select().single();
     if (error) { showToast('Failed: ' + error.message, true); return; }
+    // Also write order_items — the normalized table customer-facing
+    // tracking (order.html's track modal) reads from, separate from the
+    // orders.items JSONB the shop-floor views use.
+    const orderItemRows = walkinCart.map(item => ({
+      order_id: data.id,
+      product_type: 'butcher',
+      product_id: item.id,
+      product_name: item.name,
+      quantity: item.quantity,
+      unit_price: item.price,
+      subtotal: item.price * item.quantity
+    }));
+    const { error: itemsError } = await supabase.from('order_items').insert(orderItemRows);
+    if (itemsError) console.error('order_items insert failed:', itemsError.message);
     clearCart();
     document.getElementById('walkinCustomerName').value = '';
     document.getElementById('walkinCustomerPhone').value = '';
