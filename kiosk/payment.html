@@ -1392,6 +1392,44 @@
         return (category || '').toLowerCase() === 'butcher' ? 'The Butcher Shop' : 'Rands Smart Counter';
       },
 
+      // orders.payment_method / payment_source have DB check constraints —
+      // payment_method allows: cash, card, wallet, other, vvip_tab
+      // payment_source allows: wallet, vvip_tab, cash, card (no 'other')
+      // The kiosk UI uses human-readable labels ('Rands Wallet', '1Voucher',
+      // 'Capitec Pay', ...) so they need mapping to the constrained values
+      // or the insert is rejected outright.
+      mapPaymentMethod(label) {
+        const map = {
+          'Card': 'card',
+          'Rands Wallet': 'wallet',
+          'NFC Wristband': 'wallet',
+          '1Voucher': 'other',
+          'Capitec Pay': 'other',
+          'Fingerprint': 'other'
+        };
+        return map[label] || 'other';
+      },
+      mapPaymentSource(dbMethod) {
+        return ['wallet', 'vvip_tab', 'cash', 'card'].includes(dbMethod) ? dbMethod : null;
+      },
+
+      // order_items.product_type also has a DB check constraint: beer, wine,
+      // spirits, food, shisha, locker_rental, butcher, non_alcoholic, other.
+      // products.category uses different values (e.g. 'beers', 'tequila',
+      // 'soft drinks'), so this maps category -> the constrained set.
+      mapCategoryToProductType(category) {
+        const c = (category || '').toLowerCase();
+        if (c === 'butcher') return 'butcher';
+        if (c === 'beer' || c === 'beers') return 'beer';
+        if (c === 'wine' || c === 'wines') return 'wine';
+        if (c === 'shisha') return 'shisha';
+        if (c.includes('locker')) return 'locker_rental';
+        if (c === 'food') return 'food';
+        if (c === 'non_alcoholic' || c === 'soft drinks' || c === 'soft_drinks') return 'non_alcoholic';
+        if (['tequila', 'vodka', 'whiskey', 'whisky', 'gin', 'rum', 'brandy', 'cognac', 'spirits'].includes(c)) return 'spirits';
+        return 'other';
+      },
+
       // Creates one order per vendor from the current cart, writing both
       // orders.items (JSONB, used by the shop-floor/KDS views) and the
       // normalized order_items rows (used by customer-facing tracking).
@@ -1410,6 +1448,8 @@
 
         const name = customerName || 'Kiosk Guest';
         const phone = customerPhone || '0000000000';
+        const dbPaymentMethod = this.mapPaymentMethod(paymentMethod);
+        const dbPaymentSource = this.mapPaymentSource(dbPaymentMethod);
         const createdOrders = [];
 
         for (const vendor of Object.keys(groups)) {
@@ -1427,8 +1467,8 @@
             status: 'placed',
             kitchen_status: 'new',
             payment_status: 'paid',
-            payment_method: paymentMethod,
-            payment_source: paymentMethod,
+            payment_method: dbPaymentMethod,
+            payment_source: dbPaymentSource,
             vendor: vendor,
             items: items.map(i => ({
               product_id: i.id,
@@ -1446,7 +1486,7 @@
 
           const orderItemRows = items.map(i => ({
             order_id: data.id,
-            product_type: (i.category || 'other').toLowerCase(),
+            product_type: this.mapCategoryToProductType(i.category),
             product_id: i.id,
             product_name: i.name,
             quantity: i.quantity,
