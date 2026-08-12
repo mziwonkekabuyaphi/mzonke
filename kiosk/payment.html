@@ -1257,6 +1257,7 @@
         approvalTimer: null,
         lastPaidAmount: 0,
         lastOrderNumber: null,
+        lastOrderNumbers: [],
         lastPaymentMethod: '',
         lastWalletInfo: null,
         redirectSeconds: 5,
@@ -1311,7 +1312,7 @@
           
           // Show success
           this.showToast(`Payment of R${this.lastPaidAmount.toFixed(2)} successful!`, 'success');
-          this.completePayment('Card');
+          await this.completePayment('Card');
         }
         
         // Clean URL
@@ -1380,7 +1381,86 @@
     },
     methods: {
       formatPrice(n) { return Number(n).toFixed(2); },
-      
+
+      // Category -> vendor mapping used to split a mixed kiosk cart into one
+      // order per vendor, matching the convention used everywhere else in
+      // the system (butcher items go to The Butcher Shop; everything else
+      // — beers, spirits, soft drinks, non-alcoholic — goes to the counter).
+      // products.vendor itself is unset/placeholder for every product right
+      // now, so category is the reliable signal to split on.
+      vendorForCategory(category) {
+        return (category || '').toLowerCase() === 'butcher' ? 'The Butcher Shop' : 'Rands Smart Counter';
+      },
+
+      // Creates one order per vendor from the current cart, writing both
+      // orders.items (JSONB, used by the shop-floor/KDS views) and the
+      // normalized order_items rows (used by customer-facing tracking).
+      // Returns the created order rows (each with a real DB order_number).
+      // Ticket items (itemType === 'ticket') are skipped here — event
+      // ticketing is a separate flow and isn't part of vendor fulfilment.
+      async createOrdersFromCart(paymentMethod, { customerName, customerPhone } = {}) {
+        const menuItems = this.cart.filter(i => i.itemType !== 'ticket');
+        if (!menuItems.length) return [];
+
+        const groups = {};
+        for (const item of menuItems) {
+          const vendor = this.vendorForCategory(item.category);
+          (groups[vendor] = groups[vendor] || []).push(item);
+        }
+
+        const name = customerName || 'Kiosk Guest';
+        const phone = customerPhone || '0000000000';
+        const createdOrders = [];
+
+        for (const vendor of Object.keys(groups)) {
+          const items = groups[vendor];
+          const total = items.reduce((s, i) => s + (i.price * i.quantity), 0);
+
+          const orderData = {
+            customer_name: name,
+            customer_phone: phone,
+            phone: phone,
+            total_amount: total,
+            total: total,
+            original_total: total,
+            source: 'kiosk',
+            status: 'placed',
+            kitchen_status: 'new',
+            payment_status: 'paid',
+            payment_method: paymentMethod,
+            payment_source: paymentMethod,
+            vendor: vendor,
+            items: items.map(i => ({
+              product_id: i.id,
+              name: i.name,
+              quantity: i.quantity,
+              unit_price: i.price,
+              subtotal: i.price * i.quantity
+            })),
+            created_at: new Date().toISOString()
+            // order_number intentionally omitted — DB default assigns it.
+          };
+
+          const { data, error } = await supabase.from('orders').insert(orderData).select().single();
+          if (error) { console.error('Kiosk order insert failed:', error.message); continue; }
+
+          const orderItemRows = items.map(i => ({
+            order_id: data.id,
+            product_type: (i.category || 'other').toLowerCase(),
+            product_id: i.id,
+            product_name: i.name,
+            quantity: i.quantity,
+            unit_price: i.price,
+            subtotal: i.price * i.quantity
+          }));
+          const { error: itemsError } = await supabase.from('order_items').insert(orderItemRows);
+          if (itemsError) console.error('Kiosk order_items insert failed:', itemsError.message);
+
+          createdOrders.push(data);
+        }
+        return createdOrders;
+      },
+
       showToast(msg, type = 'info') {
         if (this.toastTimer) clearTimeout(this.toastTimer);
         const icons = { success: 'fas fa-check-circle', error: 'fas fa-exclamation-circle', info: 'fas fa-info-circle' };
@@ -1447,26 +1527,52 @@
         }, 1000);
       },
       
-      completePayment(paymentMethod, walletInfo = null) {
+      async completePayment(paymentMethod, walletInfo = null) {
         this.lastPaidAmount = this.totalAmount;
-        this.lastOrderNumber = `RND-${Date.now()}`;
         this.lastPaymentMethod = paymentMethod;
         this.lastWalletInfo = walletInfo;
+
+        const hadMenuItems = this.cart.some(i => i.itemType !== 'ticket');
+        const orders = await this.createOrdersFromCart(paymentMethod, {
+          customerName: walletInfo?.user_name,
+          customerPhone: walletInfo?.phone
+        });
+        this.lastOrderNumbers = orders.map(o => o.order_number);
+        this.lastOrderNumber = this.lastOrderNumbers.length
+          ? this.lastOrderNumbers.join(', ')
+          : `RND-${Date.now()}`; // fallback label only — no matching order row if this path is hit
+        if (hadMenuItems && !orders.length) {
+          this.showToast('Payment succeeded but order failed to reach the kitchen — please alert staff!', 'error');
+        }
+
         localStorage.removeItem('rands_kiosk_cart');
         this.cart = [];
         this.successModalOpen = true;
         this.startRedirectCountdown();
       },
       
-      completePaymentFromNFC(paymentMethod, profile, wallet, newBalance) {
+      async completePaymentFromNFC(paymentMethod, profile, wallet, newBalance) {
         this.lastPaidAmount = nfcState.currentAmount;
-        this.lastOrderNumber = `NFC-${Date.now()}`;
         this.lastPaymentMethod = paymentMethod;
         this.lastWalletInfo = {
           wallet_id: profile.wallet_id,
           user_name: profile.name,
           new_balance: newBalance
         };
+
+        const hadMenuItems = this.cart.some(i => i.itemType !== 'ticket');
+        const orders = await this.createOrdersFromCart(paymentMethod, {
+          customerName: profile.name,
+          customerPhone: profile.phone
+        });
+        this.lastOrderNumbers = orders.map(o => o.order_number);
+        this.lastOrderNumber = this.lastOrderNumbers.length
+          ? this.lastOrderNumbers.join(', ')
+          : `NFC-${Date.now()}`; // fallback label only — no matching order row if this path is hit
+        if (hadMenuItems && !orders.length) {
+          this.showToast('Payment succeeded but order failed to reach the kitchen — please alert staff!', 'error');
+        }
+
         localStorage.removeItem('rands_kiosk_cart');
         this.cart = [];
         this.nfcProcessing = false;
@@ -1623,9 +1729,10 @@
           if (txError) throw txError;
           
           this.showToast(`Payment of R${this.formatPrice(this.totalAmount)} successful!`, 'success');
-          this.completePayment('Rands Wallet', {
+          await this.completePayment('Rands Wallet', {
             wallet_id: profile.wallet_id,
             user_name: profile.name,
+            phone: profile.phone,
             new_balance: newBalance
           });
           
