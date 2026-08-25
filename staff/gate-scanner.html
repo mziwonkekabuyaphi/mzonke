@@ -801,16 +801,18 @@
   let lastValidScan = null;
   
   let scanState = {
-    totalScans: 0,
-    validScans: 0,
-    invalidScans: 0,
-    duplicateScans: 0,
     scans: [],
     currentFilter: 'all',
     shiftStart: new Date()
   };
 
+  // Persistent, cross-device scan counters. Backed by the scan_logs table so
+  // Total/Valid/Invalid survive logout/refresh and stay in sync across every
+  // gate device scanning the same event.
+  let scanStats = { total: 0, valid: 0, invalid: 0 };
+
   let checkinsSubscription = null;
+  let scanLogsSubscription = null;
   let isLoadingTickets = false;
 
   // ========== PHONE NORMALIZATION (for cross-format lookups) ==========
@@ -865,6 +867,8 @@
     currentEvent = selected;
     document.getElementById('eventName').textContent = currentEvent.name || 'Event';
     await loadEventTickets(currentEvent.id);
+    await loadScanStats(currentEvent.id);
+    setupScanLogsSubscription(currentEvent.id);
     return true;
   }
   
@@ -902,6 +906,59 @@
       .subscribe();
   }
   
+  // ========== PERSISTENT SCAN STATS (scan_logs table) ==========
+  // Loads historical counts for this event so Total/Valid/Invalid survive
+  // logout, refresh, or switching devices.
+  async function loadScanStats(eventId) {
+    if (!eventId) return;
+    try {
+      const { data, error } = await supabase
+        .from('scan_logs')
+        .select('status')
+        .eq('event_id', eventId);
+      if (error) throw error;
+      const rows = data || [];
+      scanStats.total = rows.length;
+      scanStats.valid = rows.filter(r => r.status === 'valid').length;
+      scanStats.invalid = rows.filter(r => r.status !== 'valid').length;
+    } catch (err) {
+      console.error('Error loading scan stats:', err);
+    }
+    updateLiveStatsUI();
+  }
+
+  // Keeps scan stats in sync live across every gate device scanning this event.
+  function setupScanLogsSubscription(eventId) {
+    if (scanLogsSubscription) scanLogsSubscription.unsubscribe();
+    if (!eventId) return;
+    scanLogsSubscription = supabase
+      .channel(`scanlogs-${eventId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'scan_logs',
+        filter: `event_id=eq.${eventId}`
+      }, (payload) => {
+        const row = payload.new;
+        scanStats.total++;
+        if (row.status === 'valid') scanStats.valid++;
+        else scanStats.invalid++;
+        updateLiveStatsUI();
+      })
+      .subscribe();
+  }
+
+  // Fire-and-forget: records every scan attempt (valid, invalid, duplicate) so
+  // stats stay accurate no matter which gate device made the attempt.
+  function logScanAttempt(status, ticket, rawTicketId) {
+    if (!currentEvent) return;
+    supabase.from('scan_logs').insert({
+      event_id: currentEvent.id,
+      ticket_id: ticket ? ticket.id : null,
+      ticket_number: ticket ? (ticket.ticketNumber || null) : (rawTicketId || null),
+      status: status,
+      gate: GATE_LOCATION
+    }).then(({ error }) => { if (error) console.error('Error logging scan attempt:', error); });
+  }
+
   async function loadEventTickets(eventId) {
     if (!eventId || isLoadingTickets) return;
     isLoadingTickets = true;
@@ -942,14 +999,17 @@
     const percent = total ? Math.round((checked / total) * 100) : 0;
     document.getElementById('progressPercent').textContent = `${percent}%`;
     document.getElementById('progressFill').style.width = `${percent}%`;
+    updateLiveStatsUI();
   }
 
   function updateLiveStatsUI() {
-    document.getElementById('totalScans').textContent = scanState.totalScans;
-    document.getElementById('validScans').textContent = scanState.validScans;
-    document.getElementById('invalidScans').textContent = scanState.invalidScans;
-    const unique = new Set(scanState.scans.filter(s => s.status === 'valid').map(s => s.id)).size;
-    document.getElementById('uniqueGuests').textContent = unique;
+    document.getElementById('totalScans').textContent = scanStats.total;
+    document.getElementById('validScans').textContent = scanStats.valid;
+    document.getElementById('invalidScans').textContent = scanStats.invalid;
+    // Sourced from live ticket data (synced via realtime + DB load), not a
+    // local session counter, so it's correct across refresh and other gates.
+    const inside = allTickets.filter(t => t.checkedIn).length;
+    document.getElementById('uniqueGuests').textContent = inside;
   }
 
   async function checkInTicket(ticketId) {
@@ -1319,28 +1379,22 @@
       } catch (err) { console.error(err); }
     }
     
-    scanState.totalScans++;
     let status = 'invalid';
     let message = '';
     
     if (!ticket) {
       status = 'invalid';
-      scanState.invalidScans++;
       message = 'Ticket not found for this event';
     } else if (ticket.status !== 'issued') {
       status = 'invalid';
-      scanState.invalidScans++;
       message = `Ticket status: ${ticket.status}`;
     } else if (ticket.checkedIn === true) {
       status = 'duplicate';
-      scanState.duplicateScans++;
-      scanState.invalidScans++;
       message = 'Already scanned';
     } else {
       try {
         await checkInTicket(ticketId);
         status = 'valid';
-        scanState.validScans++;
         lastValidScan = { id: ticketId, name: ticket.attendeeName, type: ticket.ticketType };
         message = `Welcome ${ticket.attendeeName}`;
         ticket.checkedIn = true;
@@ -1360,17 +1414,16 @@
       } catch (err) {
         if (err.message === 'DUPLICATE_TICKET') {
           status = 'duplicate';
-          scanState.duplicateScans++;
-          scanState.invalidScans++;
           message = 'Duplicate scan prevented';
           ticket.checkedIn = true;
         } else {
           status = 'invalid';
-          scanState.invalidScans++;
           message = err.message || 'Check-in failed';
         }
       }
     }
+    
+    logScanAttempt(status, ticket, ticketId);
     
     const scanEntry = {
       id: ticketId,
@@ -1531,7 +1584,10 @@
     showToast('Gate ready – scan ticket to print wristband', 'success');
     const input = document.getElementById('manualTicketInput');
     if (input) input.focus();
-    window.addEventListener('beforeunload', () => { if (checkinsSubscription) checkinsSubscription.unsubscribe(); });
+    window.addEventListener('beforeunload', () => {
+      if (checkinsSubscription) checkinsSubscription.unsubscribe();
+      if (scanLogsSubscription) scanLogsSubscription.unsubscribe();
+    });
   }
   init();
 </script>
