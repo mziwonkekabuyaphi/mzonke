@@ -64,12 +64,6 @@
     border: 1px solid var(--border);
   }
 
-  .gate-badge {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
   .gate-dot {
     width: 8px;
     height: 8px;
@@ -83,25 +77,10 @@
     50% { opacity: 0.5; transform: scale(1.2); }
   }
 
-  .gate-label {
-    color: var(--text2);
-    font-weight: 600;
-    font-size: 11px;
-    letter-spacing: 1px;
-  }
-
   .gate-number {
     color: var(--red);
     font-weight: 800;
     font-size: 16px;
-  }
-
-  .time-display {
-    font-family: monospace;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--red);
-    letter-spacing: 1px;
   }
 
   /* Main Grid */
@@ -327,7 +306,6 @@
   }
 
   .input-type-badge.email { color: var(--green); background: rgba(34,197,94,0.15); }
-  .input-type-badge.wallet { color: var(--red); background: var(--red-dim); }
 
   .manual-hint {
     align-items: center;
@@ -740,12 +718,8 @@
 
 <div class="scanner-header">
   <div class="gate-section">
-    <div class="gate-badge">
-      <div class="gate-dot"></div>
-      <span class="gate-label">GATE</span>
-    </div>
-    <div class="gate-number" id="gateName">MAIN GATE</div>
-    <div class="time-display" id="gateTime">12:34:56</div>
+    <div class="gate-dot"></div>
+    <div class="gate-number" id="eventName">Loading event…</div>
   </div>
 </div>
 
@@ -762,14 +736,13 @@
     <div class="manual-entry">
       <h3><i class="fas fa-keyboard"></i> MANUAL ENTRY</h3>
       <div class="manual-format-hints">
-        <span><i class="fas fa-qrcode"></i> Ticket ID</span>
-        <span><i class="fas fa-id-card"></i> Passport ID</span>
+        <span><i class="fas fa-ticket-alt"></i> Ticket Number</span>
         <span><i class="fas fa-envelope"></i> Email</span>
-        <span><i class="fas fa-wallet"></i> Rands Acc #</span>
+        <span><i class="fas fa-id-card"></i> Passport ID</span>
       </div>
       <div class="manual-input-group">
         <div class="manual-input-wrap">
-          <input type="text" id="manualTicketInput" placeholder="Ticket ID, Passport ID, email or Rands Account Number" autocomplete="off">
+          <input type="text" id="manualTicketInput" placeholder="Ticket Number, email or Passport ID" autocomplete="off">
           <span class="input-type-badge" id="inputTypeBadge">SEARCH</span>
         </div>
         <button id="manualCheckinBtn">VERIFY & ENTER</button>
@@ -848,6 +821,18 @@
     return digits;
   }
 
+  // Renders any stored phone format (+27..., 27..., 0...) as a local 0XXXXXXXXX
+  // number for display, e.g. "+27821234567" -> "0821234567".
+  function formatPhoneDisplay(phone) {
+    const digits = normalizePhoneDigits(phone);
+    if (!digits) return '';
+    return '0' + digits;
+  }
+
+  // Fixed physical gate label stored on check-in records (separate from the
+  // event name shown at the top of the screen).
+  const GATE_LOCATION = 'Main Gate';
+
   // ========== LOAD ONLY ACTIVE EVENT (no dropdown) ==========
   async function loadCurrentEvent() {
     const now = new Date().toISOString();
@@ -878,7 +863,7 @@
       }
     }
     currentEvent = selected;
-    document.getElementById('gateName').innerHTML = (currentEvent.name.split(' ')[0] || 'MAIN') + ' GATE';
+    document.getElementById('eventName').textContent = currentEvent.name || 'Event';
     await loadEventTickets(currentEvent.id);
     return true;
   }
@@ -902,6 +887,7 @@
           updateStatsFromTickets();
           const scanEntry = {
             id: newCheckin.ticket_id,
+            ticketNumber: ticket.ticketNumber || '',
             name: ticket.attendeeName,
             type: ticket.ticketType,
             status: 'valid',
@@ -922,15 +908,16 @@
     try {
       const { data, error } = await supabase
         .from('tickets')
-        .select('id, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
+        .select('id, ticket_number, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
         .eq('event_id', eventId);
       if (error) throw error;
       
       allTickets = (data || []).map(t => ({
         id: t.id,
+        ticketNumber: t.ticket_number || '',
         phone: t.customer_phone || '',
         phoneDigits: normalizePhoneDigits(t.customer_phone),
-        attendeeName: t.customer_phone || 'Guest',
+        attendeeName: formatPhoneDisplay(t.customer_phone) || 'Guest',
         ticketType: t.ticket_types?.name || 'Standard',
         checkedIn: t.checked_in === true,
         checkinTime: t.checked_in_at,
@@ -983,7 +970,7 @@
         ticket_id: ticketId,
         event_id: currentEvent.id,
         scanned_at: now,
-        gate: document.querySelector('.gate-number')?.innerText || 'MAIN GATE',
+        gate: GATE_LOCATION,
         status: 'valid'
       });
     if (checkinErr) {
@@ -1130,7 +1117,7 @@
               <span class="band-type">${escapeHtml(ticket.type)}</span>
             </div>
             <div class="band-info">
-              <span>ID: ${ticket.id.slice(-12)}</span>
+              <span>Ticket #: ${escapeHtml(ticket.ticketNumber || ticket.id.slice(-12))}</span>
               <span>${new Date().toLocaleDateString()}</span>
             </div>
           </div>
@@ -1155,14 +1142,12 @@
   }
 
   // ========== MULTI-FORMAT LOOKUP ENGINE ==========
-  // Detects whether manual input looks like an email or a Rands Account Number (wallet_id).
-  // Everything else (ticket ID, partial ticket ID, phone/Passport ID) is searched locally & instantly.
+  // Detects whether manual input looks like an email address.
+  // Everything else (ticket number, partial ticket number, phone/Passport ID) is searched locally & instantly.
   function detectInputType(raw) {
     const v = (raw || '').trim();
     if (!v) return 'empty';
     if (v.includes('@')) return 'email';
-    const compact = v.replace(/\s/g, '');
-    if (/^\d{16}$/.test(compact)) return 'wallet';
     return 'query';
   }
 
@@ -1171,26 +1156,24 @@
     if (!v) return [];
     const digits = v.replace(/\D/g, '');
     const digitsNorm = normalizePhoneDigits(v);
-    const isHexish = /^[0-9a-f]+$/i.test(v);
     return allTickets.filter(t => {
-      const idLower = t.id.toLowerCase();
-      if (idLower === v) return true; // exact full ticket ID
-      if (isHexish && v.length >= 6 && idLower.endsWith(v)) return true; // partial ID (as printed on wristband)
+      const numberLower = (t.ticketNumber || '').toLowerCase();
+      if (numberLower && numberLower === v) return true; // exact ticket number
+      if (numberLower && v.length >= 3 && numberLower.includes(v)) return true; // partial ticket number
       if (digits.length >= 4 && digitsNorm && t.phoneDigits && t.phoneDigits.endsWith(digitsNorm)) return true; // phone / Passport ID
       if (t.phone && t.phone.toLowerCase().includes(v)) return true; // raw phone substring
       return false;
     }).slice(0, 8);
   }
 
-  // Resolve an email or Rands Account Number (wallet_id) to a profile, then match that
-  // profile's phone against this event's tickets (tickets are keyed by phone, not profile id).
-  async function resolveContactToTickets(query, type) {
-    const column = type === 'email' ? 'email' : 'wallet_id';
+  // Resolve an email to a profile, then match that profile's phone against this
+  // event's tickets (tickets are keyed by phone, not profile id).
+  async function resolveContactToTickets(query) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, phone, email, wallet_id')
-        .eq(column, query.trim())
+        .select('id, name, phone, email')
+        .eq('email', query.trim())
         .maybeSingle();
       if (error || !data) return { profile: null, tickets: [], noPhone: false };
       const phoneDigits = normalizePhoneDigits(data.phone);
@@ -1228,7 +1211,6 @@
     const v = (raw || '').trim();
     if (!v) { badge.textContent = 'SEARCH'; badge.className = 'input-type-badge'; return; }
     if (type === 'email') { badge.textContent = 'EMAIL'; badge.className = 'input-type-badge email'; return; }
-    if (type === 'wallet') { badge.textContent = 'ACCOUNT #'; badge.className = 'input-type-badge wallet'; return; }
     badge.textContent = 'SEARCH'; badge.className = 'input-type-badge';
   }
 
@@ -1243,8 +1225,8 @@
       return `<div class="manual-result-item" data-id="${t.id}">
         <div class="manual-result-avatar"><i class="fas fa-user"></i></div>
         <div class="manual-result-info">
-          <div class="manual-result-name">${escapeHtml(t.phone || t.attendeeName || 'Guest')}</div>
-          <div class="manual-result-meta"><span>${escapeHtml(t.ticketType)}</span><span>•</span><span>${t.id.slice(-8)}</span></div>
+          <div class="manual-result-name">${escapeHtml(t.attendeeName || 'Guest')}</div>
+          <div class="manual-result-meta"><span>${escapeHtml(t.ticketType)}</span><span>•</span><span>${escapeHtml(t.ticketNumber || t.id.slice(-8))}</span></div>
         </div>
         <div class="manual-result-status ${statusClass}">${statusLabel}</div>
       </div>`;
@@ -1271,20 +1253,20 @@
     items[highlightedResultIndex].scrollIntoView({ block: 'nearest' });
   }
 
-  // Single entry point for the manual entry box: works for a full/partial ticket ID,
-  // a phone number (Passport ID), an email address, or a Rands Account Number (wallet_id).
+  // Single entry point for the manual entry box: works for a full/partial ticket number,
+  // a phone number (Passport ID), or an email address.
   async function handleManualLookup() {
     const input = document.getElementById('manualTicketInput');
     const raw = input.value.trim();
-    if (!raw) { showToast('Enter a ticket ID, Passport ID, email or account number', 'error'); return; }
+    if (!raw) { showToast('Enter a ticket number, email or Passport ID', 'error'); return; }
     if (!currentEvent) { showToast('No active event selected', 'error'); return; }
     const type = detectInputType(raw);
     setManualLoading(true);
     let candidates = [];
     let notFoundMessage = 'No matching ticket found for this event';
-    if (type === 'email' || type === 'wallet') {
-      const resolved = await resolveContactToTickets(raw, type);
-      if (!resolved.profile) notFoundMessage = `No account found for that ${type === 'email' ? 'email address' : 'Rands Account Number'}`;
+    if (type === 'email') {
+      const resolved = await resolveContactToTickets(raw);
+      if (!resolved.profile) notFoundMessage = 'No account found for that email address';
       else if (resolved.noPhone) notFoundMessage = 'Account found, but it has no phone number on file to match against tickets';
       candidates = resolved.tickets;
     } else {
@@ -1309,7 +1291,7 @@
 
   async function processScan(ticketId) {
     if (!currentEvent) { showToast('No active event selected', 'error'); return false; }
-    if (!ticketId || ticketId.trim() === '') { showToast('Enter a valid ticket ID', 'error'); return false; }
+    if (!ticketId || ticketId.trim() === '') { showToast('Enter a valid ticket number', 'error'); return false; }
     ticketId = ticketId.trim();
     
     let ticket = allTickets.find(t => t.id === ticketId);
@@ -1317,15 +1299,16 @@
       try {
         const { data } = await supabase
           .from('tickets')
-          .select('id, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
+          .select('id, ticket_number, customer_phone, checked_in, checked_in_at, status, ticket_types(name)')
           .eq('id', ticketId)
           .maybeSingle();
         if (data) {
           ticket = {
             id: data.id,
+            ticketNumber: data.ticket_number || '',
             phone: data.customer_phone || '',
             phoneDigits: normalizePhoneDigits(data.customer_phone),
-            attendeeName: data.customer_phone || 'Guest',
+            attendeeName: formatPhoneDisplay(data.customer_phone) || 'Guest',
             ticketType: data.ticket_types?.name || 'Standard',
             checkedIn: data.checked_in === true,
             checkinTime: data.checked_in_at,
@@ -1343,7 +1326,7 @@
     if (!ticket) {
       status = 'invalid';
       scanState.invalidScans++;
-      message = 'Ticket ID not found for this event';
+      message = 'Ticket not found for this event';
     } else if (ticket.status !== 'issued') {
       status = 'invalid';
       scanState.invalidScans++;
@@ -1367,6 +1350,7 @@
         // PRINT WRISTBAND AFTER SUCCESSFUL SCAN
         const wristbandTicket = {
           id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
           name: ticket.attendeeName,
           type: ticket.ticketType,
           phone: ticket.attendeeName !== 'Guest' ? ticket.attendeeName : ''
@@ -1390,6 +1374,7 @@
     
     const scanEntry = {
       id: ticketId,
+      ticketNumber: ticket?.ticketNumber || '',
       name: ticket?.attendeeName || 'Unknown',
       type: ticket?.ticketType || 'N/A',
       status: status,
@@ -1447,7 +1432,7 @@
       <div class="scan-avatar">${scan.icon}</div>
       <div class="scan-info">
         <div class="scan-name">${escapeHtml(scan.name)}</div>
-        <div class="scan-details"><span>${scan.id.slice(-8)}</span><span>•</span><span>${scan.type}</span></div>
+        <div class="scan-details"><span>${escapeHtml(scan.ticketNumber || scan.id.slice(-8))}</span><span>•</span><span>${scan.type}</span></div>
         <div class="scan-time">${scan.time}</div>
       </div>
       <div class="scan-badge ${badgeClass}">${badgeText}</div>
@@ -1495,9 +1480,6 @@
       if (type === 'email') {
         renderManualResults([]);
         showManualHint('Press Enter to look up this email address');
-      } else if (type === 'wallet') {
-        renderManualResults([]);
-        showManualHint('Press Enter to look up this Rands Account Number');
       } else if (v.length >= 3) {
         hideManualHint();
         renderManualResults(findLocalMatches(v));
@@ -1532,10 +1514,6 @@
       applyFilter();
     });
   });
-  
-  setInterval(() => {
-    document.getElementById('gateTime').textContent = new Date().toLocaleTimeString();
-  }, 1000);
   
   setInterval(() => {
     const diff = Math.floor((new Date() - scanState.shiftStart) / 1000);
