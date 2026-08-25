@@ -26,21 +26,66 @@ function formatBalanceCompact(amount) {
     return `R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
 }
 
+function showToast(message, isError = false) {
+    const toast = $('customToast');
+    if (toast) {
+        toast.textContent = message;
+        toast.style.background = isError ? '#E30613' : '#1a1a2e';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    } else {
+        alert(message);
+    }
+}
+
+// Shrinks an element's font-size step by step until its text fits its own
+// box width. Keeps the header-balance-card visually identical (same
+// padding/height) no matter how long the balance string gets.
+function fitTextToWidth(el, maxFontPx, minFontPx = 15) {
+    if (!el) return;
+    el.style.fontSize = maxFontPx + 'px';
+    requestAnimationFrame(() => {
+        let size = maxFontPx;
+        while (el.scrollWidth > el.clientWidth && size > minFontPx) {
+            size -= 1;
+            el.style.fontSize = size + 'px';
+        }
+    });
+}
+
+let lastKnownWalletStatus = null;
+
 function renderBalance(balance) {
+    const full = `R ${(balance || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+    const compact = formatBalanceCompact(balance || 0);
     const el = $('realWalletBalance');
-    if (el) { el.textContent = formatBalanceCompact(balance || 0); el.title = `R ${(balance || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`; }
+    if (el) {
+        el.textContent = compact;
+        el.title = full;
+        const baseFontPx = window.innerWidth <= 480 ? 29 : 38; // matches CSS 1.8rem / 2.4rem
+        fitTextToWidth(el, baseFontPx);
+    }
+    const shishaEl = $('shishaWalletBalance');
+    if (shishaEl) { shishaEl.textContent = compact; shishaEl.title = full; }
 }
 
 function renderWalletStatus(status) {
     const cardElem = $('headerBalanceCard');
     const subElem = $('balanceSubText');
-    if (status === 'blocked') {
+    const wasBlocked = lastKnownWalletStatus === 'blocked';
+    const isBlocked = status === 'blocked';
+    if (isBlocked) {
         cardElem?.classList.add('is-blocked');
         if (subElem) subElem.textContent = '🔒 Passport blocked — contact support to unlock';
     } else {
         cardElem?.classList.remove('is-blocked');
         if (subElem) subElem.textContent = 'Available for cashless spending and Tickets';
     }
+    if (lastKnownWalletStatus !== null && status !== lastKnownWalletStatus) {
+        if (!wasBlocked && isBlocked) showToast('Your Passport has just been blocked. Contact support for assistance.', true);
+        else if (wasBlocked && !isBlocked) showToast('Your Passport has been unblocked!', false);
+    }
+    lastKnownWalletStatus = status || null;
 }
 
 function generateBarcodeFromId(idString) {
@@ -48,34 +93,88 @@ function generateBarcodeFromId(idString) {
     if (!barcodeInner || !idString) return;
     barcodeInner.innerHTML = '';
     const cleaned = String(idString).replace(/-/g, '');
-    let bits = [];
+
+    let binaryPattern = [];
     for (let i = 0; i < cleaned.length; i++) {
-        const code = cleaned.charCodeAt(i);
-        for (let b = 0; b < 8; b++) bits.push((code >> b) & 1);
+        const charCode = cleaned.charCodeAt(i);
+        for (let bit = 0; bit < 8; bit++) binaryPattern.push((charCode >> bit) & 1);
     }
-    const full = [1,0,1,1,0,0,1,0, ...bits, 1,1,0,0,1,0,1,1];
-    full.forEach((bit) => {
+
+    const startPattern = [1,0,1,1,0,0,1,0];
+    const stopPattern = [1,1,0,0,1,0,1,1];
+    const fullPattern = [...startPattern, ...binaryPattern, ...stopPattern];
+
+    let totalWidth = 0;
+    const barData = [];
+
+    for (let i = 0; i < fullPattern.length; i++) {
+        const isBar = i % 2 === 0;
+        if (isBar && fullPattern[i] === 1) {
+            const w = (fullPattern[i + 1] === 1) ? 3 : ((fullPattern[i - 1] === 1) ? 2 : 1);
+            totalWidth += w;
+            barData.push({ type: 'bar', w, tall: true });
+        } else if (isBar && fullPattern[i] === 0) {
+            totalWidth += 1;
+            barData.push({ type: 'space', w: 1 });
+        } else if (!isBar && fullPattern[i] === 1) {
+            totalWidth += 1;
+            barData.push({ type: 'bar', w: 1, tall: true });
+        } else {
+            totalWidth += 1;
+            barData.push({ type: 'space', w: 1 });
+        }
+    }
+
+    const scaleFactor = 100 / Math.max(totalWidth, 1);
+    barData.forEach(bar => {
         const el = document.createElement('div');
-        el.style.width = '2px';
-        el.style.flexShrink = '0';
-        el.style.height = '100%';
-        el.style.background = bit ? '#1a1a1a' : 'transparent';
+        if (bar.type === 'bar') {
+            el.className = 'bar tall';
+            el.style.width = (bar.w * scaleFactor) + '%';
+            el.style.background = '#1a1a1a';
+            el.style.height = '100%';
+        } else {
+            el.style.width = (bar.w * scaleFactor) + '%';
+            el.style.flexShrink = '0';
+            el.style.background = 'transparent';
+        }
         barcodeInner.appendChild(el);
     });
 }
 
 const GREETINGS = [
-    { text: "Wamkelekile,", time: "any" }, { text: "Molo,", time: "any" },
-    { text: "Hello,", time: "any" }, { text: "Welcome back,", time: "any" },
-    { text: "Good morning,", time: "morning" }, { text: "Good afternoon,", time: "afternoon" },
+    // Local
+    { text: "Wamkelekile,", time: "any" },
+    { text: "Molo,", time: "any" },
+    { text: "Sawubona,", time: "any" },
+    { text: "Molweni,", time: "any" },
+    { text: "Sanibonani,", time: "any" },
+
+    // Friendly
+    { text: "Hello,", time: "any" },
+    { text: "Hi there,", time: "any" },
+    { text: "Hey,", time: "any" },
+    { text: "Welcome,", time: "any" },
+    { text: "Welcome back,", time: "any" },
+
+    // Time-based
+    { text: "Good morning,", time: "morning" },
+    { text: "Good afternoon,", time: "afternoon" },
     { text: "Good evening,", time: "evening" },
+
+    // Concierge style
+    { text: "It's great to see you,", time: "any" },
+    { text: "Happy to have you back,", time: "any" },
+    { text: "Welcome to Rands,", time: "any" },
+    { text: "Thanks for reaching out,", time: "any" },
 ];
 function updateGreeting() {
     const hour = new Date().getHours();
     const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'any';
     const pool = GREETINGS.filter(g => g.time === timeOfDay || g.time === 'any');
+    const available = pool.length > 0 ? pool : GREETINGS.filter(g => g.time === 'any');
     const el = document.querySelector('.greeting');
-    if (el) el.textContent = pool[Math.floor(Math.random() * pool.length)].text;
+    if (el) el.textContent = available[Math.floor(Math.random() * available.length)].text;
 }
 
 async function loadRecentTransactions(walletId) {
@@ -240,6 +339,21 @@ async function initVibeMeter() {
     onCleanup(() => { if (vibeUpdateInterval) { clearInterval(vibeUpdateInterval); vibeUpdateInterval = null; } });
 }
 
+function wireBalanceResize() {
+    let resizeFitTimeout;
+    const onResize = () => {
+        clearTimeout(resizeFitTimeout);
+        resizeFitTimeout = setTimeout(() => {
+            const balanceEl = $('realWalletBalance');
+            if (!balanceEl || !balanceEl.textContent) return;
+            const baseFontPx = window.innerWidth <= 480 ? 29 : 38;
+            fitTextToWidth(balanceEl, baseFontPx);
+        }, 150);
+    };
+    window.addEventListener('resize', onResize);
+    onCleanup(() => { clearTimeout(resizeFitTimeout); window.removeEventListener('resize', onResize); });
+}
+
 function wireCardFlip() {
     const cardStage = $('cardStage');
     const flipper = $('cardFlipper');
@@ -283,6 +397,7 @@ export default {
 
         wireCardFlip();
         wireModals();
+        wireBalanceResize();
 
         // Subscribe to shared state instead of fetching fresh every mount —
         // refreshSession/refreshWallet only re-hit Supabase if not already loaded.
@@ -316,6 +431,7 @@ export default {
         cleanup.forEach(fn => fn());
         cleanup = [];
         currentEventId = null;
+        lastKnownWalletStatus = null;
         // Note: we deliberately do NOT tear down appState.channels.wallet here —
         // that's app-lifetime, not page-lifetime. See state.js.
     }
