@@ -113,5 +113,8 @@ export async function logout() {
     appState.session = null;
     appState.profile = null;
     appState.wallet = null;
-    location.hash = '#/login'; // or wherever your login route/page lives
+    // login.html is a static page at the repo root, NOT an SPA route —
+    // this file lives at passport/js/state.js, so ../../ gets us out of
+    // passport/ entirely to the repo root where login.html sits.
+    window.location.href = '../../login.html';
 }
