@@ -304,6 +304,15 @@
       border: none; display: block; background: var(--bg);
     }
 
+    /* Lightweight overlay shown only the first time a module's iframe is being created */
+    .frame-loading {
+      position: absolute; inset: 0; z-index: 5;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      background: var(--bg); color: var(--text-muted);
+      font-size: 0.8rem; letter-spacing: 0.03em;
+    }
+    .frame-loading i { color: var(--red); }
+
     /* ──────────── SETTINGS ──────────── */
     .settings-scroll { height: 100%; overflow-y: auto; padding: 24px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
@@ -535,18 +544,31 @@
     <!-- Content pane -->
     <div class="content">
 
-      <!-- Overview -->
-      <iframe v-if="currentSection === 'overview'"
+      <!-- Lightweight loading state: only shown the first time a section's iframe is created.
+           Once an iframe has fired its 'load' event it's cached (kept alive, hidden via v-show)
+           so revisiting a module never shows this again. -->
+      <div class="frame-loading" v-if="visited[currentSection] && !loadedFrames[currentSection] && (currentSection === 'overview' || currentSection.indexOf('module_') === 0)">
+        <i class="fas fa-circle-notch fa-spin"></i> Loading module…
+      </div>
+
+      <!-- Overview: created on first visit only (v-if), then kept alive and shown/hidden with v-show -->
+      <iframe v-if="visited.overview"
+              v-show="currentSection === 'overview'"
               src="../stats/executive-stat.html"
-              class="external-iframe" frameborder="0" title="Rands Overview">
+              class="external-iframe" frameborder="0" title="Rands Overview"
+              @load="onFrameLoad('overview')">
       </iframe>
 
-      <!-- Modules -->
+      <!-- Modules: each iframe is created only on its first visit (v-if) and then cached —
+           switching away hides it with v-show instead of destroying it, so returning to an
+           already-visited module is instant and doesn't re-run its JS/Supabase queries. -->
       <template v-for="module in allModules">
-        <iframe v-if="currentSection === 'module_' + module.id"
+        <iframe v-if="visited['module_' + module.id]"
+                v-show="currentSection === 'module_' + module.id"
                 :key="'frame_' + module.id"
                 :src="getModuleSrc(module)"
-                class="external-iframe" frameborder="0" :title="module.name">
+                class="external-iframe" frameborder="0" :title="module.name"
+                @load="onFrameLoad('module_' + module.id)">
         </iframe>
       </template>
 
@@ -720,7 +742,12 @@
       },
       sidebarBgColor: '#111114',
       activeBgColor: '#E30613',
-      refreshInterval: null
+      refreshInterval: null,
+      // Which sections have ever been opened (so their iframe gets created) and which
+      // have finished their first load (so the loading overlay stops showing). Keyed by
+      // section id ('overview', 'module_<id>'). Powers the lazy-load + cache behaviour.
+      visited: {},
+      loadedFrames: {}
     },
     computed: {
       currentSectionTitle() {
@@ -741,9 +768,17 @@
         e.target.style.display = 'none';
         e.target.parentElement.innerHTML = '<i class="fas fa-crown"></i>';
       },
-      nav(section) { this.currentSection = section; this.closeSidebar(); },
-      goToModule(module) { this.currentSection = 'module_' + module.id; this.closeSidebar(); },
+      nav(section) { this.currentSection = section; this.markVisited(section); this.closeSidebar(); },
+      goToModule(module) { const section = 'module_' + module.id; this.currentSection = section; this.markVisited(section); this.closeSidebar(); },
       closeSidebar() { if (window.innerWidth <= 768) this.sidebarOpen = false; },
+      // First visit to a section flips visited[section] to true, which creates its iframe
+      // (v-if) for the first and only time. Later visits just toggle v-show, reusing it.
+      markVisited(section) {
+        if (!this.visited[section]) Vue.set(this.visited, section, true);
+      },
+      onFrameLoad(section) {
+        Vue.set(this.loadedFrames, section, true);
+      },
       refreshCurrentIframe() {
         document.querySelectorAll('.external-iframe').forEach(f => {
           if (f.offsetParent !== null && f.src) f.src = f.src;
@@ -769,7 +804,7 @@
           // If the module currently being viewed just got hidden, bounce to overview
           if (this.currentSection.startsWith('module_')) {
             const stillVisible = this.allModules.some(m => 'module_' + m.id === this.currentSection);
-            if (!stillVisible) this.currentSection = 'overview';
+            if (!stillVisible) { this.currentSection = 'overview'; this.markVisited('overview'); }
           }
         } catch (e) {
           console.error('[Modules] Failed to load:', e);
@@ -860,8 +895,10 @@
         if (this.refreshInterval) clearInterval(this.refreshInterval);
         const ms = parseInt(this.systemPrefs.auto_refresh_interval) * 1000;
         if (ms > 0) this.refreshInterval = setInterval(() => {
+          // Only the currently-visible iframe (offsetParent !== null skips the v-show-hidden,
+          // cached ones) so auto-refresh doesn't defeat the point of caching them.
           document.querySelectorAll('.external-iframe').forEach(f => {
-            if (f.src && f.contentWindow) f.contentWindow.location.reload();
+            if (f.offsetParent !== null && f.src && f.contentWindow) f.contentWindow.location.reload();
           });
         }, ms);
       }
@@ -880,6 +917,9 @@
         const match = this.allModules.find(m => m.id === requestedModule);
         if (match) this.currentSection = 'module_' + match.id;
       }
+      // Only the section we're actually landing on gets its iframe created —
+      // never both 'overview' and a deep-linked module.
+      this.markVisited(this.currentSection);
 
       this.loadingMessage = 'Loading settings…';
       await Promise.all([this.loadVenueSettingsFromDB(), this.loadThemeFromDB(), this.loadSystemPrefsFromDB(), this.loadModulesSettingsList()]);
