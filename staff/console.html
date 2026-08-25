@@ -618,6 +618,18 @@
       border: none;
       background: var(--surface);
     }
+    .module-frame-wrap { height: 100%; position: relative; }
+    /* Fullscreen re-purposes the same wrap (and its already-loaded iframes) via CSS
+       instead of mounting a second iframe, so entering/exiting fullscreen never reloads. */
+    .module-frame-wrap.module-fullscreen {
+      position: fixed; inset: 0; z-index: 5000;
+      background: #0D0F12; display: flex; flex-direction: column;
+    }
+    .module-fullscreen-bar {
+      height: 40px; background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0;
+    }
+    .module-fullscreen .module-frame { flex: 1; }
     .module-loading {
       position: absolute;
       inset: 0;
@@ -1331,10 +1343,33 @@
           </div>
         </div>
 
-        <!-- IFRAME MODULES -->
-        <div v-else style="height:100%;position:relative;">
+        <!-- IFRAME MODULES: each module's iframe is created once, the first time it's opened
+             (v-if), then kept alive and just shown/hidden with v-show — so returning to a
+             module you've already visited is instant and doesn't re-run its JS/Supabase
+             queries. Fullscreen re-uses this same wrap via a CSS class instead of mounting
+             a second iframe (that used to reload the module a second time). -->
+        <div v-else class="module-frame-wrap" :class="{ 'module-fullscreen': isFullscreen }">
+          <div v-if="isFullscreen" class="module-fullscreen-bar">
+            <i :class="activeModuleMeta?.icon" style="color:var(--red);font-size:13px;"></i>
+            <span style="font-size:12px;font-weight:600;color:var(--text);">{{ activeModuleLabel }}</span>
+            <div class="ml-auto flex items-center gap-2">
+              <span class="clock">{{ currentTime }}</span>
+              <button class="btn btn-sm" @click="isFullscreen = false"><i class="fas fa-compress" style="font-size:10px;"></i> Exit Fullscreen</button>
+            </div>
+          </div>
           <div v-if="moduleLoading" class="module-loading"><div class="spinner"></div><span style="font-size:11px;color:var(--text3);">Loading {{ activeModuleLabel }}...</span></div>
-          <iframe :src="activeModuleSrc" :title="activeModuleLabel" class="module-frame" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation" referrerpolicy="no-referrer" @load="moduleLoading = false" @error="onIframeError"></iframe>
+          <template v-for="mod in availableModules" :key="mod.key">
+            <iframe v-if="visitedModules[mod.key]"
+                    v-show="activeModule === mod.key"
+                    :src="mod.src"
+                    :title="mod.title"
+                    class="module-frame"
+                    sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation"
+                    referrerpolicy="no-referrer"
+                    @load="onModuleFrameLoad(mod.key)"
+                    @error="onIframeError(mod.key)">
+            </iframe>
+          </template>
         </div>
       </div>
     </main>
@@ -1348,9 +1383,6 @@
   
   <!-- Modal -->
   <transition name="fade"><div class="modal-backdrop" v-if="modal.open" @click.self="modal.open = false"><div class="modal"><div class="modal-title">{{ modal.title }}</div><div class="modal-body">{{ modal.body }}</div><div class="modal-actions"><button class="btn" @click="modal.open = false">Cancel</button><button class="btn btn-red" @click="modal.confirm(); modal.open = false">{{ modal.confirmLabel }}</button></div></div></div></transition>
-  
-  <!-- Fullscreen -->
-  <div v-if="isFullscreen && activeModule !== 'dashboard'" style="position:fixed;inset:0;z-index:5000;background:#0D0F12;display:flex;flex-direction:column;"><div style="height:40px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;"><i :class="activeModuleMeta?.icon" style="color:var(--red);font-size:13px;"></i><span style="font-size:12px;font-weight:600;color:var(--text);">{{ activeModuleLabel }}</span><div class="ml-auto flex items-center gap-2"><span class="clock">{{ currentTime }}</span><button class="btn btn-sm" @click="isFullscreen = false"><i class="fas fa-compress" style="font-size:10px;"></i> Exit Fullscreen</button></div></div><iframe :src="activeModuleSrc" :title="activeModuleLabel" style="flex:1;border:none;" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation" referrerpolicy="no-referrer"></iframe></div>
   
   <!-- Mobile backdrop -->
   <div v-if="sidebarOpen" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:39;display:none;" class="mobile-backdrop" @click="sidebarOpen = false"></div>
@@ -1526,6 +1558,9 @@ createApp({
     const staffName   = ref('Staff Member');
     const activeModule= ref('dashboard');
     const moduleLoading= ref(false);
+    // Which modules have ever been opened (so their iframe gets created) — powers the
+    // lazy-load + cache behaviour. Keyed by module key.
+    const visitedModules = ref({});
     const sidebarOpen = ref(false);
     const notifOpen   = ref(false);
     const cmdOpen     = ref(false);
@@ -1705,7 +1740,10 @@ createApp({
       }
       if (key === activeModule.value) return;
       activeModule.value  = key;
-      moduleLoading.value = true;
+      // Only show the loading spinner the first time this module is opened —
+      // once its iframe has fired 'load' it's cached and switching back is instant.
+      moduleLoading.value = !visitedModules.value[key];
+      visitedModules.value[key] = true;
       sidebarOpen.value   = false;
       notifOpen.value     = false;
     };
@@ -1748,7 +1786,8 @@ createApp({
     const markAllRead = () => { notifications.value.forEach(n => n.unread = false); unreadNotifs.value = 0; };
 
     // ── UI helpers ───────────────────────────────────────────────────────────
-    const onIframeError  = () => { moduleLoading.value = false; showToast(`Could not load ${activeModuleLabel.value}`, 'error'); };
+    const onIframeError  = (key) => { if (key === activeModule.value) moduleLoading.value = false; showToast(`Could not load ${MODULE_META[key]?.title || key}`, 'error'); };
+    const onModuleFrameLoad = (key) => { if (key === activeModule.value) moduleLoading.value = false; };
     const enterFullscreen= () => { isFullscreen.value = true; };
     const openCommand    = () => { cmdOpen.value = true; nextTick(() => cmdInput.value?.focus()); };
     const cmdEnter       = () => { if (cmdResults.value.length) showToast(`Opened: ${cmdResults.value[0].label}`, 'info'); cmdOpen.value = false; cmdQuery.value = ''; };
@@ -1759,7 +1798,6 @@ createApp({
     const availableModules  = computed(() => allowedModules.value.map(k => ({ key: k, ...MODULE_META[k] })).filter(m => m.title));
     const activeModuleMeta  = computed(() => MODULE_META[activeModule.value]);
     const activeModuleLabel = computed(() => activeModuleMeta.value?.title || 'Dashboard');
-    const activeModuleSrc   = computed(() => activeModuleMeta.value?.src || '');
     const filteredCustomers = computed(() => {
       let list = customers.value;
       if (customerFilter.value === 'active')  list = list.filter(c => c.status === 'Active');
@@ -1808,7 +1846,7 @@ createApp({
       shiftTimer, shiftStart, globalStats, notifications, unreadNotifs, pendingApprovals,
       activityFeed, customers, customerSearch, customerFilter, filteredCustomers,
       recentTopups, recentTickets, cmdResults, toasts, modal, profileOpen, searchFocused,
-      availableModules, activeModuleMeta, activeModuleLabel, activeModuleSrc,
+      availableModules, activeModuleMeta, activeModuleLabel, visitedModules, onModuleFrameLoad,
       hasModule, navigate, showToast, confirmLogout, doLogout, approve, decline,
       markAllRead, onIframeError, enterFullscreen, refreshStats,
       openCommand, cmdEnter, closeOthers
