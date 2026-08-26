@@ -89,7 +89,7 @@ async function loadCurrentCustomerAndBalance() {
 // balance right after a full reload of this function, since it had no
 // realtime subscription of its own.
 function syncFromAppState() {
-    currentBalance = (appState.wallet && typeof appState.wallet.balance === 'number') ? appState.wallet.balance : 0;
+    currentBalance = appState.wallet?.balance ?? 0;
 
     // shisha_requests.customer_profile_id has a FK to profiles.id, so
     // currentCustomer.id must be the *profile's* id, not the auth id — see

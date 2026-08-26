@@ -92,7 +92,7 @@ async function initAuth() {
 // appState wallet changes (realtime update, or a spend made from another
 // tab), so this page never has to run its own wallet query to stay current.
 function syncWalletFromAppState() {
-    currentBalance = (appState.wallet && typeof appState.wallet.balance === 'number') ? appState.wallet.balance : 0;
+    currentBalance = appState.wallet?.balance ?? 0;
     updateWalletDisplay();
 }
 
