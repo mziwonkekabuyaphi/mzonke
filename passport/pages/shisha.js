@@ -1,4 +1,5 @@
 import { supabase } from '../../config/supabase.js';
+import { appState, refreshSession, refreshWallet, onStateChange, setupWalletRealtime } from '../js/state.js';
 
 // Same cleanup pattern as pages/home.js / pages/tickets.js / pages/vvip.js —
 // every listener, interval, and subscription created in init() gets undone
@@ -63,52 +64,42 @@ function updateCoalsUsedStat() {
 }
 
 async function loadCurrentCustomerAndBalance() {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session) {
+    // Session lookup (with the auth_user_id/id fallback and first-login
+    // insert — see state.js's refreshSession) is shared across every tab
+    // via appState; only hit the network here if nothing has populated it
+    // yet this session.
+    if (!appState.session) await refreshSession();
+    if (!appState.session) {
         console.warn("No active session");
         currentBalance = 0;
         currentCustomer = null;
         updateWalletDisplay();
         return;
     }
-    const userId = session.user.id;
 
-    const { data: wallet, error: walletErr } = await supabase
-        .from('wallets')
-        .select('id, balance')
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (walletErr) console.warn("Wallet fetch error:", walletErr);
-    const balance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
-    currentBalance = balance;
+    if (!appState.wallet) await refreshWallet();
+    setupWalletRealtime(); // no-op if the shared channel is already subscribed
+    syncFromAppState();
+}
 
-    // Look up by auth_user_id first — WhatsApp-registered customers have a
-    // DB-generated profiles.id that differs from the auth user id. Falling
-    // back to `id = userId` covers profiles created before auth_user_id was
-    // populated. shisha_requests.customer_profile_id has a FK to profiles.id,
-    // so currentCustomer.id must be the *profile's* id, not the auth id —
-    // using the auth id here caused a 23503 FK violation for those users.
-    let { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('id, name, phone')
-        .eq('auth_user_id', userId)
-        .maybeSingle();
-    if (profileErr) console.warn("Profile fetch error:", profileErr);
-    if (!profile) {
-        const { data: fallbackProfile, error: fallbackErr } = await supabase
-            .from('profiles')
-            .select('id, name, phone')
-            .eq('id', userId)
-            .maybeSingle();
-        if (fallbackErr) console.warn("Profile fallback fetch error:", fallbackErr);
-        profile = fallbackProfile;
-    }
+// Mirrors appState.profile/wallet into this page's local variables and the
+// on-screen balance. Called on initial load, on auth state changes, and
+// whenever the shared appState wallet changes (realtime update, or a spend
+// made from another tab) — this page previously only ever saw a fresh
+// balance right after a full reload of this function, since it had no
+// realtime subscription of its own.
+function syncFromAppState() {
+    currentBalance = (appState.wallet && typeof appState.wallet.balance === 'number') ? appState.wallet.balance : 0;
 
+    // shisha_requests.customer_profile_id has a FK to profiles.id, so
+    // currentCustomer.id must be the *profile's* id, not the auth id — see
+    // the original fallback note this replaced.
+    const session = appState.session;
     currentCustomer = {
-        id: profile?.id || userId,
-        walletId: wallet?.id || null,
-        phone: profile?.phone || session.user.user_metadata?.phone || session.user.email || '',
-        name: profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Member'
+        id: appState.profile?.id || session?.user?.id,
+        walletId: appState.wallet?.id || null,
+        phone: appState.profile?.phone || session?.user?.user_metadata?.phone || session?.user?.email || '',
+        name: appState.profile?.name || session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Member'
     };
 
     updateWalletDisplay();
@@ -568,7 +559,10 @@ export default {
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
             if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-                await loadCurrentCustomerAndBalance();
+                await refreshSession();
+                await refreshWallet();
+                setupWalletRealtime();
+                syncFromAppState();
                 await loadSession();
                 await loadLocationsAndFlavours();
                 if (document.getElementById('statementPanel').style.display === 'block') loadStatement();
@@ -588,6 +582,11 @@ export default {
         // navigate-away-and-back stacks another SIGNED_IN/SIGNED_OUT
         // handler, each one re-querying DOM nodes that may be gone.
         onCleanup(() => { if (authListenerSub) { authListenerSub.unsubscribe(); authListenerSub = null; } });
+
+        // state.js's setupWalletRealtime() (called in loadCurrentCustomerAndBalance
+        // above) keeps appState.wallet current; mirror it into this page
+        // whenever it changes instead of only refreshing on init/sign-in.
+        onCleanup(onStateChange(() => syncFromAppState()));
 
         // Stops whatever timerInterval renderModernSessionCard() last
         // started — read at destroy-time via closure, so this only needs

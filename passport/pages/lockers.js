@@ -1,4 +1,5 @@
 import { supabase } from '../../config/supabase.js';
+import { appState, refreshSession, refreshWallet, onStateChange, setupWalletRealtime } from '../js/state.js';
 
 // Same cleanup pattern as pages/home.js, pages/tickets.js, pages/vvip.js —
 // every listener/channel created in init() gets undone in destroy() so
@@ -14,7 +15,6 @@ let currentBalance = 0;
 let holdings = [];            // all vault_holdings + nested items for this customer
 let availableProducts = [];   // from vault_get_available_products
 let selection = {};           // order_item_id -> { qty, product }
-let walletChannel = null;
 let vaultChannel = null;
 let expiryTickInterval = null; // re-renders Keep Products countdowns + drops expired items, no network call
 
@@ -66,34 +66,34 @@ function closeConfirmModal(result) {
 
 // ========== AUTH / WALLET ==========
 async function initAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { showToast('Please log in first', true); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return false; }
-    const userId = session.user.id;
+    // home.js (or whichever tab loaded first this session) usually already
+    // populated appState.session/profile/wallet — reuse that instead of
+    // re-running the session+profile+wallet lookup (with its
+    // auth_user_id/id fallback and first-login insert; see state.js's
+    // refreshSession) on every visit to Vault.
+    if (!appState.session) await refreshSession();
+    if (!appState.session) { showToast('Please log in first', true); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return false; }
+    currentAuthUserId = appState.session.user.id;
 
-    // profiles.id is NOT guaranteed to equal the auth user id — WhatsApp-
-    // registered customers get a DB-generated profiles.id, linked to auth
-    // only via auth_user_id. Same lookup order as pages/tickets.js.
-    let { data: profile } = await supabase.from('profiles').select('id, phone, name').eq('auth_user_id', userId).maybeSingle();
-    if (!profile) {
-        const fallback = await supabase.from('profiles').select('id, phone, name').eq('id', userId).maybeSingle();
-        profile = fallback.data;
-    }
-    if (!profile) {
-        const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({ id: userId, auth_user_id: userId, name: session.user.user_metadata?.full_name || 'Member', email: session.user.email, phone: session.user.user_metadata?.phone || '', role: 'customer' }).select('id, phone, name').single();
-        if (insertError) console.error('Profile creation failed:', insertError);
-        profile = newProfile;
-    }
-    if (!profile) {
+    if (!appState.profile) {
         showToast('Could not load your account. Please contact support.', true);
         return false;
     }
+    currentCustomer = { id: appState.profile.id, name: appState.profile.name, phone: appState.profile.phone };
 
-    const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userId).maybeSingle();
-    currentBalance = (wallet && typeof wallet.balance === 'number') ? wallet.balance : 0;
-    currentCustomer = { id: profile.id, name: profile.name, phone: profile.phone };
-    currentAuthUserId = userId;
-    updateWalletDisplay();
+    if (!appState.wallet) await refreshWallet();
+    setupWalletRealtime(); // no-op if the shared channel is already subscribed
+    syncWalletFromAppState();
     return true;
+}
+
+// Mirrors appState.wallet's balance into this page's local variable and the
+// on-screen balance. Called on initial load and whenever the shared
+// appState wallet changes (realtime update, or a spend made from another
+// tab), so this page never has to run its own wallet query to stay current.
+function syncWalletFromAppState() {
+    currentBalance = (appState.wallet && typeof appState.wallet.balance === 'number') ? appState.wallet.balance : 0;
+    updateWalletDisplay();
 }
 
 function updateWalletDisplay() {
@@ -451,16 +451,11 @@ export default {
         await loadHoldings();
         wireStaticListeners();
 
-        walletChannel = supabase
-            .channel('vault-wallet-balance')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentAuthUserId}` }, (payload) => {
-                if (payload.new.balance !== undefined) {
-                    currentBalance = payload.new.balance;
-                    updateWalletDisplay();
-                }
-            })
-            .subscribe();
-        onCleanup(() => { if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; } });
+        // state.js's setupWalletRealtime() (called in initAuth above) keeps
+        // appState.wallet current; just mirror it into this page whenever it
+        // changes, instead of opening a second Supabase realtime channel for
+        // the same wallet row.
+        onCleanup(onStateChange(() => syncWalletFromAppState()));
 
         // Auto-refresh when staff approve/reject/stage a holding, so the
         // status badge updates live instead of needing a manual refresh.
