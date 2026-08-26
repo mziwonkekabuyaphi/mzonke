@@ -19,7 +19,7 @@ import { supabase } from './supabase.js';
 export const ROLE_ROUTES = {
   admin:           '/tenant/dashboard.html',
   staff:           '/staff/console.html',
-  customer:        '/passport/home.html',
+  customer:        '/passport/index.html',
   mobile_scanner:  '/staff/scanner.html',
 };
 
