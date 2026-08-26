@@ -401,7 +401,7 @@ export default {
 
         // Subscribe to shared state instead of fetching fresh every mount —
         // refreshSession/refreshWallet only re-hit Supabase if not already loaded.
-        const unsub = onStateChange((state) => {
+        const renderFromState = (state) => {
             if (state.profile) {
                 const fullName = [state.profile.name, state.profile.surname].filter(Boolean).join(' ') || 'Member';
                 if ($('userNameDisplay')) $('userNameDisplay').textContent = fullName.split(' ')[0];
@@ -415,8 +415,21 @@ export default {
                 renderWalletStatus(state.wallet.status);
                 generateBarcodeFromId(state.wallet.id);
             }
-        });
+        };
+        const unsub = onStateChange(renderFromState);
         onCleanup(unsub);
+
+        // onStateChange only fires on FUTURE changes — it doesn't replay the
+        // current value to a new subscriber. On the very first visit that's
+        // fine because refreshSession/refreshWallet below haven't run yet,
+        // so they fetch, state changes, and the callback fires. But on every
+        // later visit to Home (e.g. tickets -> home), appState.session and
+        // appState.wallet are already cached, so those refresh calls are
+        // skipped, no state change ever fires, and the callback above never
+        // runs — leaving name/card number/cvv/passport ID/barcode/balance
+        // blank until a full page reload. Paint immediately from whatever's
+        // already cached so this mount doesn't depend on a change event.
+        renderFromState(appState);
 
         if (!appState.session) await refreshSession();
         if (!appState.wallet) await refreshWallet();
