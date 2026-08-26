@@ -2,1008 +2,942 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Vault Admin</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>Vault · Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script type="importmap">
-{ "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
+  { "imports": { "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm" } }
 </script>
 <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --red: #E30613;
+    --red-glow: rgba(227,6,19,0.35);
+    --red-dim: rgba(227,6,19,0.10);
+    --red-border: rgba(227,6,19,0.22);
+    --bg: #09090b;
+    --s1: #111114;
+    --s2: #18181c;
+    --s3: #1e1e24;
+    --border: rgba(255,255,255,0.07);
+    --border-b: rgba(255,255,255,0.12);
+    --text: #f4f4f5;
+    --muted: #71717a;
+    --dim: #3f3f46;
+    --green: #22c55e;
+    --gold: #f59e0b;
+    --purple: #8b5cf6;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    padding: 16px;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+  }
+  /* Header — matches Product Manager admin topbar */
+  .main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 58px;
+    background: var(--s1);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 12px;
+    gap: 16px;
+  }
+  .main-header h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text);
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .main-header h2 .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red-glow);
+    flex-shrink: 0;
+  }
+  .main-header h2 i { color: var(--red); }
+  .header-center {
+    flex: 1;
+    max-width: 380px;
+  }
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 7px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .icon-btn:hover { background: var(--s3); border-color: var(--border-b); color: var(--text); }
+  .icon-btn.active-toggle { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
 
-    :root {
-      --red: #E30613;
-      --red-glow: rgba(227,6,19,0.3);
-      --red-dim: rgba(227,6,19,0.08);
-      --red-border: rgba(227,6,19,0.3);
-      --bg: #09090b;
-      --s1: #111114;
-      --s2: #18181c;
-      --s3: #1e1e24;
-      --s4: #26262e;
-      --border: rgba(255,255,255,0.07);
-      --border-b: rgba(255,255,255,0.14);
-      --text: #f4f4f5;
-      --text-2: #a1a1aa;
-      --muted: #71717a;
-      --dim: #3f3f46;
-      --green: #22c55e;
-      --green-dim: rgba(34,197,94,0.1);
-      --amber: #f59e0b;
-    }
+  /* Main content */
+  .main-content {
+    flex: 1;
+    overflow: auto;
+    background: var(--s1);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--border);
+  }
 
-    html {
-      height: 100%;
-    }
+  /* ─── Two‑column layout ─── */
+  .dashboard-two-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 1000px) {
+    .dashboard-two-columns { grid-template-columns: 1fr; }
+  }
 
-    #app {
-      height: 100%;
-    }
+  .dashboard-card {
+    background: var(--s2);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .card-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-header h3 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-header h3 i { color: var(--red); }
+  .card-body {
+    padding: 14px 18px;
+    flex: 1;
+    overflow-y: auto;
+    max-height: 500px;
+  }
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      height: 100vh;
-      height: 100dvh; /* accounts for mobile browser chrome so content isn't clipped */
-      padding: 16px;
-      overflow: hidden;
-    }
+  /* Lists */
+  .account-list, .refund-list {
+    max-height: 450px;
+    overflow-y: auto;
+  }
+  .account-item, .refund-item {
+    background: var(--s3);
+    border-radius: 16px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+  }
+  .account-item:hover, .refund-item:hover {
+    border-color: var(--red-border);
+    background: var(--s2);
+  }
+  .account-item.selected { border-color: var(--red); background: var(--red-dim); }
+  .account-id {
+    font-weight: 700;
+    color: var(--red);
+    font-size: 0.85rem;
+  }
+  .account-name {
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .account-balance {
+    font-weight: 800;
+    color: var(--green);
+    font-size: 0.95rem;
+  }
+  .account-status {
+    padding: 3px 12px;
+    border-radius: 60px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .status-active { background: rgba(34,197,94,0.15); color: var(--green); }
+  .status-blocked { background: rgba(227,6,19,0.15); color: var(--red); }
+  .status-pending { background: rgba(245,158,11,0.15); color: var(--gold); }
+  .status-approved { background: rgba(34,197,94,0.15); color: var(--green); }
+  .status-rejected { background: rgba(227,6,19,0.15); color: var(--red); }
+  .status-open { background: rgba(227,6,19,0.15); color: var(--red); }
+  .status-in_progress { background: rgba(245,158,11,0.15); color: var(--gold); }
+  .status-resolved { background: rgba(34,197,94,0.15); color: var(--green); }
 
-    [v-cloak] { display: none; }
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .action-btn {
+    padding: 6px 16px;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 0.7rem;
+    cursor: pointer;
+    background: var(--s3);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+  }
+  .action-btn:active { transform: scale(0.96); }
+  .action-btn.primary { background: var(--red); color: white; border: none; }
+  .action-btn.success { background: var(--green); color: black; border: none; }
+  .action-btn.danger { background: #dc2626; color: white; border: none; }
+  .action-btn.warning { background: var(--gold); color: black; border: none; }
+  .action-btn.info { background: #2563eb; color: white; border: none; }
+  .action-btn.delete { background: transparent; color: #dc2626; border: 1px solid #dc2626; }
+  .action-btn.delete:hover { background: #dc2626; color: white; }
+  .action-btn.deduct { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+  .action-btn.deduct:hover { background: var(--gold); color: black; }
+  .action-btn.small { padding: 3px 12px; font-size: 0.6rem; }
 
-    /* ── Layout ── */
-    .layout {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      max-width: 1440px;
-      margin: 0 auto;
-      padding: 0;
-    }
+  .topup-section {
+    background: var(--s3);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+  }
+  .topup-title {
+    color: var(--red);
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .topup-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .topup-input {
+    flex: 1;
+    padding: 8px 14px;
+    background: var(--s1);
+    border: 1px solid var(--border);
+    border-radius: 60px;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    outline: none;
+  }
+  .topup-input:focus { border-color: var(--red-border); }
+  .preset-amounts {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .preset-btn {
+    padding: 4px 14px;
+    background: var(--s1);
+    border: 1px solid var(--border);
+    border-radius: 60px;
+    cursor: pointer;
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--muted);
+    transition: 0.2s;
+  }
+  .preset-btn:hover {
+    border-color: var(--red-border);
+    color: var(--text);
+    background: var(--s2);
+  }
 
-    /* ── Topbar ── */
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 24px;
-      height: 58px;
-      background: var(--s1);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      gap: 16px;
-      border-radius: 12px 12px 0 0;
-      margin-bottom: 12px;
-    }
-    .topbar-brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-family: 'Space Grotesk', sans-serif;
-      font-weight: 700;
-      font-size: 0.95rem;
-      color: var(--text);
-      letter-spacing: -0.01em;
-    }
-    .topbar-brand .dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--red);
-      box-shadow: 0 0 8px var(--red-glow);
-    }
-    .topbar-center {
-      flex: 1;
-      max-width: 380px;
-    }
-    .search-wrap {
-      position: relative;
-    }
-    .search-wrap i {
-      position: absolute;
-      left: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--muted);
-      font-size: 0.75rem;
-      pointer-events: none;
-    }
-    .search-wrap input {
-      width: 100%;
-      padding: 8px 14px 8px 36px;
-      background: var(--s3);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.8rem;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .search-wrap input:focus { border-color: var(--red-border); }
-    .search-wrap input::placeholder { color: var(--muted); }
-    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .transaction-list { max-height: 340px; overflow-y: auto; }
+  .transaction-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .transaction-left { display: flex; align-items: center; gap: 10px; }
+  .transaction-icon {
+    width: 30px;
+    height: 30px;
+    background: var(--red-dim);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--red);
+    font-size: 0.8rem;
+  }
+  .transaction-type { font-weight: 600; font-size: 0.75rem; }
+  .transaction-time { font-size: 0.55rem; color: var(--muted); }
+  .transaction-amount { font-weight: 700; font-size: 0.8rem; }
+  .amount-positive { color: var(--green); }
+  .amount-negative { color: var(--red); }
 
-    /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 14px;
-      border-radius: 7px;
-      font-weight: 600;
-      font-size: 0.76rem;
-      border: none;
-      cursor: pointer;
-      transition: all 0.15s;
-      font-family: 'Inter', sans-serif;
-      white-space: nowrap;
-    }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: var(--red); color: #fff; box-shadow: 0 0 14px var(--red-glow); }
-    .btn-primary:hover:not(:disabled) { background: #c8050f; box-shadow: 0 0 20px var(--red-glow); }
-    .btn-ghost {
-      background: transparent;
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
-    .btn-ghost:hover { background: var(--s3); color: var(--text); border-color: var(--border-b); }
-    .btn-ghost.active { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
-    .btn-danger { background: #dc2626; color: #fff; }
-    .btn-danger:hover { background: #b91c1c; }
-    .btn-icon {
-      width: 34px; height: 34px;
-      padding: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 7px;
-      font-size: 0.85rem;
-    }
-    .btn-sm { padding: 5px 10px; font-size: 0.7rem; }
+  .search-box {
+    background: var(--s3);
+    border-radius: 60px;
+    padding: 4px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+  }
+  .search-box input {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 6px 0;
+    outline: none;
+    font-size: 0.75rem;
+    color: var(--text);
+  }
+  .search-box input::placeholder { color: var(--muted); }
 
-    /* ── Main body split ── */
-    .main-body {
-      flex: 1;
-      overflow: hidden;
-      display: flex;
-      min-height: 0;
-      background: var(--s1);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-    }
+  /* Selected info */
+  .selected-info {
+    background: var(--s3);
+    border-radius: 16px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    display: none;
+  }
+  .selected-info-header {
+    background: var(--red);
+    padding: 12px 18px;
+    color: white;
+  }
+  .selected-info-header h4 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .selected-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 14px 18px;
+    background: var(--s2);
+  }
+  .info-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .info-item i {
+    width: 28px;
+    height: 28px;
+    background: var(--red-dim);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--red);
+    font-size: 0.7rem;
+  }
+  .info-item .info-label {
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .info-item .info-value {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-all;
+  }
+  .status-chip {
+    display: inline-block;
+    padding: 2px 12px;
+    border-radius: 60px;
+    font-size: 0.65rem;
+    font-weight: 700;
+  }
+  .status-chip.active { background: rgba(34,197,94,0.15); color: var(--green); }
+  .status-chip.blocked { background: rgba(227,6,19,0.15); color: var(--red); }
 
-    /* ── Content area ── */
-    .content {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch; /* momentum scrolling on iOS */
-      overscroll-behavior: contain;
-      padding: 20px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
+  /* Modals (keep existing style but dark) */
+  .custom-modal-overlay, .simple-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+  }
+  .custom-modal-overlay.active, .simple-modal.active {
+    opacity: 1;
+    visibility: visible;
+  }
+  .custom-modal, .simple-modal-content {
+    background: var(--s1);
+    border-radius: 24px;
+    max-width: 500px;
+    width: 90%;
+    padding: 24px;
+    border: 1px solid var(--border);
+    box-shadow: 0 20px 35px -12px rgba(0,0,0,0.4);
+    transform: scale(0.95);
+    transition: transform 0.2s cubic-bezier(0.2,0.9,0.4,1.1);
+  }
+  .custom-modal-overlay.active .custom-modal,
+  .simple-modal.active .simple-modal-content {
+    transform: scale(1);
+  }
+  .custom-modal i, .simple-modal-content i.modal-icon {
+    font-size: 40px;
+    color: var(--red);
+    margin-bottom: 12px;
+  }
+  .modal-header {
+    text-align: center;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+  }
+  .modal-header h3 { color: var(--red); font-size: 1.2rem; font-weight: 700; }
+  .modal-footer {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .modal-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 60px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .modal-btn.confirm { background: var(--red); color: white; }
+  .modal-btn.cancel { background: var(--s3); color: var(--muted); border: 1px solid var(--border); }
 
-    /* ── Stats bar ── */
-    .stats-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      flex-shrink: 0;
-    }
-    .stat-card {
-      flex: 1;
-      min-width: 110px;
-      background: var(--s2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .stat-card .stat-val {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-    }
-    .stat-card .stat-label {
-      font-size: 0.65rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: 600;
-    }
-    .stat-card.accent { border-left: 2px solid var(--red); }
-    .stat-card.accent-green { border-left: 2px solid var(--green); }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--s2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 24px;
+    border-radius: 60px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    z-index: 4000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toast.show { opacity: 1; }
+  .toast.success { border-color: var(--green); }
+  .toast.error { border-color: var(--red); }
+  .toast.warning { border-color: var(--gold); }
 
-    /* ── Add product panel ── */
-    .add-panel {
-      background: var(--s2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    .add-panel-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--border);
-      cursor: pointer;
-      user-select: none;
-    }
-    .add-panel-head:hover { background: var(--s3); }
-    .add-panel-title {
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .add-panel-title i { color: var(--red); }
-    .add-panel-body {
-      padding: 18px;
-    }
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 14px;
-      margin-bottom: 12px;
-    }
-    .form-field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 0;
-    }
-    .form-field label {
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
-      font-weight: 600;
-    }
-    .form-field input,
-    .form-field select,
-    .form-field textarea {
-      padding: 8px 12px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--s1);
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.78rem;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .form-field input:focus,
-    .form-field select:focus,
-    .form-field textarea:focus { border-color: var(--red-border); }
-    .form-field input::placeholder { color: var(--muted); }
-    .form-field select option { background: var(--s2); }
+  /* ─── DASHBOARD OVERLAY ─── */
+  .dashboard-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 520px;
+    max-width: 93vw;
+    background: var(--s1);
+    border-left: 1px solid var(--border);
+    z-index: 2000;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.2,0.9,0.3,1);
+    overflow-y: auto;
+    padding: 20px 22px 30px;
+    box-shadow: -12px 0 60px rgba(0,0,0,0.6);
+  }
+  .dashboard-overlay.open { transform: translateX(0); }
+  .dash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dash-header h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dash-header h2 i { color: var(--red); }
+  .dash-close {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .dash-close:hover { color: var(--text); }
+  .dash-kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .dash-kpi {
+    background: var(--s2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    border-left: 2px solid var(--red);
+  }
+  .dash-kpi .val {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .dash-kpi .label {
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+  }
+  .dash-kpi .sub { font-size: 0.6rem; color: var(--muted); margin-top: 4px; }
+  .dash-section { margin-top: 18px; }
+  .dash-section h3 {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+  .dash-chart-wrap {
+    background: var(--s2);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+  }
+  .dash-chart-wrap canvas { max-height: 140px; width: 100% !important; }
+  .dash-stats-mini {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+  }
+  .dash-stat-mini {
+    background: var(--s2);
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+  .dash-stat-mini .num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.2rem;
+    color: var(--text);
+  }
+  .dash-stat-mini .lbl {
+    font-size: 0.55rem;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .dash-activity-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.7rem;
+  }
+  .dash-activity-item .icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--red-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--red);
+    flex-shrink: 0;
+  }
+  .dash-activity-item .details { flex: 1; }
+  .dash-activity-item .amount { font-weight: 700; color: var(--red); }
 
-    .form-footer {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
-    }
-    .img-preview-wrap {
-      position: relative;
-      display: inline-flex;
-    }
-    .img-preview {
-      width: 44px; height: 44px;
-      border-radius: 8px;
-      object-fit: cover;
-      border: 1px solid var(--border);
-    }
-    .img-clear {
-      position: absolute;
-      top: -6px; right: -6px;
-      width: 18px; height: 18px;
-      border-radius: 50%;
-      background: #dc2626;
-      color: #fff;
-      font-size: 0.55rem;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      border: none;
-    }
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.78rem;
-      color: var(--text-2);
-      cursor: pointer;
-    }
-    .toggle-row input[type="checkbox"] { accent-color: var(--red); width: 14px; height: 14px; }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 99px; }
 
-    /* ── Table ── */
-    .table-wrap {
-      background: var(--s2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    .table-wrap table thead th {
-      position: sticky;
-      top: 0;
-      background: var(--s2);
-      z-index: 1;
-    }
-    .qty-input {
-      width: 56px;
-      background: var(--s3);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 0.75rem;
-      padding: 4px 6px;
-      text-align: center;
-    }
-    .qty-input:focus {
-      outline: none;
-      border-color: var(--red-border);
-    }
-    .qty-low { color: var(--amber); font-weight: 700; }
-    .table-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .table-toolbar-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .table-title {
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .badge {
-      padding: 2px 8px;
-      border-radius: 99px;
-      font-size: 0.65rem;
-      font-weight: 600;
-      background: var(--s4);
-      color: var(--muted);
-    }
-    .filter-select {
-      padding: 6px 10px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--s3);
-      color: var(--text-2);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.75rem;
-      outline: none;
-    }
-    .filter-select:focus { border-color: var(--red-border); }
-    .filter-select option { background: var(--s2); }
-    .filter-select,
-    .inline-select,
-    select.cat-select {
-      text-transform: capitalize;
-    }
-    .filter-select option,
-    .inline-select option,
-    select.cat-select option {
-      text-transform: capitalize;
-    }
+  @media (max-width: 900px) {
+    .dashboard-two-columns { grid-template-columns: 1fr; }
+    .dashboard-overlay { width: 100vw; max-width: 100vw; }
+  }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    thead tr {
-      background: var(--s3);
-    }
-    th {
-      padding: 10px 14px;
-      text-align: left;
-      font-size: 0.62rem;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: var(--muted);
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    th:first-child { width: 50px; }
-    td {
-      padding: 8px 14px;
-      font-size: 0.78rem;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-    tr:last-child td { border-bottom: none; }
-    tbody tr { transition: background 0.1s; }
-    tbody tr:hover { background: var(--s3); }
-    tbody tr.editing { background: rgba(227,6,19,0.04); }
+  /* Refund request filter tabs */
+  .refund-filter-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .refund-filter-tab {
+    flex: 1;
+    background: var(--s3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refund-filter-tab:hover { color: var(--text); }
+  .refund-filter-tab.active { background: var(--red-dim); border-color: var(--red-border); color: var(--red); }
+  .profile-tab { flex: none; padding: 6px 14px; }
 
-    .td-img {
-      width: 36px; height: 36px;
-      border-radius: 7px;
-      object-fit: cover;
-      border: 1px solid var(--border);
-      background: var(--s3);
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .td-img:hover { opacity: 0.75; }
+  /* ══════════════════════════════════════════════════════════════
+     Vault Admin extensions — built directly on the passport-admin /
+     event-admin design system above (main-header, icon-btn,
+     dashboard-card, account-item, dash-* overlay, custom-modal).
+     Only additions below are things with no existing equivalent.
+     ══════════════════════════════════════════════════════════════ */
 
-    .inline-input {
-      padding: 5px 10px;
-      border-radius: 6px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.78rem;
-      outline: none;
-      width: 100%;
-      transition: all 0.15s;
-    }
-    .inline-input:focus, .inline-input:hover {
-      border-color: var(--border-b);
-      background: var(--s1);
-    }
-    .inline-select {
-      padding: 5px 10px;
-      border-radius: 6px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.78rem;
-      outline: none;
-      width: 100%;
-      transition: all 0.15s;
-      cursor: pointer;
-    }
-    .inline-select:focus, .inline-select:hover {
-      border-color: var(--border-b);
-      background: var(--s1);
-    }
-    .inline-select option { background: var(--s2); }
+  /* Extra breathing room in the Analytics overlay, between the KPI
+     grid and whatever section follows it (explicitly requested). */
+  .dash-kpi-grid { margin-bottom: 28px; }
+  .dash-section + .dash-section { margin-top: 26px; }
 
-    .category-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 8px;
-      border-radius: 5px;
-      font-size: 0.65rem;
-      font-weight: 600;
-      text-transform: capitalize;
-      background: var(--s4);
-      color: var(--text-2);
-      white-space: nowrap;
-    }
-    .alc-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      border-radius: 5px;
-      font-size: 0.65rem;
-      font-weight: 600;
-    }
-    .alc-yes { background: rgba(227,6,19,0.1); color: var(--red); }
-    .alc-no { background: var(--green-dim); color: var(--green); }
+  .count-badge { background: var(--red); color: white; font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 60px; margin-left: 6px; }
 
-    .row-actions { display: flex; gap: 4px; }
+  /* Extra status-pill colors beyond what passport-admin.css ships with */
+  .status-stored { background: var(--s3); color: var(--muted); }
+  .status-ready { background: rgba(139,92,246,0.15); color: var(--purple); }
+  .status-collected { background: rgba(34,197,94,0.15); color: var(--green); }
 
-    /* ── Manage Product modal (new) ──────────────────────────────────
-       Reuses .modal-bg / .modal / .add-panel / .form-field / .toggle-row
-       so the editor feels like a natural extension of the existing UI
-       instead of a new design language. Only a handful of small helper
-       classes are added below for things the current CSS has no
-       equivalent for (stock badges, repeatable rows, switch grids). */
-    .modal-lg {
-      max-width: 820px;
-      max-height: 90vh;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .modal-lg-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .modal-close {
-      background: transparent;
-      border: none;
-      color: var(--muted);
-      font-size: 1.4rem;
-      cursor: pointer;
-      line-height: 1;
-    }
-    .modal-close:hover { color: var(--text); }
+  .item-line { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+  .item-line b { color: var(--text); font-weight: 600; }
 
-    /* Reuse the add-panel "card with collapsible header" look for every
-       section of the editor (General / Pricing / Inventory / etc). */
-    .edit-section { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-    .edit-section-head {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 16px; cursor: pointer; user-select: none;
-    }
-    .edit-section-head:hover { background: var(--s3); }
-    .edit-section-title { font-size: 0.8rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
-    .edit-section-title i { color: var(--red); width: 14px; text-align: center; }
-    .edit-section-body { padding: 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 16px; }
+  /* Toggle switch for Vault-eligible products (no existing equivalent) */
+  .vswitch { position: relative; width: 38px; height: 22px; flex-shrink: 0; display: inline-block; }
+  .vswitch input { opacity: 0; width: 0; height: 0; }
+  .vswitch .slider { position: absolute; inset: 0; background: var(--s3); border-radius: 99px; cursor: pointer; transition: 0.15s; border: 1px solid var(--border); }
+  .vswitch .slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: var(--muted); border-radius: 50%; transition: 0.15s; }
+  .vswitch input:checked + .slider { background: rgba(34,197,94,0.2); border-color: var(--green); }
+  .vswitch input:checked + .slider::before { transform: translateX(16px); background: var(--green); }
+  .vswitch input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
 
-    /* Stock status badge — same shape as .alc-pill, new color states */
-    .stock-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 5px; font-size: 0.65rem; font-weight: 600; }
-    .stock-badge.in-stock { background: var(--green-dim); color: var(--green); }
-    .stock-badge.low-stock { background: rgba(245,158,11,0.12); color: var(--amber); }
-    .stock-badge.out-stock { background: rgba(227,6,19,0.1); color: var(--red); }
+  .product-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--s3); border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; margin-bottom: 8px; }
+  .product-row-name { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+  .product-row-sub { font-size: 0.62rem; color: var(--muted); margin-top: 2px; }
 
-    /* Live profit / margin readout */
-    .calc-row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .calc-pill { flex: 1; min-width: 120px; background: var(--s2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 14px; }
-    .calc-pill .calc-val { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 700; }
-    .calc-pill .calc-val.pos { color: var(--green); }
-    .calc-pill .calc-val.neg { color: var(--red); }
-    .calc-pill .calc-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+  .access-note-vault { display: flex; gap: 8px; align-items: flex-start; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #f0c675; font-size: 0.68rem; padding: 10px 12px; border-radius: 12px; margin-bottom: 12px; }
+  .access-note-vault i { margin-top: 1px; }
 
-    /* Repeatable rows used for Variants / Options / Images */
-    .repeat-row { display: flex; align-items: flex-end; gap: 10px; background: var(--s2); border: 1px solid var(--border); border-radius: 9px; padding: 12px; flex-wrap: wrap; }
-    .repeat-row .form-field { flex: 1 1 120px; min-width: 110px; gap: 4px; }
-    .repeat-row .form-field input { padding: 8px 10px; font-size: 0.76rem; }
-    .repeat-thumb { width: 40px; height: 40px; border-radius: 7px; object-fit: cover; border: 1px solid var(--border); background: var(--s3); flex-shrink: 0; cursor: pointer; }
-    .repeat-remove { flex-shrink: 0; }
-    .add-row-btn { align-self: flex-start; }
+  .alert-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.7rem; }
+  .alert-row:last-child { border-bottom: none; }
 
-    /* Switch grid for availability channels */
-    .switch-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+  .override-row { display: flex; gap: 4px; margin-top: 6px; }
+  .empty-note { color: var(--muted); padding: 20px; text-align: center; font-size: 0.75rem; }
 
-    /* Image gallery */
-    .gallery-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-    .gallery-item { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; border: 2px solid var(--border); cursor: pointer; }
-    .gallery-item.main { border-color: var(--red); box-shadow: 0 0 0 1px var(--red-border); }
-    .gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .gallery-item .main-tag { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(227,6,19,0.85); color: #fff; font-size: 0.5rem; text-align: center; font-weight: 700; padding: 1px 0; text-transform: uppercase; }
-    .gallery-item .gallery-remove { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; border: none; font-size: 0.5rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-
-    /* Analytics dashboard inside editor */
-    .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-    .analytics-card { background: var(--s2); border: 1px solid var(--border); border-left: 2px solid var(--red); border-radius: 10px; padding: 12px 14px; }
-    .analytics-card .a-val { font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 700; color: var(--text); }
-    .analytics-card .a-val.muted { color: var(--dim); font-weight: 600; }
-    .analytics-card .a-label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-
-    /* Related products picker */
-    .related-list { max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 9px; background: var(--s2); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
-    .related-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 0.76rem; cursor: pointer; }
-    .related-row:hover { background: var(--s3); }
-    .related-row img { width: 24px; height: 24px; border-radius: 5px; object-fit: cover; border: 1px solid var(--border); }
-
-    /* Quick actions */
-    .quick-actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-
-    .empty-state {
-      text-align: center;
-      padding: 48px 24px;
-      color: var(--muted);
-    }
-    .empty-state i { font-size: 2rem; margin-bottom: 10px; display: block; opacity: 0.4; }
-    .empty-state p { font-size: 0.82rem; }
-
-    /* ── Dashboard Overlay (unchanged as requested) ── */
-    .dashboard-overlay {
-      position: fixed;
-      top: 0; right: 0; bottom: 0;
-      width: 520px;
-      max-width: 93vw;
-      background: var(--s1);
-      border-left: 1px solid var(--border);
-      z-index: 2000;
-      transform: translateX(100%);
-      transition: transform 0.3s cubic-bezier(0.2,0.9,0.3,1);
-      overflow-y: auto;
-      padding: 20px 22px 30px;
-      box-shadow: -12px 0 60px rgba(0,0,0,0.6);
-    }
-    .dashboard-overlay.open { transform: translateX(0); }
-    .dash-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 18px;
-      padding-bottom: 14px;
-      border-bottom: 1px solid var(--border);
-    }
-    .dash-header h2 {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .dash-header h2 i { color: var(--red); }
-    .dash-close {
-      background: transparent;
-      border: none;
-      color: var(--muted);
-      font-size: 1.5rem;
-      cursor: pointer;
-      line-height: 1;
-    }
-    .dash-close:hover { color: var(--text); }
-    .dash-kpi-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    .dash-kpi {
-      background: var(--s2);
-      border: 1px solid var(--border);
-      border-left: 2px solid var(--red);
-      border-radius: 12px;
-      padding: 14px 16px;
-    }
-    .dash-kpi .val {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.6rem;
-      font-weight: 700;
-    }
-    .dash-kpi .label {
-      font-size: 0.58rem;
-      text-transform: uppercase;
-      color: var(--muted);
-      letter-spacing: 0.05em;
-      margin-top: 2px;
-    }
-    .dash-section { margin-top: 18px; }
-    .dash-section h3 {
-      font-size: 0.68rem;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 10px;
-    }
-    .dash-chart-wrap {
-      background: var(--s2);
-      border-radius: 12px;
-      padding: 12px;
-      margin-bottom: 10px;
-      border: 1px solid var(--border);
-    }
-    .dash-chart-wrap canvas { max-height: 140px; width: 100% !important; }
-    .dash-stats-mini {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 6px;
-    }
-    .dash-stat-mini {
-      background: var(--s2);
-      border-radius: 10px;
-      padding: 10px;
-      text-align: center;
-      border: 1px solid var(--border);
-    }
-    .dash-stat-mini .num {
-      font-family: 'Space Grotesk', sans-serif;
-      font-weight: 700;
-      font-size: 1.2rem;
-    }
-    .dash-stat-mini .lbl {
-      font-size: 0.55rem;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-
-    /* ── Config modal ── */
-    .modal-bg {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.75);
-      z-index: 9000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-    }
-    .modal {
-      background: var(--s2);
-      border: 1px solid var(--border-b);
-      border-radius: 14px;
-      padding: 28px 28px 24px;
-      width: 100%;
-      max-width: 440px;
-    }
-    .modal h2 {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.05rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .modal h2 i { color: var(--red); }
-    .modal p { font-size: 0.78rem; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
-    .modal-fields { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
-    .modal-fields label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
-    .modal-fields input {
-      width: 100%;
-      padding: 9px 12px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--s1);
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.8rem;
-      outline: none;
-      margin-top: 4px;
-      transition: border-color 0.15s;
-    }
-    .modal-fields input:focus { border-color: var(--red-border); }
-    .modal-hint {
-      font-size: 0.68rem;
-      color: var(--dim);
-      margin-top: 12px;
-      text-align: center;
-    }
-    .modal-hint a { color: var(--red); text-decoration: none; }
-
-    /* ── Toast ── */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%) translateY(10px);
-      background: var(--s2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 10px 24px;
-      border-radius: 60px;
-      font-size: 0.75rem;
-      font-weight: 500;
-      z-index: 9999;
-      opacity: 0;
-      transition: opacity 0.2s, transform 0.2s;
-      pointer-events: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-      white-space: nowrap;
-    }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .toast.success i { color: var(--green); }
-    .toast.error i { color: var(--red); }
-
-    /* ── Loading ── */
-    .spinner {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.2);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-    .loading-row td {
-      text-align: center;
-      padding: 40px;
-      color: var(--muted);
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 99px; }
-
-    @media (max-width: 720px) {
-      .stats-row .stat-card:nth-child(n+3) { display: none; }
-      .topbar-center { display: none; }
-      th.hide-sm, td.hide-sm { display: none; }
-    }
-
-/* ══════════════════════════════════════════════════════════════
-   Vault Admin extensions — reuses every token/component above
-   (stat-card, table-wrap, btn, badge, modal, toast) so this module
-   feels identical to Product Management / other dashboard pages.
-   Only a few small additions below for things with no equivalent yet.
-   ══════════════════════════════════════════════════════════════ */
-:root { --blue: #3b82f6; --blue-dim: rgba(59,130,246,0.1); }
-
-.tab-row { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
-.tab-row .btn .badge { margin-left: 2px; background: rgba(0,0,0,0.25); color: inherit; }
-.tab-row .btn-ghost.active .badge { background: var(--red); color: #fff; }
-
-/* Status pill — same shape/spirit as .alc-pill / .stock-badge */
-.status-pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 5px; font-size: 0.65rem; font-weight: 600; white-space: nowrap; }
-.status-pill.st-pending { background: rgba(245,158,11,0.12); color: var(--amber); }
-.status-pill.st-stored { background: var(--s4); color: var(--text-2); }
-.status-pill.st-ready { background: var(--blue-dim); color: var(--blue); }
-.status-pill.st-collected { background: var(--green-dim); color: var(--green); }
-.status-pill.st-rejected { background: rgba(227,6,19,0.1); color: var(--red); }
-
-/* Role pill for Staff & Access */
-.role-pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 5px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.role-pill.admin { background: rgba(227,6,19,0.1); color: var(--red); }
-.role-pill.staff { background: var(--s4); color: var(--text-2); }
-
-.item-line { white-space: nowrap; font-size: 0.76rem; color: var(--text-2); }
-.item-line b { color: var(--text); font-weight: 600; }
-.cell-name { font-weight: 600; color: var(--text); }
-.cell-sub { font-size: 0.68rem; color: var(--muted); margin-top: 1px; }
-
-/* Toggle switch — Products tab (no existing equivalent to reuse) */
-.vswitch { position: relative; width: 38px; height: 22px; flex-shrink: 0; display: inline-block; }
-.vswitch input { opacity: 0; width: 0; height: 0; }
-.vswitch .slider { position: absolute; inset: 0; background: var(--s4); border-radius: 99px; cursor: pointer; transition: 0.15s; border: 1px solid var(--border); }
-.vswitch .slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: var(--muted); border-radius: 50%; transition: 0.15s; }
-.vswitch input:checked + .slider { background: var(--green-dim); border-color: var(--green); }
-.vswitch input:checked + .slider::before { transform: translateX(16px); background: var(--green); }
-.vswitch input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
-
-.access-note { display: flex; gap: 8px; align-items: flex-start; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #f0c675; font-size: 0.75rem; padding: 10px 12px; border-radius: 10px; margin-bottom: 4px; }
-.access-note i { margin-top: 1px; }
-
-.override-cell { display: flex; gap: 4px; flex-wrap: wrap; }
-.btn-force { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
-.btn-force:hover { background: rgba(59,130,246,0.2); }
-.btn-cancel-override { background: rgba(227,6,19,0.08); color: var(--red); border: 1px solid rgba(227,6,19,0.25); }
-.btn-cancel-override:hover { background: rgba(227,6,19,0.16); }
-
-.empty-row td { text-align: center; padding: 40px; color: var(--muted); }
-.empty-row i { font-size: 1.8rem; display: block; margin-bottom: 10px; opacity: 0.4; }
-
-textarea.modal-textarea { width: 100%; min-height: 80px; resize: vertical; padding: 9px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--s1); color: var(--text); font-family: 'Inter', sans-serif; font-size: 0.8rem; outline: none; }
-textarea.modal-textarea:focus { border-color: var(--red-border); }
+  textarea.topup-textarea { width: 100%; min-height: 80px; resize: vertical; border-radius: 14px; padding: 10px 16px; }
 
 </style>
 </head>
 <body>
-<div class="layout">
-  <div class="topbar">
-    <div class="topbar-brand"><div class="dot"></div> Vault Admin</div>
-    <div class="topbar-actions">
-      <span class="badge" id="lastSync">Live</span>
+<div class="app" id="app">
+
+  <!-- Header -->
+  <div class="main-header">
+    <h2><span class="dot"></span><i class="fas fa-box-archive"></i> Vault</h2>
+    <div class="header-actions">
+      <button class="icon-btn" id="toggleDashBtn" title="Analytics"><i class="fas fa-chart-pie"></i></button>
+      <button class="icon-btn" id="refreshBtn" title="Refresh"><i class="fas fa-sync-alt"></i></button>
     </div>
   </div>
 
-  <div class="main-body">
-    <div class="content">
-      <div class="tab-row" id="tabRow">
-        <button class="btn btn-ghost active" data-tab="overview"><i class="fas fa-gauge-high"></i> Overview</button>
-        <button class="btn btn-ghost" data-tab="pending_storage"><i class="fas fa-hourglass-half"></i> Pending Storage <span class="badge" id="badge_pending_storage">0</span></button>
-        <button class="btn btn-ghost" data-tab="active_holdings"><i class="fas fa-box-archive"></i> Active Holdings</button>
-        <button class="btn btn-ghost" data-tab="pending_collections"><i class="fas fa-hand"></i> Pending Collections <span class="badge" id="badge_pending_collections">0</span></button>
-        <button class="btn btn-ghost" data-tab="ready_for_collection"><i class="fas fa-hand-holding"></i> Ready for Collection</button>
-        <button class="btn btn-ghost" data-tab="history"><i class="fas fa-clock-rotate-left"></i> History</button>
-        <button class="btn btn-ghost admin-only" data-tab="products" style="display:none;"><i class="fas fa-wine-bottle"></i> Products</button>
-        <button class="btn btn-ghost admin-only" data-tab="staff_access" style="display:none;"><i class="fas fa-user-shield"></i> Staff &amp; Access</button>
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="dashboard-two-columns">
+      <!-- COLUMN 1: Pending Storage -->
+      <div class="dashboard-card">
+        <div class="card-header">
+          <h3><i class="fas fa-hourglass-half"></i> Pending Storage<span class="count-badge" id="pendingStorageBadge">0</span></h3>
+        </div>
+        <div class="card-body">
+          <div class="account-list" id="pendingStorageList"></div>
+        </div>
       </div>
 
-      <div id="vaultContent"></div>
+      <!-- COLUMN 2: Pending Collections -->
+      <div class="dashboard-card">
+        <div class="card-header">
+          <h3><i class="fas fa-hand"></i> Pending Collections<span class="count-badge" id="pendingCollectionsBadge">0</span></h3>
+        </div>
+        <div class="card-body">
+          <div class="account-list" id="pendingCollectionsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Holdings (full width) -->
+    <div class="dashboard-card" style="margin-top:0;">
+      <div class="card-header">
+        <h3><i class="fas fa-box-archive"></i> Vault Holdings</h3>
+      </div>
+      <div class="card-body">
+        <div class="refund-filter-tabs" id="holdingsFilterTabs">
+          <button class="refund-filter-tab active" data-status="active">Active (Stored)</button>
+          <button class="refund-filter-tab" data-status="ready">Ready for Collection</button>
+        </div>
+        <div class="refund-list" id="holdingsList"></div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Reason modal (reject / admin override) -->
-<div class="modal-bg" id="reasonModalBg" style="display:none;">
-  <div class="modal">
-    <h2 id="reasonModalTitle"><i class="fas fa-comment-dots"></i> Reject Request</h2>
-    <p id="reasonModalHint" style="display:none; color:#f0c675;">A reason is required for admin overrides.</p>
-    <div class="modal-fields">
-      <label>Reason <span style="text-transform:none; font-weight:400;">(shown to the customer)</span></label>
-      <textarea class="modal-textarea" id="reasonInput" placeholder="Reason..."></textarea>
+  <!-- ─── ANALYTICS OVERLAY ─── -->
+  <div class="dashboard-overlay" id="dashboardOverlay">
+    <div class="dash-header">
+      <h2><i class="fas fa-chart-pie"></i> Vault Analytics</h2>
+      <button class="dash-close" id="dashCloseBtn">&times;</button>
     </div>
-    <div style="display:flex; gap:10px;">
-      <button class="btn btn-ghost" id="reasonCancelBtn" style="flex:1;">Cancel</button>
-      <button class="btn btn-primary" id="reasonConfirmBtn" style="flex:1;">Confirm</button>
+
+    <!-- KPIs -->
+    <div class="dash-kpi-grid" id="dashKpiGrid"></div>
+
+    <!-- Recent Activity -->
+    <div class="dash-section">
+      <h3>Recent Activity</h3>
+      <div id="dashActivityFeed"></div>
+    </div>
+
+    <!-- Status breakdown -->
+    <div class="dash-section">
+      <h3>Vault Status Breakdown</h3>
+      <div class="dash-chart-wrap"><canvas id="dashStatusChart"></canvas></div>
+    </div>
+
+    <!-- Products (admin only) -->
+    <div class="dash-section admin-only" id="productsSection" style="display:none;">
+      <h3>Vault Products</h3>
+      <div class="search-box" style="margin-bottom:10px;"><input type="text" id="productSearch" placeholder="Search products..."><i class="fas fa-search"></i></div>
+      <div id="dashProductsList"></div>
+    </div>
+
+    <!-- History -->
+    <div class="dash-section">
+      <h3>History</h3>
+      <div id="dashHistoryList" style="max-height:280px; overflow-y:auto;"></div>
+    </div>
+
+    <!-- Staff & Access (admin only) -->
+    <div class="dash-section admin-only" id="staffAccessSection" style="display:none;">
+      <h3>Staff &amp; Access</h3>
+      <div class="access-note-vault"><i class="fas fa-triangle-exclamation"></i><span>Role changes apply platform-wide — they affect every admin module, not just the Vault.</span></div>
+      <button class="action-btn primary small" id="openGrantAccessBtn" style="margin-bottom:10px;"><i class="fas fa-user-plus"></i> Grant Access</button>
+      <div id="dashStaffList"></div>
+    </div>
+
+    <!-- Alerts -->
+    <div class="dash-section">
+      <h3>Alerts</h3>
+      <div id="dashAlerts"></div>
     </div>
   </div>
-</div>
 
-<!-- Grant access modal -->
-<div class="modal-bg" id="grantAccessModalBg" style="display:none;">
-  <div class="modal">
-    <h2><i class="fas fa-user-plus"></i> Grant Staff Access</h2>
-    <p>Search by phone number to find an existing customer profile.</p>
-    <div class="modal-fields">
-      <label>Phone number</label>
-      <input type="text" id="grantPhoneInput" placeholder="e.g. 0821234567">
+  <!-- Reason modal (reject / admin override) -->
+  <div id="reasonModal" class="custom-modal-overlay">
+    <div class="custom-modal">
+      <i class="fas fa-comment-dots"></i>
+      <div class="modal-header"><h3 id="reasonModalTitle">Reject Request</h3></div>
+      <p id="reasonModalHint" style="color:var(--gold); display:none; margin-bottom:10px; font-size:0.75rem;">A reason is required for admin overrides.</p>
+      <textarea id="reasonInput" class="topup-input topup-textarea" placeholder="Reason (shown to the customer)..."></textarea>
+      <div class="modal-footer"><button class="modal-btn cancel" id="reasonCancelBtn">Cancel</button><button class="modal-btn confirm" id="reasonConfirmBtn">Confirm</button></div>
     </div>
-    <div id="grantSearchResult" style="margin-bottom:14px;"></div>
-    <button class="btn btn-ghost" id="grantCancelBtn" style="width:100%;">Close</button>
   </div>
-</div>
 
-<div class="toast" id="toast"><i class="fas fa-circle-check"></i> <span id="toastMsg"></span></div>
+  <!-- Generic confirm modal -->
+  <div id="confirmModal" class="custom-modal-overlay">
+    <div class="custom-modal">
+      <i class="fas fa-exclamation-triangle"></i>
+      <h3>Confirm Action</h3>
+      <p id="confirmModalMessage" style="color:var(--muted); margin:12px 0;">Are you sure?</p>
+      <div class="modal-footer"><button class="modal-btn cancel" id="confirmModalCancel">Cancel</button><button class="modal-btn confirm" id="confirmModalConfirm">Confirm</button></div>
+    </div>
+  </div>
+
+  <!-- Grant access modal -->
+  <div id="grantAccessModal" class="simple-modal">
+    <div class="simple-modal-content">
+      <div class="modal-header"><h3><i class="fas fa-user-plus"></i> Grant Staff Access</h3></div>
+      <div><label style="color:var(--muted); font-size:0.75rem;">Search by phone number</label></div>
+      <div class="topup-input-group" style="margin-top:12px;"><input type="text" id="grantPhoneInput" placeholder="e.g. 0821234567" class="topup-input"></div>
+      <div id="grantSearchResult" style="margin-top:10px;"></div>
+      <div class="modal-footer"><button class="modal-btn cancel" id="grantCancelBtn">Close</button></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><i id="toastIcon" class="fas fa-info-circle"></i><span id="toastMessage">Success!</span></div>
+</div>
 
 <script type="module">
 import { supabase } from '../config/supabase.js';
 
+// ─── STATE ───
 let staffProfile = null; // { id, role, name }
-let currentTab = 'overview';
-let reasonCallback = null;
+let holdingsFilter = 'active'; // 'active' | 'ready'
+let allVaultableProducts = [];
+let modalResolve = null;
+let reasonResolve = null;
 let reasonRequired = false;
+let charts = {};
 
 function isAdmin() { return staffProfile?.role === 'admin'; }
 
-function showToast(msg, isError = false) {
-  const t = document.getElementById('toast');
-  document.getElementById('toastMsg').innerText = msg;
-  t.querySelector('i').className = isError ? 'fas fa-circle-exclamation' : 'fas fa-circle-check';
-  t.className = 'toast show' + (isError ? ' error' : ' success');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-function fmtMoney(n) { return `R${(Number(n) || 0).toFixed(2)}`; }
+// ─── HELPERS ───
+function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+function fmtR(val) { return `R${(Number(val) || 0).toFixed(2)}`; }
 function fmtDate(d) { return d ? new Date(d).toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
 function timeAgo(d) {
   if (!d) return '—';
-  const diffMs = Date.now() - new Date(d).getTime();
-  const mins = Math.floor(diffMs / 60000);
+  const mins = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
 }
-function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
-function initials(name) { return (name || '?').trim().split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase(); }
-function itemsCellHtml(items) {
-  if (!items || items.length === 0) return '<span style="color:var(--muted);">—</span>';
+function itemsSummary(items) {
+  if (!items || items.length === 0) return '<span class="item-line">—</span>';
   return items.map(i => `<div class="item-line"><b>${i.quantity}&times;</b> ${escapeHtml(i.product_name)}</div>`).join('');
 }
-function statusPill(status) {
-  const map = {
-    PENDING_APPROVAL: ['st-pending', 'Pending Approval'],
-    STORED: ['st-stored', 'Stored'],
-    PENDING_COLLECTION_APPROVAL: ['st-pending', 'Collection Pending'],
-    READY_FOR_COLLECTION: ['st-ready', 'Ready'],
-    COLLECTED: ['st-collected', 'Collected'],
-    REJECTED: ['st-rejected', 'Rejected']
-  };
-  const [cls, label] = map[status] || ['st-stored', status];
-  return `<span class="status-pill ${cls}">${label}</span>`;
+function statusKey(status) {
+  return ({ PENDING_APPROVAL: 'pending', STORED: 'stored', PENDING_COLLECTION_APPROVAL: 'pending', READY_FOR_COLLECTION: 'ready', COLLECTED: 'collected', REJECTED: 'rejected' })[status] || 'stored';
 }
-function emptyRow(colspan, icon, msg) {
-  return `<tr class="empty-row"><td colspan="${colspan}"><i class="${icon}"></i>${msg}</td></tr>`;
+function statusLabel(status) {
+  return ({ PENDING_APPROVAL: 'Pending Approval', STORED: 'Stored', PENDING_COLLECTION_APPROVAL: 'Collection Pending', READY_FOR_COLLECTION: 'Ready', COLLECTED: 'Collected', REJECTED: 'Rejected' })[status] || status;
 }
 
-function openReasonModal(title, onConfirm, required = false) {
-  document.getElementById('reasonModalTitle').innerHTML = `<i class="fas fa-comment-dots"></i> ${title}`;
-  document.getElementById('reasonInput').value = '';
-  document.getElementById('reasonModalHint').style.display = required ? 'block' : 'none';
-  document.getElementById('reasonModalBg').style.display = 'flex';
-  reasonCallback = onConfirm;
-  reasonRequired = required;
+// ─── TOAST ───
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('toast');
+  const icon = document.getElementById('toastIcon');
+  const msg = document.getElementById('toastMessage');
+  const icons = { success: 'fas fa-check-circle', error: 'fas fa-exclamation-circle', warning: 'fas fa-exclamation-triangle' };
+  icon.className = icons[type] || icons.success;
+  msg.innerText = message;
+  toast.className = `toast ${type} show`;
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => toast.classList.remove('show'), 3000);
 }
-function closeReasonModal() { document.getElementById('reasonModalBg').style.display = 'none'; reasonCallback = null; reasonRequired = false; }
-document.getElementById('reasonCancelBtn').onclick = closeReasonModal;
+
+// ─── CONFIRM MODAL ───
+const confirmModal = document.getElementById('confirmModal');
+const confirmMessage = document.getElementById('confirmModalMessage');
+document.getElementById('confirmModalConfirm').onclick = () => closeConfirmModal(true);
+document.getElementById('confirmModalCancel').onclick = () => closeConfirmModal(false);
+confirmModal.addEventListener('click', (e) => { if (e.target === confirmModal) closeConfirmModal(false); });
+function showConfirm(message) {
+  return new Promise((resolve) => {
+    confirmMessage.innerText = message;
+    confirmModal.classList.add('active');
+    modalResolve = resolve;
+  });
+}
+function closeConfirmModal(confirmed) {
+  confirmModal.classList.remove('active');
+  if (modalResolve) { modalResolve(confirmed); modalResolve = null; }
+}
+
+// ─── REASON MODAL (reject / admin override — free-text input) ───
+const reasonModal = document.getElementById('reasonModal');
 document.getElementById('reasonConfirmBtn').onclick = () => {
-  const reason = document.getElementById('reasonInput').value.trim();
-  if (reasonRequired && !reason) { showToast('Please enter a reason to continue.', true); return; }
-  const cb = reasonCallback;
-  closeReasonModal();
-  if (cb) cb(reason);
+  const val = document.getElementById('reasonInput').value.trim();
+  if (reasonRequired && !val) { showToast('Please enter a reason to continue.', 'error'); return; }
+  closeReasonModal(val);
 };
+document.getElementById('reasonCancelBtn').onclick = () => closeReasonModal(null);
+reasonModal.addEventListener('click', (e) => { if (e.target === reasonModal) closeReasonModal(null); });
+function showReasonPrompt(title, required = false) {
+  return new Promise((resolve) => {
+    document.getElementById('reasonModalTitle').innerText = title;
+    document.getElementById('reasonInput').value = '';
+    document.getElementById('reasonModalHint').style.display = required ? 'block' : 'none';
+    reasonModal.classList.add('active');
+    reasonRequired = required;
+    reasonResolve = resolve;
+  });
+}
+function closeReasonModal(value) {
+  reasonModal.classList.remove('active');
+  if (reasonResolve) { reasonResolve(value); reasonResolve = null; }
+}
 
 async function loadStaffProfile() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -1016,9 +950,7 @@ async function loadStaffProfile() {
   staffProfile = (profile && ['staff', 'admin'].includes(profile.role)) ? profile : null;
 }
 
-// ─────────────────────────────────────────────────────────
-// DATA FETCHERS (staff can SELECT all Vault rows per RLS policy)
-// ─────────────────────────────────────────────────────────
+// ─── DATA FETCHING (staff/admin can SELECT all Vault rows per RLS) ───
 async function fetchRequests(requestType, status) {
   const { data, error } = await supabase
     .from('vault_requests')
@@ -1026,10 +958,7 @@ async function fetchRequests(requestType, status) {
       id, request_type, status, requested_at, approved_at, rejection_reason,
       customer_profile_id,
       profiles!vault_requests_customer_profile_id_fkey ( name, phone ),
-      vault_holdings (
-        id, status, total_value,
-        vault_items ( id, product_name, quantity, unit_value, total_value )
-      )
+      vault_holdings ( id, status, total_value, vault_items ( id, product_name, quantity, unit_value, total_value ) )
     `)
     .eq('request_type', requestType)
     .eq('status', status)
@@ -1054,482 +983,437 @@ async function fetchHoldings(statusList) {
   return data || [];
 }
 
-async function fetchRecentActivity(limit = 12) {
+async function fetchRecentActivity(limit = 15) {
   const { data, error } = await supabase
     .from('vault_holdings')
-    .select(`
-      id, status, total_value, updated_at,
-      profiles!vault_holdings_customer_profile_id_fkey ( name, phone )
-    `)
+    .select(`id, status, total_value, updated_at, profiles!vault_holdings_customer_profile_id_fkey ( name, phone )`)
     .order('updated_at', { ascending: false })
     .limit(limit);
   if (error) { console.error(error); return []; }
   return data || [];
 }
 
-// Admin-only override controls for a holding still in an active custody state
-// (STORED / PENDING_COLLECTION_APPROVAL / READY_FOR_COLLECTION).
-function overrideCellHtml(holdingId) {
+// ─── ADMIN OVERRIDE BUTTONS (attached to any card for STORED / PENDING_COLLECTION_APPROVAL / READY_FOR_COLLECTION) ───
+function overrideButtonsHtml(holdingId) {
   if (!isAdmin()) return '';
   return `
-    <div class="override-cell">
-      <button class="btn btn-sm btn-force" data-force-release="${holdingId}" title="Force Release"><i class="fas fa-bolt"></i></button>
-      <button class="btn btn-sm btn-cancel-override" data-cancel-holding="${holdingId}" title="Cancel Holding"><i class="fas fa-ban"></i></button>
+    <div class="override-row">
+      <button class="action-btn small info" data-force-release="${holdingId}"><i class="fas fa-bolt"></i> Force Release</button>
+      <button class="action-btn small danger" data-cancel-holding="${holdingId}"><i class="fas fa-ban"></i> Cancel</button>
     </div>
   `;
 }
 function wireOverrideButtons(container) {
   if (!isAdmin()) return;
   container.querySelectorAll('[data-force-release]').forEach(btn => {
-    btn.onclick = () => {
-      openReasonModal('Force Release (Admin Override)', async (reason) => {
-        const { error } = await supabase.rpc('vault_admin_force_release', { p_vault_holding_id: btn.dataset.forceRelease, p_reason: reason });
-        if (error) { showToast(error.message || 'Force release failed', true); return; }
-        showToast('Holding force-released and marked as Collected.');
-        renderCurrentTab();
-      }, true);
-    };
+    btn.addEventListener('click', async () => {
+      const reason = await showReasonPrompt('Force Release (Admin Override)', true);
+      if (reason === null) return;
+      const { error } = await supabase.rpc('vault_admin_force_release', { p_vault_holding_id: btn.dataset.forceRelease, p_reason: reason });
+      if (error) { showToast(error.message || 'Force release failed', 'error'); return; }
+      showToast('Holding force-released and marked as Collected.', 'success');
+      refreshMainContent();
+    });
   });
   container.querySelectorAll('[data-cancel-holding]').forEach(btn => {
-    btn.onclick = () => {
-      openReasonModal('Cancel Holding (Admin Override)', async (reason) => {
-        const { error } = await supabase.rpc('vault_admin_cancel_holding', { p_vault_holding_id: btn.dataset.cancelHolding, p_reason: reason });
-        if (error) { showToast(error.message || 'Cancel failed', true); return; }
-        showToast('Holding cancelled and moved to Rejected.');
-        renderCurrentTab();
-      }, true);
-    };
+    btn.addEventListener('click', async () => {
+      const reason = await showReasonPrompt('Cancel Holding (Admin Override)', true);
+      if (reason === null) return;
+      const { error } = await supabase.rpc('vault_admin_cancel_holding', { p_vault_holding_id: btn.dataset.cancelHolding, p_reason: reason });
+      if (error) { showToast(error.message || 'Cancel failed', 'error'); return; }
+      showToast('Holding cancelled and moved to Rejected.', 'warning');
+      refreshMainContent();
+    });
   });
 }
 
-function tableWrap(title, count, theadHtml, tbodyHtml, toolbarExtra = '') {
-  return `
-    <div class="table-wrap">
-      <div class="table-toolbar">
-        <div class="table-toolbar-left"><span class="table-title">${title}</span><span class="badge">${count}</span></div>
-        ${toolbarExtra}
+// ─────────────────────────────────────────────────────────
+// MAIN CONTENT: Pending Storage / Pending Collections / Holdings
+// ─────────────────────────────────────────────────────────
+async function renderPendingStorage() {
+  const requests = await fetchRequests('STORE', 'PENDING');
+  document.getElementById('pendingStorageBadge').innerText = requests.length;
+  const container = document.getElementById('pendingStorageList');
+  if (requests.length === 0) { container.innerHTML = `<div class="empty-note">No pending storage requests.</div>`; return; }
+  container.innerHTML = requests.map(r => `
+    <div class="account-item" style="cursor:default; align-items:flex-start;">
+      <div>
+        <div class="account-id" style="font-size:0.78rem;">${escapeHtml(r.profiles?.name || 'Unknown')}</div>
+        <div class="account-name">${escapeHtml(r.profiles?.phone || '')} &middot; ${fmtDate(r.requested_at)}</div>
+        <div style="margin-top:6px;">${itemsSummary(r.vault_holdings?.vault_items)}</div>
       </div>
-      <div style="overflow-x:auto;">
-        <table>
-          <thead><tr>${theadHtml}</tr></thead>
-          <tbody>${tbodyHtml}</tbody>
-        </table>
+      <div style="text-align:right;">
+        <div class="account-balance">${fmtR(r.vault_holdings?.total_value)}</div>
+        <div style="margin-top:8px; display:flex; gap:4px;">
+          <button class="action-btn small success" data-approve-store="${r.id}"><i class="fas fa-check"></i> Approve</button>
+          <button class="action-btn small delete" data-reject-store="${r.id}"><i class="fas fa-xmark"></i> Reject</button>
+        </div>
       </div>
     </div>
-  `;
+  `).join('');
+
+  container.querySelectorAll('[data-approve-store]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const { error } = await supabase.rpc('vault_approve_store', { p_vault_request_id: btn.dataset.approveStore });
+      if (error) { showToast(error.message || 'Approve failed', 'error'); return; }
+      showToast('Storage request approved.', 'success');
+      refreshMainContent();
+    });
+  });
+  container.querySelectorAll('[data-reject-store]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const reason = await showReasonPrompt('Reject Storage Request', false);
+      if (reason === null) return;
+      const { error } = await supabase.rpc('vault_reject_store', { p_vault_request_id: btn.dataset.rejectStore, p_reason: reason || null });
+      if (error) { showToast(error.message || 'Reject failed', 'error'); return; }
+      showToast('Storage request rejected.', 'warning');
+      refreshMainContent();
+    });
+  });
+}
+
+async function renderPendingCollections() {
+  const requests = await fetchRequests('COLLECT', 'PENDING');
+  document.getElementById('pendingCollectionsBadge').innerText = requests.length;
+  const container = document.getElementById('pendingCollectionsList');
+  if (requests.length === 0) { container.innerHTML = `<div class="empty-note">No pending collection requests.</div>`; return; }
+  container.innerHTML = requests.map(r => `
+    <div class="account-item" style="cursor:default; align-items:flex-start;">
+      <div>
+        <div class="account-id" style="font-size:0.78rem;">${escapeHtml(r.profiles?.name || 'Unknown')}</div>
+        <div class="account-name">${escapeHtml(r.profiles?.phone || '')} &middot; ${fmtDate(r.requested_at)}</div>
+        <div style="margin-top:6px;">${itemsSummary(r.vault_holdings?.vault_items)}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="account-balance">${fmtR(r.vault_holdings?.total_value)}</div>
+        <div style="margin-top:8px; display:flex; gap:4px;">
+          <button class="action-btn small success" data-approve-collect="${r.id}"><i class="fas fa-check"></i> Approve</button>
+          <button class="action-btn small delete" data-reject-collect="${r.id}"><i class="fas fa-xmark"></i> Reject</button>
+        </div>
+        ${overrideButtonsHtml(r.vault_holdings?.id)}
+      </div>
+    </div>
+  `).join('');
+  wireOverrideButtons(container);
+
+  container.querySelectorAll('[data-approve-collect]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const { error } = await supabase.rpc('vault_approve_collect', { p_vault_request_id: btn.dataset.approveCollect });
+      if (error) { showToast(error.message || 'Approve failed', 'error'); return; }
+      showToast('Collection approved — ready for release.', 'success');
+      refreshMainContent();
+    });
+  });
+  container.querySelectorAll('[data-reject-collect]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const reason = await showReasonPrompt('Reject Collection Request', false);
+      if (reason === null) return;
+      const { error } = await supabase.rpc('vault_reject_collect', { p_vault_request_id: btn.dataset.rejectCollect, p_reason: reason || null });
+      if (error) { showToast(error.message || 'Reject failed', 'error'); return; }
+      showToast('Collection request rejected.', 'warning');
+      refreshMainContent();
+    });
+  });
+}
+
+async function renderHoldingsList() {
+  const statusList = holdingsFilter === 'ready' ? ['READY_FOR_COLLECTION'] : ['STORED'];
+  const holdings = await fetchHoldings(statusList);
+  const container = document.getElementById('holdingsList');
+  if (holdings.length === 0) {
+    container.innerHTML = `<div class="empty-note">${holdingsFilter === 'ready' ? 'Nothing ready for collection.' : 'No items currently stored.'}</div>`;
+    return;
+  }
+  container.innerHTML = holdings.map(h => `
+    <div class="refund-item" style="align-items:flex-start;">
+      <div>
+        <div class="account-id" style="font-size:0.78rem;">${escapeHtml(h.profiles?.name || 'Unknown')}</div>
+        <div class="account-name">${escapeHtml(h.profiles?.phone || '')} &middot; ${holdingsFilter === 'ready' ? fmtDate(h.collection_approved_at) : fmtDate(h.stored_at)}</div>
+        <div style="margin-top:6px;">${itemsSummary(h.vault_items)}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="account-balance">${fmtR(h.total_value)}</div>
+        ${holdingsFilter === 'ready' ? `<div style="margin-top:8px;"><button class="action-btn small primary" data-release="${h.id}"><i class="fas fa-hand-holding-heart"></i> Release</button></div>` : ''}
+        ${overrideButtonsHtml(h.id)}
+      </div>
+    </div>
+  `).join('');
+  wireOverrideButtons(container);
+
+  container.querySelectorAll('[data-release]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const { error } = await supabase.rpc('vault_release', { p_vault_holding_id: btn.dataset.release });
+      if (error) { showToast(error.message || 'Release failed', 'error'); return; }
+      showToast('Released to customer.', 'success');
+      refreshMainContent();
+    });
+  });
+}
+
+function setHoldingsFilter(status) {
+  holdingsFilter = status;
+  document.querySelectorAll('#holdingsFilterTabs .refund-filter-tab').forEach(el => el.classList.toggle('active', el.dataset.status === status));
+  renderHoldingsList();
+}
+document.querySelectorAll('#holdingsFilterTabs .refund-filter-tab').forEach(btn => {
+  btn.addEventListener('click', () => setHoldingsFilter(btn.dataset.status));
+});
+
+function refreshMainContent() {
+  renderPendingStorage();
+  renderPendingCollections();
+  renderHoldingsList();
 }
 
 // ─────────────────────────────────────────────────────────
-// OVERVIEW
+// ANALYTICS OVERLAY: KPIs, chart, activity, products, history, staff
 // ─────────────────────────────────────────────────────────
-async function renderOverview() {
-  const container = document.getElementById('vaultContent');
-  container.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading overview...</p></div>`;
+function toggleDashboard() {
+  const overlay = document.getElementById('dashboardOverlay');
+  overlay.classList.toggle('open');
+  document.getElementById('toggleDashBtn').classList.toggle('active-toggle', overlay.classList.contains('open'));
+  if (overlay.classList.contains('open')) renderOverlay();
+}
+document.getElementById('toggleDashBtn').addEventListener('click', toggleDashboard);
+document.getElementById('dashCloseBtn').addEventListener('click', toggleDashboard);
 
-  const [pendingStore, pendingCollect, activeHoldings, collectedHoldings, recent] = await Promise.all([
+async function renderOverlay() {
+  const [pendingStore, pendingCollect, activeHoldings, collectedHoldings, rejectedHoldings, recent] = await Promise.all([
     fetchRequests('STORE', 'PENDING'),
     fetchRequests('COLLECT', 'PENDING'),
     fetchHoldings(['STORED', 'PENDING_COLLECTION_APPROVAL', 'READY_FOR_COLLECTION']),
     fetchHoldings(['COLLECTED']),
-    fetchRecentActivity(12)
+    fetchHoldings(['REJECTED']),
+    fetchRecentActivity(15)
   ]);
 
   const activeValue = activeHoldings.reduce((s, h) => s + Number(h.total_value || 0), 0);
   const activeItems = activeHoldings.reduce((s, h) => s + (h.vault_items || []).reduce((ss, i) => ss + i.quantity, 0), 0);
   const readyCount = activeHoldings.filter(h => h.status === 'READY_FOR_COLLECTION').length;
+  const storedCount = activeHoldings.filter(h => h.status === 'STORED').length;
+  const pendingCollectionApproval = activeHoldings.filter(h => h.status === 'PENDING_COLLECTION_APPROVAL').length;
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const collectedToday = collectedHoldings.filter(h => h.collected_at && new Date(h.collected_at) >= todayStart);
   const collectedTodayValue = collectedToday.reduce((s, h) => s + Number(h.total_value || 0), 0);
 
-  const rows = recent.length === 0
-    ? emptyRow(4, 'fas fa-clock-rotate-left', 'No recent activity.')
-    : recent.map(h => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="cell-sub">${escapeHtml(h.profiles?.phone || '')}</div></td>
-        <td>${statusPill(h.status)}</td>
-        <td>${fmtMoney(h.total_value)}</td>
-        <td class="hide-sm">${timeAgo(h.updated_at)}</td>
-      </tr>
-    `).join('');
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+  const rejected7d = rejectedHoldings.filter(h => h.rejected_at && new Date(h.rejected_at) >= weekAgo).length;
 
-  container.innerHTML = `
-    <div class="stats-row">
-      <div class="stat-card accent"><div class="stat-val">${fmtMoney(activeValue)}</div><div class="stat-label">Value in Vault</div></div>
-      <div class="stat-card"><div class="stat-val">${activeItems}</div><div class="stat-label">Items Held</div></div>
-      <div class="stat-card"><div class="stat-val">${pendingStore.length}</div><div class="stat-label">Pending Storage</div></div>
-      <div class="stat-card"><div class="stat-val">${pendingCollect.length}</div><div class="stat-label">Pending Collections</div></div>
-      <div class="stat-card"><div class="stat-val">${readyCount}</div><div class="stat-label">Ready for Collection</div></div>
-      <div class="stat-card accent-green"><div class="stat-val">${collectedToday.length}</div><div class="stat-label">Collected Today (${fmtMoney(collectedTodayValue)})</div></div>
-    </div>
-    ${tableWrap('Recent Activity', recent.length, '<th>Customer</th><th>Status</th><th>Value</th><th class="hide-sm">Updated</th>', rows)}
+  // KPIs
+  document.getElementById('dashKpiGrid').innerHTML = `
+    <div class="dash-kpi"><div class="val">${fmtR(activeValue)}</div><div class="label">Value in Vault</div></div>
+    <div class="dash-kpi"><div class="val">${activeItems}</div><div class="label">Items Held</div></div>
+    <div class="dash-kpi"><div class="val">${pendingStore.length}</div><div class="label">Pending Storage</div></div>
+    <div class="dash-kpi"><div class="val">${pendingCollect.length}</div><div class="label">Pending Collections</div></div>
+    <div class="dash-kpi"><div class="val">${readyCount}</div><div class="label">Ready for Collection</div></div>
+    <div class="dash-kpi"><div class="val">${collectedToday.length}</div><div class="label">Collected Today</div><div class="sub">${fmtR(collectedTodayValue)}</div></div>
   `;
-}
 
-// ─────────────────────────────────────────────────────────
-// PENDING STORAGE
-// ─────────────────────────────────────────────────────────
-async function renderPendingStorage() {
-  const requests = await fetchRequests('STORE', 'PENDING');
-  const container = document.getElementById('vaultContent');
-  const rows = requests.length === 0
-    ? emptyRow(5, 'fas fa-inbox', 'No pending storage requests.')
-    : requests.map(r => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(r.profiles?.name || 'Unknown')}</div><div class="cell-sub">${escapeHtml(r.profiles?.phone || '')}</div></td>
-        <td>${itemsCellHtml(r.vault_holdings?.vault_items)}</td>
-        <td>${fmtMoney(r.vault_holdings?.total_value)}</td>
-        <td class="hide-sm">${fmtDate(r.requested_at)}</td>
-        <td>
-          <div class="row-actions">
-            <button class="btn btn-primary btn-sm" data-approve-store="${r.id}"><i class="fas fa-check"></i> Approve</button>
-            <button class="btn btn-ghost btn-sm" data-reject-store="${r.id}"><i class="fas fa-xmark"></i> Reject</button>
-          </div>
-        </td>
-      </tr>
+  // Recent Activity
+  document.getElementById('dashActivityFeed').innerHTML = recent.length === 0
+    ? `<div class="empty-note">No recent activity.</div>`
+    : recent.map(h => `
+      <div class="dash-activity-item">
+        <div class="icon"><i class="fas fa-box-archive"></i></div>
+        <div class="details">
+          <div><strong>${escapeHtml(h.profiles?.name || 'Unknown')}</strong> &middot; <span class="account-status status-${statusKey(h.status)}" style="padding:1px 8px; font-size:0.55rem;">${statusLabel(h.status)}</span></div>
+          <div style="color:var(--muted); font-size:0.62rem; margin-top:2px;">${timeAgo(h.updated_at)}</div>
+        </div>
+        <div class="amount">${fmtR(h.total_value)}</div>
+      </div>
     `).join('');
 
-  container.innerHTML = tableWrap('Pending Storage Requests', requests.length,
-    '<th>Customer</th><th>Items</th><th>Value</th><th class="hide-sm">Requested</th><th>Actions</th>', rows);
+  // Status breakdown chart
+  const ctx = document.getElementById('dashStatusChart').getContext('2d');
+  if (charts.status) charts.status.destroy();
+  charts.status = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Pending Storage', 'Stored', 'Collection Pending', 'Ready', 'Collected Today', 'Rejected (7d)'],
+      datasets: [{ data: [pendingStore.length, storedCount, pendingCollectionApproval, readyCount, collectedToday.length, rejected7d], backgroundColor: '#E30613', borderRadius: 4 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#71717a', stepSize: 1 } }, x: { ticks: { color: '#71717a', font: { size: 9 } } } } }
+  });
 
-  container.querySelectorAll('[data-approve-store]').forEach(btn => {
-    btn.onclick = async () => {
-      const { error } = await supabase.rpc('vault_approve_store', { p_vault_request_id: btn.dataset.approveStore });
-      if (error) { showToast(error.message || 'Approve failed', true); return; }
-      showToast('Storage request approved.');
-      renderCurrentTab();
-    };
-  });
-  container.querySelectorAll('[data-reject-store]').forEach(btn => {
-    btn.onclick = () => {
-      openReasonModal('Reject Storage Request', async (reason) => {
-        const { error } = await supabase.rpc('vault_reject_store', { p_vault_request_id: btn.dataset.rejectStore, p_reason: reason || null });
-        if (error) { showToast(error.message || 'Reject failed', true); return; }
-        showToast('Storage request rejected.');
-        renderCurrentTab();
-      });
-    };
-  });
+  // Alerts
+  const alerts = [];
+  const now = Date.now();
+  const staleStore = pendingStore.filter(r => now - new Date(r.requested_at).getTime() > 2 * 3600 * 1000).length;
+  const staleCollect = pendingCollect.filter(r => now - new Date(r.requested_at).getTime() > 2 * 3600 * 1000).length;
+  if (staleStore > 0) alerts.push({ level: 'warning', title: 'Storage requests waiting', desc: `${staleStore} pending over 2 hours` });
+  if (staleCollect > 0) alerts.push({ level: 'warning', title: 'Collection requests waiting', desc: `${staleCollect} pending over 2 hours` });
+  if (readyCount > 0) alerts.push({ level: 'info', title: 'Ready for pickup', desc: `${readyCount} holding(s) awaiting release` });
+  document.getElementById('dashAlerts').innerHTML = alerts.map(a => `
+    <div class="alert-row">
+      <i class="fas fa-exclamation-circle" style="color:${a.level === 'warning' ? 'var(--gold)' : '#3b82f6'}"></i>
+      <div><strong>${a.title}</strong> &middot; ${a.desc}</div>
+    </div>
+  `).join('') || '<div class="empty-note" style="padding:8px 0;">No alerts</div>';
+
+  // Products / History / Staff — admin-gated sections
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin() ? 'block' : 'none');
+  renderHistory();
+  if (isAdmin()) {
+    renderProducts();
+    renderStaffAccess();
+  }
 }
 
-// ─────────────────────────────────────────────────────────
-// ACTIVE HOLDINGS
-// ─────────────────────────────────────────────────────────
-async function renderActiveHoldings() {
-  const holdings = await fetchHoldings(['STORED']);
-  const container = document.getElementById('vaultContent');
-  const rows = holdings.length === 0
-    ? emptyRow(5, 'fas fa-box-open', 'No items currently stored.')
-    : holdings.map(h => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="cell-sub">${escapeHtml(h.profiles?.phone || '')}</div></td>
-        <td>${itemsCellHtml(h.vault_items)}</td>
-        <td>${fmtMoney(h.total_value)}</td>
-        <td class="hide-sm">${fmtDate(h.stored_at)}</td>
-        <td>${overrideCellHtml(h.id)}</td>
-      </tr>
-    `).join('');
-
-  container.innerHTML = tableWrap('Active Holdings', holdings.length,
-    '<th>Customer</th><th>Items</th><th>Value</th><th class="hide-sm">Stored</th><th>Admin Override</th>', rows);
-  wireOverrideButtons(container);
-}
-
-// ─────────────────────────────────────────────────────────
-// PENDING COLLECTIONS
-// ─────────────────────────────────────────────────────────
-async function renderPendingCollections() {
-  const requests = await fetchRequests('COLLECT', 'PENDING');
-  const container = document.getElementById('vaultContent');
-  const rows = requests.length === 0
-    ? emptyRow(5, 'fas fa-inbox', 'No pending collection requests.')
-    : requests.map(r => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(r.profiles?.name || 'Unknown')}</div><div class="cell-sub">${escapeHtml(r.profiles?.phone || '')}</div></td>
-        <td>${itemsCellHtml(r.vault_holdings?.vault_items)}</td>
-        <td>${fmtMoney(r.vault_holdings?.total_value)}</td>
-        <td class="hide-sm">${fmtDate(r.requested_at)}</td>
-        <td>
-          <div class="row-actions">
-            <button class="btn btn-primary btn-sm" data-approve-collect="${r.id}"><i class="fas fa-check"></i> Approve</button>
-            <button class="btn btn-ghost btn-sm" data-reject-collect="${r.id}"><i class="fas fa-xmark"></i> Reject</button>
-          </div>
-          ${overrideCellHtml(r.vault_holdings?.id)}
-        </td>
-      </tr>
-    `).join('');
-
-  container.innerHTML = tableWrap('Pending Collection Requests', requests.length,
-    '<th>Customer</th><th>Items</th><th>Value</th><th class="hide-sm">Requested</th><th>Actions</th>', rows);
-  wireOverrideButtons(container);
-
-  container.querySelectorAll('[data-approve-collect]').forEach(btn => {
-    btn.onclick = async () => {
-      const { error } = await supabase.rpc('vault_approve_collect', { p_vault_request_id: btn.dataset.approveCollect });
-      if (error) { showToast(error.message || 'Approve failed', true); return; }
-      showToast('Collection approved — ready for release.');
-      renderCurrentTab();
-    };
-  });
-  container.querySelectorAll('[data-reject-collect]').forEach(btn => {
-    btn.onclick = () => {
-      openReasonModal('Reject Collection Request', async (reason) => {
-        const { error } = await supabase.rpc('vault_reject_collect', { p_vault_request_id: btn.dataset.rejectCollect, p_reason: reason || null });
-        if (error) { showToast(error.message || 'Reject failed', true); return; }
-        showToast('Collection request rejected.');
-        renderCurrentTab();
-      });
-    };
-  });
-}
-
-// ─────────────────────────────────────────────────────────
-// READY FOR COLLECTION
-// ─────────────────────────────────────────────────────────
-async function renderReadyForCollection() {
-  const holdings = await fetchHoldings(['READY_FOR_COLLECTION']);
-  const container = document.getElementById('vaultContent');
-  const rows = holdings.length === 0
-    ? emptyRow(5, 'fas fa-hand-holding', 'Nothing ready for collection.')
-    : holdings.map(h => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="cell-sub">${escapeHtml(h.profiles?.phone || '')}</div></td>
-        <td>${itemsCellHtml(h.vault_items)}</td>
-        <td>${fmtMoney(h.total_value)}</td>
-        <td class="hide-sm">${fmtDate(h.collection_approved_at)}</td>
-        <td>
-          <div class="row-actions">
-            <button class="btn btn-primary btn-sm" data-release="${h.id}"><i class="fas fa-hand-holding-heart"></i> Release</button>
-          </div>
-          ${overrideCellHtml(h.id)}
-        </td>
-      </tr>
-    `).join('');
-
-  container.innerHTML = tableWrap('Ready for Collection', holdings.length,
-    '<th>Customer</th><th>Items</th><th>Value</th><th class="hide-sm">Approved</th><th>Actions</th>', rows);
-  wireOverrideButtons(container);
-
-  container.querySelectorAll('[data-release]').forEach(btn => {
-    btn.onclick = async () => {
-      const { error } = await supabase.rpc('vault_release', { p_vault_holding_id: btn.dataset.release });
-      if (error) { showToast(error.message || 'Release failed', true); return; }
-      showToast('Released to customer.');
-      renderCurrentTab();
-    };
-  });
-}
-
-// ─────────────────────────────────────────────────────────
-// HISTORY
-// ─────────────────────────────────────────────────────────
 async function renderHistory() {
   const holdings = await fetchHoldings(['COLLECTED', 'REJECTED']);
-  const container = document.getElementById('vaultContent');
-  const rows = holdings.length === 0
-    ? emptyRow(5, 'fas fa-clock-rotate-left', 'No historical Vault holdings yet.')
-    : holdings.map(h => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(h.profiles?.name || 'Unknown')}</div><div class="cell-sub">${escapeHtml(h.profiles?.phone || '')}</div></td>
-        <td>${itemsCellHtml(h.vault_items)}</td>
-        <td>${fmtMoney(h.total_value)}</td>
-        <td>${statusPill(h.status)}</td>
-        <td class="hide-sm">
+  const container = document.getElementById('dashHistoryList');
+  if (holdings.length === 0) { container.innerHTML = `<div class="empty-note">No historical Vault holdings yet.</div>`; return; }
+  container.innerHTML = holdings.slice(0, 40).map(h => `
+    <div class="dash-activity-item">
+      <div class="icon"><i class="fas ${h.status === 'COLLECTED' ? 'fa-circle-check' : 'fa-ban'}"></i></div>
+      <div class="details">
+        <div><strong>${escapeHtml(h.profiles?.name || 'Unknown')}</strong> &middot; <span class="account-status status-${statusKey(h.status)}" style="padding:1px 8px; font-size:0.55rem;">${statusLabel(h.status)}</span></div>
+        <div style="color:var(--muted); font-size:0.62rem; margin-top:2px;">
           ${h.status === 'COLLECTED' ? fmtDate(h.collected_at) : fmtDate(h.rejected_at)}
-          ${h.rejection_reason ? `<div class="cell-sub">${escapeHtml(h.rejection_reason)}</div>` : ''}
-          ${h.admin_notes ? `<div class="cell-sub">${escapeHtml(h.admin_notes)}</div>` : ''}
-        </td>
-      </tr>
-    `).join('');
-
-  container.innerHTML = tableWrap('History', holdings.length,
-    '<th>Customer</th><th>Items</th><th>Value</th><th>Status</th><th class="hide-sm">Date / Notes</th>', rows);
+          ${h.rejection_reason ? ' · ' + escapeHtml(h.rejection_reason) : ''}
+          ${h.admin_notes ? ' · ' + escapeHtml(h.admin_notes) : ''}
+        </div>
+      </div>
+      <div class="amount">${fmtR(h.total_value)}</div>
+    </div>
+  `).join('');
 }
 
-// ─────────────────────────────────────────────────────────
-// PRODUCTS (admin only)
-// ─────────────────────────────────────────────────────────
-let allVaultableProducts = [];
+// ─── PRODUCTS (admin only) ───
 async function renderProducts() {
-  const container = document.getElementById('vaultContent');
-  if (!isAdmin()) { container.innerHTML = `<div class="empty-state"><i class="fas fa-lock"></i><p>Admin access required.</p></div>`; return; }
-  container.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading products...</p></div>`;
-
   const { data, error } = await supabase
     .from('products')
     .select('id, name, category, price, status, vault_eligible, alcohol')
     .or('alcohol.eq.true,vault_eligible.eq.true')
     .order('category', { ascending: true })
     .order('name', { ascending: true });
-
-  if (error) { console.error(error); container.innerHTML = `<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><p>Could not load products.</p></div>`; return; }
+  if (error) { console.error(error); document.getElementById('dashProductsList').innerHTML = `<div class="empty-note">Could not load products.</div>`; return; }
   allVaultableProducts = data || [];
-
-  container.innerHTML = tableWrap('Vault-Eligible Products', allVaultableProducts.length,
-    '<th>Product</th><th>Category</th><th>Price</th><th>Status</th><th>Vault Eligible</th>', '',
-    `<div class="search-wrap" style="max-width:260px;"><i class="fas fa-magnifying-glass"></i><input type="text" id="productSearch" placeholder="Search products..."></div>`
-  );
-  document.getElementById('productSearch').addEventListener('input', (e) => renderProductRows(e.target.value));
   renderProductRows('');
 }
-
 function renderProductRows(filterText) {
-  const tbody = document.querySelector('#vaultContent table tbody');
+  const container = document.getElementById('dashProductsList');
   const q = filterText.trim().toLowerCase();
   const filtered = allVaultableProducts.filter(p => !q || p.name?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q));
-
-  tbody.innerHTML = filtered.length === 0
-    ? emptyRow(5, 'fas fa-box-open', 'No products match.')
-    : filtered.map(p => `
-      <tr>
-        <td class="cell-name">${escapeHtml(p.name)}</td>
-        <td><span class="category-badge">${escapeHtml(p.category || 'Uncategorized')}</span></td>
-        <td>${fmtMoney(p.price)}</td>
-        <td>${p.status === 'active' ? '<span class="stock-badge in-stock">Active</span>' : '<span class="stock-badge out-stock">Inactive</span>'}</td>
-        <td>
-          <label class="vswitch">
-            <input type="checkbox" data-product-toggle="${p.id}" ${p.vault_eligible ? 'checked' : ''}>
-            <span class="slider"></span>
-          </label>
-        </td>
-      </tr>
-    `).join('');
-
-  tbody.querySelectorAll('[data-product-toggle]').forEach(input => {
+  if (filtered.length === 0) { container.innerHTML = `<div class="empty-note">No products match.</div>`; return; }
+  container.innerHTML = filtered.map(p => `
+    <div class="product-row">
+      <div>
+        <div class="product-row-name">${escapeHtml(p.name)}</div>
+        <div class="product-row-sub">${escapeHtml(p.category || 'Uncategorized')} &middot; ${fmtR(p.price)}</div>
+      </div>
+      <label class="vswitch">
+        <input type="checkbox" data-product-toggle="${p.id}" ${p.vault_eligible ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>
+    </div>
+  `).join('');
+  container.querySelectorAll('[data-product-toggle]').forEach(input => {
     input.addEventListener('change', async (e) => {
       const id = e.target.dataset.productToggle;
       const newValue = e.target.checked;
       e.target.disabled = true;
       const { error } = await supabase.from('products').update({ vault_eligible: newValue }).eq('id', id);
       e.target.disabled = false;
-      if (error) { console.error(error); e.target.checked = !newValue; showToast(error.message || 'Could not update product', true); return; }
+      if (error) { console.error(error); e.target.checked = !newValue; showToast(error.message || 'Could not update product', 'error'); return; }
       const p = allVaultableProducts.find(pp => pp.id === id);
       if (p) p.vault_eligible = newValue;
-      showToast(`${p?.name || 'Product'} is now ${newValue ? 'eligible' : 'not eligible'} for the Vault.`);
+      showToast(`${p?.name || 'Product'} is now ${newValue ? 'eligible' : 'not eligible'} for the Vault.`, 'success');
     });
   });
 }
+document.getElementById('productSearch').addEventListener('input', (e) => renderProductRows(e.target.value));
 
-// ─────────────────────────────────────────────────────────
-// STAFF & ACCESS (admin only)
-// ─────────────────────────────────────────────────────────
+// ─── STAFF & ACCESS (admin only) ───
 async function renderStaffAccess() {
-  const container = document.getElementById('vaultContent');
-  if (!isAdmin()) { container.innerHTML = `<div class="empty-state"><i class="fas fa-lock"></i><p>Admin access required.</p></div>`; return; }
-  container.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading staff & access...</p></div>`;
-
   const { data, error } = await supabase
     .from('profiles')
     .select('id, name, phone, role, staff_role')
     .in('role', ['staff', 'admin'])
     .order('role', { ascending: false })
     .order('name', { ascending: true });
+  const container = document.getElementById('dashStaffList');
+  if (error) { console.error(error); container.innerHTML = `<div class="empty-note">Could not load staff.</div>`; return; }
+  if ((data || []).length === 0) { container.innerHTML = `<div class="empty-note">No staff or admin profiles yet.</div>`; return; }
 
-  if (error) { console.error(error); container.innerHTML = `<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><p>Could not load staff.</p></div>`; return; }
+  container.innerHTML = data.map(p => `
+    <div class="account-item" style="cursor:default;">
+      <div>
+        <div class="account-id" style="font-size:0.78rem;">${escapeHtml(p.name || 'Unnamed')}</div>
+        <div class="account-name">${escapeHtml(p.phone || '')}${p.staff_role ? ' &middot; ' + escapeHtml(p.staff_role) : ''}</div>
+      </div>
+      <div style="text-align:right;">
+        <span class="account-status ${p.role === 'admin' ? 'status-blocked' : 'status-active'}">${p.role}</span>
+        <div style="margin-top:8px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
+          ${p.role === 'staff' ? `<button class="action-btn small info" data-promote="${p.id}"><i class="fas fa-arrow-up"></i> Admin</button>` : ''}
+          ${p.role === 'admin' && p.id !== staffProfile.id ? `<button class="action-btn small" data-demote="${p.id}"><i class="fas fa-arrow-down"></i> Staff</button>` : ''}
+          <button class="action-btn small delete" data-revoke="${p.id}" ${p.id === staffProfile.id ? 'disabled title="You cannot revoke your own access"' : ''}><i class="fas fa-user-slash"></i> Revoke</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
 
-  const rows = (data || []).length === 0
-    ? emptyRow(4, 'fas fa-users-slash', 'No staff or admin profiles yet.')
-    : data.map(p => `
-      <tr>
-        <td><div class="cell-name">${escapeHtml(p.name || 'Unnamed')}</div><div class="cell-sub">${escapeHtml(p.phone || '')}${p.staff_role ? ' &middot; ' + escapeHtml(p.staff_role) : ''}</div></td>
-        <td><span class="role-pill ${p.role}">${p.role}</span></td>
-        <td>
-          <div class="row-actions">
-            ${p.role === 'staff' ? `<button class="btn btn-ghost btn-sm" data-promote="${p.id}"><i class="fas fa-arrow-up"></i> Make Admin</button>` : ''}
-            ${p.role === 'admin' && p.id !== staffProfile.id ? `<button class="btn btn-ghost btn-sm" data-demote="${p.id}"><i class="fas fa-arrow-down"></i> Make Staff</button>` : ''}
-            <button class="btn btn-danger btn-sm" data-revoke="${p.id}" ${p.id === staffProfile.id ? 'disabled title="You cannot revoke your own access"' : ''}><i class="fas fa-user-slash"></i> Revoke</button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-
-  container.innerHTML = `
-    <div class="access-note"><i class="fas fa-triangle-exclamation"></i><span>Role changes here apply platform-wide — they affect access to every admin module (Products, Events, VVIP, etc.), not just the Vault.</span></div>
-    ${tableWrap('Staff & Admins', (data || []).length, '<th>Name</th><th>Role</th><th>Actions</th>', rows,
-      `<button class="btn btn-primary btn-sm" id="openGrantAccessBtn"><i class="fas fa-user-plus"></i> Grant Access</button>`)}
-  `;
-
-  container.querySelectorAll('[data-promote]').forEach(btn => btn.onclick = () => updateProfileRole(btn.dataset.promote, 'admin'));
-  container.querySelectorAll('[data-demote]').forEach(btn => btn.onclick = () => updateProfileRole(btn.dataset.demote, 'staff'));
-  container.querySelectorAll('[data-revoke]').forEach(btn => btn.onclick = () => updateProfileRole(btn.dataset.revoke, 'customer'));
-
-  document.getElementById('openGrantAccessBtn').onclick = () => {
-    document.getElementById('grantPhoneInput').value = '';
-    document.getElementById('grantSearchResult').innerHTML = '';
-    document.getElementById('grantAccessModalBg').style.display = 'flex';
-  };
+  container.querySelectorAll('[data-promote]').forEach(btn => btn.addEventListener('click', () => updateProfileRole(btn.dataset.promote, 'admin')));
+  container.querySelectorAll('[data-demote]').forEach(btn => btn.addEventListener('click', () => updateProfileRole(btn.dataset.demote, 'staff')));
+  container.querySelectorAll('[data-revoke]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!await showConfirm('Revoke staff access for this profile?')) return;
+    updateProfileRole(btn.dataset.revoke, 'customer');
+  }));
 }
 
 async function updateProfileRole(profileId, newRole) {
   const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', profileId);
-  if (error) { showToast(error.message || 'Could not update role', true); return; }
-  showToast(`Access updated to ${newRole}.`);
+  if (error) { showToast(error.message || 'Could not update role', 'error'); return; }
+  showToast(`Access updated to ${newRole}.`, 'success');
   renderStaffAccess();
 }
 
-document.getElementById('grantCancelBtn').onclick = () => document.getElementById('grantAccessModalBg').style.display = 'none';
+document.getElementById('openGrantAccessBtn').addEventListener('click', () => {
+  document.getElementById('grantPhoneInput').value = '';
+  document.getElementById('grantSearchResult').innerHTML = '';
+  document.getElementById('grantAccessModal').classList.add('active');
+});
+document.getElementById('grantCancelBtn').addEventListener('click', () => document.getElementById('grantAccessModal').classList.remove('active'));
 document.getElementById('grantPhoneInput').addEventListener('input', async (e) => {
   const q = e.target.value.trim();
   const resultBox = document.getElementById('grantSearchResult');
   if (q.length < 3) { resultBox.innerHTML = ''; return; }
   const { data, error } = await supabase.from('profiles').select('id, name, phone, role').ilike('phone', `%${q}%`).limit(5);
-  if (error) { resultBox.innerHTML = `<div class="empty-state" style="padding:16px;"><i class="fas fa-triangle-exclamation"></i><p>Search failed.</p></div>`; return; }
-  if (!data || data.length === 0) { resultBox.innerHTML = `<div class="empty-state" style="padding:16px;"><i class="fas fa-user-slash"></i><p>No matching profile.</p></div>`; return; }
+  if (error) { resultBox.innerHTML = `<div class="empty-note">Search failed.</div>`; return; }
+  if (!data || data.length === 0) { resultBox.innerHTML = `<div class="empty-note">No matching profile.</div>`; return; }
   resultBox.innerHTML = data.map(p => `
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:var(--s2); border:1px solid var(--border); border-radius:9px; margin-bottom:6px;">
-      <div><div class="cell-name">${escapeHtml(p.name || 'Unnamed')}</div><div class="cell-sub">${escapeHtml(p.phone || '')} &middot; currently ${p.role}</div></div>
-      ${p.role !== 'staff' && p.role !== 'admin' ? `<button class="btn btn-primary btn-sm" data-grant="${p.id}"><i class="fas fa-user-plus"></i> Make Staff</button>` : `<span style="font-size:0.7rem; color:var(--muted);">Already ${p.role}</span>`}
+    <div class="account-item" style="cursor:default;">
+      <div><div class="account-id" style="font-size:0.78rem;">${escapeHtml(p.name || 'Unnamed')}</div><div class="account-name">${escapeHtml(p.phone || '')} &middot; currently ${p.role}</div></div>
+      ${p.role !== 'staff' && p.role !== 'admin' ? `<button class="action-btn small success" data-grant="${p.id}"><i class="fas fa-user-plus"></i> Make Staff</button>` : `<span style="font-size:0.65rem; color:var(--muted);">Already ${p.role}</span>`}
     </div>
   `).join('');
   resultBox.querySelectorAll('[data-grant]').forEach(btn => {
-    btn.onclick = async () => {
+    btn.addEventListener('click', async () => {
       const { error } = await supabase.from('profiles').update({ role: 'staff' }).eq('id', btn.dataset.grant);
-      if (error) { showToast(error.message || 'Could not grant access', true); return; }
-      showToast('Staff access granted.');
-      document.getElementById('grantAccessModalBg').style.display = 'none';
+      if (error) { showToast(error.message || 'Could not grant access', 'error'); return; }
+      showToast('Staff access granted.', 'success');
+      document.getElementById('grantAccessModal').classList.remove('active');
       renderStaffAccess();
-    };
+    });
   });
 });
 
-async function renderCurrentTab() {
-  const renderers = {
-    overview: renderOverview,
-    pending_storage: renderPendingStorage,
-    active_holdings: renderActiveHoldings,
-    pending_collections: renderPendingCollections,
-    ready_for_collection: renderReadyForCollection,
-    history: renderHistory,
-    products: renderProducts,
-    staff_access: renderStaffAccess
-  };
-  await renderers[currentTab]();
-  fetchRequests('STORE', 'PENDING').then(r => document.getElementById('badge_pending_storage').innerText = r.length);
-  fetchRequests('COLLECT', 'PENDING').then(r => document.getElementById('badge_pending_collections').innerText = r.length);
-}
-
-document.querySelectorAll('#tabRow .btn').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('#tabRow .btn').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    currentTab = tab.dataset.tab;
-    renderCurrentTab();
-  });
+// ─── REFRESH ───
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  refreshMainContent();
+  if (document.getElementById('dashboardOverlay').classList.contains('open')) renderOverlay();
+  showToast('Refreshed.', 'success');
 });
 
-// ─────────────────────────────────────────────────────────
-// INIT
-// ─────────────────────────────────────────────────────────
+// ─── INIT ───
 await loadStaffProfile();
 if (!staffProfile) {
-  document.getElementById('vaultContent').innerHTML = `<div class="empty-state"><i class="fas fa-lock"></i><p>Staff/admin sign-in required to use Vault Admin.</p></div>`;
-  document.getElementById('tabRow').style.display = 'none';
+  document.querySelector('.main-content').innerHTML = `<div class="empty-note" style="padding:60px 20px;"><i class="fas fa-lock" style="font-size:1.8rem; display:block; margin-bottom:10px;"></i>Staff/admin sign-in required to use Vault Admin.</div>`;
+  document.getElementById('toggleDashBtn').style.display = 'none';
 } else {
-  if (isAdmin()) {
-    document.querySelectorAll('#tabRow .admin-only').forEach(t => t.style.display = 'inline-flex');
-  }
-  renderCurrentTab();
-  setInterval(renderCurrentTab, 20000); // light auto-refresh, same cadence as your other staff modules
+  refreshMainContent();
+  setInterval(refreshMainContent, 20000); // light auto-refresh, same cadence as your other staff modules
 }
 
 </script>
