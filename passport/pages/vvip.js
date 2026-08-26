@@ -1,5 +1,6 @@
 import { supabase } from '../../config/supabase.js';
 import { loadScriptOnce } from '../js/lazy-load.js';
+import { appState, refreshSession, refreshWallet, onStateChange, setupWalletRealtime } from '../js/state.js';
 
 // Same cleanup pattern as pages/home.js and pages/tickets.js.
 let cleanup = [];
@@ -19,7 +20,6 @@ let eventsById = {};
 let isWalletBlocked = false;
 let walletBlockReason = '';
 let vvipChannel = null;
-let vvipWalletChannel = null;
 
 function loadQrLib() {
     return loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js', () => !!window.QRCode);
@@ -45,43 +45,35 @@ async function showVVIPInfo(title, message) {
 }
 
 async function loadUserAndPackageCredit() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { window.location.href = '../login.html'; return false; }
-    currentUser = session.user;
-    // Look up by auth_user_id first — WhatsApp-registered customers have a
-    // DB-generated profiles.id that differs from auth_user_id. Falling back
-    // to `id = currentUser.id` covers profiles created before auth_user_id
-    // was populated. Matches the pattern already used in tickets.js; without
-    // this, those users hit a 409 (profiles_auth_user_id_unique) on insert
-    // below because a row already exists under a different id.
-    let { data: profile } = await supabase.from('profiles').select('id, name, phone, role').eq('auth_user_id', currentUser.id).maybeSingle();
-    if (!profile) {
-        const { data: fallbackProfile } = await supabase.from('profiles').select('id, name, phone, role').eq('id', currentUser.id).maybeSingle();
-        profile = fallbackProfile;
-    }
-    if (!profile) {
-        const { data: newProfile, error: insertError } = await supabase.from('profiles').insert([{
-            id: currentUser.id,
-            auth_user_id: currentUser.id,
-            name: currentUser.user_metadata?.full_name || 'Member',
-            phone: '',
-            role: 'customer'
-        }]).select('id, name, phone, role').single();
-        if (insertError) {
-            console.error('[vvip] Profile creation failed:', insertError);
-            showToastMsg('Could not set up your profile — please try again', true);
-            return false;
-        }
-        currentProfile = newProfile;
-    } else { currentProfile = profile; }
+    // Session/profile lookup (including the auth_user_id/id fallback and
+    // first-login insert — see state.js's refreshSession) is shared across
+    // every tab via appState; only hit the network here if nothing has
+    // populated it yet this session.
+    if (!appState.session) await refreshSession();
+    if (!appState.session) { window.location.href = '../login.html'; return false; }
+    currentUser = appState.session.user;
 
-    const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', currentUser.id).maybeSingle();
-    isWalletBlocked = (wallet?.status || '').toLowerCase() === 'blocked';
-    walletBlockReason = wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
+    if (!appState.profile) {
+        showToastMsg('Could not set up your profile — please try again', true);
+        return false;
+    }
+    currentProfile = appState.profile;
+
+    if (!appState.wallet) await refreshWallet();
+    setupWalletRealtime(); // no-op if the shared channel is already subscribed
+    syncWalletFromAppState();
     renderWalletBlockedBanners();
 
     await loadActivePackageAndCredit();
     return true;
+}
+
+// Mirrors appState.wallet's block status into this page's local variables
+// and re-renders anything derived from it. Called on initial load and
+// whenever the shared appState wallet changes.
+function syncWalletFromAppState() {
+    isWalletBlocked = (appState.wallet?.status || '').toLowerCase() === 'blocked';
+    walletBlockReason = appState.wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
 }
 function renderWalletBlockedBanners() {
     const bannerHtml = isWalletBlocked ? `<div class="wallet-blocked-banner"><i class="fas fa-ban"></i><span>${escapeHtml(walletBlockReason)}</span></div>` : '';
@@ -491,16 +483,14 @@ export default {
             .subscribe();
         onCleanup(() => { if (vvipChannel) { supabase.removeChannel(vvipChannel); vvipChannel = null; } });
 
-        vvipWalletChannel = supabase
-            .channel('vvip-wallet-status')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
-                isWalletBlocked = (payload.new.status || '').toLowerCase() === 'blocked';
-                walletBlockReason = payload.new.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
-                renderWalletBlockedBanners();
-                loadPackages();
-            })
-            .subscribe();
-        onCleanup(() => { if (vvipWalletChannel) { supabase.removeChannel(vvipWalletChannel); vvipWalletChannel = null; } });
+        // state.js's setupWalletRealtime() (called in loadUserAndPackageCredit
+        // above) keeps appState.wallet current; just mirror it into this page
+        // whenever it changes.
+        onCleanup(onStateChange(() => {
+            syncWalletFromAppState();
+            renderWalletBlockedBanners();
+            loadPackages();
+        }));
     },
 
     destroy() {

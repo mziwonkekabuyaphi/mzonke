@@ -1,5 +1,6 @@
 import { supabase } from '../../config/supabase.js';
 import { loadScriptOnce } from '../js/lazy-load.js';
+import { appState, refreshSession, refreshWallet, onStateChange, setupWalletRealtime } from '../js/state.js';
 
 // Same cleanup pattern as pages/home.js / pages/vvip.js / pages/lockers.js /
 // pages/shisha.js — every listener, interval, and realtime subscription
@@ -15,7 +16,6 @@ const onCleanup = (fn) => cleanup.push(fn);
 // comments refer back to this note. That said, ticket/wallet data changes
 // often, so init() still refetches fresh rather than trusting stale state.
 let currentUser = null, userProfile = null, events = [], selectedEventId = null, currentTicketTypes = [], transferTicketId = null, isPurchasing = false, isWalletBlocked = false, walletBlockReason = '';
-let walletChannel = null;
 
 // The two libraries the old <head> pulled in via <script src> tags can't
 // be loaded that way from a fragment (innerHTML'd <script> tags never
@@ -77,40 +77,43 @@ function showConfirmModal(message, title = "Confirm") { return new Promise((reso
 function closeConfirmModal(confirmed) { document.getElementById('confirmationModal').classList.remove('show'); if(confirmResolver) { confirmResolver(confirmed); confirmResolver = null; } }
 
 async function initAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { showToast('Please log in first', true); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return false; }
-    currentUser = session.user;
-    // profiles.id is NOT guaranteed to equal the auth user id —
-    // WhatsApp-registered customers get a DB-generated profiles.id,
-    // linked to auth only via auth_user_id (see home.html for the
-    // same pattern). Looking this up by id=currentUser.id silently
-    // failed to find those profiles, which then made the fallback
-    // insert below collide (and get blocked by RLS, since there's no
-    // INSERT policy for a user's own profile row), leaving `profile`
-    // null and crashing on `profile.phone` — which is why nothing on
-    // this page loaded at all.
-    let { data: profile } = await supabase.from('profiles').select('id, phone, name').eq('auth_user_id', currentUser.id).maybeSingle();
-    if (!profile) {
-        const fallback = await supabase.from('profiles').select('id, phone, name').eq('id', currentUser.id).maybeSingle();
-        profile = fallback.data;
-    }
-    if (!profile) {
-        const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({ id: currentUser.id, auth_user_id: currentUser.id, name: currentUser.user_metadata?.full_name || 'User', email: currentUser.email, phone: currentUser.user_metadata?.phone || '', role: 'customer' }).select('id, phone, name').single();
-        if (insertError) console.error('Profile creation failed:', insertError);
-        profile = newProfile;
-    }
-    if (!profile) {
+    // home.js (or whichever tab loaded first this session) has usually
+    // already populated appState.session/profile via refreshSession() —
+    // reuse that instead of re-running the session+profile lookup (which
+    // includes the auth_user_id/id fallback and first-login insert; see
+    // state.js's refreshSession for that logic) on every visit to Tickets.
+    if (!appState.session) await refreshSession();
+    if (!appState.session) { showToast('Please log in first', true); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return false; }
+    currentUser = appState.session.user;
+
+    if (!appState.profile) {
         showToast('Could not load your account. Please contact support.', true);
         return false;
     }
-    const { data: wallet } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', profile.id).maybeSingle();
-    userProfile = { id: profile.id, phone: profile.phone, name: profile.name, wallet_balance: wallet?.balance ?? 0 };
-    isWalletBlocked = (wallet?.status || '').toLowerCase() === 'blocked';
-    walletBlockReason = wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
-    document.getElementById('walletBalance').innerText = `R${userProfile.wallet_balance.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+
+    // Wallet balance changes often (purchases, top-ups), so still refresh
+    // it if nothing has populated it yet this session — but if home.js (or
+    // another tab) already has a fresh wallet row cached, reuse it rather
+    // than firing a redundant query every time this page mounts.
+    if (!appState.wallet) await refreshWallet();
+    setupWalletRealtime(); // no-op if the shared channel is already subscribed
+
+    syncFromAppState();
     renderWalletBlockedBanners();
     await updateMyTicketsCount();
     return true;
+}
+
+// Mirrors appState.profile/wallet into this page's local variables and
+// updates the on-screen balance. Called on initial load and whenever the
+// shared appState wallet changes (realtime update, or a purchase made from
+// this page), so this page never has to run its own wallet query to stay
+// current.
+function syncFromAppState() {
+    userProfile = { id: appState.profile.id, phone: appState.profile.phone, name: appState.profile.name, wallet_balance: appState.wallet?.balance ?? 0 };
+    isWalletBlocked = (appState.wallet?.status || '').toLowerCase() === 'blocked';
+    walletBlockReason = appState.wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
+    document.getElementById('walletBalance').innerText = `R${userProfile.wallet_balance.toLocaleString(undefined, {minimumFractionDigits:2})}`;
 }
 function renderWalletBlockedBanners() {
     const bannerHtml = isWalletBlocked ? `<div class="wallet-blocked-banner"><i class="fas fa-ban"></i><span>${escapeHtml(walletBlockReason)}</span></div>` : '';
@@ -122,7 +125,7 @@ function renderWalletBlockedBanners() {
     if (myPanel) myPanel.insertAdjacentHTML('afterbegin', bannerHtml);
 }
 async function updateMyTicketsCount() { if (!userProfile?.phone) return; const { count } = await supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('customer_phone', userProfile.phone).eq('status', 'issued'); if(count !== undefined) document.getElementById('myTicketsCountStat').textContent = count || 0; }
-async function refreshUserBalance() { const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userProfile.id).maybeSingle(); if(wallet) { userProfile.wallet_balance = wallet.balance; document.getElementById('walletBalance').innerText = `R${wallet.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`; } }
+async function refreshUserBalance() { await refreshWallet(); syncFromAppState(); }
 
 async function loadEvents() {
     const { data, error } = await supabase.from('events').select('*').order('start_time', { ascending: true });
@@ -302,16 +305,14 @@ export default {
         await loadEvents();
         wireStaticListeners();
 
-        walletChannel = supabase
-            .channel('wallet-balance')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${userProfile.id}` }, async (payload) => {
-                if (payload.new.balance !== undefined) {
-                    userProfile.wallet_balance = payload.new.balance;
-                    document.getElementById('walletBalance').innerText = `R${payload.new.balance.toLocaleString(undefined, {minimumFractionDigits:2})}`;
-                }
-            })
-            .subscribe();
-        onCleanup(() => { if (walletChannel) { supabase.removeChannel(walletChannel); walletChannel = null; } });
+        // state.js's setupWalletRealtime() (called in initAuth above) keeps
+        // appState.wallet current; just mirror it into this page whenever it
+        // changes, instead of opening a second Supabase realtime channel for
+        // the same wallet row.
+        onCleanup(onStateChange(() => {
+            syncFromAppState();
+            renderWalletBlockedBanners();
+        }));
     },
 
     destroy() {

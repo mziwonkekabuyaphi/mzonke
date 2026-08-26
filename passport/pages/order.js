@@ -1,6 +1,7 @@
 import { supabase } from '../../config/supabase.js';
 import { navigate } from '../js/router.js';
 import { loadScriptOnce } from '../js/lazy-load.js';
+import { appState, refreshSession, refreshWallet, onStateChange, setupWalletRealtime } from '../js/state.js';
 
 // Unlike the other converted pages, this one does NOT keep module-scope
 // state across navigate-away-and-back. Vue owns a real DOM tree rooted at
@@ -15,6 +16,7 @@ let vueInstance = null;
 let pollInterval = null;   // was a bare setInterval in mounted(), never cleared — see init()
 let trackInterval = null;  // was window.tvInterval — see openTrackModal/closeTrackModal
 let businessHoursTick = null; // ticks isBusinessOpen live — cleared in destroy() same as the others
+let stateUnsubscribe = null; // unsubscribes from the shared appState wallet cache — cleared in destroy()
 
 function loadVue() {
     return loadScriptOnce('https://unpkg.com/vue@2/dist/vue.js', () => !!window.Vue);
@@ -189,45 +191,50 @@ export default {
                 handleImageError(event) { event.target.src = 'https://placehold.co/300x200?text=No+Image'; },
 
                 async initAuthAndWallet() {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session) { this.showToast('Please login first'); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return; }
-                    this.loggedInUser = session.user;
-                    // IMPORTANT: wallets.user_id and orders.user_id both reference
-                    // profiles.id, NOT auth.users.id (session.user.id) — these are
-                    // different UUIDs for the same person. Using session.user.id
-                    // directly here silently matched no wallet row for any customer
-                    // (wallet balance always read back as 0, "Insufficient balance"
-                    // even with real funds; order history always empty too), and
-                    // would have caused every order insert below to fail its
-                    // orders.user_id -> profiles.id foreign key outright.
-                    const { data: profile, error: profileError } = await supabase
-                        .from('profiles')
-                        .select('id, phone, name')
-                        .eq('auth_user_id', session.user.id)
-                        .maybeSingle();
-                    if (profileError || !profile) {
-                        console.error(profileError);
+                    // Session/profile lookup (by auth_user_id, since
+                    // wallets.user_id / orders.user_id reference profiles.id,
+                    // NOT auth.users.id — see state.js's refreshSession for the
+                    // full auth_user_id/id fallback + first-login insert logic)
+                    // is shared across every tab via appState; only hit the
+                    // network here if nothing has populated it yet this session.
+                    if (!appState.session) await refreshSession();
+                    if (!appState.session) { this.showToast('Please login first'); setTimeout(() => { window.location.href = '../login.html'; }, 1500); return; }
+                    this.loggedInUser = appState.session.user;
+
+                    if (!appState.profile) {
                         this.showToast('Could not load your profile — please try logging in again');
                         setTimeout(() => { window.location.href = '../login.html'; }, 1500);
                         return;
                     }
-                    this.userId = profile.id;
-                    this.userPhone = profile.phone || '';
-                    this.userName = profile.name || '';
-                    this.userEmail = session.user.email || session.user.user_metadata?.full_name || 'Customer';
-                    await this.fetchWalletBalance();
+                    this.userId = appState.profile.id;
+                    this.userPhone = appState.profile.phone || '';
+                    this.userName = appState.profile.name || '';
+                    this.userEmail = appState.session.user.email || appState.session.user.user_metadata?.full_name || 'Customer';
+
+                    if (!appState.wallet) await refreshWallet();
+                    setupWalletRealtime(); // no-op if the shared channel is already subscribed
+                    this.syncWalletFromAppState();
+
+                    // Vue's reactivity can't see appState changes on its own —
+                    // mirror the shared wallet cache into this component's data
+                    // whenever it changes (realtime update, or a purchase/refund
+                    // made from another tab), instead of this page polling or
+                    // opening its own wallet channel.
+                    stateUnsubscribe = onStateChange(() => this.syncWalletFromAppState());
                 },
-                async fetchWalletBalance() {
-                    if (!this.userId) return 0;
-                    const { data, error } = await supabase.from('wallets').select('balance, status, block_reason').eq('user_id', this.userId).maybeSingle();
-                    if (error) console.error(error);
-                    this.walletBalance = data?.balance ?? 0;
+                syncWalletFromAppState() {
+                    this.walletBalance = appState.wallet?.balance ?? 0;
                     // Same check as tickets.js's initAuth: a wallet with status
                     // 'blocked' (set by admin) must stop purchases here too — this
                     // page previously never looked at status/block_reason at all, so a
                     // blocked wallet could still buy, defeating the block entirely.
-                    this.isWalletBlocked = (data?.status || '').toLowerCase() === 'blocked';
-                    this.walletBlockReason = data?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
+                    this.isWalletBlocked = (appState.wallet?.status || '').toLowerCase() === 'blocked';
+                    this.walletBlockReason = appState.wallet?.block_reason || 'Your wallet has been blocked. Please contact support for assistance.';
+                },
+                async fetchWalletBalance() {
+                    if (!this.userId) return 0;
+                    await refreshWallet();
+                    this.syncWalletFromAppState();
                     return this.walletBalance;
                 },
 
@@ -456,6 +463,7 @@ export default {
         if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         if (trackInterval) { clearInterval(trackInterval); trackInterval = null; }
         if (businessHoursTick) { clearInterval(businessHoursTick); businessHoursTick = null; }
+        if (stateUnsubscribe) { stateUnsubscribe(); stateUnsubscribe = null; }
         if (vueInstance) { vueInstance.$destroy(); vueInstance = null; }
     }
 };
