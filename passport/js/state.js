@@ -36,14 +36,14 @@ export async function refreshSession() {
 
     let { data: profile } = await supabase
         .from('profiles')
-        .select('id, name, surname, phone, card_number, card_cvv')
+        .select('id, name, surname, phone, card_number, card_cvv, role')
         .eq('auth_user_id', session.user.id)
         .maybeSingle();
 
     if (!profile) {
         const fallback = await supabase
             .from('profiles')
-            .select('id, name, surname, phone, card_number, card_cvv')
+            .select('id, name, surname, phone, card_number, card_cvv, role')
             .eq('id', session.user.id)
             .maybeSingle();
         profile = fallback.data;
@@ -63,7 +63,7 @@ export async function refreshSession() {
                 phone: session.user.user_metadata?.phone || '',
                 role: 'customer'
             })
-            .select('id, name, surname, phone, card_number, card_cvv')
+            .select('id, name, surname, phone, card_number, card_cvv, role')
             .single();
         if (insertError) console.error('[state] Profile creation failed:', insertError);
         profile = newProfile || null;
