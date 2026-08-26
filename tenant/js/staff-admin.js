@@ -100,6 +100,24 @@
     function formatDate(d) { return d ? new Date(d).toLocaleDateString('en-ZA') : 'Never'; }
     function formatDateTime(d) { return d ? new Date(d).toLocaleString('en-ZA') : 'Never'; }
 
+    // Supabase/PostgREST returns timestamptz values with their offset already
+    // baked in (e.g. "2026-08-04T00:05:08.593+00:00"). Blindly appending "Z"
+    // to a string that already has an offset produces an unparseable date,
+    // which silently corrupts hours_worked. Only add "Z" if the string
+    // genuinely has no timezone info. (Mirrors staff-clockin.js.)
+    function parseServerTimestamp(ts) {
+        if (!ts) return null;
+        const hasOffset = /Z$|[+-]\d{2}:?\d{2}$/.test(ts);
+        return new Date(hasOffset ? ts : ts + 'Z');
+    }
+
+    function formatDuration(ms) {
+        const minutes = Math.floor(ms / (1000 * 60));
+        if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+        const hours = (minutes / 60).toFixed(1);
+        return `${hours} hours`;
+    }
+
     function showToast(msg, isError = false) {
         const t = document.getElementById('toast');
         t.textContent = msg;
@@ -411,6 +429,20 @@
             return;
         }
 
+        const clockInPin = data.get('clock_in_pin') || null;
+        if (clockInPin) {
+            // Pre-check for a friendly error message — the DB unique index on
+            // clock_in_pin is the real guard, this just avoids a raw
+            // constraint-violation message reaching the admin.
+            let pinQuery = supabase.from('profiles').select('id, name, surname').eq('clock_in_pin', clockInPin);
+            if (staffId) pinQuery = pinQuery.neq('id', staffId);
+            const { data: pinOwner } = await pinQuery.maybeSingle();
+            if (pinOwner) {
+                showToast(`PIN already in use by ${pinOwner.name} ${pinOwner.surname}`, true);
+                return;
+            }
+        }
+
         try {
             if (staffId) {
                 // Update — account type is fixed at creation, so role is left untouched here.
@@ -484,7 +516,11 @@
             await loadWorkforceData();
         } catch (err) {
             console.error(err);
-            showToast(err.message || 'An error occurred', 'error');
+            if (err.message?.includes('profiles_clock_in_pin_unique')) {
+                showToast('That PIN was just taken by another staff member — please choose a different one.', true);
+            } else {
+                showToast(err.message || 'An error occurred', 'error');
+            }
         }
     }
 
@@ -702,7 +738,53 @@
         showToast('CSV exported', 'success');
     };
 
-    window.forceLogout = async (shiftId) => { showToast('Force logout coming soon', 'info'); };
+    window.forceLogout = async (shiftId) => {
+        const shift = shifts.find(s => s.id === shiftId);
+        if (!shift) { showToast('Shift not found — try refreshing', true); return; }
+        const staff = staffList.find(st => st.id === shift.staff_id);
+        const name = staff ? `${staff.name} ${staff.surname}` : 'this staff member';
+
+        const loginUTC = parseServerTimestamp(shift.login_time);
+        const now = new Date();
+        const diffMs = now - loginUTC;
+        const durationStr = formatDuration(diffMs);
+
+        const confirmed = await window.showCustomModal(
+            'Force Clock Out',
+            `Clock out ${escapeHtml(name)} now? They've been on shift for ${durationStr} (since ${formatDateTime(shift.login_time)}). This will end their shift at the current time and cannot be undone.`,
+            'Force Clock Out',
+            'danger'
+        );
+        if (!confirmed) return;
+
+        try {
+            const hours = diffMs / (1000 * 60 * 60);
+            const { error } = await supabase
+                .from('staff_shifts')
+                .update({
+                    logout_time: now.toISOString(),
+                    status: 'completed',
+                    hours_worked: hours,
+                    force_logout: true
+                })
+                .eq('id', shiftId);
+            if (error) throw error;
+
+            const { data: { user } = {} } = await supabase.auth.getUser();
+            await supabase.from('staff_activity_logs').insert({
+                staff_id: shift.staff_id,
+                module: 'Attendance',
+                action: `Force clocked out by manager after ${durationStr}${user ? ` (by ${user.email})` : ''}`,
+                created_at: now.toISOString()
+            });
+
+            showToast(`${name} force clocked out (${durationStr})`);
+            await loadWorkforceData();
+        } catch (err) {
+            console.error(err);
+            showToast(err.message || 'Failed to force clock out', true);
+        }
+    };
 
     // ─── PAYSLIP VIEW / PDF ───
     // Rands logo, transparent PNG, embedded so the payslip PDF never depends
@@ -944,7 +1026,7 @@
         container.innerHTML = active.map(s => {
             const staff = staffList.find(st => st.id === s.staff_id);
             const name = staff ? `${staff.name} ${staff.surname}` : 'Unknown';
-            return `<div class="activity-item"><div class="activity-badge"><i class="fas fa-clock"></i></div><div class="activity-detail"><strong>${escapeHtml(name)}</strong> clocked in at ${formatDateTime(s.login_time)}<br><small>${staff ? roleLabel(staff) : 'Staff'}</small></div></div>`;
+            return `<div class="activity-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><div style="display:flex;gap:10px;align-items:flex-start;"><div class="activity-badge"><i class="fas fa-clock"></i></div><div class="activity-detail"><strong>${escapeHtml(name)}</strong> clocked in at ${formatDateTime(s.login_time)}<br><small>${staff ? roleLabel(staff) : 'Staff'}</small></div></div><button class="btn-sm danger" style="white-space:nowrap;font-size:0.7rem;padding:6px 10px;" onclick="forceLogout('${s.id}')"><i class="fas fa-power-off"></i> Force Clock Out</button></div>`;
         }).join('');
     }
 
