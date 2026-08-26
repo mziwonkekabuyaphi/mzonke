@@ -66,16 +66,16 @@ async function render(path) {
     }
 }
 
-// Routes that hide the shared bottom nav — either because the old
-// multi-page version never included it (home), or because it's a
-// standalone flow rather than a tab-bar destination (pay-now,
-// festival-banner, payment-success — none of the original static pages
-// embedded the nav).
+// Routes that hide the shared bottom nav — standalone flows rather than
+// tab-bar destinations (pay-now, festival-banner, payment-success — none
+// of the original static pages embedded the nav).
+// 'home' used to be in this set (the old multi-page version never included
+// the nav there), but the floating bottom nav is now shown on Home too.
 // 'order' used to be in this set because its fixed cart-bar footer would
 // collide with the nav. That footer is gone now — Track/cart-summary/Pay
 // moved into the sticky .order-status-bar under the header — so the order
 // page is free to show the shared bottom nav like any other tab.
-const NAV_HIDDEN_ROUTES = new Set(['home', 'pay-now', 'festival-banner', 'payment-success']);
+const NAV_HIDDEN_ROUTES = new Set(['pay-now', 'festival-banner', 'payment-success']);
 
 function updateActiveNavItem(path) {
     document.querySelectorAll('#bottom-nav .bottom-nav__item').forEach(el => {
