@@ -84,9 +84,16 @@ export async function refreshWallet() {
         .eq('user_id', profileId)
         .maybeSingle();
 
-    appState.wallet = wallet;
+    // Postgres numeric/decimal columns (wallets.balance) come back from
+    // PostgREST as strings, not numbers, to avoid float rounding loss.
+    // Normalizing here — once, centrally — means every page can safely
+    // treat appState.wallet.balance as a number instead of each consumer
+    // having to know/guess the wire type itself. (A `typeof balance ===
+    // 'number'` check on the raw value would silently fail and read as 0 —
+    // that's exactly what was happening in lockers.js / shisha.js.)
+    appState.wallet = wallet ? { ...wallet, balance: Number(wallet.balance) || 0 } : null;
     notify();
-    return wallet;
+    return appState.wallet;
 }
 
 // Set up ONE realtime subscription for the whole app session — pages
@@ -100,7 +107,7 @@ export function setupWalletRealtime() {
             event: 'UPDATE', schema: 'public', table: 'wallets',
             filter: `id=eq.${appState.wallet.id}`
         }, (payload) => {
-            appState.wallet = { ...appState.wallet, ...payload.new };
+            appState.wallet = { ...appState.wallet, ...payload.new, balance: Number(payload.new.balance) || 0 };
             notify();
         })
         .subscribe();
