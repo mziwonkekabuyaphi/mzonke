@@ -135,8 +135,6 @@
     document.getElementById('statActive').textContent = allSlides.filter(s => s.is_active).length;
     document.getElementById('statVideo').textContent = allSlides.filter(s => s.media_type === 'video' || s.video_url).length;
     document.getElementById('statImage').textContent = allSlides.filter(s => s.media_type !== 'video' && !s.video_url).length;
-    const imgs = allSlides.filter(s => s.media_type !== 'video' && !s.video_url);
-    document.getElementById('statAvgDur').textContent = imgs.length ? Math.round(imgs.reduce((a, s) => a + (s.duration_seconds || 60), 0) / imgs.length) : '—';
     document.getElementById('slideCount').textContent = `${allSlides.length} slides`;
 
     // Load impressions and calculate revenue
@@ -844,8 +842,11 @@
       totalRev += (cnt / 1000) * cpm;
     });
 
+    const imgSlides = slides.filter(s => s.media_type !== 'video' && !s.video_url);
+    const avgDur = imgSlides.length ? Math.round(imgSlides.reduce((a, s) => a + (s.duration_seconds || 60), 0) / imgSlides.length) : 0;
+
     document.getElementById('dashKpiGrid').innerHTML = `
-      <div class="dash-kpi"><div class="val">${totalSlides}</div><div class="label">Total Slides</div><div class="sub">${activeSlides} active</div></div>
+      <div class="dash-kpi"><div class="val">${avgDur}s</div><div class="label">Avg Duration</div></div>
       <div class="dash-kpi"><div class="val">${fmt(totalImps)}</div><div class="label">Impressions Today</div></div>
       <div class="dash-kpi"><div class="val">${fmtR(totalRev)}</div><div class="label">Est. Revenue Today</div></div>
       <div class="dash-kpi"><div class="val">${Object.keys(countByAd).length}</div><div class="label">Ads Shown Today</div></div>
