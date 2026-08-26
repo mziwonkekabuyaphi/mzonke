@@ -217,9 +217,9 @@
     refreshBtn.addEventListener('click', () => loadActiveShifts());
 
     setupKeypad();
-    loadActiveShifts();
     pinInput.focus();
-    setInterval(loadActiveShifts, 15000);
+    // Roster is no longer auto-loaded on landing or polled on an interval —
+    // it now only loads when the user taps "Refresh to see shifts".
 
     /* ---- Purely decorative additions below : do not touch clock-in logic ---- */
 
