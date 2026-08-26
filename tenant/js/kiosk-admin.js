@@ -46,8 +46,19 @@
       document.getElementById('pageSub').textContent = pageSubs[item.dataset.page] || '';
       if (item.dataset.page === 'campaigns') loadCampaigns();
       if (item.dataset.page === 'tiers') loadTiers();
+      closeSidebar();
     });
   });
+
+  // Sidebar: hover-to-expand on desktop, slide-out drawer on mobile
+  const sidebarEl = document.getElementById('sidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  function openSidebar() { sidebarEl.classList.add('open'); sidebarBackdrop.classList.add('show'); }
+  function closeSidebar() { sidebarEl.classList.remove('open'); sidebarBackdrop.classList.remove('show'); }
+  document.getElementById('menuToggleBtn')?.addEventListener('click', () => {
+    sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  sidebarBackdrop?.addEventListener('click', closeSidebar);
 
   // ═══════════════════════════════════════════
   //  STORAGE BUCKET
