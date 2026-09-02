@@ -727,6 +727,7 @@
       modulesError: false,
       togglingModuleId: null,
       venueSettings: {
+        id: null,
         venue_name: 'Rands Vibe',
         venue_location: 'Cape Town, South Africa',
         contact_email: 'admin@rands.com',
@@ -842,10 +843,19 @@
       setActiveBgColor(c) { this.activeBgColor = c; this.saveThemeToDB(); },
       async saveVenueSettingsToDB() {
         try {
-          const { error } = await supabase.from('venue_settings').upsert({ id: 'default', ...this.venueSettings, updated_at: new Date() });
-          if (error) throw error;
+          const { id, ...fields } = this.venueSettings;
+          if (id) {
+            // Existing row: update in place by its real uuid.
+            const { error } = await supabase.from('venue_settings').update({ ...fields, updated_at: new Date() }).eq('id', id);
+            if (error) throw error;
+          } else {
+            // No row yet: insert one and remember the id Postgres generates.
+            const { data, error } = await supabase.from('venue_settings').insert({ ...fields, updated_at: new Date() }).select('id').single();
+            if (error) throw error;
+            this.venueSettings.id = data.id;
+          }
           this.showToast();
-        } catch { alert('Error saving venue settings.'); }
+        } catch (err) { console.error(err); alert('Error saving venue settings.'); }
       },
       async saveThemeToDB() {
         try {
@@ -862,14 +872,20 @@
             { preference_key: 'date_format',           preference_value: this.systemPrefs.date_format },
             { preference_key: 'items_per_page',        preference_value: this.systemPrefs.items_per_page }
           ];
-          for (const p of updates) await supabase.from('system_preferences').upsert({ ...p, updated_at: new Date() });
+          for (const p of updates) {
+            const { error } = await supabase.from('system_preferences').upsert({ ...p, updated_at: new Date() }, { onConflict: 'preference_key' });
+            if (error) throw error;
+          }
           this.showToast();
           this.applyAutoRefresh();
         } catch(err) { console.error(err); }
       },
       async loadVenueSettingsFromDB() {
         try {
-          const { data } = await supabase.from('venue_settings').select('*').eq('id', 'default').maybeSingle();
+          // Single-venue setup: there's only ever meant to be one row, so just take the
+          // most recently created one rather than filtering on a fixed id.
+          const { data, error } = await supabase.from('venue_settings').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
+          if (error) throw error;
           if (data) this.venueSettings = { ...this.venueSettings, ...data };
         } catch(e) { console.warn(e); }
       },
