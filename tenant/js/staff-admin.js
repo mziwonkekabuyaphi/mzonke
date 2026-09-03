@@ -880,17 +880,17 @@
 
         const textX = badgeX + badgeW + 18;
         setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
-        doc.text('R', textX, 58);
-        const rW = doc.getTextWidth('R');
-        setText(C.red); doc.text('a', textX + rW, 58);
+        doc.text('C', textX, 58);
+        const cW = doc.getTextWidth('C');
+        setText(C.red); doc.text('a', textX + cW, 58);
         const aW = doc.getTextWidth('a');
-        setText(C.bone); doc.text('nds', textX + rW + aW, 58);
+        setText(C.bone); doc.text('pe Town', textX + cW + aW, 58);
 
         setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-        trackedText('CAPE TOWN · STAFF ATTENDANCE VAULT', textX, 72, {}, 1.6);
+        trackedText('STAFF ATTENDANCE VAULT', textX, 72, {}, 1.6);
 
         setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-        trackedText('STAFF PAYSLIP', R, 42, { align: 'right' }, 1.6);
+        doc.text('STAFF PAYSLIP', R, 42, { align: 'right' });
         setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
         doc.text(`Pay Period: ${formatDate(record.period_start)} – ${formatDate(record.period_end)}`, R, 56, { align: 'right' });
 
@@ -928,7 +928,7 @@
 
         cy += 34;
         field(innerX, cy, 'Full Name', b.name);
-        field(innerX + colW, cy, 'Business', venueInfo.name || 'Rands Cape Town');
+        field(innerX + colW, cy, 'Business', 'Rands Cape Town');
 
         cy += 34;
         field(innerX, cy, 'Job Title', b.role);
