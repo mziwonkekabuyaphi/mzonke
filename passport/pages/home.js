@@ -354,14 +354,204 @@ function wireBalanceResize() {
     onCleanup(() => { clearTimeout(resizeFitTimeout); window.removeEventListener('resize', onResize); });
 }
 
+// ===== CARD ARTWORK (decorative pattern regenerated with each color randomize) =====
+// Ported from the old app's addLuxuryCardArtwork IIFE. Requires the same
+// .card-artwork CSS rule the old home.css already defines (absolute-positioned,
+// pointer-events:none overlay inside each card face) — carry that CSS rule
+// over if this SPA's stylesheet doesn't already have it.
+function generateRandomArtworkSVG() {
+    const viewBox = "0 0 100 100";
+    const elements = [];
+    const count = Math.floor(Math.random() * 8) + 5;
+    const palettes = ['rgba(255,255,255,0.2)', 'rgba(255,215,0,0.25)', 'rgba(227,6,19,0.2)', 'rgba(255,255,255,0.35)', 'rgba(255,180,40,0.2)', 'rgba(200,220,255,0.15)'];
+    for (let i = 0; i < count; i++) {
+        const cx = Math.random() * 100, cy = Math.random() * 100, rx = Math.random() * 18 + 6, ry = Math.random() * 14 + 4;
+        const strokeColor = palettes[Math.floor(Math.random() * palettes.length)], strokeWidth = Math.random() * 1.5 + 0.6, rotate = Math.random() * 360;
+        const fill = Math.random() > 0.7 ? 'rgba(255,255,255,0.05)' : 'none';
+        elements.push(`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${rotate} ${cx} ${cy})" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linecap="round" />`);
+    }
+    for (let i = 0; i < 4; i++) {
+        const cx = Math.random() * 100, cy = Math.random() * 100, r = Math.random() * 20 + 10;
+        const start = Math.random() * 360, end = start + 60 + Math.random() * 120;
+        elements.push(`<path d="M ${cx + r * Math.cos(start * Math.PI / 180)} ${cy + r * Math.sin(start * Math.PI / 180)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(end * Math.PI / 180)} ${cy + r * Math.sin(end * Math.PI / 180)}" stroke="rgba(255,255,255,0.25)" stroke-width="1.2" fill="none" />`);
+    }
+    for (let i = 0; i < 12; i++) {
+        const cx = Math.random() * 100, cy = Math.random() * 100;
+        elements.push(`<circle cx="${cx}" cy="${cy}" r="${Math.random() * 1.5 + 0.5}" fill="rgba(255,215,0,0.4)" />`);
+    }
+    return `<svg viewBox="${viewBox}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">${elements.join('')}</svg>`;
+}
+function getArtworkContainer(parent) {
+    let container = parent.querySelector('.card-artwork');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'card-artwork';
+        parent.insertBefore(container, parent.firstChild);
+    }
+    return container;
+}
+function refreshCardArtwork() {
+    const front = $('cardFront'), back = $('cardBack');
+    if (front) getArtworkContainer(front).innerHTML = generateRandomArtworkSVG();
+    if (back) getArtworkContainer(back).innerHTML = generateRandomArtworkSVG();
+}
+
+// ===== CARD COLOR RANDOMIZE (ported from old app's randomizeCardColors) =====
+function randomFrontGradient() {
+    const hue1 = Math.floor(Math.random() * 360);
+    const hue2 = (hue1 + 40 + Math.random() * 100) % 360;
+    const hue3 = (hue2 + 30 + Math.random() * 80) % 360;
+    const hue4 = (hue1 + 180) % 360;
+    const hue5 = (hue2 + 210) % 360;
+    const sat1 = 60 + Math.random() * 32;
+    const sat2 = 55 + Math.random() * 32;
+    const sat3 = 60 + Math.random() * 28;
+    const lit1 = 25 + Math.random() * 28;
+    const lit2 = 20 + Math.random() * 22;
+    const lit3 = 15 + Math.random() * 24;
+    return `linear-gradient(135deg, hsl(${hue1}, ${sat1}%, ${lit1}%) 0%, hsl(${hue2}, ${sat2}%, ${lit2}%) 25%, hsl(${hue3}, ${sat3}%, ${lit3}%) 50%, hsl(${hue4}, ${sat1 - 10}%, ${lit1 - 5}%) 75%, hsl(${hue5}, ${sat2 - 5}%, ${lit2 - 4}%) 100%)`;
+}
+function randomBackGradient() {
+    const hueA = Math.floor(Math.random() * 360);
+    const hueB = (hueA + 50) % 360;
+    const hueC = (hueB + 70) % 360;
+    return `linear-gradient(135deg, hsl(${hueA}, 68%, 10%) 0%, hsl(${hueB}, 62%, 16%) 30%, hsl(${hueC}, 72%, 8%) 55%, hsl(${(hueA + 120) % 360}, 68%, 12%) 80%, hsl(${(hueB + 90) % 360}, 65%, 6%) 100%)`;
+}
+function randomizeCardColors(cardStage, cardFront, cardBack) {
+    if (!cardFront || !cardBack) return;
+    cardFront.style.background = randomFrontGradient();
+    cardBack.style.background = randomBackGradient();
+    refreshCardArtwork();
+    if (window.navigator?.vibrate) window.navigator.vibrate(30);
+    if (cardStage) {
+        cardStage.style.filter = 'drop-shadow(0 0 12px rgba(220, 60, 80, 0.8))';
+        setTimeout(() => { cardStage.style.filter = ''; }, 200);
+    }
+    // Requires the same .card-burst CSS (a ring element + .play keyframe
+    // animation) the old home.css defines — carry that rule over too.
+    const burstElem = $('cardBurst');
+    if (burstElem) {
+        burstElem.classList.remove('play');
+        void burstElem.offsetWidth;
+        burstElem.classList.add('play');
+    }
+}
+
+// ===== FLIP HINT =====
+// One-time visual nudge that the card can be tapped. Shown once per device
+// (localStorage-gated), auto-dismisses after 5s or on first flip — whichever
+// comes first. Deliberately says nothing about the long-press color easter
+// egg, so that stays a discovery rather than a hint.
+function showFlipHint(cardStage) {
+    if (localStorage.getItem('cardFlipHintSeen')) return null;
+
+    const hint = document.createElement('div');
+    hint.className = 'card-flip-hint';
+    hint.textContent = 'Tap the card to flip ↻';
+    hint.style.cssText = 'position:absolute;bottom:-26px;left:50%;transform:translateX(-50%);' +
+        'font-size:12px;color:rgba(255,255,255,0.65);white-space:nowrap;pointer-events:none;' +
+        'transition:opacity 0.4s ease;z-index:5;opacity:1;';
+
+    if (!cardStage.style.position) cardStage.style.position = 'relative';
+    cardStage.appendChild(hint);
+
+    let dismissed = false;
+    const dismiss = () => {
+        if (dismissed) return;
+        dismissed = true;
+        hint.style.opacity = '0';
+        setTimeout(() => hint.remove(), 400);
+        localStorage.setItem('cardFlipHintSeen', 'true');
+    };
+    const autoHideTimer = setTimeout(dismiss, 5000);
+
+    return () => { clearTimeout(autoHideTimer); dismiss(); };
+}
+
 function wireCardFlip() {
     const cardStage = $('cardStage');
     const flipper = $('cardFlipper');
     if (!cardStage || !flipper) return;
+
     let flipped = false;
-    const onClick = (e) => { e.stopPropagation(); flipped = !flipped; cardStage.classList.toggle('flipped', flipped); };
+    let dismissHint = () => {};
+
+    // --- Tap to flip ---
+    const onClick = (e) => {
+        e.stopPropagation();
+        flipped = !flipped;
+        cardStage.classList.toggle('flipped', flipped);
+        dismissHint();
+    };
     cardStage.addEventListener('click', onClick);
     onCleanup(() => cardStage.removeEventListener('click', onClick));
+
+    dismissHint = showFlipHint(cardStage) || dismissHint;
+    onCleanup(() => dismissHint());
+
+    // --- Pointer-tilt / parallax sheen (ported from old app) ---
+    const onPointerMove = (e) => {
+        const rect = cardStage.getBoundingClientRect();
+        const px = ((e.clientX - rect.left) / rect.width) * 100;
+        const py = ((e.clientY - rect.top) / rect.height) * 100;
+        cardStage.style.setProperty('--mx', px + '%');
+        cardStage.style.setProperty('--my', py + '%');
+        if (flipped) return;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = (e.clientX - cx) / (rect.width / 2);
+        const dy = (e.clientY - cy) / (rect.height / 2);
+        flipper.style.transform = `rotateY(${dx * 8}deg) rotateX(${-dy * 6}deg)`;
+    };
+    const onPointerLeave = () => {
+        cardStage.style.setProperty('--mx', '50%');
+        cardStage.style.setProperty('--my', '35%');
+        if (flipped) return;
+        flipper.style.transform = '';
+    };
+    cardStage.addEventListener('pointermove', onPointerMove);
+    cardStage.addEventListener('pointerleave', onPointerLeave);
+    onCleanup(() => {
+        cardStage.removeEventListener('pointermove', onPointerMove);
+        cardStage.removeEventListener('pointerleave', onPointerLeave);
+    });
+
+    // --- Long-press to randomize card colors (ported from old app) ---
+    const cardFront = $('cardFront');
+    const cardBack = $('cardBack');
+    let pressTimer = null;
+
+    const startLongPress = () => {
+        if (flipped) return;
+        pressTimer = setTimeout(() => {
+            randomizeCardColors(cardStage, cardFront, cardBack);
+            cardStage.classList.add('long-press-active');
+            setTimeout(() => cardStage.classList.remove('long-press-active'), 280);
+        }, 380);
+    };
+    const cancelLongPress = () => {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+        cardStage.classList.remove('long-press-active');
+    };
+
+    cardStage.addEventListener('mousedown', startLongPress);
+    cardStage.addEventListener('mouseup', cancelLongPress);
+    cardStage.addEventListener('mouseleave', cancelLongPress);
+    cardStage.addEventListener('touchstart', startLongPress, { passive: false });
+    cardStage.addEventListener('touchend', cancelLongPress);
+    cardStage.addEventListener('touchcancel', cancelLongPress);
+    onCleanup(() => {
+        cancelLongPress();
+        cardStage.removeEventListener('mousedown', startLongPress);
+        cardStage.removeEventListener('mouseup', cancelLongPress);
+        cardStage.removeEventListener('mouseleave', cancelLongPress);
+        cardStage.removeEventListener('touchstart', startLongPress);
+        cardStage.removeEventListener('touchend', cancelLongPress);
+        cardStage.removeEventListener('touchcancel', cancelLongPress);
+    });
+
+    // --- Initial decorative artwork on both faces ---
+    refreshCardArtwork();
 }
 
 function wireModals() {
