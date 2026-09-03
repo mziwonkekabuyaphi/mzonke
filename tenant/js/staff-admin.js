@@ -310,7 +310,8 @@
             staffData = data;
         }
 
-        const jobOptions = Object.keys(JOB_TITLES).map(key =>
+        const jobOptions = `<option value="" disabled ${!staffData?.staff_role ? 'selected' : ''}>Select a Job</option>` +
+            Object.keys(JOB_TITLES).map(key =>
             `<option value="${key}" ${staffData?.staff_role === key ? 'selected' : ''}>${key}</option>`
         ).join('');
         const isMobileScanner = staffData?.role === MOBILE_SCANNER_ROLE;
@@ -319,8 +320,9 @@
             <form id="staff-form" class="space-y-4">
                 <div class="form-group" style="margin-bottom:12px;">
                     <label>Account Type *</label>
-                    <select name="${staffId ? 'account_type_display' : 'account_type'}" id="account-type-select" ${staffId ? 'disabled' : ''}>
-                        <option value="standard" ${!isMobileScanner ? 'selected' : ''}>Standard Staff (Console access)</option>
+                    <select name="${staffId ? 'account_type_display' : 'account_type'}" id="account-type-select" ${staffId ? 'disabled' : 'required'}>
+                        <option value="" disabled ${!staffId ? 'selected' : ''}>Select Account Type</option>
+                        <option value="standard" ${staffId && !isMobileScanner ? 'selected' : ''}>Standard Staff (Console access)</option>
                         <option value="mobile_scanner" ${isMobileScanner ? 'selected' : ''}>Mobile Scanner (standalone — scanner app only)</option>
                     </select>
                     ${staffId ? `<input type="hidden" name="account_type" value="${isMobileScanner ? 'mobile_scanner' : 'standard'}"><div style="font-size:0.65rem;color:var(--muted);margin-top:4px;">Account type can't be changed after creation.</div>` : ''}
@@ -879,14 +881,14 @@
         doc.addImage(RANDS_LOGO_PNG, 'PNG', badgeX + 9, badgeY + (badgeH - logoH) / 2, logoW, logoH);
 
         const textX = badgeX + badgeW + 18;
-        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
+        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(22);
         doc.text('C', textX, 58);
         const cW = doc.getTextWidth('C');
         setText(C.red); doc.text('a', textX + cW, 58);
         const aW = doc.getTextWidth('a');
         setText(C.bone); doc.text('pe Town', textX + cW + aW, 58);
 
-        setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+        setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
         trackedText('STAFF ATTENDANCE VAULT', textX, 72, {}, 1.6);
 
         setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
@@ -1002,7 +1004,7 @@
         let fy = panelBottom + 22;
         setText(C.smoke); doc.setFont('helvetica', 'italic'); doc.setFontSize(7.2);
         const disclaimer = doc.splitTextToSize(
-            'PAYE estimated using SARS 2026/27 brackets (annualised method); UIF at 1%, capped. This is an estimate for payslip purposes — confirm final liabilities with your accountant or SARS.',
+            'PAYE estimated using SARS 2026/27 brackets (annualised method); UIF at 1%, capped. Confirm final liabilities with your accountant or SARS.',
             CW
         );
         doc.text(disclaimer, L, fy);
