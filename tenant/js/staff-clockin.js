@@ -214,7 +214,10 @@
     });
 
     clockBtn.addEventListener('click', handleClockAction);
-    refreshBtn.addEventListener('click', () => loadActiveShifts());
+    refreshBtn.addEventListener('click', () => {
+        document.getElementById('rosterPanel').style.display = 'block';
+        loadActiveShifts();
+    });
 
     setupKeypad();
     pinInput.focus();
