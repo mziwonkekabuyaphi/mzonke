@@ -215,8 +215,16 @@
 
     clockBtn.addEventListener('click', handleClockAction);
     refreshBtn.addEventListener('click', () => {
-        document.getElementById('rosterPanel').style.display = 'block';
-        loadActiveShifts();
+        const rosterPanel = document.getElementById('rosterPanel');
+        const isHidden = rosterPanel.style.display === 'none' || !rosterPanel.style.display;
+        if (isHidden) {
+            rosterPanel.style.display = 'block';
+            refreshBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Click to hide shifts';
+            loadActiveShifts();
+        } else {
+            rosterPanel.style.display = 'none';
+            refreshBtn.innerHTML = '<i class="fas fa-eye"></i> Click to see shifts';
+        }
     });
 
     setupKeypad();
