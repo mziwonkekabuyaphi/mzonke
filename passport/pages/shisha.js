@@ -7,7 +7,14 @@ import { appState, refreshSession, refreshWallet, onStateChange, setupWalletReal
 let cleanup = [];
 const onCleanup = (fn) => cleanup.push(fn);
 
-const SESSION_PRICE = 250;
+// FLAG (fixed, not silent): the original page hardcoded a single
+// SESSION_PRICE (250) for every flavour and reused it for coal refills too.
+// Real pricing lives in shisha_products.price (see loadLocationsAndFlavours),
+// which staff can edit — Mzi Mint is currently R265, not R250. This
+// fallback is only ever shown for a split second before flavours load,
+// never used to actually charge anyone (requestNewOrder refuses to submit
+// if a flavour's live price isn't in flavourPrices).
+const FALLBACK_PRICE = 250;
 const COAL_DURATION = 60;          // minutes
 const REFILL_THRESHOLD = 15;       // minutes
 
@@ -16,6 +23,17 @@ const REFILL_THRESHOLD = 15;       // minutes
 let currentBalance = 0;
 let activeSession = null;
 let currentCustomer = null;
+let flavourPrices = {};     // shisha_products.name -> live price, refreshed in loadLocationsAndFlavours
+
+// ========== REQUEST AWARENESS (mirrors lockers.js's vault_holdings pattern) ==========
+// shisha_requests has no "seen" flag, so rejection awareness is session-local:
+// dismissedRequestIds just stops us re-showing a rejection banner the
+// customer already dismissed in this visit, same lifetime as the rest of
+// this module's state.
+let pendingRequests = [];          // shisha_requests rows with status 'pending' for this customer
+let latestResolvedRequest = null;  // most recent non-pending request, for the rejection/approval banner
+let dismissedRequestIds = new Set();
+let requestsChannel = null;
 
 // NOT reused across visits on purpose — these are recreated in init() and
 // torn down in destroy() every time, same treatment as walletChannel in
@@ -132,7 +150,7 @@ async function loadLocationsAndFlavours() {
 
         const { data: flavours, error: flavError } = await supabase
             .from('shisha_products')
-            .select('name')
+            .select('name, price')
             .eq('is_available', true)
             .order('name');
 
@@ -140,14 +158,16 @@ async function loadLocationsAndFlavours() {
 
         const flavourSelect = document.getElementById('orderFlavour');
         flavourSelect.innerHTML = '';
+        flavourPrices = {};
 
         if (!flavours || flavours.length === 0) {
             flavourSelect.innerHTML = '<option value="">No available flavours</option>';
         } else {
             flavours.forEach(flav => {
+                flavourPrices[flav.name] = Number(flav.price) || 0;
                 const opt = document.createElement('option');
                 opt.value = flav.name;
-                opt.textContent = flav.name;
+                opt.textContent = `${flav.name} — R${Number(flav.price).toFixed(0)}`;
                 flavourSelect.appendChild(opt);
             });
         }
@@ -173,7 +193,8 @@ function updateOrderButtonState() {
         orderBtn.textContent = hasLocations ? 'No flavours available' : 'No locations available';
     } else {
         orderBtn.disabled = false;
-        orderBtn.textContent = `Smoke Now - R${SESSION_PRICE}`;
+        const price = flavourPrices[flavourSelect.value] ?? FALLBACK_PRICE;
+        orderBtn.textContent = `Smoke Now - R${price}`;
     }
 }
 
@@ -336,12 +357,103 @@ async function sendRequestToStaff(requestData) {
     }
     showToast("Request sent to staff!");
     loadStatement();
+    loadRequestStatus();
     return true;
+}
+
+// Shared label/icon for a shisha_requests row — used both by the always-on
+// status banner below and by the Puffing Statement list.
+function requestTypeMeta(req) {
+    switch (req.request_type) {
+        case 'order_session': return { icon: 'fa-ticket-alt', label: 'New Session' };
+        case 'maintenance': return { icon: 'fa-fire', label: 'Coal Refill' };
+        case 'end_session': return { icon: 'fa-stop', label: 'End Session' };
+        case 'issue_report': {
+            const label = req.request_data?.issueLabel;
+            return { icon: 'fa-triangle-exclamation', label: label ? `Issue: ${label}` : 'Issue Report' };
+        }
+        default: return { icon: 'fa-bell', label: req.request_type };
+    }
+}
+
+// ========== REQUEST STATUS BANNER ==========
+// Same job as lockers.js's holding-note ("Awaiting staff verification...")
+// — the customer previously had zero visibility into a pending request
+// unless they manually opened the Puffing Statement tab, and no visibility
+// at all into a rejection beyond the one-off toast (missed if they'd
+// already navigated away). This keeps that state pinned to the top of the
+// Shisha tab until staff act on it, and shows the outcome once they do.
+async function loadRequestStatus() {
+    if (!currentCustomer?.phone) {
+        pendingRequests = [];
+        latestResolvedRequest = null;
+        renderRequestStatus();
+        return;
+    }
+    const { data, error } = await supabase
+        .from('shisha_requests')
+        .select('*')
+        .eq('customer_phone', currentCustomer.phone)
+        .order('created_at', { ascending: false })
+        .limit(10);
+    if (error) { console.error(error); return; }
+    const all = data || [];
+    pendingRequests = all.filter(r => r.status === 'pending');
+    latestResolvedRequest = all.find(r => r.status !== 'pending') || null;
+    renderRequestStatus();
+}
+
+function renderRequestStatus() {
+    const container = document.getElementById('requestStatusContainer');
+    if (!container) return;
+    let html = '';
+
+    pendingRequests.forEach(req => {
+        const meta = requestTypeMeta(req);
+        html += `
+            <div class="request-status-card pending">
+                <div class="request-status-icon"><i class="fas ${meta.icon}"></i></div>
+                <div class="request-status-body">
+                    <div class="request-status-title">${escapeHtml(meta.label)}</div>
+                    <div class="request-status-note"><i class="fas fa-clock"></i> Awaiting staff approval — we'll let you know once it's actioned.</div>
+                </div>
+            </div>
+        `;
+    });
+
+    if (latestResolvedRequest && latestResolvedRequest.status === 'rejected' && !dismissedRequestIds.has(latestResolvedRequest.id)) {
+        const meta = requestTypeMeta(latestResolvedRequest);
+        const reason = latestResolvedRequest.request_data?.rejection_reason
+            || latestResolvedRequest.request_data?.reason
+            || latestResolvedRequest.request_data?.staff_note;
+        html += `
+            <div class="request-status-card rejected">
+                <div class="request-status-icon"><i class="fas fa-xmark"></i></div>
+                <div class="request-status-body">
+                    <div class="request-status-title">${escapeHtml(meta.label)} — Declined</div>
+                    <div class="request-status-note">${reason ? escapeHtml(reason) : 'Staff were unable to action this request. Please try again or ask a staff member.'}</div>
+                </div>
+                <button class="request-status-dismiss" data-dismiss="${latestResolvedRequest.id}" aria-label="Dismiss"><i class="fas fa-xmark"></i></button>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+    container.querySelectorAll('[data-dismiss]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            dismissedRequestIds.add(btn.dataset.dismiss);
+            renderRequestStatus();
+        });
+    });
 }
 
 async function requestCoalRefill() {
     if (!activeSession) { showToast("No active session", true); return; }
-    await sendRequestToStaff({ type: 'maintenance', shishaId: activeSession.shishaId, location: activeSession.location, flavour: activeSession.flavour, amount: 250 });
+    // Was hardcoded to 250 regardless of flavour. Charge what this session
+    // actually costs (its stored total_amount), falling back to the
+    // flavour's current live price if that's ever missing.
+    const refillAmount = Number(activeSession.amount) || flavourPrices[activeSession.flavour] || FALLBACK_PRICE;
+    await sendRequestToStaff({ type: 'maintenance', shishaId: activeSession.shishaId, location: activeSession.location, flavour: activeSession.flavour, amount: refillAmount });
 }
 async function requestEndSession() {
     if (!activeSession) { showToast("No active session", true); return; }
@@ -418,7 +530,13 @@ async function requestNewOrder() {
         return;
     }
 
-    await sendRequestToStaff({ type: 'order_session', location, flavour, amount: SESSION_PRICE, paymentMethod: 'wallet', accountId: currentCustomer?.phone });
+    const price = flavourPrices[flavour];
+    if (price === undefined) {
+        showToast("Could not confirm pricing for that flavour — please try again", true);
+        return;
+    }
+
+    await sendRequestToStaff({ type: 'order_session', location, flavour, amount: price, paymentMethod: 'wallet', accountId: currentCustomer?.phone });
 }
 
 // ========== LOAD PUFFING STATEMENT ==========
@@ -444,20 +562,8 @@ async function loadStatement() {
         let html = '';
         for (const req of data) {
             const date = new Date(req.created_at).toLocaleString('en-ZA', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-            let typeLabel = '';
-            switch (req.request_type) {
-                case 'order_session': typeLabel = '🆕 New Session'; break;
-                case 'maintenance': typeLabel = '🔥 Coal Refill'; break;
-                case 'end_session': typeLabel = '⏹️ End Session'; break;
-                case 'issue_report': {
-                    const issueIcons = { iyatsarha: '😞', weak_smoke: '💨', hose: '🔗', water: '💧', coal_cold: '🥶', other: '💬' };
-                    const issueLabel = req.request_data?.issueLabel;
-                    const issueKey = req.request_data?.issueKey;
-                    typeLabel = issueLabel ? `${issueIcons[issueKey] || '⚠️'} ${escapeHtml(issueLabel)}` : '⚠️ Report Issue';
-                    break;
-                }
-                default: typeLabel = req.request_type;
-            }
+            const meta = requestTypeMeta(req);
+            const typeLabel = `<i class="fas ${meta.icon}"></i> ${escapeHtml(meta.label)}`;
             let statusClass = '';
             let statusLabel = req.status?.toUpperCase() || 'PENDING';
             if (req.status === 'pending') statusClass = 'pending';
@@ -497,6 +603,7 @@ function switchToShisha() {
     document.getElementById('statementTabBtn').classList.remove('active');
     loadSession();
     loadLocationsAndFlavours();
+    loadRequestStatus();
 }
 
 function switchToStatement() {
@@ -511,6 +618,7 @@ function startPolling() {
     if (sessionPollInterval) clearInterval(sessionPollInterval);
     sessionPollInterval = setInterval(async () => {
         await loadSession();
+        await loadRequestStatus();
     }, 3000);
     onCleanup(() => { if (sessionPollInterval) { clearInterval(sessionPollInterval); sessionPollInterval = null; } });
 
@@ -553,9 +661,28 @@ export default {
         await loadCurrentCustomerAndBalance();
         await loadSession();
         await loadLocationsAndFlavours();
+        await loadRequestStatus();
         wireStaticListeners();
         startPolling();
         switchToShisha();
+
+        // Auto-refresh the status banner the moment staff approve/reject/complete
+        // a request, so the customer sees it without waiting for the next poll —
+        // same pattern as lockers.js's vault-holdings-updates channel.
+        if (currentCustomer?.phone) {
+            requestsChannel = supabase
+                .channel('shisha-requests-updates')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'shisha_requests', filter: `customer_phone=eq.${currentCustomer.phone}` }, (payload) => {
+                    loadRequestStatus();
+                    if (payload.eventType === 'UPDATE' && payload.old?.status === 'pending' && payload.new?.status && payload.new.status !== 'pending') {
+                        const meta = requestTypeMeta(payload.new);
+                        if (payload.new.status === 'rejected') showToast(`${meta.label} was declined by staff`, true);
+                        else if (payload.new.status === 'approved' || payload.new.status === 'completed') showToast(`${meta.label} was approved!`);
+                    }
+                })
+                .subscribe();
+            onCleanup(() => { if (requestsChannel) { supabase.removeChannel(requestsChannel); requestsChannel = null; } });
+        }
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
             if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
@@ -565,13 +692,17 @@ export default {
                 syncFromAppState();
                 await loadSession();
                 await loadLocationsAndFlavours();
+                await loadRequestStatus();
                 if (document.getElementById('statementPanel').style.display === 'block') loadStatement();
             } else if (event === 'SIGNED_OUT') {
                 currentBalance = 0;
                 currentCustomer = null;
                 activeSession = null;
+                pendingRequests = [];
+                latestResolvedRequest = null;
                 updateWalletDisplay();
                 renderModernSessionCard();
+                renderRequestStatus();
                 document.getElementById('statementListContainer').innerHTML = '<div class="statement-empty">Please log in to view your statement</div>';
             }
         });
