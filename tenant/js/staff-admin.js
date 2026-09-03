@@ -840,20 +840,20 @@
         const doc = new jsPDF({ unit: 'pt', format: 'a4' });
         const b = payslipBreakdown(record, staff);
 
-        // ---- Rands brand palette (matches the staff terminal) ----
+        // ---- Rands brand palette — "The Vault" (identical tokens to the
+        // staff terminal / standalone payslip design) ----
         const C = {
-            charcoal:  [23, 21, 27],
+            void:      [10, 10, 13],
+            panel:     [23, 21, 27],
             red:       [227, 6, 19],
             redDeep:   [140, 10, 23],
             champagne: [201, 162, 75],
             bone:      [244, 241, 234],
-            boneSoft:  [214, 210, 202],
-            ink:       [30, 28, 33],
-            muted:     [128, 124, 118],
-            hairline:  [225, 221, 214],
-            stripe:    [247, 245, 241],
+            boneDim:   [186, 182, 172],
+            smoke:     [131, 128, 138],
+            hairline:  [42, 39, 48],
         };
-        const PAGE_W = 595.28, L = 40, R = 555, CW = R - L;
+        const PAGE_W = 595.28, PAGE_H = 841.89, L = 40, R = 555, CW = R - L;
         const isPaid = record.payment_status === 'paid';
 
         const setFill = (c) => doc.setFillColor(c[0], c[1], c[2]);
@@ -868,138 +868,153 @@
             doc.setCharSpace(0);
         };
 
-        // ---------------- Header band ----------------
-        setFill(C.charcoal); doc.rect(0, 0, PAGE_W, 118, 'F');
-        setFill(C.red); doc.rect(0, 118, PAGE_W, 3, 'F');
+        // ---------------- Full dark page background ----------------
+        setFill(C.void); doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
 
-        // logo badge — red panel behind the transparent-PNG logo
-        const badgeX = 40, badgeY = 22, badgeW = 76, badgeH = 41;
-        setFill(C.red); doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 6, 6, 'F');
+        // ---------------- Header ----------------
+        const badgeX = L, badgeY = 34, badgeW = 90, badgeH = 50;
+        setFill(C.red); doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 8, 8, 'F');
         const logoRatio = 92 / 196; // source logo is 196x92
-        const logoW = badgeW - 16, logoH = logoW * logoRatio;
-        doc.addImage(RANDS_LOGO_PNG, 'PNG', badgeX + 8, badgeY + (badgeH - logoH) / 2, logoW, logoH);
-
-        // period date sits under the badge, anchored to the bottom of the header
-        // band so it never collides with the address/phone lines alongside it
-        setText(C.muted); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-        doc.text(`${formatDate(record.period_start)} – ${formatDate(record.period_end)}`, badgeX, 108);
+        const logoW = badgeW - 18, logoH = logoW * logoRatio;
+        doc.addImage(RANDS_LOGO_PNG, 'PNG', badgeX + 9, badgeY + (badgeH - logoH) / 2, logoW, logoH);
 
         const textX = badgeX + badgeW + 18;
-        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
-        doc.text(venueInfo.name || 'Rands Cape Town', textX, 40);
-        setText(C.boneSoft); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        let infoY = 56;
-        // Wrap "street, ..." onto one line and "suburb, city" onto the next,
-        // rather than one long run-on line.
-        const addrParts = (venueInfo.address || '').split(',').map(s => s.trim()).filter(Boolean);
-        if (addrParts.length) {
-            const line1 = addrParts.length > 2 ? addrParts.slice(0, -2).join(', ') + ',' : addrParts.join(', ');
-            const line2 = addrParts.length > 2 ? addrParts.slice(-2).join(', ') : '';
-            doc.text(line1, textX, infoY); infoY += 13;
-            if (line2) { doc.text(line2, textX, infoY); infoY += 13; }
-        }
-        if (venueInfo.phone) { doc.text(venueInfo.phone, textX, infoY); }
+        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
+        doc.text('R', textX, 58);
+        const rW = doc.getTextWidth('R');
+        setText(C.red); doc.text('a', textX + rW, 58);
+        const aW = doc.getTextWidth('a');
+        setText(C.bone); doc.text('nds', textX + rW + aW, 58);
 
-        setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-        trackedText('PAYSLIP', R, 34, { align: 'right' }, 2);
+        setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+        trackedText('CAPE TOWN · STAFF ATTENDANCE VAULT', textX, 72, {}, 1.6);
+
+        setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+        trackedText('STAFF PAYSLIP', R, 42, { align: 'right' }, 1.6);
+        setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+        doc.text(`Pay Period: ${formatDate(record.period_start)} – ${formatDate(record.period_end)}`, R, 56, { align: 'right' });
 
         // status pill
-        const pillW = 68, pillH = 18, pillX = R - pillW, pillY = 46;
-        setFill(isPaid ? C.champagne : C.charcoal);
-        setDraw(isPaid ? C.champagne : C.boneSoft); doc.setLineWidth(0.75);
+        const pillW = 72, pillH = 18, pillX = R - pillW, pillY = 66;
+        setFill(isPaid ? C.champagne : C.panel);
+        setDraw(isPaid ? C.champagne : C.boneDim); doc.setLineWidth(0.75);
         doc.roundedRect(pillX, pillY, pillW, pillH, 9, 9, isPaid ? 'F' : 'S');
-        setText(isPaid ? C.charcoal : C.boneSoft); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+        setText(isPaid ? C.void : C.boneDim); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
         trackedText(isPaid ? 'PAID' : 'PENDING', pillX + pillW / 2, pillY + 12.5, { align: 'center' }, 1);
 
+        setDraw(C.hairline); doc.setLineWidth(0.75); doc.line(L, 104, R, 104);
 
-        // ---------------- Employee details card ----------------
-        let y = 150;
-        setText(C.ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-        trackedText('EMPLOYEE DETAILS', L, y, {}, 1);
+        // ---------------- Card panel ----------------
+        const panelTop = 122, panelBottom = 630;
+        setFill(C.panel); doc.roundedRect(L, panelTop, CW, panelBottom - panelTop, 12, 12, 'F');
+        setDraw(C.hairline); doc.setLineWidth(0.75);
+        doc.roundedRect(L, panelTop, CW, panelBottom - panelTop, 12, 12, 'S');
 
-        y += 10;
-        setFill(C.stripe); setDraw(C.hairline); doc.setLineWidth(0.75);
-        doc.roundedRect(L, y, CW, 62, 6, 6, 'FD');
+        const pad = 24;
+        const innerX = L + pad, innerW = CW - pad * 2, colW = innerW / 2;
+        let cy = panelTop + 34;
 
-        const field = (label, value, x, ly, alignRight) => {
-            const opts = alignRight ? { align: 'right' } : {};
-            setText(C.muted); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
-            trackedText(label, x, ly, opts, 0.8);
-            setText(C.ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
-            doc.text(String(value), x, ly + 14, opts);
+        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        trackedText('EMPLOYEE', innerX, cy, {}, 1);
+        trackedText('EMPLOYER', innerX + colW, cy, {}, 1);
+        setDraw(C.hairline); doc.line(innerX, cy + 8, innerX + innerW, cy + 8);
+
+        const field = (x, yy, label, value) => {
+            setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8);
+            trackedText(label.toUpperCase(), x, yy, {}, 1);
+            setText(C.bone); doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
+            doc.text(value, x, yy + 15);
         };
-        field('NAME', b.name, L + 18, y + 22);
-        field('JOB TITLE', b.role, L + 18, y + 46);
-        field('HOURS WORKED', (parseFloat(record.hours_worked) || 0).toFixed(2), R - 18, y + 22, true);
-        field('HOURLY RATE', fmtR(record.hourly_rate), R - 18, y + 46, true);
 
-        // ---------------- Pay breakdown table ----------------
-        y += 62 + 30;
-        setText(C.ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-        trackedText('PAY BREAKDOWN', L, y, {}, 1);
+        cy += 34;
+        field(innerX, cy, 'Full Name', b.name);
+        field(innerX + colW, cy, 'Business', venueInfo.name || 'Rands Cape Town');
 
-        y += 12;
-        const rowH = 22;
-        const tableTop = y;
-        setFill(C.charcoal); doc.rect(L, y, CW, rowH, 'F');
-        setText(C.boneSoft); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-        trackedText('DESCRIPTION', L + 14, y + 14.5, {}, 1);
-        trackedText('AMOUNT (ZAR)', R - 14, y + 14.5, { align: 'right' }, 1);
+        cy += 34;
+        field(innerX, cy, 'Job Title', b.role);
+        setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8);
+        trackedText('SITE ADDRESS', innerX + colW, cy, {}, 1);
+        setText(C.bone); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+        const addrLines = venueInfo.address ? doc.splitTextToSize(venueInfo.address, colW - 10) : [];
+        addrLines.slice(0, 3).forEach((ln, i) => doc.text(ln, innerX + colW, cy + 15 + i * 12));
 
-        const rows = [
-            ['Gross pay', fmtR(b.gross), false],
-            ['PAYE (estimate)', '– ' + fmtR(b.paye), true],
-            ['UIF (1%)', '– ' + fmtR(b.uif), true],
-        ];
-        let rowY = tableTop + rowH; // top edge of the first data row
-        rows.forEach(([label, val, muted], i) => {
-            if (i % 2 === 0) { setFill(C.stripe); doc.rect(L, rowY, CW, rowH, 'F'); }
-            setText(muted ? C.muted : C.ink); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-            doc.text(label, L + 14, rowY + 14.5);
-            doc.text(val, R - 14, rowY + 14.5, { align: 'right' });
-            rowY += rowH;
-        });
-        // divider before the bold "Total deductions" row
-        setDraw(C.hairline); doc.setLineWidth(0.75); doc.line(L, rowY, R, rowY);
-        setText(C.ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-        doc.text('Total deductions', L + 14, rowY + 14.5);
-        doc.text('– ' + fmtR(b.totalDeductions), R - 14, rowY + 14.5, { align: 'right' });
-        rowY += rowH; // bottom edge of the table
+        cy += Math.max(34, 15 + addrLines.length * 12 + 8);
+        field(innerX, cy, 'Hours Worked', (parseFloat(record.hours_worked) || 0).toFixed(2));
+        field(innerX + colW, cy, 'Contact Number', venueInfo.phone || 'N/A');
 
-        setDraw(C.hairline);
-        doc.line(L, rowY, R, rowY);      // bottom border
-        doc.line(L, tableTop, L, rowY);  // left border
-        doc.line(R, tableTop, R, rowY);  // right border
-        y = rowY;
+        cy += 34;
+        field(innerX, cy, 'Hourly Rate', fmtR(record.hourly_rate));
+        field(innerX + colW, cy, 'Pay Period', `${b.periodDays} day(s)`);
+
+        cy += 30;
+        setDraw(C.hairline); doc.line(innerX, cy, innerX + innerW, cy);
+
+        // ---------------- Earnings ----------------
+        cy += 24;
+        setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        trackedText('EARNINGS', innerX, cy, {}, 1);
+
+        const row = (yy, desc, detail, amount, bold) => {
+            setText(bold ? C.bone : C.bone);
+            doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(10);
+            doc.text(desc, innerX, yy);
+            if (detail) {
+                setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+                doc.text(detail, innerX + 175, yy);
+            }
+            setText(C.bone); doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(10);
+            doc.text(amount, innerX + innerW, yy, { align: 'right' });
+        };
+
+        cy += 20;
+        row(cy, 'Ordinary hours worked',
+            `${(parseFloat(record.hours_worked) || 0).toFixed(1)} hrs @ ${fmtR(record.hourly_rate)}/hr`,
+            fmtR(b.gross));
+        cy += 16;
+        setDraw(C.hairline); doc.line(innerX, cy, innerX + innerW, cy);
+        cy += 18;
+        row(cy, 'Gross Pay', '', fmtR(b.gross), true);
+
+        // ---------------- Deductions ----------------
+        cy += 28;
+        setText(C.champagne); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        trackedText('DEDUCTIONS', innerX, cy, {}, 1);
+
+        cy += 20;
+        row(cy, 'PAYE (income tax)', 'Est. per SARS 2026/27 brackets', '– ' + fmtR(b.paye));
+        cy += 18;
+        row(cy, 'UIF (employee, 1%)', 'Capped per SARS earnings ceiling', '– ' + fmtR(b.uif));
+        cy += 16;
+        setDraw(C.hairline); doc.line(innerX, cy, innerX + innerW, cy);
+        cy += 18;
+        row(cy, 'Total Deductions', '', '– ' + fmtR(b.totalDeductions), true);
 
         // ---------------- Net pay callout ----------------
-        y += 26;
-        const netH = 54;
-        setFill(C.red); doc.roundedRect(L, y, CW, netH, 8, 8, 'F');
-        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-        trackedText('NET PAY', L + 18, y + 22, {}, 1);
-        setText(C.champagne); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-        doc.text(`For ${b.periodDays} day period`, L + 18, y + 38);
-        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
-        doc.text(fmtR(b.net), R - 18, y + 34, { align: 'right' });
+        cy += 26;
+        const netH = 50;
+        setFill(C.redDeep); doc.roundedRect(innerX, cy, innerW, netH, 8, 8, 'F');
+        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text('NET PAY', innerX + 16, cy + 30);
+        setText(C.bone); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
+        doc.text(fmtR(b.net), innerX + innerW - 16, cy + 32, { align: 'right' });
 
         // ---------------- Footer ----------------
-        y += netH + 30;
-        setDraw(C.hairline); doc.setLineWidth(0.75); doc.line(L, y, R, y);
-        y += 16;
-        setText(C.muted); doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
+        let fy = panelBottom + 22;
+        setText(C.smoke); doc.setFont('helvetica', 'italic'); doc.setFontSize(7.2);
         const disclaimer = doc.splitTextToSize(
             'PAYE estimated using SARS 2026/27 brackets (annualised method); UIF at 1%, capped. This is an estimate for payslip purposes — confirm final liabilities with your accountant or SARS.',
             CW
         );
-        doc.text(disclaimer, L, y);
-        y += disclaimer.length * 10 + 10;
-        setText(C.muted); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
-        trackedText('RANDS CAPE TOWN · CONFIDENTIAL', L, y, {}, 0.8);
-        doc.text(`Generated ${new Date().toLocaleDateString('en-ZA')}`, R, y, { align: 'right' });
+        doc.text(disclaimer, L, fy);
+        fy += disclaimer.length * 9.5 + 10;
+        setText(C.smoke); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+        doc.text('RANDS CAPE TOWN · ATTENDANCE VAULT · CONFIDENTIAL', PAGE_W / 2, fy, { align: 'center' });
+        fy += 12;
+        doc.text(`Generated ${new Date().toLocaleDateString('en-ZA')}`, PAGE_W / 2, fy, { align: 'center' });
 
         return doc;
     }
+
 
     window.downloadPayslipPDF = (id) => {
         const record = payrollById.get(id);
