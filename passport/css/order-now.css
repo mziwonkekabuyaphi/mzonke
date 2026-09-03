@@ -33,6 +33,9 @@
       min-height: 100vh; 
       color: var(--ink); 
       overflow-x: hidden;
+      /* No more bottom padding reserved for a fixed cart-bar — the cart/pay
+         bar now sits sticky under the header instead, so the shared SPA
+         bottom-nav owns the bottom of the viewport uncontested. */
     }
     
     body::before { 
@@ -47,36 +50,15 @@
     #orderApp { position: relative; z-index: 1; }
     .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
 
-    /* .site-header / .brand / .brand-logo / .brand-text / .header-right
-       moved to css/shell-additions.css. This file previously had its own
-       sizing (40px logo, 1.2rem title) — different from tickets/vvip/shisha's
-       36px/1.1rem — unified to the shared values for a consistent header
-       across every converted page. */
-      background: rgba(255,255,255,0.2);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.2);
-      padding: 8px 16px;
-      border-radius: var(--radius-full);
-      font-weight: 600;
-      font-size: 0.75rem;
-      color: white;
-      cursor: pointer;
-      transition: var(--transition);
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .close-icon-btn {
-      width: 40px;
-      height: 40px;
-      padding: 0;
-      justify-content: center;
-    }
-    .status-track-btn:active, .close-icon-btn:active { 
-      transform: scale(0.96); 
-      background: rgba(255,255,255,0.3); 
-    }
-    
+    /* .site-header / .brand / .brand-logo / .brand-text / .header-right /
+       home-icon-btn are owned by shell-additions.css (shared across every
+       converted page) — intentionally NOT redefined here. Redefining them
+       page-locally is exactly the byte-for-byte duplication bug that file's
+       own comment describes: whichever stylesheet loads last silently wins.
+       .track-btn / .close-icon-btn are gone too — Track lives in the
+       order-status-bar now and the header's home button uses the shared
+       .home-icon-btn class instead. */
+
     /* ========== UNIFIED BUTTON SYSTEM ========== */
     button, .btn {
       font-family: 'Inter', sans-serif;
@@ -160,7 +142,7 @@
     }
     .mobile-cat-item.active, .mobile-sub-item.active { background: var(--red); color: white; border-color: var(--red); box-shadow: 0 2px 8px var(--red-glow); }
     
-    .products-area { padding: 0 16px 24px 16px; }
+    .products-area { padding: 0 16px 20px 16px; }
     .section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: var(--ink); letter-spacing: -0.2px; }
     
@@ -272,13 +254,18 @@
     /* ========== ORDER STATUS BAR ==========
        Replaces the old fixed-footer cart-bar. Sticks just under the header
        instead of pinning to the viewport bottom, so the shared global
-       bottom-nav can own that space uncontested. If your .site-header is
-       itself position:fixed in shell-additions.css, change `top: 0` below
-       to that header's height (e.g. `top: 64px`) so this strip sits flush
-       underneath instead of sliding under it. */
+       bottom-nav can own that space uncontested.
+       `top: 60px` is the shared .site-header's real rendered height from
+       shell-additions.css: 10px+10px vertical padding + the 40px
+       .home-icon-btn (the tallest thing in that flex row) = 60px. .site-
+       header is position:sticky (not fixed), so this bar can't just use
+       top:0 — two sticky siblings both pinned to 0 would stack on top of
+       each other instead of stacking underneath one another. If the shared
+       header's padding or icon size ever changes, update this number to
+       match its new rendered height. */
     .order-status-bar {
       position: sticky;
-      top: 0;
+      top: 60px;
       z-index: 140;
       display: flex;
       align-items: center;
@@ -315,6 +302,7 @@
       white-space: nowrap;
     }
     .status-cart .status-total { color: var(--red); }
+    .status-cart .status-wallet { color: var(--red); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
     .status-sep { color: var(--mist); }
     .status-pay-btn {
       flex-shrink: 0;
@@ -510,5 +498,4 @@
       .qty-num { min-width: 26px; line-height: 28px; }
       .order-status-bar { padding: 8px 12px; }
       .header-right { gap: 8px; }
-      .close-icon-btn { width: 36px; height: 36px; }
     }
