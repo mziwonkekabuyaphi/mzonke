@@ -285,7 +285,7 @@ function renderModernSessionCard() {
         <div class="session-card-modern">
             <div class="session-header-modern">
                 <div class="title-row">
-                    <span class="session-name"><i class="fas fa-smoking"></i> Hookah Session</span>
+                    <span class="session-name"><i class="fas fa-smoking"></i> Your Hubbly Session</span>
                     <span class="session-status-badge ${statusClass}">${statusText}</span>
                 </div>
                 <div class="session-details">
