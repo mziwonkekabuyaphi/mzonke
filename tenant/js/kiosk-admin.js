@@ -32,8 +32,8 @@
   //  NAVIGATION
   // ═══════════════════════════════════════════
   const navItems = document.querySelectorAll('.nav-item[data-page]');
-  const pageTitles = { slides:'Slides', preview:'Preview', campaigns:'Campaigns', tiers:'Tiers' };
-  const pageSubs = { slides:'Manage kiosk slides', preview:'Live kiosk simulation', campaigns:'Advertiser campaigns', tiers:'Pricing tiers' };
+  const pageTitles = { slides:'Slides', 'menu-slides':'Menu Banners', preview:'Preview', campaigns:'Campaigns', tiers:'Tiers' };
+  const pageSubs = { slides:'Manage kiosk slides', 'menu-slides':'Manage the kiosk menu hero carousel', preview:'Live kiosk simulation', campaigns:'Advertiser campaigns', tiers:'Pricing tiers' };
 
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -46,6 +46,7 @@
       document.getElementById('pageSub').textContent = pageSubs[item.dataset.page] || '';
       if (item.dataset.page === 'campaigns') loadCampaigns();
       if (item.dataset.page === 'tiers') loadTiers();
+      if (item.dataset.page === 'menu-slides') renderMenuSlides();
       closeSidebar();
     });
   });
@@ -410,6 +411,219 @@
   document.getElementById('slideSearch').addEventListener('input', e => renderSlides(e.target.value));
 
   // ═══════════════════════════════════════════
+  //  MENU BANNERS (kiosk_menu_slides)
+  //  Hero carousel on the kiosk MENU screen — separate from the ad
+  //  system above. No CPM/campaign/tier: these are internal promo
+  //  shortcuts, not third-party paid ads.
+  // ═══════════════════════════════════════════
+  let allMenuSlides = [];
+  let productCategories = null; // cached list, refreshed each time the modal opens
+
+  async function loadMenuSlides() {
+    const { data, error } = await supabase.from('kiosk_menu_slides').select('*').order('display_order', { ascending: true });
+    if (error) { toast('Error loading menu banners', 'err'); return []; }
+    return data || [];
+  }
+
+  async function getProductCategories() {
+    if (productCategories) return productCategories;
+    const { data } = await supabase.from('products').select('category');
+    const set = new Set((data || []).map(p => (p.category || '').trim()).filter(Boolean));
+    productCategories = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return productCategories;
+  }
+
+  async function populateMenuCategorySelect(selected) {
+    const sel = document.getElementById('menuTargetCategory');
+    const cats = await getProductCategories();
+    sel.innerHTML = '<option value="all">All Items (homepage)</option>' +
+      cats.map(c => `<option value="${esc(c)}">${esc(c.replace(/\b\w/g, ch => ch.toUpperCase()))}</option>`).join('') +
+      '<option value="tickets">Event Tickets</option>';
+    sel.value = selected && (selected === 'all' || selected === 'tickets' || cats.includes(selected)) ? selected : 'all';
+  }
+
+  async function renderMenuSlides(filter = '') {
+    allMenuSlides = await loadMenuSlides();
+    const tbody = document.getElementById('menuSlidesTbody');
+    let slides = allMenuSlides;
+    if (filter) {
+      const q = filter.toLowerCase();
+      slides = slides.filter(s => (s.title || '').toLowerCase().includes(q) || (s.eyebrow || '').toLowerCase().includes(q));
+    }
+
+    document.getElementById('statMenuTotal').textContent = allMenuSlides.length;
+    document.getElementById('statMenuActive').textContent = allMenuSlides.filter(s => s.is_active).length;
+    document.getElementById('menuSlideCount').textContent = `${allMenuSlides.length} banners`;
+
+    if (!slides.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-utensils"></i><p>${filter ? 'No banners match your search.' : 'No banners yet. Add your first one!'}</p></div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = slides.map((s, i) => {
+      const isActive = !!s.is_active;
+      const thumb = s.image_url ? `<img class="thumb" src="${esc(s.image_url)}" onclick="window.open('${esc(s.image_url)}')">` : '—';
+      return `<tr data-id="${s.id}">
+        <td>
+          <div class="order-ctrl">
+            <button class="order-btn" data-dir="up" data-id="${s.id}" data-order="${s.display_order}" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <span style="min-width:20px;text-align:center;font-size:0.75rem;font-weight:700;">${s.display_order}</span>
+            <button class="order-btn" data-dir="down" data-id="${s.id}" data-order="${s.display_order}" ${i === slides.length - 1 ? 'disabled' : ''}>↓</button>
+          </div>
+        </td>
+        <td>${s.eyebrow ? `<span class="text-muted" style="font-size:0.62rem;letter-spacing:0.05em;">${esc(s.eyebrow)}</span><br>` : ''}<strong>${esc(s.title)}</strong>${s.description ? `<br><span class="text-muted" style="font-size:0.65rem;">${esc(s.description)}</span>` : ''}</td>
+        <td>${thumb}</td>
+        <td><span class="badge badge-venue">${esc(s.cta_label || 'Explore')}</span></td>
+        <td><span class="text-muted" style="font-size:0.68rem;">${esc(s.target_category)}</span></td>
+        <td><div class="toggle ${isActive ? 'on' : ''}" data-id="${s.id}" data-active="${isActive}"></div></td>
+        <td>
+          <div class="actions">
+            <button class="icon-btn-sm" data-action="edit-menu-slide" data-id="${s.id}" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+            <button class="icon-btn-sm danger" data-action="delete-menu-slide" data-id="${s.id}" data-name="${esc(s.title)}" title="Delete"><i class="fas fa-trash-alt"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('[data-action="edit-menu-slide"]').forEach(btn => btn.addEventListener('click', () => openMenuSlideModal(btn.dataset.id)));
+    tbody.querySelectorAll('[data-action="delete-menu-slide"]').forEach(btn => btn.addEventListener('click', () => openDelete('menu-slide', btn.dataset.id, btn.dataset.name)));
+    tbody.querySelectorAll('.toggle').forEach(tog => {
+      tog.addEventListener('click', async () => {
+        const newVal = tog.dataset.active === 'false' || tog.dataset.active === '';
+        const { error } = await supabase.from('kiosk_menu_slides').update({ is_active: newVal, updated_at: new Date() }).eq('id', tog.dataset.id);
+        if (error) toast('Update failed', 'err');
+        else { toast(`Banner ${newVal ? 'activated' : 'deactivated'}`); renderMenuSlides(document.getElementById('menuSlideSearch').value); }
+      });
+    });
+    tbody.querySelectorAll('[data-dir]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const dir = btn.dataset.dir;
+        const id = btn.dataset.id;
+        const order = parseInt(btn.dataset.order);
+        const newO = dir === 'up' ? order - 1 : order + 1;
+        const other = allMenuSlides.find(s => s.display_order === newO);
+        if (!other) return;
+        await supabase.from('kiosk_menu_slides').update({ display_order: newO, updated_at: new Date() }).eq('id', id);
+        await supabase.from('kiosk_menu_slides').update({ display_order: order, updated_at: new Date() }).eq('id', other.id);
+        toast('Order updated');
+        renderMenuSlides(document.getElementById('menuSlideSearch').value);
+      });
+    });
+  }
+
+  async function openMenuSlideModal(id = null) {
+    document.getElementById('menuSlideId').value = '';
+    document.getElementById('menuEyebrow').value = '';
+    document.getElementById('menuTitle').value = '';
+    document.getElementById('menuDescription').value = '';
+    document.getElementById('menuCtaLabel').value = 'Explore';
+    document.getElementById('menuImageUrl').value = '';
+    document.getElementById('menuImageUpload').value = '';
+    document.getElementById('menuImagePreview').style.display = 'none';
+    document.getElementById('menuDisplayOrder').value = '';
+    document.getElementById('menuIsActive').checked = true;
+    document.getElementById('menuStartsAt').value = '';
+    document.getElementById('menuEndsAt').value = '';
+    document.getElementById('menuSlideModalTitle').textContent = id ? 'Edit Banner' : 'Add Banner';
+
+    productCategories = null; // refresh in case products changed since last open
+    await populateMenuCategorySelect(null);
+
+    if (id) {
+      const { data, error } = await supabase.from('kiosk_menu_slides').select('*').eq('id', id).single();
+      if (error) { toast('Error loading banner', 'err'); return; }
+      document.getElementById('menuSlideId').value = data.id;
+      document.getElementById('menuEyebrow').value = data.eyebrow || '';
+      document.getElementById('menuTitle').value = data.title || '';
+      document.getElementById('menuDescription').value = data.description || '';
+      document.getElementById('menuCtaLabel').value = data.cta_label || 'Explore';
+      document.getElementById('menuDisplayOrder').value = data.display_order || '';
+      document.getElementById('menuIsActive').checked = !!data.is_active;
+      document.getElementById('menuStartsAt').value = data.starts_at ? data.starts_at.slice(0,16) : '';
+      document.getElementById('menuEndsAt').value = data.ends_at ? data.ends_at.slice(0,16) : '';
+      document.getElementById('menuImageUrl').value = data.image_url || '';
+      if (data.image_url) {
+        document.getElementById('menuImagePreview').innerHTML = `<img src="${esc(data.image_url)}" style="max-width:100%;max-height:130px;object-fit:contain;border-radius:8px;">`;
+        document.getElementById('menuImagePreview').style.display = 'flex';
+      }
+      await populateMenuCategorySelect(data.target_category);
+    }
+    document.getElementById('menuSlideModal').classList.add('open');
+  }
+
+  document.getElementById('addMenuSlideBtn').addEventListener('click', () => openMenuSlideModal());
+  document.getElementById('menuSlideModalCancel').addEventListener('click', () => document.getElementById('menuSlideModal').classList.remove('open'));
+
+  document.getElementById('menuImageUrl').addEventListener('input', e => {
+    const url = e.target.value.trim();
+    const prev = document.getElementById('menuImagePreview');
+    if (url) { prev.innerHTML = `<img src="${esc(url)}" style="max-width:100%;max-height:130px;object-fit:contain;border-radius:8px;" onerror="this.style.display='none'">`; prev.style.display='flex'; }
+    else prev.style.display='none';
+  });
+  document.getElementById('menuImageUpload').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('menuImagePreview').innerHTML = `<img src="${ev.target.result}" style="max-width:100%;max-height:130px;object-fit:contain;border-radius:8px;">`;
+      document.getElementById('menuImagePreview').style.display = 'flex';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('saveMenuSlideBtn').addEventListener('click', async () => {
+    const titleVal = document.getElementById('menuTitle').value.trim();
+    if (!titleVal) { toast('Title is required', 'err'); return; }
+
+    const btn = document.getElementById('saveMenuSlideBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving…';
+
+    let imageUrl = document.getElementById('menuImageUrl').value.trim();
+    const file = document.getElementById('menuImageUpload').files[0];
+    if (file) {
+      try {
+        imageUrl = await uploadFile(file, titleVal);
+      } catch {
+        toast('Image upload failed', 'err');
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Banner';
+        return;
+      }
+    }
+
+    const payload = {
+      eyebrow: document.getElementById('menuEyebrow').value.trim() || null,
+      title: titleVal,
+      description: document.getElementById('menuDescription').value.trim() || null,
+      cta_label: document.getElementById('menuCtaLabel').value.trim() || 'Explore',
+      target_category: document.getElementById('menuTargetCategory').value || 'all',
+      image_url: imageUrl || null,
+      display_order: parseInt(document.getElementById('menuDisplayOrder').value) || allMenuSlides.length + 1,
+      is_active: document.getElementById('menuIsActive').checked,
+      starts_at: document.getElementById('menuStartsAt').value ? new Date(document.getElementById('menuStartsAt').value).toISOString() : null,
+      ends_at: document.getElementById('menuEndsAt').value ? new Date(document.getElementById('menuEndsAt').value).toISOString() : null,
+      updated_at: new Date()
+    };
+
+    const id = document.getElementById('menuSlideId').value;
+    let error;
+    if (id) {
+      ({ error } = await supabase.from('kiosk_menu_slides').update(payload).eq('id', id));
+    } else {
+      payload.created_at = new Date();
+      ({ error } = await supabase.from('kiosk_menu_slides').insert([payload]));
+    }
+
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Banner';
+    if (error) { toast('Save failed: ' + error.message, 'err'); return; }
+    toast('Banner saved');
+    document.getElementById('menuSlideModal').classList.remove('open');
+    renderMenuSlides();
+  });
+
+  document.getElementById('menuSlideSearch').addEventListener('input', e => renderMenuSlides(e.target.value));
+
+  // ═══════════════════════════════════════════
   //  DELETE
   // ═══════════════════════════════════════════
   function openDelete(type, id, name) {
@@ -422,14 +636,15 @@
   // Modal only closes via the Cancel button — clicking/moving outside no longer dismisses it.
   document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
     if (!deleteTarget) return;
-    const tableMap = { slide: 'kiosk_idle_ads', campaign: 'kiosk_ad_campaigns', tier: 'ad_tiers' };
+    const tableMap = { slide: 'kiosk_idle_ads', 'menu-slide': 'kiosk_menu_slides', campaign: 'kiosk_ad_campaigns', tier: 'ad_tiers' };
     const tbl = tableMap[deleteTarget.type];
     const { error } = await supabase.from(tbl).delete().eq('id', deleteTarget.id);
     document.getElementById('deleteModal').classList.remove('open');
     if (error) { toast('Delete failed: ' + error.message, 'err'); return; }
-    toast(`${deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1)} deleted`);
+    toast(`${deleteTarget.type === 'menu-slide' ? 'Banner' : deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1)} deleted`);
     deleteTarget = null;
     if (tbl === 'kiosk_idle_ads') renderSlides();
+    else if (tbl === 'kiosk_menu_slides') renderMenuSlides();
     else if (tbl === 'kiosk_ad_campaigns') loadCampaigns();
     else if (tbl === 'ad_tiers') loadTiers();
   });
@@ -952,6 +1167,9 @@
   function setupRealtime() {
     supabase.channel('kiosk-admin')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_idle_ads' }, () => renderSlides())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_menu_slides' }, () => {
+        if (document.getElementById('page-menu-slides')?.classList.contains('active')) renderMenuSlides(document.getElementById('menuSlideSearch')?.value);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_ad_campaigns' }, () => loadCampaigns())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ad_tiers' }, () => loadTiers())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_ad_impressions' }, () => { if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashCharts(); })
