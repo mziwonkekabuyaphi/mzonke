@@ -185,8 +185,27 @@ export const html = `<div id="bg-canvas"></div>
 
 // Guards against re-running the original page's initialization logic
 // (Supabase fetches, screensaver rotation, clock tick, global event
-// listeners, etc.) more than once if this screen is ever re-navigated to.
+// listeners, etc.) more than once while this screen is mounted. Reset
+// by cleanup() below so the screen can be cleanly re-initialized the
+// next time it's navigated to.
 let initialized = false;
+
+// Hoisted to module scope (rather than declared inside init()) so
+// cleanup() can clear/remove them when this screen is navigated away
+// from. This matters more here than it did for Scanner: Welcome runs
+// a recursive clock tick and a screensaver/inactivity timer chain, and
+// registers its inactivity listeners on `document` itself (not on
+// anything inside #kiosk-screen) — none of that is torn down for free
+// by kiosk.js replacing #kiosk-screen's innerHTML.
+let toastTimer = null;
+let adminTapCount = 0;
+let adminTapTimer = null;
+let clockTimer = null;
+let idleTimer = null;
+let slideTimeout = null;
+let ssRunning = false;
+let activityHandler = null;
+const ACTIVITY_EVENTS = ['touchstart', 'touchend', 'mousemove', 'mousedown', 'keydown', 'scroll', 'click'];
 
 /**
  * Mounts the Welcome screen's behaviour. Must be called AFTER `html`
@@ -230,7 +249,8 @@ export function init({ supabase }) {
   function toast(msg, dur=2800){
     const t=document.getElementById('toast');
     t.textContent=msg; t.classList.add('show');
-    setTimeout(()=>t.classList.remove('show'),dur);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove('show'),dur);
   }
 
   function openScreen(id){
@@ -605,11 +625,6 @@ export function init({ supabase }) {
   }
 
   /* ══════════════ CHECK-IN (self-service, from Wallet & Check-In) ══════════════ */
-  window.openCheckinForCurrentUser = function() {
-    closeScreen('wallet');
-    openScreen('checkin');
-  };
-
   window.checkinTicketById = async function(ticketId) {
     await processCheckin(ticketId);
     await renderWalletDashboard(); // refresh ticket list so it now shows "Checked in"
@@ -787,7 +802,7 @@ export function init({ supabase }) {
 
         <div class="section-divider"><span>Events</span></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem">
-          <div class="sub-card" onclick="openCheckinForCurrentUser()"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div class="sc-title">Check In (Manual)</div><p class="sc-desc">Got a ticket bought on another number? Enter it manually.</p><div class="sc-cta">Check In <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div>
+          <div class="sub-card" onclick="window.kioskNavigate('scanner')"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div class="sc-title">Self Check-In</div><p class="sc-desc">Got a ticket bought on another number? Enter it manually.</p><div class="sc-cta">Check In <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div>
           <div class="sub-card" onclick="openBuyWithWallet()"><div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9a3 3 0 010-6h18a3 3 0 010 6"/><path d="M3 15a3 3 0 010 6h18a3 3 0 010-6"/><path d="M12 3v18"/></svg></div><div class="sc-title">Buy Ticket</div><p class="sc-desc">Pay with your Passport balance &amp; check in instantly.</p><div class="sc-cta">Buy Now <svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6"/></svg></div></div>
         </div>
       
@@ -911,7 +926,7 @@ export function init({ supabase }) {
 
   window.refreshAllData = async function() { toast('🔄 Syncing with Supabase...'); await Promise.all([loadEvents(), loadLockers(), loadButcherProducts(), updateStats()]); document.getElementById('adminLastSync').innerText = new Date().toLocaleTimeString(); toast('✓ Data synced successfully'); };
 
-  (function tick() { const n = new Date(); const clock = document.getElementById('clock'); if (clock) clock.textContent = n.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); setTimeout(tick, 1000); })();
+  (function tick() { const n = new Date(); const clock = document.getElementById('clock'); if (clock) clock.textContent = n.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); clockTimer = setTimeout(tick, 1000); })();
 
   (function() { const c = document.getElementById('particles'); if (c) { for(let i=0; i<30; i++) { const e = document.createElement('div'); e.className = 'pt'; e.style.cssText = `left:${Math.random()*100}%;width:${1+Math.random()*2.5}px;height:${1+Math.random()*2.5}px;background:${Math.random()>0.5?'#E30613':'rgba(255,255,255,0.3)'};--d:${7+Math.random()*12}s;--dl:${-(Math.random()*15)}s;--sx:${Math.random()*100-50}px`; c.appendChild(e); } } })();
 
@@ -1012,14 +1027,15 @@ export function init({ supabase }) {
 
   // Call this after any stat-changing operation
   window.refreshFeed = refreshFeed;
-  let adminTapCount = 0, adminTapTimer = null;
+  adminTapCount = 0; adminTapTimer = null; // reset in case of re-init after cleanup
   const logoTap = document.getElementById('logoTap');
   if (logoTap) { logoTap.addEventListener('click', () => { adminTapCount++; clearTimeout(adminTapTimer); adminTapTimer = setTimeout(() => adminTapCount = 0, 3000); if (adminTapCount >= 5) { adminTapCount = 0; document.getElementById('adminModal').classList.add('active'); } }); }
 
   window.checkAdminPin = function() { const p = document.getElementById('adminPin')?.value; if (p === '1234' || p === 'admin') { document.getElementById('adminLoginForm').style.display = 'none'; document.getElementById('adminPanel').style.display = 'block'; document.getElementById('adminLastSync').innerText = new Date().toLocaleTimeString(); toast('Admin mode active'); } else { toast('Invalid admin PIN'); } };
   window.closeAdmin = function() { document.getElementById('adminModal').classList.remove('active'); setTimeout(() => { const loginForm = document.getElementById('adminLoginForm'); const panel = document.getElementById('adminPanel'); const pinInput = document.getElementById('adminPin'); if (loginForm) loginForm.style.display = 'block'; if (panel) panel.style.display = 'none'; if (pinInput) pinInput.value = ''; }, 300); };
 
-  let idleTimer = null, slideIndex = 0;
+  idleTimer = null; // reset in case of re-init after cleanup
+  let slideIndex = 0;
   const ssEl = document.getElementById('screensaver');
 
   // ── Unique session ID for impression logging ──
@@ -1027,8 +1043,8 @@ export function init({ supabase }) {
 
   // ── Slide state ──
   let dynamicSlides = [];   // array of slide data objects from DB
-  let slideTimeout  = null; // current slide timer / video ended handler ref
-  let ssRunning     = false;
+  slideTimeout = null; // current slide timer / video ended handler ref — reset in case of re-init after cleanup
+  ssRunning = false;    // reset in case of re-init after cleanup
 
   // ── FALLBACK slide shown when DB returns nothing ──
   const FALLBACK_SLIDES = [{
@@ -1231,8 +1247,9 @@ export function init({ supabase }) {
     idleTimer = setTimeout(activateScreensaver, 5 * 60 * 1000);
   }
 
-  ['touchstart','touchend','mousemove','mousedown','keydown','scroll','click'].forEach(ev => {
-    document.addEventListener(ev, () => { if (!ssEl.classList.contains('active')) resetInactivityTimer(); }, { passive: true });
+  activityHandler = () => { if (!ssEl.classList.contains('active')) resetInactivityTimer(); };
+  ACTIVITY_EVENTS.forEach(ev => {
+    document.addEventListener(ev, activityHandler, { passive: true });
   });
   resetInactivityTimer();
 
@@ -1270,13 +1287,63 @@ export function init({ supabase }) {
   window.closeScreen = closeScreen;
   window.toast = toast;
   window.renderWalletDashboard = renderWalletDashboard;
-  window.showTopUpScreen = showTopUpScreen;
-  window.selectTopupAmount = selectTopupAmount;
-  window.selectCustomAmount = selectCustomAmount;
-  window.processTopup = processTopup;
-  window.showWalletQR = showWalletQR;
-  window.refreshAllData = refreshAllData;
+  // showTopUpScreen, selectTopupAmount, selectCustomAmount, processTopup,
+  // showWalletQR, and refreshAllData are already assigned directly onto
+  // `window` at their definition sites above (e.g. `window.showTopUpScreen
+  // = function() {...}`), so they don't need — and can't have — a bare-
+  // identifier re-assignment here: no local `showTopUpScreen` etc. is ever
+  // declared, so referencing it would throw ReferenceError in this ES
+  // module's strict-mode scope.
   window.updateStats = updateStats;
 
   console.log('%c🔴 RANDS KIOSK v5.0 | Passport Key auth | Wallet + Check-In merged | VVIP system removed', 'color:#E30613;font-size:14px;font-weight:bold;background:#0f0f0f;padding:6px 12px;border-radius:4px');
+}
+
+/**
+ * Tears down everything this screen started, so navigating away and
+ * back doesn't leak timers or duplicate document-level listeners.
+ * Called by kiosk.js immediately before it replaces #kiosk-screen's
+ * content with the next screen.
+ *
+ * Listeners attached to elements *inside* #kiosk-screen (nav cards,
+ * the logo 5-tap trigger, admin modal buttons, etc.) don't need manual
+ * removal here — kiosk.js's innerHTML swap discards that whole DOM
+ * subtree, taking those listeners with it. What DOES need explicit
+ * cleanup is anything that outlives that DOM: timers (which keep
+ * running and can fire against a stale closure) and the inactivity
+ * listeners, which are registered on `document` itself.
+ */
+export function cleanup() {
+  // Stop the clock's recursive setTimeout chain.
+  clearTimeout(clockTimer);
+  clockTimer = null;
+
+  // Stop the toast auto-hide timer.
+  clearTimeout(toastTimer);
+  toastTimer = null;
+
+  // Stop the 5-tap admin-trigger debounce.
+  clearTimeout(adminTapTimer);
+  adminTapTimer = null;
+  adminTapCount = 0;
+
+  // Stop the inactivity → screensaver timer, and the screensaver's own
+  // slide-rotation timer/video-ended chain if it's currently running.
+  clearTimeout(idleTimer);
+  idleTimer = null;
+  clearTimeout(slideTimeout);
+  slideTimeout = null;
+  ssRunning = false;
+
+  // Remove the document-level activity listeners registered by this
+  // screen's inactivity-timer setup — these are attached to `document`
+  // itself (not to anything inside #kiosk-screen), so they'd otherwise
+  // survive the DOM swap and double up the next time this screen inits.
+  if (activityHandler) {
+    ACTIVITY_EVENTS.forEach(ev => document.removeEventListener(ev, activityHandler, { passive: true }));
+    activityHandler = null;
+  }
+
+  // Allow a clean re-init next time this screen is navigated to.
+  initialized = false;
 }
