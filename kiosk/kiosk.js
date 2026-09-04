@@ -16,7 +16,7 @@
  * kiosk-start.html used to. If your project's config/supabase.js lives
  * somewhere else relative to index.html, update this one import path.
  */
-import { supabase } from '../config/supabase.js';
+import { supabase } from '../../config/supabase.js';
 import * as welcome from './screens/welcome.js';
 
 const kioskScreen = document.getElementById('kiosk-screen');
