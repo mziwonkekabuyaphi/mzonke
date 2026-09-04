@@ -345,6 +345,8 @@
   .source-kiosk    { background: var(--green); color: white; }
   .source-web      { background: #3B82F6; color: white; }
   .source-whatsapp { background: #25D366; color: #06210f; }
+  .source-butcherpos { background: #A0522D; color: white; }
+  .source-vviptab  { background: linear-gradient(135deg, #FFD700, #C79A45); color: #241c15; }
 
   /* Connection status */
   .connection-status {
@@ -412,9 +414,11 @@
   </div>
   <div class="filter-tabs">
     <div class="filter-tab active" data-filter="all">All Orders</div>
-    <div class="filter-tab" data-filter="kiosk">📱 Kiosk</div>
-    <div class="filter-tab" data-filter="web">💻 Web App</div>
     <div class="filter-tab" data-filter="whatsapp">💬 WhatsApp</div>
+    <div class="filter-tab" data-filter="web">💻 Web App</div>
+    <div class="filter-tab" data-filter="kiosk">📱 Kiosk</div>
+    <div class="filter-tab" data-filter="butcherpos">🥩 Butcher POS</div>
+    <div class="filter-tab" data-filter="vviptab">👑 VVIP Tab</div>
   </div>
   <div class="orders-grid" id="ordersGrid">
     <div class="empty-state"><span>🥩</span><h3>Loading orders…</h3><p>Connecting to Supabase</p></div>
@@ -478,6 +482,19 @@
     };
   }
 
+  // Butcher POS (pre-order-pos.html) writes the order row the moment staff
+  // builds the cart — status:'pending' — BEFORE the customer has paid.
+  // It only flips to 'placed' once payment is actually captured at the
+  // counter, and status/payment_status change together atomically, so a
+  // POS order is never 'pending' while paid or 'placed' while unpaid.
+  // WhatsApp/web orders use 'pending' differently (often already paid,
+  // just not started), so this only excludes POS-sourced orders — nothing
+  // else changes.
+  function isKitchenVisible(o){
+    const isPosOrder = o.source === 'walkin' || o.source === 'butcher_preorder';
+    return !(isPosOrder && o.status === 'pending');
+  }
+
   async function fetchActiveOrders() {
     const { data, error } = await supabase
       .from('butcher_shop_orders')
@@ -485,7 +502,7 @@
       .in('status', ACTIVE_STATUSES)
       .order('created_at', { ascending: true });
     if (error) { console.error('fetchActiveOrders error:', error); setConnStatus('error', `⚠️ ${error.message}`); return []; }
-    const rows = (data ?? []).map(normaliseOrder);
+    const rows = (data ?? []).map(normaliseOrder).filter(isKitchenVisible);
     // VVIP always jumps to the front of the queue; otherwise oldest first (FIFO)
     rows.sort((a, b) => { if (a.isVVIP !== b.isVVIP) return a.isVVIP ? -1 : 1; return new Date(a.createdAt) - new Date(b.createdAt); });
     return rows;
@@ -536,14 +553,27 @@
   function sourceBadge(source){
     const s = (source || 'kiosk').toLowerCase();
     if (s.includes('whatsapp')) return '<span class="order-source-badge source-whatsapp">💬 WhatsApp</span>';
-    if (s.includes('web')) return '<span class="order-source-badge source-web">💻 Web App</span>';
+    if (s === 'web') return '<span class="order-source-badge source-web">💻 Web App</span>';
+    if (s === 'walkin') return '<span class="order-source-badge source-butcherpos">🥩 Butcher POS · Walk-in</span>';
+    if (s === 'butcher_preorder') return '<span class="order-source-badge source-butcherpos">🥩 Butcher POS · Pre-order</span>';
+    if (s === 'vvip_pos') return '<span class="order-source-badge source-vviptab">👑 VVIP POS</span>';
     return '<span class="order-source-badge source-kiosk">📱 Kiosk</span>';
+  }
+
+  // Butcher POS is two distinct source values under one filter; VVIP Tab is
+  // cross-channel (is_vvip / payment_source), not a single source value —
+  // so filtering can't just be a plain source === currentFilter check.
+  function orderMatchesFilter(o, filter){
+    if (filter === 'all') return true;
+    if (filter === 'butcherpos') return o.source === 'walkin' || o.source === 'butcher_preorder';
+    if (filter === 'vviptab') return o.isVVIP === true;
+    return o.source === filter;
   }
 
   function renderOrders() {
     const grid = document.getElementById('ordersGrid');
     let filtered = activeOrders;
-    if (currentFilter !== 'all') filtered = activeOrders.filter(o => o.source === currentFilter);
+    if (currentFilter !== 'all') filtered = activeOrders.filter(o => orderMatchesFilter(o, currentFilter));
     if (filtered.length === 0) {
       grid.innerHTML = `<div class="empty-state"><span>🥩🔥</span><h3>No Active Orders</h3><p>Butcher orders from kiosk, web and WhatsApp will appear here as they come in.</p></div>`;
       return;

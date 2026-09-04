@@ -521,6 +521,7 @@
         <div class="summary-item"><span>Type:</span><span id="summaryType">—</span></div>
         <div class="summary-item"><span>Items:</span><span id="summaryItems">—</span></div>
         <div class="summary-total"><span>Total Amount:</span><span id="summaryTotal">R0</span></div>
+        <button class="btn-secondary" id="cancelOrderBtn" style="width:100%; margin-top:12px; color:var(--red); border-color:var(--red);"><i class="fas fa-ban"></i> Cancel Order — Customer Not Paying</button>
       </div>
 
       <div class="payment-methods-section" id="paymentSection" style="display:none;">
@@ -691,6 +692,32 @@
       metadata: { order_id: selectedOrder.id, order_number: selectedOrder.order_number, type: selectedOrder.source || 'walkin' }
     });
     await showReceipt(selectedOrder, paymentMethod);
+  }
+
+  // ========== cancel order (customer walked away without paying) ==========
+  async function cancelSelectedOrder() {
+    if (!selectedOrder) { showToast('Select an order first', true); return; }
+    const orderLabel = selectedOrder.order_number || selectedOrder.id.slice(0, 8);
+    const ok = window.confirm(`Cancel order #${orderLabel}? The customer will not be charged and this can't be undone.`);
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'cancelled', payment_status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', selectedOrder.id);
+
+    if (error) { await showStunningPopup('Error', error.message, 'error'); return; }
+
+    selectedOrder = null;
+    document.getElementById('selectedOrderInfo').innerHTML = `
+      <div style="font-weight:700; color:var(--text);">No order selected</div>
+      <div style="font-size:0.75rem; color:var(--text3);">Select a pending order to begin</div>
+    `;
+    document.getElementById('orderSummarySection').style.display = 'none';
+    document.getElementById('paymentSection').style.display = 'none';
+
+    await showToast(`Order #${orderLabel} cancelled`, false);
+    await loadPendingOrders();
   }
 
   function renderPrintReceipt(order, paymentMethod) {
@@ -1128,6 +1155,7 @@
     
     document.getElementById('createWalkinOrderBtn').addEventListener('click', createWalkinOrder);
     document.getElementById('clearCartBtn').addEventListener('click', clearCart);
+    document.getElementById('cancelOrderBtn').addEventListener('click', cancelSelectedOrder);
 
     // Card payment callback
     const pendingPayment = sessionStorage.getItem('pendingButcherPayment');

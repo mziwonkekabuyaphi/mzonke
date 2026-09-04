@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script type="importmap">
     {
       "imports": {
@@ -243,11 +244,15 @@
     .stat-number { color: var(--gold); font-weight: 800; margin-left: 4px; font-family: var(--font-mono); }
 
     .sessions-scroll {
-      max-height: 58vh; overflow-y: auto; margin-top: 8px;
+      margin-top: 8px;
       display: flex; flex-direction: column; gap: 10px;
+      /* Was max-height: 58vh + overflow-y: auto — inside an embedded/iframe
+         layout 58vh is measured against a viewport that's often much
+         shorter than the actual page, so this was clipping sessions off
+         the bottom behind a scrollbar staff had no obvious reason to look
+         for. Letting it grow means the whole page scrolls instead, and
+         every active session is visible without hunting for a scrollbar. */
     }
-    .sessions-scroll::-webkit-scrollbar { width: 6px; }
-    .sessions-scroll::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
 
     .session-item {
       background: var(--surface2);
@@ -343,6 +348,70 @@
       .pos-embedded-grid { grid-template-columns: 1fr; gap: 16px; }
       body { padding: 18px 14px; }
     }
+
+    /* ============ QR SCAN ============ */
+    .form-group-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+    .form-group-label-row label { margin-bottom: 0; }
+    .btn-scan-qr {
+      background: var(--red-dim); color: #ff8790; border: 1px solid var(--red-border);
+      border-radius: var(--radius-full); padding: 5px 12px; font-size: 0.68rem; font-weight: 700;
+      display: flex; align-items: center; gap: 5px; cursor: pointer; transition: var(--transition);
+    }
+    .btn-scan-qr:hover { background: rgba(227,6,19,0.22); }
+    .btn-scan-qr:active { transform: scale(0.96); }
+
+    .qr-scanner-container { max-width: 420px; padding: 22px; }
+    .qr-scanner-header {
+      display: flex; align-items: center; justify-content: space-between;
+      font-weight: 700; font-size: 0.92rem; color: var(--text); margin-bottom: 14px;
+    }
+    .qr-scanner-close {
+      width: 30px; height: 30px; border-radius: 50%; border: none;
+      background: var(--surface3); color: var(--text2);
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    #qrVideo { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--radius-md); background: #000; display: block; }
+    .qr-scanner-hint { text-align: center; font-size: 0.76rem; color: var(--text2); margin-top: 12px; line-height: 1.5; }
+
+    /* ============ PRINTER ============ */
+    .printer-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .printer-toggle {
+      display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--text2);
+      cursor: pointer; user-select: none;
+    }
+    .printer-toggle input { width: auto; accent-color: var(--red); }
+    .btn-reprint {
+      background: var(--surface3); color: var(--text2); border: 1px solid var(--border2);
+      border-radius: var(--radius-full); padding: 7px 14px; font-size: 0.7rem; font-weight: 700;
+      display: flex; align-items: center; gap: 6px; cursor: pointer; transition: var(--transition);
+    }
+    .btn-reprint:hover:not(:disabled) { color: var(--text); border-color: var(--gold-border); }
+    .btn-reprint:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ============ RECEIPT (print only) ============ */
+    /* Sized for the Epson TM-T88V's 80mm roll. Hidden on screen entirely —
+       only exists to be rendered when window.print() fires. */
+    .receipt-print-area { display: none; }
+    @media print {
+      @page { size: 80mm auto; margin: 0; }
+      body * { visibility: hidden; }
+      #receiptPrintArea, #receiptPrintArea * { visibility: visible; }
+      #receiptPrintArea {
+        display: block; position: fixed; top: 0; left: 0; width: 80mm;
+        background: #fff; color: #000;
+      }
+    }
+    .receipt { font-family: 'Courier New', Courier, monospace; font-size: 12px; padding: 6mm 4mm; }
+    .receipt h1 { text-align: center; font-size: 18px; letter-spacing: 2px; margin-bottom: 2px; }
+    .receipt .center { text-align: center; }
+    .receipt hr { border: none; border-top: 1px dashed #000; margin: 8px 0; }
+    .receipt .row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+    .receipt .total { font-weight: 700; font-size: 15px; }
+    .receipt .foot { text-align: center; margin-top: 12px; font-size: 11px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -356,7 +425,7 @@
       <div class="card-header">
         <div class="title-row">
           <span class="eyebrow-line">New session</span>
-          <span class="main-title"><i class="fas fa-cash-register"></i> R250 / 60min</span>
+          <span class="main-title"><i class="fas fa-cash-register"></i> <span id="sessionPriceTitle">R—</span> / 60min</span>
         </div>
         <div class="stats-inline">
           <div class="stat-badge"><i class="fas fa-fire"></i> Active <span id="statActive" class="stat-number">0</span></div>
@@ -374,7 +443,10 @@
           <select id="flavourSelect"></select>
         </div>
         <div class="form-group">
-          <label><i class="fas fa-smoking"></i> Hookah station</label>
+          <div class="form-group-label-row">
+            <label style="margin-bottom:0;"><i class="fas fa-smoking"></i> Hookah station</label>
+            <button type="button" id="scanQrBtn" class="btn-scan-qr"><i class="fas fa-qrcode"></i> Scan QR</button>
+          </div>
           <select id="shishaSelect">
             <option value="">Loading stations...</option>
           </select>
@@ -421,6 +493,14 @@
 
         <button class="btn-primary" id="requestPaymentBtn" disabled>⚠️ Select payment method first</button>
         <div id="requestStatus" class="status-panel"></div>
+
+        <div class="printer-row">
+          <label class="printer-toggle">
+            <input type="checkbox" id="autoPrintToggle" checked>
+            <i class="fas fa-print"></i> Auto-print receipt (Epson TM-T88V)
+          </label>
+          <button type="button" id="reprintBtn" class="btn-reprint" disabled><i class="fas fa-print"></i> Reprint last</button>
+        </div>
       </div>
     </div>
 
@@ -451,6 +531,24 @@
     <div id="modalButtons" class="modal-buttons"></div>
   </div>
 </div>
+
+<!-- QR scanner: staff point the camera at a hookah's QR sticker to select
+     it in the Hookah station dropdown instead of scrolling to find it. -->
+<div id="qrScannerOverlay" class="modal-overlay">
+  <div class="modal-container qr-scanner-container">
+    <div class="qr-scanner-header">
+      <span><i class="fas fa-qrcode"></i> Scan hookah QR code</span>
+      <button type="button" id="qrScannerClose" class="qr-scanner-close"><i class="fas fa-xmark"></i></button>
+    </div>
+    <video id="qrVideo" playsinline muted></video>
+    <canvas id="qrCanvas" style="display:none;"></canvas>
+    <div class="qr-scanner-hint">Point the camera at the device's QR sticker</div>
+  </div>
+</div>
+
+<!-- Only ever visible inside @media print — see the .receipt-print-area /
+     #receiptPrintArea rules in <style>. -->
+<div id="receiptPrintArea" class="receipt-print-area"></div>
 
 <script type="module">
   // ---- Supabase client: loaded defensively so a broken relative path shows
@@ -523,6 +621,71 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
+  // ============ QR scan (hookah station select) ============
+  let qrStream = null;
+  let qrScanRAF = null;
+
+  async function openQrScanner() {
+    if (typeof jsQR !== 'function') { showToast('QR scanner failed to load — check your connection and reload', true); return; }
+    document.getElementById('qrScannerOverlay').classList.add('active');
+    const video = document.getElementById('qrVideo');
+    try {
+      qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = qrStream;
+      await video.play();
+      qrScanRAF = requestAnimationFrame(scanQrFrame);
+    } catch (err) {
+      showToast('Camera access failed: ' + err.message, true);
+      closeQrScanner();
+    }
+  }
+  function closeQrScanner() {
+    document.getElementById('qrScannerOverlay').classList.remove('active');
+    if (qrScanRAF) cancelAnimationFrame(qrScanRAF);
+    qrScanRAF = null;
+    if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+  }
+  function scanQrFrame() {
+    const video = document.getElementById('qrVideo');
+    const canvas = document.getElementById('qrCanvas');
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      if (code && code.data) { handleQrResult(code.data.trim()); return; }
+    }
+    qrScanRAF = requestAnimationFrame(scanQrFrame);
+  }
+  // Accepts whatever format the device's QR stickers were actually printed
+  // with, rather than requiring one specific encoding be set up first: a
+  // plain device code ("SH-003"), a small JSON payload, or a URL carrying
+  // the code in a query param.
+  function extractDeviceCode(raw) {
+    try {
+      const obj = JSON.parse(raw);
+      if (obj && (obj.device_code || obj.deviceCode)) return String(obj.device_code || obj.deviceCode);
+    } catch (_) { /* not JSON */ }
+    try {
+      const url = new URL(raw);
+      const fromQuery = url.searchParams.get('device_code') || url.searchParams.get('device') || url.searchParams.get('code');
+      if (fromQuery) return fromQuery;
+    } catch (_) { /* not a URL */ }
+    return raw;
+  }
+  function handleQrResult(raw) {
+    const code = extractDeviceCode(raw).trim().toUpperCase();
+    closeQrScanner();
+    const device = availableHookahs.find(h => (h.device_code || '').toUpperCase() === code);
+    if (!device) { showToast(`No hookah station found for "${code}"`, true); return; }
+    if (device.isOccupied) { showToast(`${device.device_code} is currently occupied`, true); return; }
+    document.getElementById('shishaSelect').value = device.id;
+    currentSelectedStationId = device.id;
+    showToast(`Selected ${device.device_code}`);
+  }
+
   // Helpers
   function calculateRemainingSeconds(session) {
     if (!session) return 0;
@@ -543,13 +706,84 @@
   function isTimeUp(sec, s) { return sec <= 0 && !s.paused; }
 
   let flavourPrices = {};
+  let flavourNames = {};
   function getSelectedPrice() {
     const id = document.getElementById('flavourSelect').value;
     return flavourPrices[id] ?? SESSION_PRICE;
   }
   function updatePriceDisplay() {
+    const price = getSelectedPrice();
     const el = document.getElementById('priceAmount');
-    if (el) el.innerText = getSelectedPrice().toFixed(2);
+    if (el) el.innerText = price.toFixed(2);
+    const titleEl = document.getElementById('sessionPriceTitle');
+    if (titleEl) titleEl.innerText = `R${price}`;
+  }
+
+  // ============ Receipt printing (Epson TM-T88V) ============
+  // Talks to the printer the same way any browser POS does without a
+  // network SDK or WebUSB: render an 80mm-formatted receipt into a hidden
+  // element (see .receipt-print-area / @media print in <style>) and call
+  // window.print(). This prints silently to whatever printer the OS has
+  // set as default — for "auto print, zero clicks" at a terminal, set the
+  // TM-T88V as that terminal's default printer, and if this is running in
+  // a dedicated/kiosk browser window, launch Chrome with
+  // --kiosk-printing so the print dialog itself is skipped too. Without
+  // that flag the OS print dialog still appears (pre-filled with the
+  // default printer) for staff to confirm.
+  let lastReceiptData = null;
+
+  function isAutoPrintEnabled() { return localStorage.getItem('shishaPosAutoPrint') !== 'false'; }
+
+  function buildReceiptHtml(ctx) {
+    const time = ctx.startedAt.toLocaleString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const payLabel = { cash: 'Cash', card: 'Card', wallet: 'Rands Wallet' }[ctx.paymentMethod] || ctx.paymentMethod;
+    return `
+      <div class="receipt">
+        <h1>RANDS</h1>
+        <div class="center">Shisha Lounge</div>
+        <hr>
+        <div class="row"><span>Station</span><span>${ctx.deviceCode}</span></div>
+        <div class="row"><span>Location</span><span>${ctx.location}</span></div>
+        <div class="row"><span>Flavour</span><span>${ctx.flavour}</span></div>
+        <div class="row"><span>Duration</span><span>60 min</span></div>
+        <div class="row"><span>Payment</span><span>${payLabel}</span></div>
+        <hr>
+        <div class="row total"><span>TOTAL</span><span>R${Number(ctx.price).toFixed(2)}</span></div>
+        <hr>
+        <div class="center">${time}</div>
+        <div class="foot">Enjoy your session 🔥<br>Ask staff for a coal refill anytime.</div>
+      </div>
+    `;
+  }
+  function getReceiptContext(paymentMethod) {
+    const deviceId = document.getElementById('shishaSelect').value;
+    const device = availableHookahs.find(h => String(h.id) === String(deviceId));
+    const flavId = document.getElementById('flavourSelect').value;
+    return {
+      deviceCode: device?.device_code || '—',
+      location: document.getElementById('locationSelect').selectedOptions[0]?.textContent || '—',
+      flavour: flavourNames[flavId] || '—',
+      price: getSelectedPrice(),
+      paymentMethod,
+      startedAt: new Date()
+    };
+  }
+  function recordReceipt(ctx) {
+    lastReceiptData = ctx;
+    const btn = document.getElementById('reprintBtn');
+    if (btn) btn.disabled = false;
+  }
+  function printReceipt(ctx) {
+    recordReceipt(ctx);
+    document.getElementById('receiptPrintArea').innerHTML = buildReceiptHtml(ctx);
+    window.print();
+  }
+  // Called right after a session is successfully created — always keeps
+  // the context for manual reprinting, only actually prints if the
+  // auto-print toggle is on.
+  function handleReceiptForNewSession(paymentMethod) {
+    const ctx = getReceiptContext(paymentMethod);
+    if (isAutoPrintEnabled()) printReceipt(ctx); else recordReceipt(ctx);
   }
 
   async function loadDropdowns() {
@@ -560,8 +794,8 @@
     const { data: flavours } = await supabase.from('shisha_products').select('id,name,price').eq('is_available', true);
     const flavSelect = document.getElementById('flavourSelect');
     flavSelect.innerHTML = (flavours || []).map(f => `<option value="${f.id}">${f.name} (R${f.price})</option>`).join('');
-    flavourPrices = {};
-    (flavours || []).forEach(f => { flavourPrices[f.id] = f.price; });
+    flavourPrices = {}; flavourNames = {};
+    (flavours || []).forEach(f => { flavourPrices[f.id] = f.price; flavourNames[f.id] = f.name; });
     if (flavours?.length) flavSelect.value = flavours[0].id;
     flavSelect.addEventListener('change', updatePriceDisplay);
     updatePriceDisplay();
@@ -697,6 +931,7 @@
       if (!(await validateHookahAvailability(document.getElementById('shishaSelect').value))) throw new Error("Hookah already occupied");
       await createShishaSession('cash', null);
       await supabase.from('payment_requests').insert({ customer_phone: 'walkin_customer', total_amount: getSelectedPrice(), channel: 'shisha_pos', status: 'completed', payment_method: 'cash', metadata: { shisha_session: true } });
+      handleReceiptForNewSession('cash');
       statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Session started.';
       statusDiv.className = 'status-panel success';
       showToast("Session started successfully!");
@@ -794,6 +1029,7 @@
     try {
       await createShishaSession('wallet', phone);
       await supabase.from('payment_requests').update({ status: 'completed', approved_at: new Date().toISOString() }).eq('id', request.id);
+      handleReceiptForNewSession('wallet');
       statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Success! Session started.';
       statusDiv.className = 'status-panel success';
       showToast("Session started!");
@@ -926,6 +1162,16 @@
     setupRealtime();
     startLiveTimer();
     document.getElementById('shishaSelect').addEventListener('change', (e) => { currentSelectedStationId = e.target.value; });
+
+    document.getElementById('scanQrBtn').addEventListener('click', openQrScanner);
+    document.getElementById('qrScannerClose').addEventListener('click', closeQrScanner);
+    document.getElementById('qrScannerOverlay').addEventListener('click', (e) => { if (e.target.id === 'qrScannerOverlay') closeQrScanner(); });
+
+    const autoPrintToggle = document.getElementById('autoPrintToggle');
+    autoPrintToggle.checked = isAutoPrintEnabled();
+    autoPrintToggle.addEventListener('change', (e) => localStorage.setItem('shishaPosAutoPrint', e.target.checked ? 'true' : 'false'));
+    document.getElementById('reprintBtn').addEventListener('click', () => { if (lastReceiptData) printReceipt(lastReceiptData); });
+
     document.getElementById('requestPaymentBtn').addEventListener('click', async () => {
       if (!selectedPaymentMethod) showToast('Select payment method', true);
       else if (selectedPaymentMethod === 'cash') await processCashPayment();
@@ -949,6 +1195,7 @@
           await createShishaSession('card', null);
           await supabase.from('wallet_transactions').update({ status: 'completed' }).eq('id', p.transaction_id);
           await supabase.from('payment_requests').insert({ customer_phone: 'walkin_customer', total_amount: p.total_amount, channel: 'shisha_pos', status: 'completed', payment_method: 'card', metadata: { card_payment: true } });
+          handleReceiptForNewSession('card');
           showToast("Session started!");
           await loadActiveSessions();
           resetPaymentForm();

@@ -221,7 +221,7 @@
     }
     .toast-pos.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
-    select, input {
+    select, input, textarea {
       background: #0D0F12;
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 14px;
@@ -230,6 +230,7 @@
       font-family: inherit;
       font-size: 0.9rem;
       width: 100%;
+      resize: vertical;
     }
     .field-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: #8B92A8; font-weight: 700; margin-bottom: 6px; margin-top: 12px; }
     .field-label:first-child { margin-top: 0; }
@@ -267,7 +268,7 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title"><i class="fas fa-smoking"></i> Hookah stations</span>
-        <span class="subtle">R250 · 60 min session</span>
+        <span class="subtle">Priced per flavour · 60 min session</span>
       </div>
       <div class="card-body"><div id="pipesGrid" class="pipes-grid"></div></div>
     </div>
@@ -756,10 +757,24 @@
     showToast(`Started on ${free.device_code}`);
   }
 
+  // Reason is optional but, when given, gets written into request_data —
+  // that's the field shisha.js's customer-facing status modal/banner reads
+  // (request_data.rejection_reason) to explain a decline instead of just
+  // showing a generic "declined" message.
   async function rejectRequest(id) {
-    await supabase.from('shisha_requests').update({ status: 'rejected', responded_at: new Date().toISOString() }).eq('id', id);
-    showToast('Request rejected');
-    await loadRequests();
+    const html = `<div style="text-align:left">
+      <label class="field-label">Reason (optional — shown to the customer)</label>
+      <textarea id="rejectReasonInput" rows="3" placeholder="e.g. All hookahs currently in use"></textarea>
+    </div>`;
+    showModal('confirm', 'Reject Request', html, async () => {
+      const reason = document.getElementById('rejectReasonInput')?.value?.trim();
+      const { data: current } = await supabase.from('shisha_requests').select('request_data').eq('id', id).single();
+      const updatedData = { ...(current?.request_data || {}) };
+      if (reason) updatedData.rejection_reason = reason;
+      await supabase.from('shisha_requests').update({ status: 'rejected', responded_at: new Date().toISOString(), request_data: updatedData }).eq('id', id);
+      showToast('Request rejected');
+      await loadRequests();
+    });
   }
 
   // ============ Render stations ============
@@ -804,7 +819,7 @@
         </div>
         <div class="coal-track"><div class="coal-fill" style="width:${pct}%"></div></div>
         <div class="pipe-actions">
-          ${!sess ? `<button class="btn-assign" data-device-id="${dev.id}" data-device-code="${dev.device_code}"><i class="fas fa-plus"></i> Assign · R250</button>` :
+          ${!sess ? `<button class="btn-assign" data-device-id="${dev.id}" data-device-code="${dev.device_code}"><i class="fas fa-plus"></i> Assign</button>` :
             `<button class="btn-refill" data-session-id="${sess.id}"><i class="fas fa-fire"></i> Refill</button>
              ${sess.paused
                ? `<button class="btn-resume" data-session-id="${sess.id}"><i class="fas fa-play"></i> Resume</button>`
