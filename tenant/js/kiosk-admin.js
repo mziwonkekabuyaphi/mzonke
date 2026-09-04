@@ -32,8 +32,8 @@
   //  NAVIGATION
   // ═══════════════════════════════════════════
   const navItems = document.querySelectorAll('.nav-item[data-page]');
-  const pageTitles = { slides:'Slides', 'menu-slides':'Menu Banners', preview:'Preview', campaigns:'Campaigns', tiers:'Tiers' };
-  const pageSubs = { slides:'Manage kiosk slides', 'menu-slides':'Manage the kiosk menu hero carousel', preview:'Live kiosk simulation', campaigns:'Advertiser campaigns', tiers:'Pricing tiers' };
+  const pageTitles = { slides:'Slides', 'menu-slides':'Menu Banners', preview:'Preview', campaigns:'Campaigns', tiers:'Tiers', payouts:'Payouts' };
+  const pageSubs = { slides:'Manage kiosk slides', 'menu-slides':'Manage the kiosk menu hero carousel', preview:'Live kiosk simulation', campaigns:'Advertiser campaigns', tiers:'Pricing tiers', payouts:'Who owes you, and your payment history' };
 
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -47,6 +47,7 @@
       if (item.dataset.page === 'campaigns') loadCampaigns();
       if (item.dataset.page === 'tiers') loadTiers();
       if (item.dataset.page === 'menu-slides') renderMenuSlides();
+      if (item.dataset.page === 'payouts') renderPayouts();
       closeSidebar();
     });
   });
@@ -846,6 +847,167 @@
   });
 
   // ═══════════════════════════════════════════
+  //  PAYOUTS
+  //  "Who owes me how much" — tracked per advertiser/campaign since their
+  //  last recorded payment, not tied to a calendar week/month. Recording
+  //  a payment writes a row to kiosk_ad_billing and resets that payee's
+  //  clock to zero from that moment. Works whether you pay out weekly,
+  //  monthly, or on no schedule at all.
+  // ═══════════════════════════════════════════
+  let payoutRows = [];      // current "owed now" rows, indexed for the confirm modal
+  let pendingPayout = null; // the row awaiting confirmation in payoutModal
+
+  async function renderPayouts() {
+    const owedTbody = document.getElementById('payoutsOwedTbody');
+    const histTbody = document.getElementById('payoutsHistoryTbody');
+    owedTbody.innerHTML = `<tr class="loading-row"><td colspan="6"><i class="fas fa-circle-notch fa-spin"></i> Calculating…</td></tr>`;
+    histTbody.innerHTML = `<tr class="loading-row"><td colspan="6"><i class="fas fa-circle-notch fa-spin"></i> Loading history…</td></tr>`;
+
+    // Pull fresh copies rather than trusting other tabs' cached state.
+    const [{ data: adsData }, { data: impData }, { data: billingData }] = await Promise.all([
+      supabase.from('kiosk_idle_ads').select('*'),
+      supabase.from('kiosk_ad_impressions').select('ad_id, created_at'),
+      supabase.from('kiosk_ad_billing').select('*').order('created_at', { ascending: false })
+    ]);
+    const hasCamp = await checkTable('kiosk_ad_campaigns');
+    const campData = hasCamp ? (await supabase.from('kiosk_ad_campaigns').select('*')).data : [];
+    const hasTiersTbl = await checkTable('ad_tiers');
+    const tierData = hasTiersTbl ? (await supabase.from('ad_tiers').select('*')).data : [];
+
+    const ads = adsData || [];
+    const imps = impData || [];
+    const billing = billingData || [];
+    const camps = campData || [];
+    const tiers = tierData || [];
+
+    // Local copy of the slide-CPM fallback chain (slide -> tier -> campaign -> campaign tier)
+    // so this doesn't depend on the Slides tab having been opened first.
+    function cpmFor(ad) {
+      if (ad.cpm_rate && ad.cpm_rate > 0) return parseFloat(ad.cpm_rate);
+      if (ad.tier_id) {
+        const t = tiers.find(t => t.id === ad.tier_id);
+        if (t?.cpm_rate > 0) return parseFloat(t.cpm_rate);
+      }
+      if (ad.campaign_id) {
+        const c = camps.find(c => c.id === ad.campaign_id);
+        if (c?.cpm_rate > 0) return parseFloat(c.cpm_rate);
+        if (c?.tier_id) {
+          const ct = tiers.find(t => t.id === c.tier_id);
+          if (ct?.cpm_rate > 0) return parseFloat(ct.cpm_rate);
+        }
+      }
+      return 0;
+    }
+
+    // Build payees: one per campaign, plus one per distinct advertiser_name
+    // among ads that aren't linked to any campaign (a standalone sponsor ad).
+    const payees = camps.map(c => ({
+      key: `campaign:${c.id}`, campaignId: c.id, advertiserName: c.advertiser_name || c.advertiser || null,
+      label: c.name || c.campaign_name || 'Unnamed campaign'
+    }));
+    const standaloneNames = new Set(
+      ads.filter(a => !a.campaign_id && a.advertiser_name && a.advertiser_name.trim())
+         .map(a => a.advertiser_name.trim())
+    );
+    standaloneNames.forEach(name => payees.push({ key: `advertiser:${name}`, campaignId: null, advertiserName: name, label: name }));
+
+    payoutRows = [];
+    payees.forEach(payee => {
+      const payeeAds = ads.filter(a => payee.campaignId ? a.campaign_id === payee.campaignId : (!a.campaign_id && a.advertiser_name === payee.advertiserName));
+      if (!payeeAds.length) return;
+      const adIds = new Set(payeeAds.map(a => a.id));
+
+      const priorPayouts = billing.filter(b => payee.campaignId ? b.campaign_id === payee.campaignId : (!b.campaign_id && b.advertiser_name === payee.advertiserName));
+      const lastPayoutEnd = priorPayouts.length ? priorPayouts.reduce((max, b) => (!max || new Date(b.period_end) > new Date(max)) ? b.period_end : max, null) : null;
+
+      const relevantImps = imps.filter(i => adIds.has(i.ad_id) && (!lastPayoutEnd || new Date(i.created_at) > new Date(lastPayoutEnd)));
+      const countByAd = {};
+      relevantImps.forEach(i => { countByAd[i.ad_id] = (countByAd[i.ad_id] || 0) + 1; });
+
+      let impressions = 0, amount = 0;
+      Object.entries(countByAd).forEach(([adId, cnt]) => {
+        const ad = payeeAds.find(a => a.id === adId);
+        impressions += cnt;
+        amount += (cnt / 1000) * cpmFor(ad);
+      });
+
+      if (impressions === 0) return; // nothing owed — skip the row
+      const blendedCpm = (amount / impressions) * 1000;
+      const earliestImp = relevantImps.reduce((min, i) => (!min || new Date(i.created_at) < new Date(min)) ? i.created_at : min, null);
+
+      payoutRows.push({
+        ...payee, impressions, amount, blendedCpm,
+        owedSince: lastPayoutEnd || earliestImp,
+        periodStart: lastPayoutEnd || earliestImp
+      });
+    });
+    payoutRows.sort((a, b) => b.amount - a.amount);
+
+    document.getElementById('payoutsOwedTotal').textContent = payoutRows.length
+      ? `${fmtR(payoutRows.reduce((s, r) => s + r.amount, 0))} owed across ${payoutRows.length} advertiser${payoutRows.length !== 1 ? 's' : ''}`
+      : '';
+
+    if (!payoutRows.length) {
+      owedTbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><i class="fas fa-hand-holding-dollar"></i><p>Nothing owed right now — all caught up.</p></div></td></tr>`;
+    } else {
+      owedTbody.innerHTML = payoutRows.map((r, i) => `<tr>
+        <td><strong>${esc(r.label)}</strong>${r.advertiserName && r.advertiserName !== r.label ? `<br><span class="text-muted" style="font-size:0.65rem;">${esc(r.advertiserName)}</span>` : ''}</td>
+        <td><span class="text-muted" style="font-size:0.68rem;">${r.owedSince ? new Date(r.owedSince).toLocaleDateString('en-ZA') : 'All time'}</span></td>
+        <td>${fmt(r.impressions)}</td>
+        <td>${fmtR(r.blendedCpm)}</td>
+        <td style="color:var(--green);font-weight:700;">${fmtR(r.amount)}</td>
+        <td><button class="btn btn-primary" style="padding:5px 10px;font-size:0.68rem;" data-action="record-payout" data-idx="${i}"><i class="fas fa-check"></i> Record Payment</button></td>
+      </tr>`).join('');
+      owedTbody.querySelectorAll('[data-action="record-payout"]').forEach(btn => {
+        btn.addEventListener('click', () => openPayoutConfirm(payoutRows[parseInt(btn.dataset.idx)]));
+      });
+    }
+
+    if (!billing.length) {
+      histTbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><i class="fas fa-receipt"></i><p>No payments recorded yet.</p></div></td></tr>`;
+    } else {
+      histTbody.innerHTML = billing.map(b => {
+        const label = b.campaign_id ? (camps.find(c => c.id === b.campaign_id)?.name || camps.find(c => c.id === b.campaign_id)?.campaign_name || '—') : (b.advertiser_name || '—');
+        const period = (b.period_start ? new Date(b.period_start).toLocaleDateString('en-ZA') : '—') + ' → ' + (b.period_end ? new Date(b.period_end).toLocaleDateString('en-ZA') : '—');
+        return `<tr>
+          <td><span class="text-muted" style="font-size:0.68rem;">${new Date(b.created_at).toLocaleDateString('en-ZA')}</span></td>
+          <td><strong>${esc(label)}</strong></td>
+          <td><span class="text-muted" style="font-size:0.65rem;">${period}</span></td>
+          <td>${fmt(b.impressions)}</td>
+          <td>${fmtR(b.cpm_rate)}</td>
+          <td style="color:var(--green);font-weight:700;">${fmtR(b.total_revenue)}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  function openPayoutConfirm(row) {
+    pendingPayout = row;
+    document.getElementById('payoutMsg').innerHTML = `Record a payment of <strong style="color:var(--green);">${fmtR(row.amount)}</strong> to <strong>${esc(row.label)}</strong> for ${fmt(row.impressions)} impressions?`;
+    document.getElementById('payoutModal').classList.add('open');
+  }
+  document.getElementById('cancelPayoutBtn').addEventListener('click', () => { document.getElementById('payoutModal').classList.remove('open'); pendingPayout = null; });
+  document.getElementById('confirmPayoutBtn').addEventListener('click', async () => {
+    if (!pendingPayout) return;
+    const r = pendingPayout;
+    const payload = {
+      campaign_id: r.campaignId,
+      advertiser_name: r.advertiserName,
+      impressions: r.impressions,
+      cpm_rate: r.blendedCpm,
+      total_revenue: r.amount,
+      period_start: r.periodStart ? new Date(r.periodStart).toISOString() : null,
+      period_end: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('kiosk_ad_billing').insert([payload]);
+    document.getElementById('payoutModal').classList.remove('open');
+    pendingPayout = null;
+    if (error) { toast('Failed to record payment: ' + error.message, 'err'); return; }
+    toast('Payment recorded');
+    renderPayouts();
+  });
+
+  // ═══════════════════════════════════════════
   //  KIOSK PREVIEW ENGINE
   // ═══════════════════════════════════════════
   let previewRunning = false;
@@ -1172,7 +1334,13 @@
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_ad_campaigns' }, () => loadCampaigns())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ad_tiers' }, () => loadTiers())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_ad_impressions' }, () => { if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashCharts(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_ad_impressions' }, () => {
+        if (document.getElementById('dashboardOverlay').classList.contains('open')) renderDashCharts();
+        if (document.getElementById('page-payouts')?.classList.contains('active')) renderPayouts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kiosk_ad_billing' }, () => {
+        if (document.getElementById('page-payouts')?.classList.contains('active')) renderPayouts();
+      })
       .subscribe();
   }
 
