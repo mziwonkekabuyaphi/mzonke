@@ -34,6 +34,7 @@ let pendingRequests = [];          // shisha_requests rows with status 'pending'
 let latestResolvedRequest = null;  // most recent non-pending request, for the rejection/approval banner
 let dismissedRequestIds = new Set();
 let requestsChannel = null;
+let watchedOrderRequestId = null;  // the order_session request the status modal below is currently tracking
 
 // NOT reused across visits on purpose — these are recreated in init() and
 // torn down in destroy() every time, same treatment as walletChannel in
@@ -181,9 +182,15 @@ async function loadLocationsAndFlavours() {
 }
 
 function updateOrderButtonState() {
+    const orderBtn = document.getElementById('orderNowBtn');
+    if (pendingRequests.length > 0) {
+        orderBtn.disabled = true;
+        orderBtn.textContent = 'Request Pending Approval';
+        return;
+    }
+
     const locationSelect = document.getElementById('orderLocation');
     const flavourSelect = document.getElementById('orderFlavour');
-    const orderBtn = document.getElementById('orderNowBtn');
 
     const hasLocations = locationSelect && locationSelect.options.length > 0 && locationSelect.options[0].value !== '';
     const hasFlavours = flavourSelect && flavourSelect.options.length > 0 && flavourSelect.options[0].value !== '';
@@ -336,9 +343,27 @@ function renderModernSessionCard() {
 async function sendRequestToStaff(requestData) {
     if (!currentCustomer?.phone && !currentCustomer?.id) {
         showToast("Please log in first", true);
-        return false;
+        return null;
     }
-    const { error } = await supabase.from('shisha_requests').insert({
+
+    // Live check against the DB, not the cached pendingRequests array —
+    // same reasoning as the console's own isHookahFree() double-check
+    // right before it commits a write: the cache could be a poll-interval
+    // stale, and this is the one place a duplicate would actually land.
+    const { count, error: countError } = await supabase
+        .from('shisha_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_phone', currentCustomer.phone)
+        .eq('status', 'pending');
+    if (countError) {
+        console.error(countError);
+    } else if ((count || 0) > 0) {
+        showToast("You already have a request awaiting staff approval", true);
+        await loadRequestStatus(); // resync the banner/buttons in case they were stale
+        return null;
+    }
+
+    const { data: inserted, error } = await supabase.from('shisha_requests').insert({
         request_type: requestData.type,
         session_id: activeSession?.id || null,
         location_name: requestData.location,
@@ -349,16 +374,16 @@ async function sendRequestToStaff(requestData) {
         customer_profile_id: currentCustomer.id,
         request_data: { paymentMethod: requestData.paymentMethod, accountId: requestData.accountId, issueKey: requestData.issueKey, issueLabel: requestData.issueLabel },
         status: 'pending'
-    });
+    }).select().single();
     if (error) {
         console.error(error);
         showToast("Failed to send request", true);
-        return false;
+        return null;
     }
     showToast("Request sent to staff!");
     loadStatement();
     loadRequestStatus();
-    return true;
+    return inserted;
 }
 
 // Shared label/icon for a shisha_requests row — used both by the always-on
@@ -376,7 +401,54 @@ function requestTypeMeta(req) {
     }
 }
 
-// ========== REQUEST STATUS BANNER ==========
+// ========== ORDER STATUS MODAL ==========
+// "Send an order and hear nothing back" was the actual complaint — the
+// request-status banner (below) covers every request type persistently,
+// but a brand-new session order gets its own modal too: it opens the
+// instant the order is sent showing "pending", and updates itself in
+// place to "session started" or "declined" the moment staff act on it,
+// via the same realtime channel as the banner, with the 3s poll in
+// loadRequestStatus() as a fallback if a realtime event is missed.
+function openSessionStatusModal() { document.getElementById('sessionStatusOverlay').classList.add('show'); }
+function closeSessionStatusModal() {
+    document.getElementById('sessionStatusOverlay').classList.remove('show');
+    watchedOrderRequestId = null;
+}
+function renderSessionStatusModal(state, extra = {}) {
+    const icon = document.getElementById('sessionStatusIcon');
+    const title = document.getElementById('sessionStatusTitle');
+    const message = document.getElementById('sessionStatusMessage');
+    const closeBtn = document.getElementById('sessionStatusCloseBtn');
+    icon.className = 'session-status-icon ' + state;
+    if (state === 'pending') {
+        icon.innerHTML = '<i class="fas fa-hourglass-half"></i>';
+        title.textContent = 'Request sent';
+        message.textContent = "We've sent your order to staff — this'll only take a moment.";
+        closeBtn.style.display = 'none';
+    } else if (state === 'approved') {
+        icon.innerHTML = '<i class="fas fa-check"></i>';
+        title.textContent = 'Session started!';
+        message.textContent = `Enjoy your ${escapeHtml(extra.flavour || 'shisha')}${extra.device ? ` on ${escapeHtml(extra.device)}` : ''} 🔥`;
+        closeBtn.style.display = 'block';
+    } else if (state === 'rejected') {
+        icon.innerHTML = '<i class="fas fa-xmark"></i>';
+        title.textContent = 'Request declined';
+        message.textContent = extra.reason ? escapeHtml(extra.reason) : "Staff weren't able to start your session. Please try again or ask a staff member.";
+        closeBtn.style.display = 'block';
+    }
+}
+async function resolveSessionStatusModal(req) {
+    if (req.status === 'rejected') {
+        const reason = req.request_data?.rejection_reason || req.request_data?.reason || req.request_data?.staff_note;
+        renderSessionStatusModal('rejected', { reason });
+    } else if (req.status === 'approved' || req.status === 'completed') {
+        await loadSession(); // pick up the device/flavour of the session staff just created
+        renderSessionStatusModal('approved', { flavour: activeSession?.flavour || req.flavour_name, device: activeSession?.shishaId });
+    }
+    watchedOrderRequestId = null; // stop watching — realtime and the next poll both no-op on it now
+}
+
+
 // Same job as lockers.js's holding-note ("Awaiting staff verification...")
 // — the customer previously had zero visibility into a pending request
 // unless they manually opened the Puffing Statement tab, and no visibility
@@ -401,6 +473,11 @@ async function loadRequestStatus() {
     pendingRequests = all.filter(r => r.status === 'pending');
     latestResolvedRequest = all.find(r => r.status !== 'pending') || null;
     renderRequestStatus();
+
+    if (watchedOrderRequestId) {
+        const watched = all.find(r => r.id === watchedOrderRequestId);
+        if (watched && watched.status !== 'pending') await resolveSessionStatusModal(watched);
+    }
 }
 
 function renderRequestStatus() {
@@ -445,6 +522,29 @@ function renderRequestStatus() {
             renderRequestStatus();
         });
     });
+
+    updateActionAvailability();
+}
+
+// Mirrors the console's own "don't let two things happen to the same
+// session at once" caution — with one pending request already in flight,
+// every action button is disabled until staff resolve it, rather than
+// letting the customer submit and only finding out it was refused after.
+function updateActionAvailability() {
+    const hasPending = pendingRequests.length > 0;
+    const coalBtn = document.getElementById('coalRefillBtn');
+    const endBtn = document.getElementById('endSessionBtn');
+    const issueBtn = document.getElementById('reportIssueBtn');
+    [coalBtn, endBtn, issueBtn].forEach(btn => { if (btn) btn.disabled = hasPending; });
+
+    const orderBtn = document.getElementById('orderNowBtn');
+    if (!orderBtn) return;
+    if (hasPending) {
+        orderBtn.disabled = true;
+        orderBtn.textContent = 'Request Pending Approval';
+    } else {
+        updateOrderButtonState(); // restores the normal "Smoke Now - R..." label
+    }
 }
 
 async function requestCoalRefill() {
@@ -536,7 +636,12 @@ async function requestNewOrder() {
         return;
     }
 
-    await sendRequestToStaff({ type: 'order_session', location, flavour, amount: price, paymentMethod: 'wallet', accountId: currentCustomer?.phone });
+    const inserted = await sendRequestToStaff({ type: 'order_session', location, flavour, amount: price, paymentMethod: 'wallet', accountId: currentCustomer?.phone });
+    if (inserted) {
+        watchedOrderRequestId = inserted.id;
+        renderSessionStatusModal('pending');
+        openSessionStatusModal();
+    }
 }
 
 // ========== LOAD PUFFING STATEMENT ==========
@@ -643,6 +748,7 @@ function wireStaticListeners() {
     bind('endSessionBtn', 'click', requestEndSession);
     bind('reportIssueBtn', 'click', openIssueModal);
     bind('orderNowBtn', 'click', requestNewOrder);
+    bind('sessionStatusCloseBtn', 'click', closeSessionStatusModal);
     bind('issueModalClose', 'click', closeIssueModal);
     bind('issueModalOverlay', 'click', (e) => { if (e.target.id === 'issueModalOverlay') closeIssueModal(); });
     bind('issueOtherSubmit', 'click', submitOtherIssue);
@@ -678,6 +784,10 @@ export default {
                         const meta = requestTypeMeta(payload.new);
                         if (payload.new.status === 'rejected') showToast(`${meta.label} was declined by staff`, true);
                         else if (payload.new.status === 'approved' || payload.new.status === 'completed') showToast(`${meta.label} was approved!`);
+
+                        if (watchedOrderRequestId && payload.new.id === watchedOrderRequestId) {
+                            resolveSessionStatusModal(payload.new);
+                        }
                     }
                 })
                 .subscribe();
@@ -700,6 +810,8 @@ export default {
                 activeSession = null;
                 pendingRequests = [];
                 latestResolvedRequest = null;
+                watchedOrderRequestId = null;
+                closeSessionStatusModal();
                 updateWalletDisplay();
                 renderModernSessionCard();
                 renderRequestStatus();
