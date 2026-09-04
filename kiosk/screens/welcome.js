@@ -23,7 +23,7 @@ export const html = `<div id="bg-canvas"></div>
   <header>
     <div class="logo-area" id="logoTap">
       <div class="logo-mark">
-        <img src="../../assets/images/rands-logo2.png" alt="Rands" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' fill=\'%23E30613\'/%3E%3Ctext x=\'16\' y=\'22\' text-anchor=\'middle\' fill=\'white\' font-size=\'16\' font-weight=\'bold\'%3ER%3C/text%3E%3C/svg%3E'">
+        <img src="../../../assets/images/rands-logo2.png" alt="Rands" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' fill=\'%23E30613\'/%3E%3Ctext x=\'16\' y=\'22\' text-anchor=\'middle\' fill=\'white\' font-size=\'16\' font-weight=\'bold\'%3ER%3C/text%3E%3C/svg%3E'">
       </div>
       <div>
         <div class="logo-text">Rands Cape Town<em>.</em></div>
@@ -153,7 +153,7 @@ export const html = `<div id="bg-canvas"></div>
     <div class="ss-logo-block" onclick="dismissScreensaver()">
       <div class="ss-flashing-ring">
         <div class="ss-logo-in-ring">
-          <img src="../assets/images/rands-logo2.png" alt="Rands"
+          <img src="../../../assets/images/rands-logo2.png" alt="Rands"
                onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' fill=\'%23E30613\'/%3E%3Ctext x=\'16\' y=\'22\' text-anchor=\'middle\' fill=\'white\' font-size=\'16\' font-weight=\'bold\'%3ER%3C/text%3E%3C/svg%3E'">
         </div>
       </div>
