@@ -49,7 +49,7 @@ export const html = `<div id="bg-canvas"></div>
 
     <header class="k-header">
       <div class="k-brand" @click="resetToHome">
-        <img src="../assets/images/rands-logo2.png" alt="Rands" class="k-logo-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'20\' fill=\'%23E30613\'/%3E%3Ctext x=\'50\' y=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'%3ER%3C/text%3E%3C/svg%3E'">
+        <img src="../../assets/images/rands-logo2.png" alt="Rands" class="k-logo-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'20\' fill=\'%23E30613\'/%3E%3Ctext x=\'50\' y=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'%3ER%3C/text%3E%3C/svg%3E'">
         <div>
           <div class="k-venue">Rands<span style="color:var(--red);">.</span></div>
           <div class="k-tagline">Self-Service · Order Here</div>
