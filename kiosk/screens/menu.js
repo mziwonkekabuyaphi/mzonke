@@ -45,7 +45,14 @@ export const html = `<div id="bg-canvas"></div>
 <div id="particles"></div>
 <div id="app" v-cloak>
   <!-- MAIN KIOSK APP -->
-  <div id="kiosk-app">
+  <!-- Renamed from id="kiosk-app" -- that id is also used by the outer
+       shell (and, per the shared screen pattern, likely by other screens
+       like Welcome). Because kiosk.js's screen loader appends each
+       screen's stylesheet without removing the previous one on navigate,
+       any left-over #kiosk-app rules from a prior screen's CSS were
+       still matching this element and shifting/offsetting the whole
+       Menu layout. A screen-specific id makes that impossible. -->
+  <div id="menu-kiosk-app">
 
     <header class="k-header">
       <div class="k-brand" @click="resetToHome">
