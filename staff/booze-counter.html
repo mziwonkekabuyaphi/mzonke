@@ -899,16 +899,59 @@
   //   2. Install QZ Tray (https://qz.io) on the same Windows PC. It runs as
   //      a background service + tray icon and exposes a local WebSocket
   //      (wss://localhost:8181 by default) that this page connects to.
-  //   3. The FIRST time this page prints, QZ Tray will show a Windows-side
-  //      "Action Required" dialog asking staff to allow this site to print
-  //      (because no signing certificate is configured below — see the
-  //      qz.security comments). Staff can tick "Remember this decision" so
-  //      it doesn't ask again. This is intentional: we do NOT disable QZ's
-  //      certificate/signature security to skip that prompt.
-  //   4. For a fully unattended/signed setup later, configure
-  //      qz.security.setCertificatePromise / setSignaturePromise with a
-  //      real QZ signing certificate (see https://qz.io/wiki/2.1-signing)
-  //      and remove the "unsigned" prompt entirely. Not required to print.
+  //   3. Signing is configured below (setCertificatePromise / setSignaturePromise)
+  //      using a QZ Tray "Site Manager" demo certificate (generated via
+  //      QZ Tray > Advanced > Site Manager > + > Create New on the Windows
+  //      PC). The certificate itself is public (embedded below); the
+  //      matching private key is NEVER embedded here — it lives only as the
+  //      QZ_PRIVATE_KEY_B64 environment variable on this project's Vercel
+  //      deployment, and signing happens server-side via /api/qz-sign.js.
+  //      With this configured, staff can tick "Remember this decision" +
+  //      "Allow" once and QZ Tray will not prompt again for this site.
+  // ------------------------------------------------------------------------
+
+  // Public certificate generated via QZ Tray > Advanced > Site Manager on the
+  // Windows counter PC. Safe to embed — certificates are not secret.
+  const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIIECzCCAvOgAwIBAgIGAaBy03dPMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
+EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS
+UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx
+HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg
+RGVtbyBDZXJ0MB4XDTI2MDkwNDE4MjczNloXDTQ2MDkwNDE4MjczNlowgaIxCzAJ
+BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD
+VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs
+IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog
+VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC6
+S2GljBQouSwnZq2EIIWktqGARE4xcx8xedL5KPAsy35ljMW2xZwyH5CNNdbO20G/
+i0Q2V506cyHorgpl/N243rnzCrgFxY0RubIf1XqRiL790XQ2XG0xLi7z5ndSk70f
+gw+gkjnyPXlxWyE46eIAV0SmVu7yN4KEV7k91855gVqOqZO8Ow6qHdNpE0c4foI+
+KlmnT6JucHKsTV3tSEyMaAAtYsziQPvIWv9D47AnveXXvet61+6ZlOGRnDUplnJD
+1lP6/omOwVIm7RzNJHSNeYJAd8MWXxBg9uqf/DW7/Qo0Y6H87GyomN+M1B9nJ6z2
+EJ74ZffO+lY3KZf8TJAVAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD
+VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBSVc1r1Qg+OKSnuJl+gBfhHLRz3WTANBgkq
+hkiG9w0BAQsFAAOCAQEAB6jd8qP1Y1r2ZrV06Qv0BHtlnQ46DpESMi6Y/+0bKT+q
+W1akK0sZz86V6oideMobyaIcrv8uUeasULbRytD4WEVhRR6DVD8l2iVgil/o23hW
+hrk/1JT8yVa9mr/uhLirGysvg4FyfiWCsB0CH6uDI1Ly5BKAYwUYuYKoIyuC78aK
+4gM2nAIiU+IWk+BlKMyuEDsAsXaY/N85dS4ZseOUkI313C6UHCPgQY8UX5xGcwCY
+GN5mF+a0SKT532DmuWZtDRO/vZtHY7c+Jij5vpIAb+eswCID3jmHSoQQ2nQ2RM0/
+5RwtFZJRfzP0ntbwaP4aFbHSVtdAMHcuvj1jKxH6pw==
+-----END CERTIFICATE-----`;
+
+  // Registers signing BEFORE anything ever calls qz.websocket.connect().
+  // setSignaturePromise calls our own /api/qz-sign serverless function
+  // (same Vercel deployment as this page) which holds the private key only
+  // as a server-side environment variable — the key itself never reaches
+  // the browser.
+  if (typeof qz !== 'undefined') {
+    qz.security.setCertificatePromise((resolve) => resolve(QZ_CERTIFICATE));
+    qz.security.setSignatureAlgorithm('SHA512'); // must match api/qz-sign.js (RSA-SHA512)
+    qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
+      fetch('/api/qz-sign?request=' + encodeURIComponent(toSign))
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error('Signing endpoint returned ' + r.status))))
+        .then(resolve)
+        .catch(reject);
+    });
+  }
   // ------------------------------------------------------------------------
 
   // Change this if the Windows-installed printer name differs (Control
