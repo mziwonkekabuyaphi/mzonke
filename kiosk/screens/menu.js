@@ -49,7 +49,7 @@ export const html = `<div id="bg-canvas"></div>
 
     <header class="k-header">
       <div class="k-brand" @click="resetToHome">
-        <img src="../../assets/images/rands-logo2.png" alt="Rands" class="k-logo-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'20\' fill=\'%23E30613\'/%3E%3Ctext x=\'50\' y=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'%3ER%3C/text%3E%3C/svg%3E'">
+        <img src="../assets/images/rands-logo2.png" alt="Rands" class="k-logo-img" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' rx=\'20\' fill=\'%23E30613\'/%3E%3Ctext x=\'50\' y=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'%3ER%3C/text%3E%3C/svg%3E'">
         <div>
           <div class="k-venue">Rands<span style="color:var(--red);">.</span></div>
           <div class="k-tagline">Self-Service · Order Here</div>
@@ -338,9 +338,14 @@ export async function init({ supabase }) {
       toastType: 'success',
       toastIcon: 'fas fa-check-circle',
       heroIndex: 0,
+      // Hardcoded starting point — these render instantly on first paint
+      // so the hero never flashes empty. mounted()'s loadHeroSlides()
+      // then swaps this for live rows from kiosk_menu_slides (managed in
+      // kiosk-admin.html's "Menu Banners" tab); if that fetch fails or
+      // the table has no active rows, these three stay exactly as-is.
       heroSlides: [
         { eyebrow: 'BUTCHER SHOP', title: 'Fresh. Flame. Flavour.', desc: 'Hand-selected cuts cooked to perfection', cta: 'Order Now', action: 'butcher', bgImage: '../assets/images/butcher-kiosk-banner.png' },
-        { eyebrow: 'PREMIUM SPIRITS', title: 'Khayelitsha Vibes', desc: 'Curated selection of premium spirits', cta: 'Explore', action: 'spirits', bgImage: '../assets/images/vibe-kiosk-banner.png' },
+        { eyebrow: 'PREMIUM SPIRITS', title: 'Khayelitsha Vibes', desc: 'Curated selection of premium spirits', cta: 'Explore', action: 'whiskey', bgImage: '../assets/images/vibe-kiosk-banner.png' },
         { eyebrow: 'UPCOMING EVENTS', title: 'The Next Big Vibe', desc: 'Secure your spot before it sells out', cta: 'Get Tickets', action: 'tickets', bgImage: '../assets/images/event-kiosk-banner.png' }
       ],
       _heroTimer: null,
@@ -410,12 +415,38 @@ export async function init({ supabase }) {
       resizeHandler = () => { this.isMobile = window.innerWidth < 768; };
       window.addEventListener('resize', resizeHandler);
       this._heroTimer = setInterval(() => { this.heroIndex = (this.heroIndex + 1) % this.heroSlides.length; }, 10000);
+      await this.loadHeroSlides();
       await this.loadProducts();
       await this.loadEvents();
     },
     methods: {
       formatPrice(n) { return Number(n).toFixed(2); },
       formatEventDate(d) { return d ? new Date(d).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'; },
+      // Reads the admin-managed hero banners. Only ever *replaces* the
+      // built-in fallback slides above -- never clears them -- so a
+      // network hiccup, a table with zero active rows, or every row
+      // being outside its start/end window all just leave the fallback
+      // on screen instead of an empty hero.
+      async loadHeroSlides() {
+        try {
+          const { data, error } = await supabase.from('kiosk_menu_slides').select('*').eq('is_active', true).order('display_order', { ascending: true });
+          if (error || !data) { console.warn('loadHeroSlides: falling back to defaults', error); return; }
+          const now = new Date();
+          const live = data.filter(s => (!s.starts_at || new Date(s.starts_at) <= now) && (!s.ends_at || new Date(s.ends_at) >= now));
+          if (!live.length) return;
+          this.heroSlides = live.map(s => ({
+            eyebrow: s.eyebrow || '',
+            title: s.title,
+            desc: s.description || '',
+            cta: s.cta_label || 'Explore',
+            action: s.target_category || 'all',
+            bgImage: s.image_url || '../assets/images/butcher-kiosk-banner.png',
+          }));
+          this.heroIndex = 0;
+        } catch (e) {
+          console.warn('loadHeroSlides: falling back to defaults', e);
+        }
+      },
       showToast(msg, type = 'success') { this.toastMessage = msg; this.toastType = type; this.toastIcon = type === 'error' ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle'; this.toastVisible = true; setTimeout(() => this.toastVisible = false, 3000); },
       getEventBannerImage(e) { return e?.banner_url || e?.image_url || e?.image || '../assets/images/event-banner.png'; },
       handleEventImageError(e) { if (e.banner_url !== '../assets/images/event-banner.png') e.banner_url = '../assets/images/event-banner.png'; },
@@ -451,7 +482,12 @@ export async function init({ supabase }) {
       quickAddToCart(p) { this.addToCartInternal(p, 1); },
       stepUp(p) { const ex = this.cart.find(i => i.id === p.id && i.itemType !== 'ticket'); if (ex) ex.quantity++; else this.addToCartInternal(p, 1); },
       stepDown(p) { const ex = this.cart.find(i => i.id === p.id && i.itemType !== 'ticket'); if (ex) { if (ex.quantity > 1) ex.quantity--; else this.cart = this.cart.filter(i => i !== ex); } },
-      quickHeroAction() { const a = this.heroSlides[this.heroIndex].action; if (a === 'butcher') this.activeCategory = 'butcher'; else if (a === 'spirits') this.activeCategory = 'spirits'; else if (a === 'tickets') this.activeCategory = 'tickets'; },
+      // Was a 3-way if/else hardcoded to 'butcher'/'spirits'/'tickets' --
+      // now that banners come from kiosk-admin's "Menu Banners" tab, a
+      // banner's target can be any product category (or 'tickets' or
+      // 'all'), so this just hands off to the same selectCategory() the
+      // sidebar itself uses, instead of only recognizing 3 fixed values.
+      quickHeroAction() { this.selectCategory(this.heroSlides[this.heroIndex].action || 'all'); },
       // SPA change (only intentional behavioral difference from the
       // original): Welcome is now an SPA screen too, not a standalone
       // kiosk-start.html page, so this navigates via kiosk.js's router
