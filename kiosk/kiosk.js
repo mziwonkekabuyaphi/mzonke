@@ -4,12 +4,17 @@
  * Minimal SPA loader for the Rands kiosk.
  *
  * It knows how to mount a screen's HTML into #kiosk-screen, load that
- * screen's stylesheet once, and run that screen's init() logic. Two
- * screens are registered so far: welcome and scanner. Menu / Payment /
+ * screen's stylesheet once, and run that screen's init() logic. Three
+ * screens are registered so far: welcome, scanner, and menu. Payment /
  * Gate (Passport Purchase already lives inside scanner) and the rest of
  * the kiosk pages have not been converted and continue to be reached the
  * same way they always were (window.location.href to their own
  * standalone .html pages), untouched.
+ *
+ * Menu is the first registered screen that needs an external <script>
+ * (Vue 2's CDN build) rather than just an ES module import, so this file
+ * also exposes ensureScript() — a <script>-tag equivalent of
+ * ensureStylesheet() below, with the same load-once caching.
  *
  * Same relative path as the original kiosk-start.html used
  * (`../config/supabase.js`), since this file lives in the same directory
@@ -19,13 +24,14 @@
 import { supabase } from '../../config/supabase.js';
 import * as welcome from './screens/welcome.js';
 import * as scanner from './screens/scanner.js';
+import * as menu from './screens/menu.js';
 
 const kioskScreen = document.getElementById('kiosk-screen');
 
 // Registry of SPA screens. Add entries here as more pages are migrated.
 // `cleanup` is optional — screens with nothing to unmount (no timers,
-// no document-level listeners, no open overlays) can omit it. Both
-// welcome and scanner currently define one.
+// no document-level listeners, no open overlays) can omit it. All
+// three registered screens currently define one.
 const screens = {
   welcome: {
     html: welcome.html,
@@ -38,6 +44,12 @@ const screens = {
     init: scanner.init,
     cleanup: scanner.cleanup,
     css: './screens/scanner.css',
+  },
+  menu: {
+    html: menu.html,
+    init: menu.init,
+    cleanup: menu.cleanup,
+    css: './screens/menu.css',
   },
 };
 
@@ -56,6 +68,24 @@ function ensureStylesheet(href) {
   });
 }
 
+const loadedScripts = new Set();
+
+// Same load-once caching as ensureStylesheet() above, but for external
+// <script> tags — needed by screens/menu.js, which depends on the Vue 2
+// CDN build (a global, non-ES-module script) rather than an ES import.
+// Exported so any screen module can use it, not just menu.js.
+export function ensureScript(src) {
+  if (!src || loadedScripts.has(src)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+    document.head.appendChild(script);
+    loadedScripts.add(src);
+  });
+}
+
 let currentScreenName = null;
 
 /**
@@ -67,7 +97,7 @@ let currentScreenName = null;
  * closing overlays, and resetting that screen's own init-guard so it
  * can be cleanly re-initialized the next time it's navigated to.
  * Screens without a cleanup() are simply left as-is; currently every
- * registered screen (welcome, scanner) defines one.
+ * registered screen (welcome, scanner, menu) defines one.
  */
 export async function navigate(name) {
   const screen = screens[name];
@@ -88,7 +118,13 @@ export async function navigate(name) {
   await ensureStylesheet(screen.css);
 
   kioskScreen.innerHTML = screen.html;
-  screen.init({ supabase });
+  // Awaited so an async init (menu.js's is, while it loads the Vue 2
+  // script) fully completes before this screen is considered "current" —
+  // otherwise a fast subsequent navigate() could call cleanup() while
+  // init() is still mid-flight, or mount onto a #app node that's already
+  // been replaced. welcome.js/scanner.js's init() aren't async, so
+  // awaiting them here is a no-op and changes nothing for those screens.
+  await screen.init({ supabase });
 
   currentScreenName = name;
 }
