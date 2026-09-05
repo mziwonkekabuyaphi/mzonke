@@ -6,6 +6,14 @@
   <title>Rands Smart Counter · Staff Console</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!--
+    QZ Tray client library — bridges this browser page to the locally-installed
+    QZ Tray application on the Windows staff PC, which talks to the USB-connected
+    Epson TM-T88V. For production, consider self-hosting this file (per QZ's own
+    docs) instead of loading it from a CDN, so printing still works if the
+    console is ever used offline from the internet.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
   <style>
     /* ========== DARK THEME — UNCHANGED FROM ORIGINAL CONSOLE ========== */
     :root {
@@ -482,6 +490,21 @@
     }
     .status-dot.error { background: var(--red); }
 
+    /* Printer status pill — sits just above the Supabase connection pill.
+       Deliberately small/non-intrusive; reuses the same dot styling. */
+    .printer-status {
+      position: fixed; bottom: 62px; right: 20px;
+      background: var(--surface);
+      padding: 6px 16px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border);
+      display: flex; gap: 8px; align-items: center;
+      box-shadow: var(--shadow-md); z-index: 100;
+      font-size: 0.65rem; font-weight: 500;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+    }
+
     @keyframes pulse {
       0% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.6; transform: scale(1.1); }
@@ -545,6 +568,11 @@
     <h3>📋 Sent to Collection (read-only — managed on the Collection console)</h3>
   </div>
   <div class="completed-orders-grid" id="completedOrdersGrid"></div>
+</div>
+
+<div class="printer-status" id="printerStatusBox" title="Click to retry connecting to the printer" onclick="window.__printing && window.__printing.retryConnect()">
+  <div class="status-dot" id="printerStatusDot"></div>
+  <div id="printerStatusText">🖨 Printer: Checking…</div>
 </div>
 
 <div class="connection-status">
@@ -636,7 +664,14 @@
       }
       const { error: updateErr } = await supabase.from('orders').update(payload).eq('id', dbId);
       if (updateErr) throw new Error(updateErr.message);
-      if (newStatus === 'preparing') showToast(`🧊 Order #${displayNum} is now ADDING ICE`, 'info');
+      if (newStatus === 'preparing') {
+        showToast(`🧊 Order #${displayNum} is now ADDING ICE`, 'info');
+        // Fire-and-forget: printing must never block the order status flow
+        // or the UI refresh below. The order snapshot (items/customer/total)
+        // is looked up synchronously from the still-current `activeOrders`
+        // inside handlePreparingPrint, before refreshAllData() replaces it.
+        handlePreparingPrint(dbId, displayNum);
+      }
       else if (newStatus === 'ready') { playNotificationSound(false); showToast(`✅ Order #${displayNum} sent to Collection!`, 'ready'); }
       await refreshAllData();
       return true;
@@ -805,13 +840,24 @@
 
   function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-  function showToast(msg, type) {
+  // `action` is optional: { label, onClick } — used to add a "Retry Print"
+  // button to a toast without touching any existing two-argument call sites.
+  function showToast(msg, type, action) {
     const colors = { ready: 'var(--green)', info: 'var(--ice)', error: 'var(--red)', vvip: 'var(--gold)' };
     const toast = document.createElement('div');
-    Object.assign(toast.style, { position: 'fixed', bottom: '80px', right: '20px', background: colors[type] ?? colors.error, color: type === 'vvip' ? '#1e1a0c' : '#fff', padding: '10px 18px', borderRadius: '9999px', fontWeight: 'bold', zIndex: '2000', fontSize: '13px', boxShadow: 'var(--shadow-md)', animation: 'slideInRight 0.3s ease' });
-    toast.innerText = msg;
+    Object.assign(toast.style, { position: 'fixed', bottom: '80px', right: '20px', background: colors[type] ?? colors.error, color: type === 'vvip' ? '#1e1a0c' : '#fff', padding: '10px 18px', borderRadius: '9999px', fontWeight: 'bold', zIndex: '2000', fontSize: '13px', boxShadow: 'var(--shadow-md)', animation: 'slideInRight 0.3s ease', display: 'flex', alignItems: 'center', gap: '10px' });
+    const label = document.createElement('span');
+    label.innerText = msg;
+    toast.appendChild(label);
+    if (action && action.label && typeof action.onClick === 'function') {
+      const btn = document.createElement('button');
+      btn.innerText = action.label;
+      Object.assign(btn.style, { background: 'rgba(0,0,0,0.25)', color: 'inherit', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '9999px', padding: '4px 10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' });
+      btn.onclick = () => { action.onClick(); toast.remove(); };
+      toast.appendChild(btn);
+    }
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4500);
+    setTimeout(() => toast.remove(), action ? 9000 : 4500);
   }
 
   function playNotificationSound(isVvip) {
@@ -837,6 +883,216 @@
     txt.innerHTML = text;
   }
 
+  // ========================================================================
+  // RECEIPT PRINTING (QZ Tray → USB Epson TM-T88V)
+  // ------------------------------------------------------------------------
+  // This section is additive: it does not change the order/status logic
+  // above. It is triggered ONLY from a successful local `updateOrderStatus`
+  // call (see the `newStatus === 'preparing'` branch below) — never from
+  // `setupRealtime()` or `refreshAllData()` — so a receipt only prints
+  // because of a real click on THIS console, never because another device
+  // changed the order or because the page refreshed/reconnected.
+  //
+  // WINDOWS / QZ TRAY SETUP REQUIRED (see accompanying setup notes):
+  //   1. Install the Epson TM-T88V USB driver so Windows lists it as a
+  //      normal printer (Devices & Printers).
+  //   2. Install QZ Tray (https://qz.io) on the same Windows PC. It runs as
+  //      a background service + tray icon and exposes a local WebSocket
+  //      (wss://localhost:8181 by default) that this page connects to.
+  //   3. The FIRST time this page prints, QZ Tray will show a Windows-side
+  //      "Action Required" dialog asking staff to allow this site to print
+  //      (because no signing certificate is configured below — see the
+  //      qz.security comments). Staff can tick "Remember this decision" so
+  //      it doesn't ask again. This is intentional: we do NOT disable QZ's
+  //      certificate/signature security to skip that prompt.
+  //   4. For a fully unattended/signed setup later, configure
+  //      qz.security.setCertificatePromise / setSignaturePromise with a
+  //      real QZ signing certificate (see https://qz.io/wiki/2.1-signing)
+  //      and remove the "unsigned" prompt entirely. Not required to print.
+  // ------------------------------------------------------------------------
+
+  // Change this if the Windows-installed printer name differs (Control
+  // Panel → Devices and Printers shows the exact name). Discovery below
+  // will also fall back to any printer whose name contains "tm-t88" or
+  // "epson" if this exact/partial match isn't found, so this rarely needs
+  // to be perfectly exact — but set it to the real name when known.
+  // NOTE: if the Booze counter has its own physically separate TM-T88V
+  // (different PC from the Butcher counter), set this to that specific
+  // printer's Windows name if it ever needs to differ from the Butcher one.
+  const PRINTER_NAME = 'TM-T88V';
+
+  let qzConnectPromise = null;   // in-flight connect(), so concurrent callers share one attempt
+  let resolvedPrinterName = null;
+  const printedForPreparing = new Set(); // dbId already successfully printed for this console's "preparing" click
+  const printingInFlight = new Set();    // dbId currently mid-print, to close the double-click race window
+
+  function qzAvailable() { return typeof qz !== 'undefined'; }
+
+  async function ensureQzConnected() {
+    if (!qzAvailable()) return false;
+    try { if (qz.websocket.isActive()) return true; } catch (_) { /* fall through to (re)connect */ }
+    if (qzConnectPromise) return qzConnectPromise;
+    qzConnectPromise = qz.websocket.connect()
+      .then(() => true)
+      .catch((err) => { console.warn('QZ Tray connect failed:', err); return false; })
+      .finally(() => { qzConnectPromise = null; });
+    return qzConnectPromise;
+  }
+
+  async function discoverPrinter() {
+    if (!qzAvailable()) { resolvedPrinterName = null; return null; }
+    try {
+      const found = await qz.printers.find();
+      const list = Array.isArray(found) ? found : (found ? [found] : []);
+      let match = list.find(p => p.toLowerCase() === PRINTER_NAME.toLowerCase());
+      if (!match) match = list.find(p => p.toLowerCase().includes(PRINTER_NAME.toLowerCase()));
+      if (!match) match = list.find(p => p.toLowerCase().includes('tm-t88') || p.toLowerCase().includes('epson'));
+      resolvedPrinterName = match || null;
+      return resolvedPrinterName;
+    } catch (err) {
+      console.warn('QZ printer discovery failed:', err);
+      resolvedPrinterName = null;
+      return null;
+    }
+  }
+
+  function setPrinterStatus(state) {
+    const dot = document.getElementById('printerStatusDot');
+    const txt = document.getElementById('printerStatusText');
+    if (!dot || !txt) return;
+    if (state === 'connected') { dot.classList.remove('error'); txt.textContent = `🖨 Printer: Connected${resolvedPrinterName ? ' (' + resolvedPrinterName + ')' : ''}`; }
+    else if (state === 'no-printer') { dot.classList.add('error'); txt.textContent = '🖨 Printer: Not Found'; }
+    else if (state === 'checking') { dot.classList.remove('error'); txt.textContent = '🖨 Printer: Checking…'; }
+    else { dot.classList.add('error'); txt.textContent = '🖨 Printer: Offline'; }
+  }
+
+  // --- ESC/POS helpers (raw bytes sent to the printer via QZ Tray) ---
+  const ESC = '\x1B', GS = '\x1D';
+  const escInit = () => ESC + '@';
+  const escAlignCenter = () => ESC + 'a' + '\x01';
+  const escAlignLeft = () => ESC + 'a' + '\x00';
+  const escBoldOn = () => ESC + 'E' + '\x01';
+  const escBoldOff = () => ESC + 'E' + '\x00';
+  const escDoubleOn = () => GS + '!' + '\x11';
+  const escDoubleOff = () => GS + '!' + '\x00';
+  const escFeed = (n) => '\n'.repeat(n);
+  const escCutFull = () => GS + 'V' + '\x00';
+  const RECEIPT_WIDTH = 42; // standard Font A width on 80mm TM-T88V
+
+  function padRow(left, right) {
+    left = String(left); right = String(right);
+    const spaces = RECEIPT_WIDTH - left.length - right.length;
+    if (spaces < 1) { left = left.slice(0, Math.max(0, RECEIPT_WIDTH - right.length - 1)); }
+    return left + ' '.repeat(Math.max(1, RECEIPT_WIDTH - left.length - right.length)) + right;
+  }
+
+  // Builds the raw ESC/POS string for a preparation slip (not a tax invoice).
+  function buildReceiptText(order, counterLabel, actionLabel, displayNum) {
+    let out = '';
+    out += escInit();
+    out += escAlignCenter() + escBoldOn() + escDoubleOn();
+    out += 'RANDS\n';
+    out += escDoubleOff();
+    out += counterLabel + '\n';
+    out += escBoldOff();
+    out += '='.repeat(RECEIPT_WIDTH) + '\n';
+    out += escAlignLeft() + escBoldOn();
+    out += `ORDER #${displayNum}\n`;
+    out += escBoldOff();
+    out += `SOURCE: ${(order.source || 'kiosk').toUpperCase()}\n`;
+    if (order.bandName) out += `CUSTOMER: ${order.bandName}\n`;
+    if (order.isVVIP) out += '*** VVIP PRIORITY ***\n';
+    out += '-'.repeat(RECEIPT_WIDTH) + '\n';
+    (order.items || []).forEach(item => {
+      const qty = item.quantity || 1;
+      const lineTotal = Number(item.unit_price || 0) * qty;
+      out += padRow(`${qty} x ${item.name || 'Item'}`, 'R' + lineTotal.toFixed(2)) + '\n';
+    });
+    out += '-'.repeat(RECEIPT_WIDTH) + '\n';
+    out += escBoldOn();
+    out += padRow('TOTAL', 'R' + Number(order.total || 0).toFixed(2)) + '\n';
+    out += escBoldOff();
+    out += '='.repeat(RECEIPT_WIDTH) + '\n';
+    out += escAlignCenter() + escBoldOn() + escDoubleOn();
+    out += actionLabel + '\n';
+    out += escDoubleOff() + escBoldOff() + escAlignLeft();
+    out += escFeed(4);
+    out += escCutFull();
+    return out;
+  }
+
+  async function printReceipt(order, counterLabel, actionLabel, displayNum) {
+    if (!qzAvailable()) { setPrinterStatus('offline'); return { ok: false, reason: 'qz-not-loaded' }; }
+    const connected = await ensureQzConnected();
+    if (!connected) { setPrinterStatus('offline'); return { ok: false, reason: 'qz-offline' }; }
+    if (!resolvedPrinterName) await discoverPrinter();
+    if (!resolvedPrinterName) { setPrinterStatus('no-printer'); return { ok: false, reason: 'no-printer' }; }
+    try {
+      const config = qz.configs.create(resolvedPrinterName);
+      const data = [{ type: 'raw', format: 'plain', data: buildReceiptText(order, counterLabel, actionLabel, displayNum) }];
+      await qz.print(config, data);
+      setPrinterStatus('connected');
+      return { ok: true };
+    } catch (err) {
+      console.error('Print failed:', err);
+      return { ok: false, reason: 'print-error', error: err };
+    }
+  }
+
+  // Orchestrates one print attempt for a single "Start Adding Ice" click.
+  // `forceRetry` is used only by the explicit "Retry Print" toast button —
+  // normal automatic calls never re-print an order already printed this
+  // session, and `printingInFlight` closes the window where a second click
+  // (that raced past the status-transition guard) could fire a second print
+  // before the first one finishes.
+  async function handlePreparingPrint(dbId, displayNum, forceRetry) {
+    if (!forceRetry) {
+      if (printedForPreparing.has(dbId)) return;
+      if (printingInFlight.has(dbId)) return;
+    }
+    printingInFlight.add(dbId);
+    try {
+      const order = activeOrders.find(o => o.dbId === dbId);
+      if (!order) { console.warn('Order not found in activeOrders for printing:', dbId); return; }
+      const result = await printReceipt(order, 'BOOZE COUNTER', 'ADDING ICE', displayNum);
+      if (result.ok) {
+        printedForPreparing.add(dbId);
+        showToast(`Order #${displayNum} started — receipt printed.`, 'ready');
+      } else {
+        showToast(`Order #${displayNum} started — printer unavailable.`, 'error', {
+          label: 'Retry Print',
+          onClick: () => handlePreparingPrint(dbId, displayNum, true),
+        });
+      }
+    } finally {
+      printingInFlight.delete(dbId);
+    }
+  }
+
+  // Called once on page load. Also exposed via window.__printing.retryConnect
+  // so staff can click the printer pill to manually reconnect/rediscover
+  // (e.g. after starting QZ Tray or plugging the printer back in).
+  async function initPrinting() {
+    if (!qzAvailable()) { setPrinterStatus('offline'); return; }
+    setPrinterStatus('checking');
+    const connected = await ensureQzConnected();
+    if (!connected) { setPrinterStatus('offline'); return; }
+    await discoverPrinter();
+    setPrinterStatus(resolvedPrinterName ? 'connected' : 'no-printer');
+  }
+
+  window.__printing = {
+    retryConnect: async () => {
+      setPrinterStatus('checking');
+      const connected = await ensureQzConnected();
+      if (!connected) { setPrinterStatus('offline'); showToast('Still can\'t reach QZ Tray — check it\'s running on this PC.', 'error'); return; }
+      await discoverPrinter();
+      if (resolvedPrinterName) { setPrinterStatus('connected'); showToast(`Printer found: ${resolvedPrinterName}`, 'ready'); }
+      else { setPrinterStatus('no-printer'); showToast('QZ Tray connected, but no Epson TM-T88V was found.', 'error'); }
+    },
+  };
+  // ========================================================================
+
   window.__sc = { startPreparing: (id, disp) => updateOrderStatus(id, 'preparing', disp), markReady: (id, disp) => updateOrderStatus(id, 'ready', disp) };
 
   (async function init() {
@@ -846,6 +1102,7 @@
     else setConnStatus('ok', '✅ Connected · Live (Smart Counter)');
     await refreshAllData();
     setupRealtime();
+    initPrinting(); // non-blocking: printer availability never delays order loading
   })();
 </script>
 </body>
