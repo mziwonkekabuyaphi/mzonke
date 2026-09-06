@@ -56,7 +56,7 @@
         (records || []).forEach(r => payrollById.set(r.id, r));
     }
     let totalStaff = 0;
-    let currentFilters = { search: '', role: '', status: '' };
+    let currentFilters = { role: '', status: '' };
     let customModalResolve = null;
     let charts = {};
 
@@ -213,7 +213,6 @@
         const tbody = document.getElementById('staff-table-body');
         try {
             let query = supabase.from('profiles').select('*', { count: 'exact' }).in('role', ['staff','security','cleaner','scanner','shisha','cashier','vvip','mobile_scanner']);
-            if (currentFilters.search) query = query.or(`name.ilike.%${currentFilters.search}%,surname.ilike.%${currentFilters.search}%,email.ilike.%${currentFilters.search}%,phone.ilike.%${currentFilters.search}%`);
             if (currentFilters.role === 'Mobile Scanner') query = query.eq('role', MOBILE_SCANNER_ROLE);
             else if (currentFilters.role) query = query.eq('staff_role', currentFilters.role);
             if (currentFilters.status) query = query.eq('status', currentFilters.status);
@@ -461,55 +460,35 @@
                 if (error) throw error;
                 showToast('Staff updated!', 'success');
             } else {
-                // Create
-                // Check if email exists
-                const { data: existing } = await supabase.from('profiles').select('email').eq('email', email).maybeSingle();
-                if (existing) { showToast('Email already in use', 'error'); return; }
-
-                // Create auth user
-                const { data: auth, error: authError } = await supabase.auth.signUp({
-                    email, password,
-                    options: { data: { name, surname, role: targetRole } }
-                });
-                if (authError) {
-                    if (authError.message.includes('already registered')) {
-                        showToast('This email is already registered. If this is a staff member stuck without a role, use Edit instead of Create.', 'error');
-                    } else {
-                        throw authError;
+                // Create — delegated entirely to the create-staff Edge Function, which
+                // runs with the service role. This is deliberate: calling
+                // supabase.auth.signUp() directly from this (admin) session would create
+                // the new user AND silently swap the browser's active session over to
+                // that new user (since email confirmations are disabled, signUp() logs
+                // the new account straight in). Every check after that point — PIN
+                // conflicts, email-in-use, subsequent creates — would then run under the
+                // wrong identity. Routing through the Edge Function means the admin's
+                // own session is never touched.
+                const { data: result, error: fnError } = await supabase.functions.invoke('create-staff', {
+                    body: {
+                        email, password, name, surname,
+                        phone: data.get('phone') || null,
+                        staff_role: staffRole,
+                        clock_in_pin: clockInPin,
+                        status: data.get('status') || 'Active',
+                        hourly_rate: parseFloat(hourlyRate),
+                        role: targetRole
                     }
-                    return;
-                }
-                if (!auth.user) throw new Error('Failed to create user');
-
-                // Create/repair profile via atomic RPC — this can be safely retried and
-                // will NEVER leave the profile without a staff_role, unlike a raw insert.
-                // p_role picks which role the profile gets: 'staff' (console + job title)
-                // or 'mobile_scanner' (standalone, routes straight to the scanner app).
-                const finalizeProfile = () => supabase.rpc('upsert_staff_profile', {
-                    p_id: auth.user.id,
-                    p_name: name,
-                    p_surname: surname,
-                    p_email: email,
-                    p_phone: data.get('phone') || null,
-                    p_staff_role: staffRole,
-                    p_clock_in_pin: data.get('clock_in_pin') || null,
-                    p_status: data.get('status') || 'Active',
-                    p_hourly_rate: parseFloat(hourlyRate),
-                    p_role: targetRole
                 });
-
-                let { error: profError } = await finalizeProfile();
-                if (profError) {
-                    // One automatic retry — covers transient network blips, the most
-                    // common cause of the old "orphaned auth user" failure mode.
-                    console.warn('Profile save failed, retrying once:', profError);
-                    ({ error: profError } = await finalizeProfile());
-                }
-                if (profError) {
-                    // Surface this persistently — the auth login now exists even though
-                    // the profile failed, so the admin MUST know to retry via Edit.
-                    showToast(`Login created but profile save failed: ${profError.message}. Click Edit on "${email}" to retry.`, 'error');
-                    console.error('upsert_staff_profile failed after retry:', profError);
+                if (fnError || result?.error) {
+                    const msg = result?.error || fnError?.message || 'Failed to create staff account';
+                    if (msg.includes('already in use')) {
+                        showToast('This email is already registered. If this is a staff member stuck without a role, use Edit instead of Create.', 'error');
+                    } else if (result?.orphanedAuthUserId) {
+                        showToast(`${msg}. Click Edit on "${email}" to retry.`, 'error');
+                    } else {
+                        showToast(msg, 'error');
+                    }
                     return;
                 }
                 showToast(isMobileScanner ? 'Mobile Scanner account created!' : 'Staff created with role assigned!', 'success');
@@ -1307,11 +1286,6 @@
 
     // ─── EVENT LISTENERS ───
     function setupListeners() {
-        document.getElementById('search-staff').addEventListener('input', (e) => {
-            currentFilters.search = e.target.value;
-            currentPage = 1;
-            renderStaffTable();
-        });
         document.getElementById('filter-role').addEventListener('change', (e) => {
             currentFilters.role = e.target.value;
             currentPage = 1;
