@@ -547,19 +547,6 @@
             <div style="margin-left: auto;"><div style="width: 20px;height:20px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div id="cardSelectedIndicator" style="width:12px;height:12px;background:var(--red);border-radius:50%;display:none;"></div></div></div>
           </div>
         </div>
-        <div class="payment-option" id="walletOption">
-          <div class="payment-header">
-            <div class="payment-icon"><i class="fas fa-wallet"></i></div>
-            <div><div class="payment-title">Rands Wallet</div><div class="payment-desc">Request approval from customer wallet</div></div>
-            <div style="margin-left: auto;"><div style="width: 20px;height:20px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;"><div id="walletSelectedIndicator" style="width:12px;height:12px;background:var(--red);border-radius:50%;display:none;"></div></div></div>
-          </div>
-        </div>
-
-        <div class="phone-input-group" id="phoneInputGroup">
-          <label style="font-size:0.7rem; color:var(--text3);">Customer phone number</label>
-          <input type="tel" id="customerPhone" placeholder="0712345678">
-        </div>
-
         <button class="btn-primary" id="requestPaymentBtn" disabled><i class="fas fa-credit-card"></i> Select payment method</button>
         <div id="requestStatus" class="status-panel"></div>
       </div>
@@ -591,10 +578,7 @@
   let selectedEvent = null;
   let selectedTicketType = null;
   let ticketQuantity = 1;
-  let currentRequestId = null;
-  let requestSubscription = null;
   let selectedPaymentMethod = null;
-  let countdownInterval = null;
 
   const eventInfoDiv = document.getElementById('eventInfo');
   const ticketGrid = document.getElementById('ticketGrid');
@@ -606,11 +590,9 @@
   const summaryQty = document.getElementById('summaryQty');
   const summaryTotal = document.getElementById('summaryTotal');
   const quantityPanel = document.getElementById('quantityPanel');
-  const customerPhoneInput = document.getElementById('customerPhone');
   const requestPaymentBtn = document.getElementById('requestPaymentBtn');
   const requestStatusDiv = document.getElementById('requestStatus');
   const syncBtn = document.getElementById('syncBtn');
-  const phoneInputGroup = document.getElementById('phoneInputGroup');
 
   function showToast(msg, type = 'info') {
     const toast = document.getElementById('toastMsg');
@@ -619,7 +601,6 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
-  function validatePhone(phone) { return /^[0-9]{10}$/.test(phone); }
   function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
   function getTicketTypeClass(name) {
@@ -696,12 +677,6 @@
     document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
     document.getElementById('cashSelectedIndicator').style.display = 'none';
     document.getElementById('cardSelectedIndicator').style.display = 'none';
-    document.getElementById('walletSelectedIndicator').style.display = 'none';
-    phoneInputGroup.classList.remove('visible');
-    customerPhoneInput.value = '';
-    if (countdownInterval) clearInterval(countdownInterval);
-    if (requestSubscription) requestSubscription.unsubscribe();
-    currentRequestId = null;
     requestStatusDiv.style.display = 'none';
     renderTickets();
     updateSummary();
@@ -820,33 +795,29 @@
     else if (ticketQuantity > selectedTicketType.available) requestPaymentBtn.innerHTML = `<i class="fas fa-ban"></i> Only ${selectedTicketType.available} left`;
     else {
       if (selectedPaymentMethod === 'cash') requestPaymentBtn.innerHTML = '<i class="fas fa-money-bill-wave"></i> Process Cash Payment';
-      else if (selectedPaymentMethod === 'card') requestPaymentBtn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Card';
-      else requestPaymentBtn.innerHTML = '<i class="fas fa-wallet"></i> Request Wallet Payment';
+      else requestPaymentBtn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Card';
     }
   }
 
+  // Was: insert tickets, then separately `select sold` and `update sold =
+  // sold + qty`. Two box-office terminals (or two rapid sales) selling the
+  // same ticket type could both read the same starting "sold" value before
+  // either wrote back, letting both sales succeed past capacity — the
+  // "available" count shown in the UI is also only ever as fresh as the
+  // last page load, so it couldn't catch this either. issue_box_office_tickets
+  // does the capacity check, sold increment, and ticket/checkin inserts in
+  // one locked database transaction, so concurrent sales for the same
+  // ticket type serialize instead of racing.
   async function issueTickets(customerPhone, customerId, customerName = '') {
-    const ticketsToInsert = [];
-    for (let i = 0; i < ticketQuantity; i++) {
-      ticketsToInsert.push({
-        event_id: selectedEvent.id,
-        ticket_type_id: selectedTicketType.id,
-        customer_phone: customerPhone,
-        status: 'issued',
-        issued_at: new Date().toISOString(),
-        checked_in: true,
-        checked_in_at: new Date().toISOString(),
-        ticket_type: selectedTicketType.name.toLowerCase().includes('vip') ? 'vip' : 'general',
-        qr_token: crypto.randomUUID()
-      });
-    }
-    const { data: tickets, error } = await supabase.from('tickets').insert(ticketsToInsert).select();
+    const paymentMethod = customerPhone === 'card_customer' ? 'card' : 'cash';
+    const { data: tickets, error } = await supabase.rpc('issue_box_office_tickets', {
+      p_event_id: selectedEvent.id,
+      p_ticket_type_id: selectedTicketType.id,
+      p_quantity: ticketQuantity,
+      p_customer_phone: customerPhone,
+      p_payment_method: paymentMethod
+    });
     if (error) throw error;
-    for (const ticket of tickets) {
-      await supabase.from('checkins').insert({ ticket_id: ticket.id, event_id: selectedEvent.id, scanned_at: new Date().toISOString(), status: 'valid', gate: 'box_office' });
-    }
-    const { data: tt } = await supabase.from('ticket_types').select('sold').eq('id', selectedTicketType.id).single();
-    if (tt) await supabase.from('ticket_types').update({ sold: (tt.sold || 0) + ticketQuantity }).eq('id', selectedTicketType.id);
     return tickets;
   }
 
@@ -880,46 +851,6 @@
     } catch (err) { showToast(err.message, 'error'); requestPaymentBtn.disabled = false; updateCheckoutButtonState(); }
   }
 
-  async function processWalletPayment() {
-    const phone = customerPhoneInput.value.trim();
-    if (!phone || !validatePhone(phone)) { showToast('Valid 10-digit phone required', 'error'); return; }
-    requestPaymentBtn.disabled = true;
-    try {
-      const { data: profile } = await supabase.from('profiles').select('id').eq('phone', phone).maybeSingle();
-      const customerId = profile?.id;
-      const totalAmount = selectedTicketType.price * ticketQuantity;
-      const { data, error } = await supabase.from('payment_requests').insert({ customer_phone: phone, customer_profile_id: customerId, event_id: selectedEvent.id, ticket_type_id: selectedTicketType.id, quantity: ticketQuantity, total_amount: totalAmount, channel: 'boxoffice', status: 'pending', requested_at: new Date().toISOString(), expires_at: new Date(Date.now() + 2 * 60000).toISOString(), metadata: { payment_method: 'wallet' } }).select().single();
-      if (error) throw error;
-      currentRequestId = data.id;
-      requestStatusDiv.className = 'status-panel pending';
-      requestStatusDiv.style.display = 'block';
-      requestStatusDiv.innerHTML = `<i class="fas fa-hourglass-half"></i> Waiting for customer approval...<div class="timer-display" id="requestTimer">02:00</div>`;
-      let seconds = 120;
-      if (countdownInterval) clearInterval(countdownInterval);
-      countdownInterval = setInterval(() => {
-        seconds--;
-        const timerEl = document.getElementById('requestTimer');
-        if (timerEl) timerEl.innerText = `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
-        if (seconds <= 0) { clearInterval(countdownInterval); resetRequestFlow(); showToast('Request expired', 'error'); }
-      }, 1000);
-      if (requestSubscription) requestSubscription.unsubscribe();
-      requestSubscription = supabase.channel(`payment-${currentRequestId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `id=eq.${currentRequestId}` }, async (payload) => {
-        if (payload.new.status === 'approved') {
-          clearInterval(countdownInterval);
-          const tickets = await issueTickets(phone, customerId, 'Wallet Customer');
-          await supabase.from('payment_requests').update({ status: 'completed' }).eq('id', currentRequestId);
-          await showWristbandPreview(tickets, selectedEvent, selectedTicketType, 'Wallet Customer');
-          resetRequestFlow();
-        } else if (payload.new.status === 'rejected') {
-          clearInterval(countdownInterval);
-          showToast('Customer rejected payment', 'error');
-          resetRequestFlow();
-        }
-      }).subscribe();
-    } catch (err) { showToast(err.message, 'error'); requestPaymentBtn.disabled = false; updateCheckoutButtonState(); }
-  }
-  function resetRequestFlow() { if (countdownInterval) clearInterval(countdownInterval); if (requestSubscription) requestSubscription.unsubscribe(); currentRequestId = null; requestStatusDiv.style.display = 'none'; updateCheckoutButtonState(); }
-
   decQty.addEventListener('click', () => { if (ticketQuantity > 1) { ticketQuantity--; qtyDisplay.textContent = ticketQuantity; updateSummary(); updateQuantityLimit(); updateCheckoutButtonState(); } });
   incQty.addEventListener('click', () => { if (selectedTicketType && ticketQuantity < selectedTicketType.available && ticketQuantity < 10) { ticketQuantity++; qtyDisplay.textContent = ticketQuantity; updateSummary(); updateQuantityLimit(); updateCheckoutButtonState(); } });
 
@@ -928,30 +859,16 @@
       selectedPaymentMethod = 'cash';
       document.getElementById('cashSelectedIndicator').style.display = 'block';
       document.getElementById('cardSelectedIndicator').style.display = 'none';
-      document.getElementById('walletSelectedIndicator').style.display = 'none';
       document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
       document.getElementById('cashOption').classList.add('selected');
-      phoneInputGroup.classList.remove('visible');
       updateCheckoutButtonState();
     });
     document.getElementById('cardOption').addEventListener('click', () => {
       selectedPaymentMethod = 'card';
       document.getElementById('cardSelectedIndicator').style.display = 'block';
       document.getElementById('cashSelectedIndicator').style.display = 'none';
-      document.getElementById('walletSelectedIndicator').style.display = 'none';
       document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
       document.getElementById('cardOption').classList.add('selected');
-      phoneInputGroup.classList.remove('visible');
-      updateCheckoutButtonState();
-    });
-    document.getElementById('walletOption').addEventListener('click', () => {
-      selectedPaymentMethod = 'wallet';
-      document.getElementById('walletSelectedIndicator').style.display = 'block';
-      document.getElementById('cashSelectedIndicator').style.display = 'none';
-      document.getElementById('cardSelectedIndicator').style.display = 'none';
-      document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
-      document.getElementById('walletOption').classList.add('selected');
-      phoneInputGroup.classList.add('visible');
       updateCheckoutButtonState();
     });
   }
@@ -960,7 +877,6 @@
     if (!selectedPaymentMethod) showToast('Select payment method', 'error');
     else if (selectedPaymentMethod === 'cash') await processCashPayment();
     else if (selectedPaymentMethod === 'card') await processCardPayment();
-    else if (selectedPaymentMethod === 'wallet') await processWalletPayment();
   });
 
   document.getElementById('closePreviewBtn').addEventListener('click', () => document.getElementById('wristbandPreviewModal').classList.remove('show'));
@@ -968,7 +884,6 @@
   document.getElementById('newSaleBtn').addEventListener('click', resetToNewSale);
   document.getElementById('backEventsBtn').addEventListener('click', () => { resetToNewSale(); loadEvents(); });
   syncBtn.addEventListener('click', () => { loadEvents(); showToast('Events refreshed', 'success'); });
-  customerPhoneInput.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0,10); });
 
   loadEvents();
 
