@@ -1012,33 +1012,29 @@
     document.getElementById('uniqueGuests').textContent = inside;
   }
 
+  // Was: local read-then-write-then-insert with a rollback on failure.
+  // The rollback was unconditional — if a SECOND scan of an already-used
+  // ticket hit the checkins unique-constraint error, this code reset
+  // checked_in back to false on the ticket regardless of whether *this*
+  // call was the one that had set it true. That silently un-checked-in a
+  // legitimately scanned guest and let the same ticket be scanned in
+  // again later. checkin_ticket_secure does the "find ticket -> validate
+  // event/status -> mark used -> log checkin" sequence as a single
+  // atomic transaction server-side (same function scanner.html already
+  // uses), so there's no window for a second scan to corrupt state.
   async function checkInTicket(ticketId) {
-    const now = new Date().toISOString();
-    const existingTicket = allTickets.find(t => t.id === ticketId);
-    if (existingTicket?.checkedIn) throw new Error('DUPLICATE_TICKET');
-    
-    const { error: updateErr } = await supabase
-      .from('tickets')
-      .update({ checked_in: true, checked_in_at: now })
-      .eq('id', ticketId)
-      .eq('checked_in', false);
-    if (updateErr) throw new Error('DUPLICATE_TICKET');
-    
-    const { error: checkinErr } = await supabase
-      .from('checkins')
-      .insert({
-        ticket_id: ticketId,
-        event_id: currentEvent.id,
-        scanned_at: now,
-        gate: GATE_LOCATION,
-        status: 'valid'
-      });
-    if (checkinErr) {
-      await supabase.from('tickets').update({ checked_in: false, checked_in_at: null }).eq('id', ticketId);
-      if (checkinErr.code === '23505') throw new Error('DUPLICATE_TICKET');
-      throw checkinErr;
+    const { data, error } = await supabase.rpc('checkin_ticket_secure', {
+      p_qr_token: ticketId,
+      p_event_id: currentEvent.id,
+      p_gate: GATE_LOCATION,
+      p_scanned_by: null
+    });
+    if (error) {
+      if (/already used/i.test(error.message)) throw new Error('DUPLICATE_TICKET');
+      throw error;
     }
-    
+
+    const now = data?.checked_in_at || new Date().toISOString();
     const ticket = allTickets.find(t => t.id === ticketId);
     if (ticket) { ticket.checkedIn = true; ticket.checkinTime = now; }
     updateStatsFromTickets();
