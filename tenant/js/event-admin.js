@@ -382,22 +382,51 @@
         }).eq('id', editingEventId);
         if (updateError) throw new Error(`Failed to update event: ${updateError.message}`);
         eventId = editingEventId;
-        // Previously: fetched existing rows, then deleted them one-by-one
-        // in a loop whose errors were never checked. If a per-row delete
-        // silently failed (e.g. RLS), the old rows survived and the insert
-        // below added new ones on top — 3 types in became 6 out, each
-        // duplicated. Doing it as a single checked bulk delete means a
-        // failure throws immediately instead of silently letting stale
-        // rows survive.
-        const { error: deleteTypesError } = await supabase.from('ticket_types').delete().eq('event_id', eventId);
-        if (deleteTypesError) throw new Error(`Failed to clear old ticket types: ${deleteTypesError.message}`);
-        const types = [];
-        if (ebPrice && ebCap && ebPrice>0 && ebCap>0) types.push({ event_id:eventId, name:'Early Bird', price:ebPrice, capacity:ebCap, sold:0 });
-        if (genPrice && genCap && genPrice>0 && genCap>0) types.push({ event_id:eventId, name:'General Admission', price:genPrice, capacity:genCap, sold:0 });
-        if (vipPrice && vipCap && vipPrice>0 && vipCap>0) types.push({ event_id:eventId, name:'VIP Experience', price:vipPrice, capacity:vipCap, sold:0 });
-        if (!types.length) types.push({ event_id:eventId, name:'General Admission', price:genPrice||100, capacity:genCap||100, sold:0 });
-        const { error: insertTypesError } = await supabase.from('ticket_types').insert(types);
-        if (insertTypesError) throw new Error(`Failed to save ticket types: ${insertTypesError.message}`);
+        // Previously: delete every ticket_types row for this event, then
+        // reinsert fresh ones on every save. That handed each tier a brand
+        // new id (orphaning or cascade-deleting any ticket already sold
+        // against the old id, depending on the FK) and hardcoded sold:0,
+        // wiping sales counts even for an unrelated edit like a venue-name
+        // typo. Instead, match each tier to its existing row (ids come from
+        // the already-loaded `events` state) and update/insert/delete only
+        // what actually changed, so unrelated tiers and their sold counts
+        // and ticket references are left untouched.
+        const existingEvent = events.find(e => e.id === eventId);
+        const existingTT = existingEvent ? existingEvent.ticketTypes : {};
+        const tierDefs = [
+          { key:'earlyBird', name:'Early Bird', price:ebPrice, capacity:ebCap },
+          { key:'general', name:'General Admission', price:genPrice, capacity:genCap },
+          { key:'vip', name:'VIP Experience', price:vipPrice, capacity:vipCap }
+        ];
+        // Preserve old fallback: if no tier was configured at all, default
+        // General Admission to the entered (or 100/100) values, same as before.
+        if (!tierDefs.some(t => t.price>0 && t.capacity>0)) {
+          tierDefs[1].price = genPrice || 100;
+          tierDefs[1].capacity = genCap || 100;
+        }
+        for (const tier of tierDefs) {
+          const existing = existingTT[tier.key];
+          const isConfigured = tier.price>0 && tier.capacity>0;
+          if (existing?.id) {
+            if (isConfigured) {
+              if (tier.capacity < (existing.sold||0)) {
+                throw new Error(`${tier.name} capacity (${tier.capacity}) can't be less than the ${existing.sold} tickets already sold.`);
+              }
+              const { error } = await supabase.from('ticket_types').update({ price: tier.price, capacity: tier.capacity }).eq('id', existing.id);
+              if (error) throw new Error(`Failed to update ${tier.name}: ${error.message}`);
+            } else if ((existing.sold||0) > 0) {
+              // Tier was cleared in the form but has sales against it — keep
+              // the row rather than delete it out from under sold tickets.
+              throw new Error(`Can't remove ${tier.name} — ${existing.sold} ticket(s) already sold against it.`);
+            } else {
+              const { error } = await supabase.from('ticket_types').delete().eq('id', existing.id);
+              if (error) throw new Error(`Failed to remove ${tier.name}: ${error.message}`);
+            }
+          } else if (isConfigured) {
+            const { error } = await supabase.from('ticket_types').insert([{ event_id:eventId, name:tier.name, price:tier.price, capacity:tier.capacity, sold:0 }]);
+            if (error) throw new Error(`Failed to add ${tier.name}: ${error.message}`);
+          }
+        }
         if (selectedBannerFile) {
           const url = await uploadEventBanner(eventId, selectedBannerFile);
           if (url) {
