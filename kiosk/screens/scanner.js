@@ -334,7 +334,7 @@ export function init({ supabase }) {
     badge.textContent = 'SEARCH'; badge.className = 'input-type-badge';
   }
 
-  // Ticket ID (full or partial, as printed on the wristband) / Rands Passport ID (phone) search
+  // Ticket Number / Ticket ID (full or partial, as printed on the wristband) / Rands Passport ID (phone) search
   async function searchTicketsByQuery(raw, eventId) {
     const v = raw.trim();
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -342,22 +342,46 @@ export function init({ supabase }) {
       const { data } = await supabase.from('tickets').select('id, checked_in, customer_phone, ticket_type, event_id, status').eq('id', v).maybeSingle();
       return data ? [data] : [];
     }
-    const isHexish = /^[0-9a-f]+$/i.test(v);
-    if (isHexish && v.length >= 6 && v.length < 36) {
-      const { data } = await supabase.from('tickets').select('id, checked_in, customer_phone, ticket_type, event_id, status').eq('event_id', eventId);
-      return (data || []).filter(t => t.id.toLowerCase().endsWith(v.toLowerCase()));
-    }
+
+    // Rands Passport ID (phone number). This MUST be checked before the
+    // ticket-number/id-suffix branch below: a plain phone number like
+    // "0635713652" is made up entirely of the digits 0-9, which are all
+    // also valid hex characters, so a naive "is this hex?" test wrongly
+    // classifies phone numbers as ticket-ID fragments and they never get
+    // matched against customer_phone at all.
     const digitsNorm = normalizePhoneDigits(v);
-    if (!digitsNorm) return [];
-    const { data } = await supabase.from('tickets').select('id, checked_in, customer_phone, ticket_type, event_id, status').eq('event_id', eventId).ilike('customer_phone', `%${digitsNorm}%`);
-    return (data || []).filter(t => normalizePhoneDigits(t.customer_phone) === digitsNorm);
+    const isPhoneLike = digitsNorm.length >= 9 && /^[\d\s()+-]+$/.test(v);
+    if (isPhoneLike) {
+      const { data } = await supabase.from('tickets').select('id, checked_in, customer_phone, ticket_type, event_id, status').eq('event_id', eventId).ilike('customer_phone', `%${digitsNorm}%`);
+      return (data || []).filter(t => normalizePhoneDigits(t.customer_phone) === digitsNorm);
+    }
+
+    // Ticket Number (e.g. "TKT-C2267F8F", printed on the wristband and
+    // stored in tickets.ticket_number) or a raw ticket-id suffix. Strip an
+    // optional "TKT-" prefix so both "TKT-C2267F8F" and a bare "C2267F8F"
+    // match. Previously this code only ever checked the id column, so
+    // ticket_number — the thing actually printed for guests to type in —
+    // was never queried and could never be found.
+    const bare = v.replace(/^tkt-?/i, '').toLowerCase();
+    if (bare.length >= 4) {
+      const { data } = await supabase.from('tickets').select('id, checked_in, customer_phone, ticket_type, event_id, status, ticket_number').eq('event_id', eventId);
+      return (data || []).filter(t =>
+        (t.ticket_number && t.ticket_number.toLowerCase().replace(/^tkt-?/, '').includes(bare)) ||
+        t.id.toLowerCase().endsWith(bare)
+      );
+    }
+    return [];
   }
 
   // Email / Rands Account Number (wallet_id) → resolve profile → match that phone against this event's tickets
   async function resolveContactToTickets(raw, type, eventId) {
     const column = type === 'email' ? 'email' : 'wallet_id';
     try {
-      const { data: profile, error } = await supabase.from('profiles').select('id, name, phone, email, wallet_id').eq(column, raw.trim()).maybeSingle();
+      // Use ilike (case-insensitive) rather than eq — emails in particular
+      // are easy to type/paste with different casing than what's stored,
+      // and a case-sensitive eq() would silently fail to match.
+      const { data: profiles, error } = await supabase.from('profiles').select('id, name, phone, email, wallet_id').ilike(column, raw.trim());
+      const profile = (profiles || [])[0] || null;
       if (error || !profile) return { profile: null, tickets: [], noPhone: false };
       const digitsNorm = normalizePhoneDigits(profile.phone);
       if (!digitsNorm) return { profile, tickets: [], noPhone: true };
@@ -380,7 +404,7 @@ export function init({ supabase }) {
       return `<div class="scan-result-item" data-id="${t.id}">
         <div>
           <div class="scan-result-phone">${esc(t.customer_phone || 'Guest')}</div>
-          <div class="scan-result-meta">${esc(t.ticket_type || 'general')} · ${t.id.slice(-8)}</div>
+          <div class="scan-result-meta">${esc(t.ticket_type || 'general')} · ${esc(t.ticket_number || t.id.slice(-8))}</div>
         </div>
         <div class="scan-result-status ${statusClass}">${statusLabel}</div>
       </div>`;
