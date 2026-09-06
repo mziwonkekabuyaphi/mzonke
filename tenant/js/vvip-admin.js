@@ -904,8 +904,7 @@
     document.getElementById('cancelDeleteOptionBtn').addEventListener('click', closeDeleteModal);
     document.getElementById('archivePackageBtn').addEventListener('click', archivePackage);
     document.getElementById('permanentDeleteBtn').addEventListener('click', permanentDeletePackage);
-    document.getElementById('packageModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal(); });
-    document.getElementById('deleteModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDeleteModal(); });
+    // Clicking the backdrop no longer closes these modals — only the Cancel/X buttons do.
 
     // ─── INIT ───
     setupImageUpload();
