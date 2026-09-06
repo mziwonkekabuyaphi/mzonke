@@ -1273,83 +1273,68 @@
       <div class="content-area">
         <!-- DASHBOARD -->
         <div v-if="activeModule === 'dashboard'" class="content-scroll">
+          <div class="section-header mb-3">
+            <span class="section-title">Welcome back, {{ staffName.split(' ')[0] }}</span>
+          </div>
+
           <div class="stats-grid mb-5">
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-users" style="color:var(--blue);"></i> Total Accounts</div><div class="stat-value">{{ globalStats.totalAccounts }}</div><div class="stat-delta delta-up"><i class="fas fa-arrow-up" style="font-size:8px;"></i> Rands Passports</div></div>
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-chart-line" style="color:var(--green);"></i> Total Balance</div><div class="stat-value">R{{ globalStats.totalBalance }}</div></div>
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-ban"></i> Blocked Passports</div><div class="stat-value">{{ globalStats.blockedAccounts }}</div></div>
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-clock"></i> Pending Refunds</div><div class="stat-value">{{ globalStats.pendingRefunds }}</div></div>
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-check-circle"></i> Approved Refunds</div><div class="stat-value">{{ globalStats.approvedRefunds }}</div></div>
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-coins"></i> Total Refunded</div><div class="stat-value">R{{ globalStats.totalRefundAmount }}</div></div>
-            <div class="stat-card"><div class="stat-label"><i class="fas fa-clock" style="color:var(--text3);"></i> Shift Duration</div><div class="stat-value" style="font-size:18px;">{{ shiftTimer }}</div><div class="stat-sub">Started {{ shiftStart }}</div></div>
+            <div class="stat-card"><div class="stat-label"><i class="fas fa-clock" style="color:var(--text3);"></i> Current Shift</div><div class="stat-value" style="font-size:18px;">{{ shiftTimer }}</div><div class="stat-sub">Clocked in {{ shiftStart || '—' }}</div></div>
+            <div class="stat-card"><div class="stat-label"><i class="fas fa-calendar-week" style="color:var(--blue);"></i> Hours This Week</div><div class="stat-value">{{ myWeekHours }}</div><div class="stat-sub">Across all shifts, last 7 days</div></div>
+            <div class="stat-card"><div class="stat-label"><i class="fas fa-file-invoice-dollar" style="color:var(--green);"></i> Latest Payslip</div><div class="stat-value">{{ myLatestPayslip ? ('R' + Number(myLatestPayslip.final_pay).toFixed(2)) : '—' }}</div><div class="stat-sub" v-if="myLatestPayslip">{{ formatPayPeriod(myLatestPayslip) }}</div><div class="stat-sub" v-else>No payslips yet</div></div>
+            <div class="stat-card"><div class="stat-label"><i class="fas fa-id-badge" style="color:var(--purple);"></i> Role</div><div class="stat-value" style="font-size:16px;">{{ jobTitle || 'Staff' }}</div></div>
           </div>
 
           <div class="two-col mb-5">
             <div class="panel">
-              <div class="panel-header"><span class="panel-title">Recent Top‑ups</span></div>
+              <div class="panel-header"><span class="panel-title">My Recent Shifts</span></div>
               <div class="panel-body">
-                <div v-if="recentTopups.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No top‑ups yet</div>
-                <div v-for="tx in recentTopups" :key="tx.id" class="queue-row" style="justify-content:space-between;">
-                  <div><strong>{{ tx.customer_name }}</strong><br><span class="text-3 text-xs">{{ tx.time }}</span></div>
-                  <span class="badge badge-green">+R{{ tx.amount.toFixed(2) }}</span>
+                <div v-if="myShifts.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No shifts recorded yet</div>
+                <div v-for="s in myShifts" :key="s.id" class="queue-row" style="justify-content:space-between;">
+                  <div><strong>{{ formatShiftTime(s) }}</strong></div>
+                  <span class="badge" :class="s.status === 'active' ? 'badge-green' : 'badge-blue'">{{ s.status }}</span>
                 </div>
               </div>
             </div>
             <div class="panel">
-              <div class="panel-header"><span class="panel-title">Recent Support Tickets</span></div>
+              <div class="panel-header"><span class="panel-title">My Recent Activity</span></div>
               <div class="panel-body">
-                <div v-if="recentTickets.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No tickets yet</div>
-                <div v-for="t in recentTickets" :key="t.id" class="queue-row" style="justify-content:space-between;">
-                  <div><strong>{{ t.customer_name }}</strong><br><span class="text-3 text-xs">{{ t.issue_type.replace('_',' ') }}</span></div>
-                  <span class="badge" :class="{'badge-amber': t.status === 'open', 'badge-blue': t.status === 'in_progress', 'badge-green': t.status === 'resolved'}">{{ t.status }}</span>
+                <div v-if="myActivity.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No recent activity</div>
+                <div v-for="act in myActivity" :key="act.id" class="activity-item">
+                  <div class="activity-dot" style="background:var(--red);"></div>
+                  <span class="activity-text"><strong>{{ act.module }}</strong> — {{ act.action }}</span>
+                  <span class="activity-time">{{ new Date(act.created_at).toLocaleString('en-ZA', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:false }) }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="section-header mb-3"><span class="section-title">Pending Approvals</span></div>
+          <div class="section-header mb-3"><span class="section-title">My Payslips</span></div>
           <div class="table-wrap mb-5">
-            <div v-if="pendingApprovals.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No pending refund requests</div>
-            <div v-for="a in pendingApprovals" :key="a.id" class="activity-item" style="justify-content:space-between;">
-              <div><strong>{{ a.label }}</strong><br><span class="text-3 text-xs">{{ a.sub }}</span></div>
-              <div class="flex gap-2"><button class="btn btn-sm btn-red" @click="approve(a)">Approve</button><button class="btn btn-sm btn-ghost" @click="decline(a)">Decline</button></div>
-            </div>
-          </div>
-
-          <div class="section-header mb-3"><span class="section-title">Recent Activity</span></div>
-          <div class="table-wrap mb-5">
-            <div v-for="act in activityFeed" :key="act.id" class="activity-item">
-              <div class="activity-dot" :style="{background: act.color}"></div>
-              <span class="activity-text" v-html="act.text"></span>
-              <span class="activity-time">{{ act.time }}</span>
-            </div>
-            <div v-if="activityFeed.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No recent activity</div>
-          </div>
-
-          <div class="section-header mb-3"><span class="section-title">Customers</span><span class="section-action">Export CSV</span></div>
-          <div class="table-wrap">
-            <div class="table-toolbar">
-              <div class="table-search"><i class="fas fa-search" style="font-size:10px;color:var(--text3);"></i><input v-model="customerSearch" placeholder="Search by name, phone, passport..."></div>
-              <button class="filter-pill" :class="{active: customerFilter==='all'}" @click="customerFilter='all'">All</button>
-              <button class="filter-pill" :class="{active: customerFilter==='active'}" @click="customerFilter='active'">Active</button>
-              <button class="filter-pill" :class="{active: customerFilter==='blocked'}" @click="customerFilter='blocked'">Blocked</button>
-              <div class="ml-auto"><button class="btn btn-sm"><i class="fas fa-sliders-h" style="font-size:10px;"></i> Filters</button></div>
-            </div>
-            <table class="data-table">
-              <thead><tr><th>Name</th><th>Phone</th><th>Rands Passport</th><th>Status</th><th>Checked In</th><th></th></tr></thead>
+            <div v-if="myPayslips.length === 0" class="empty-state" style="padding:20px;text-align:center;color:var(--text3);">No payslips have been issued yet</div>
+            <table class="data-table" v-else>
+              <thead><tr><th>Period</th><th>Hours</th><th>Rate</th><th>Gross</th><th>Deductions</th><th>Net Pay</th><th>Status</th></tr></thead>
               <tbody>
-                <tr v-for="c in filteredCustomers" :key="c.id">
-                  <td><div style="display:flex;align-items:center;gap:8px;"><div style="width:24px;height:24px;border-radius:5px;background:linear-gradient(135deg,#E30613,#8B0000);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:white;flex-shrink:0;">{{ c.name[0] }}</div>{{ c.name }}</div></td>
-                  <td style="color:var(--text2);">{{ c.phone }}</td><td style="font-weight:600;">R{{ c.wallet }}</td>
-                  <td><span class="badge" :class="c.statusClass">{{ c.status }}</span></td>
-                  <td style="color:var(--text3);">{{ c.checkedIn }}</td>
-                  <td><div class="row-actions"><button class="row-action" title="View profile"><i class="fas fa-eye"></i></button><button class="row-action" title="Top up Rands Passport"><i class="fas fa-wallet"></i></button><button class="row-action" title="More"><i class="fas fa-ellipsis-h"></i></button></div></td>
+                <tr v-for="p in myPayslips" :key="p.id">
+                  <td>{{ formatPayPeriod(p) }}</td>
+                  <td style="color:var(--text2);">{{ Number(p.hours_worked).toFixed(1) }}</td>
+                  <td style="color:var(--text2);">R{{ Number(p.hourly_rate).toFixed(2) }}</td>
+                  <td>R{{ Number(p.gross_pay).toFixed(2) }}</td>
+                  <td style="color:var(--text2);">R{{ Number(p.deductions).toFixed(2) }}</td>
+                  <td style="font-weight:700;">R{{ Number(p.final_pay).toFixed(2) }}</td>
+                  <td><span class="badge" :class="{'badge-green': p.payment_status === 'paid', 'badge-amber': p.payment_status === 'pending'}">{{ p.payment_status }}</span></td>
                 </tr>
-                <tr v-if="filteredCustomers.length === 0"><td colspan="6" style="text-align:center;padding:24px;color:var(--text3);"><i class="fas fa-search" style="margin-right:6px;"></i> No customers found</td></tr>
               </tbody>
             </table>
-            <div class="table-pagination"><span class="page-info">Showing {{ filteredCustomers.length }} of {{ customers.length }} customers</span><div class="page-btns"><button class="page-btn"><i class="fas fa-chevron-left" style="font-size:9px;"></i></button><button class="page-btn active">1</button><button class="page-btn">2</button><button class="page-btn">3</button><button class="page-btn"><i class="fas fa-chevron-right" style="font-size:9px;"></i></button></div></div>
+          </div>
+
+          <div class="section-header mb-3"><span class="section-title">Quick Access</span></div>
+          <div class="stats-grid">
+            <div v-for="mod in availableModules" :key="mod.key" class="stat-card" style="cursor:pointer;" @click="navigate(mod.key)">
+              <div class="stat-label"><i :class="mod.icon" style="color:var(--red);"></i> {{ mod.title }}</div>
+            </div>
           </div>
         </div>
+
 
         <!-- IFRAME MODULES: each module's iframe is created once, the first time it's opened
              (v-if), then kept alive and just shown/hidden with v-show — so returning to a
@@ -1469,6 +1454,38 @@ function formatLocalPhone(raw) {
   return digits;
 }
 
+async function fetchMyStaffData(profileId) {
+  // Every query here is explicitly filtered to profileId — this data is
+  // shown on a staff member's own dashboard and must never include other
+  // staff's shifts, pay, or activity, regardless of what the underlying
+  // table's RLS policy currently permits.
+  const [shiftsRes, payrollRes, activityRes] = await Promise.all([
+    supabaseClient.from('staff_shifts')
+      .select('id, login_time, logout_time, hours_worked, status')
+      .eq('staff_id', profileId)
+      .order('login_time', { ascending: false })
+      .limit(15),
+    supabaseClient.from('staff_payroll')
+      .select('id, period_start, period_end, hours_worked, hourly_rate, gross_pay, deductions, final_pay, payment_status')
+      .eq('staff_id', profileId)
+      .order('period_end', { ascending: false })
+      .limit(12),
+    supabaseClient.from('staff_activity_logs')
+      .select('id, module, action, created_at')
+      .eq('staff_id', profileId)
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ]);
+  if (shiftsRes.error) console.error('staff_shifts fetch error:', shiftsRes.error);
+  if (payrollRes.error) console.error('staff_payroll fetch error:', payrollRes.error);
+  if (activityRes.error) console.error('staff_activity_logs fetch error:', activityRes.error);
+  return {
+    shifts: shiftsRes.data || [],
+    payslips: payrollRes.data || [],
+    activity: activityRes.data || [],
+  };
+}
+
 async function fetchWalletsWithProfiles() {
   const { data, error } = await supabaseClient
     .from('wallets')
@@ -1575,6 +1592,7 @@ createApp({
 
     // ── UI state ──────────────────────────────────────────────────────────
     const staffName   = ref('Staff Member');
+    const profileId   = ref(null);
     const activeModule= ref('dashboard');
     const moduleLoading= ref(false);
     // Which modules have ever been opened (so their iframe gets created) — powers the
@@ -1605,6 +1623,12 @@ createApp({
     const unreadNotifs     = ref(0);
     const recentTopups     = ref([]);
     const recentTickets    = ref([]);
+    // Staff-personal data for the Dashboard landing tab — scoped to the
+    // logged-in staff member only (never other staff, never business-wide
+    // figures). Fetched in loadAuth() once we have profile.id.
+    const myShifts    = ref([]);
+    const myPayslips  = ref([]);
+    const myActivity  = ref([]);
 
     const globalStats = computed(() => {
       const totalAccounts    = wallets.value.length;
@@ -1613,6 +1637,33 @@ createApp({
       const pendingRefunds   = pendingApprovals.value.length;
       return { totalAccounts, totalBalance, blockedAccounts, pendingRefunds, approvedRefunds: 0, totalRefundAmount: 0, activeOrders: 0, ticketsScanned: 0, scanPct: 0, walletLoads: 0, walletValue: 0, vvipTables: 0, vvipPending: 0 };
     });
+
+    // Sum of hours_worked across this staff member's own shifts that started
+    // in the last 7 days — used for the "This Week" stat card on their
+    // personal dashboard.
+    const myWeekHours = computed(() => {
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      return myShifts.value
+        .filter(s => new Date(s.login_time).getTime() >= weekAgo)
+        .reduce((sum, s) => sum + (parseFloat(s.hours_worked) || 0), 0)
+        .toFixed(1);
+    });
+    const myLatestPayslip = computed(() => myPayslips.value[0] || null);
+
+    // Display helpers for the "My Shifts" / "My Payslips" panels.
+    const formatShiftTime = (shift) => {
+      const opts = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
+      const start = new Date(shift.login_time).toLocaleString('en-ZA', opts);
+      if (!shift.logout_time) return `${start} → still clocked in`;
+      const end = new Date(shift.logout_time).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false });
+      return `${start} → ${end}`;
+    };
+    const formatPayPeriod = (p) => {
+      const opts = { day: '2-digit', month: 'short' };
+      const start = new Date(p.period_start).toLocaleDateString('en-ZA', opts);
+      const end = new Date(p.period_end).toLocaleDateString('en-ZA', opts);
+      return `${start} – ${end}`;
+    };
 
     // ── Logo error fallback ────────────────────────────────────────────────
     const handleLogoError = (e) => {
@@ -1694,30 +1745,31 @@ createApp({
         jobTitle.value      = profile.staff_role || 'Staff';
         allowedModules.value= perms;
         authLoading.value   = false;
+        profileId.value     = profile.id;
 
-        // Pull the real clock-in time from staff_shifts — the same table
-        // clockin.html's PIN kiosk writes to — so the shift timer here
-        // reflects when this staff member actually clocked in, not just
-        // when they happened to open this console page.
+        // Load this staff member's own shifts/payslips/activity — powers
+        // both the personal Dashboard tab and the shift timer below. Every
+        // query inside is filtered to profile.id (see fetchMyStaffData).
         try {
-          const { data: shift } = await supabaseClient
-            .from('staff_shifts')
-            .select('login_time')
-            .eq('staff_id', profile.id)
-            .eq('status', 'active')
-            .order('login_time', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (shift?.login_time) {
-            shiftStartTs = new Date(shift.login_time).getTime();
+          const mine = await fetchMyStaffData(profile.id);
+          myShifts.value   = mine.shifts;
+          myPayslips.value = mine.payslips;
+          myActivity.value = mine.activity;
+
+          // Real clock-in time — the same table clockin.html's PIN kiosk
+          // writes to — so the shift timer reflects when this staff member
+          // actually clocked in, not just when they opened this page.
+          const activeShift = mine.shifts.find(s => s.status === 'active');
+          if (activeShift?.login_time) {
+            shiftStartTs = new Date(activeShift.login_time).getTime();
             shiftStart.value = new Date(shiftStartTs).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit', hour12:false });
             updateShift();
           }
-        } catch (shiftErr) {
-          // Not clocked in via the PIN kiosk (or lookup failed) — fall back
-          // to the session-start placeholder set at page load, rather than
-          // blocking the console over a non-critical display value.
-          console.warn('Could not load staff_shifts clock-in time:', shiftErr);
+        } catch (myDataErr) {
+          // Not clocked in via the PIN kiosk (or lookup failed) — dashboard
+          // falls back to empty-state panels and the page-load shift
+          // placeholder, rather than blocking the console over this.
+          console.warn('Could not load staff-personal dashboard data:', myDataErr);
         }
 
         loadingMessage.value = 'Loading dashboard data…';
@@ -1770,7 +1822,17 @@ createApp({
       }
     };
 
-    const refreshStats = () => fetchAllData();
+    const refreshStats = async () => {
+      await fetchAllData();
+      if (profileId.value) {
+        try {
+          const mine = await fetchMyStaffData(profileId.value);
+          myShifts.value   = mine.shifts;
+          myPayslips.value = mine.payslips;
+          myActivity.value = mine.activity;
+        } catch (err) { console.warn('Could not refresh staff-personal dashboard data:', err); }
+      }
+    };
 
     // ── Permission guard ─────────────────────────────────────────────────────
     const hasModule = (key) => allowedModules.value.includes(key);
@@ -1890,6 +1952,7 @@ createApp({
       shiftTimer, shiftStart, globalStats, notifications, unreadNotifs, pendingApprovals,
       activityFeed, customers, customerSearch, customerFilter, filteredCustomers,
       recentTopups, recentTickets, cmdResults, toasts, modal, profileOpen, searchFocused,
+      myShifts, myPayslips, myActivity, myWeekHours, myLatestPayslip, formatShiftTime, formatPayPeriod,
       availableModules, activeModuleMeta, activeModuleLabel, visitedModules, onModuleFrameLoad,
       hasModule, navigate, showToast, confirmLogout, doLogout, approve, decline,
       markAllRead, onIframeError, enterFullscreen, refreshStats,
