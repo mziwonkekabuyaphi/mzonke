@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Rands · Command Centre</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+      }
+    }
+  </script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #E30613;
+      --red-glow: rgba(227, 6, 19, 0.35);
+      --red-dim: rgba(227, 6, 19, 0.12);
+      --red-border: rgba(227, 6, 19, 0.25);
+      --bg: #09090b;
+      --surface: #111114;
+      --surface-2: #18181c;
+      --surface-3: #1e1e24;
+      --border: rgba(255,255,255,0.07);
+      --border-bright: rgba(255,255,255,0.13);
+      --text: #f4f4f5;
+      --text-muted: #71717a;
+      --text-dim: #3f3f46;
+      --sb-w: 56px;
+      --sb-expanded: 248px;
+      --header-h: 56px;
+      --ease: cubic-bezier(0.4, 0, 0.2, 1);
+      --speed: 200ms;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; overflow: hidden; }
+
+    /* ──────────── LOADING SCREEN ──────────── */
+    .loading-screen {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+    }
+    .load-logo-wrap {
+      position: relative;
+      width: 80px; height: 80px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 32px;
+    }
+    .load-logo-bg {
+      width: 64px; height: 64px;
+      background: var(--red);
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 40px var(--red-glow), 0 0 80px rgba(227,6,19,0.15);
+      animation: logoPulse 2s ease-in-out infinite;
+      overflow: hidden;
+    }
+    .load-logo-bg img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .load-logo-bg i { color: white; font-size: 1.6rem; }
+    .load-ring {
+      position: absolute; inset: -6px;
+      border-radius: 24px;
+      border: 1.5px solid var(--red-border);
+      animation: ringRotate 3s linear infinite;
+    }
+    .load-ring::before {
+      content: '';
+      position: absolute; top: -2px; left: 50%;
+      width: 6px; height: 6px;
+      background: var(--red);
+      border-radius: 50%;
+      transform: translateX(-50%);
+      box-shadow: 0 0 8px var(--red);
+    }
+    @keyframes logoPulse { 0%,100%{ box-shadow: 0 0 40px var(--red-glow), 0 0 80px rgba(227,6,19,0.15); } 50%{ box-shadow: 0 0 60px rgba(227,6,19,0.5), 0 0 100px rgba(227,6,19,0.2); } }
+    @keyframes ringRotate { to { transform: rotate(360deg); } }
+
+    .load-brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.8rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; margin-bottom: 6px; }
+    .load-sub { font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 40px; }
+    .load-bar-wrap { width: 200px; height: 2px; background: var(--surface-3); border-radius: 99px; overflow: hidden; }
+    .load-bar { height: 100%; background: var(--red); border-radius: 99px; animation: loadProgress 1.8s var(--ease) forwards; box-shadow: 0 0 12px var(--red); }
+    @keyframes loadProgress { from { width: 0%; } to { width: 100%; } }
+    .load-msg { font-size: 0.72rem; color: var(--text-dim); margin-top: 14px; letter-spacing: 0.03em; }
+
+    /* ──────────── SIDEBAR ──────────── */
+    .sidebar {
+      position: fixed; left: 0; top: 0; height: 100%;
+      width: var(--sb-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      z-index: 200;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: width var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+      will-change: width;
+    }
+    @media (min-width: 769px) {
+      .sidebar:hover, .sidebar.peek {
+        width: var(--sb-expanded);
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 8px 0 40px rgba(0,0,0,0.5);
+      }
+    }
+
+    .sidebar::before {
+      content: '';
+      position: absolute; left: 0; top: 20%; bottom: 20%;
+      width: 2px;
+      background: linear-gradient(180deg, transparent, var(--red) 50%, transparent);
+      opacity: 0;
+      transition: opacity var(--speed) var(--ease);
+    }
+    .sidebar:hover::before, .sidebar.peek::before { opacity: 1; }
+
+    .sb-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+      min-height: var(--header-h);
+      overflow: hidden; flex-shrink: 0;
+    }
+    .sb-logo {
+      width: 36px; height: 36px; min-width: 36px;
+      background: var(--red);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 20px var(--red-glow);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sb-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .sb-logo i { color: white; font-size: 1rem; }
+
+    .sb-brand {
+      opacity: 0; transform: translateX(-6px);
+      transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
+      white-space: nowrap; overflow: hidden; pointer-events: none;
+    }
+    .sidebar:hover .sb-brand, .sidebar.peek .sb-brand { opacity: 1; transform: translateX(0); }
+    .sb-brand-name { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; font-weight: 700; color: var(--text); line-height: 1.2; letter-spacing: -0.01em; }
+    .sb-brand-sub { font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+
+    /* ── Nav ── */
+    .sb-nav {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      padding: 8px 0; scrollbar-width: none;
+    }
+    .sb-nav::-webkit-scrollbar { display: none; }
+
+    /* SECTION LABEL – LEFT ALIGNED */
+    .sb-section-label {
+      display: flex;
+      align-items: center;
+      padding: 12px 0 4px 0;
+      margin-left: 6px;          /* keep consistent with item padding */
+      gap: 8px;
+    }
+    .sb-section-dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--border-bright);
+      flex-shrink: 0;
+      transition: opacity var(--speed);
+      margin-left: 0;            /* reset auto margin */
+    }
+    .sb-section-text {
+      font-size: 0.58rem; text-transform: uppercase;
+      letter-spacing: 0.1em; font-weight: 700;
+      color: var(--text-dim);
+      white-space: nowrap;
+      padding-left: 0;           /* remove extra left padding */
+      opacity: 0;
+      transition: opacity var(--speed) var(--ease);
+    }
+    .sidebar:hover .sb-section-dot, .sidebar.peek .sb-section-dot { opacity: 0; }
+    .sidebar:hover .sb-section-text, .sidebar.peek .sb-section-text { opacity: 1; }
+
+    .sb-item {
+      display: flex; align-items: center;
+      margin: 1px 6px; border-radius: 10px;
+      cursor: pointer; overflow: hidden;
+      min-height: 38px; white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+      position: relative;
+    }
+    .sb-item-icon {
+      width: 44px; min-width: 44px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; color: var(--text-muted);
+      flex-shrink: 0; transition: color 0.15s;
+    }
+    .sb-item-label {
+      font-size: 0.81rem; font-weight: 500; color: var(--text-muted);
+      opacity: 0; transform: translateX(-4px);
+      transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
+      pointer-events: none; padding-right: 14px;
+    }
+    .sidebar:hover .sb-item-label, .sidebar.peek .sb-item-label {
+      opacity: 1; transform: translateX(0);
+    }
+    .sb-item:hover { background: rgba(255,255,255,0.05); }
+    .sb-item:hover .sb-item-icon, .sb-item:hover .sb-item-label { color: var(--text); }
+
+    .sb-item.active {
+      background: var(--red-dim);
+      border: 1px solid var(--red-border);
+    }
+    .sb-item.active::before {
+      content: '';
+      position: absolute; left: 0; top: 20%; bottom: 20%;
+      width: 2px; background: var(--red); border-radius: 99px;
+      box-shadow: 0 0 8px var(--red);
+    }
+    .sb-item.active .sb-item-icon, .sb-item.active .sb-item-label { color: #ff3344; }
+
+    .sb-divider { height: 1px; background: var(--border); margin: 4px 12px; }
+
+    /* ── Footer ── */
+    .sb-footer { border-top: 1px solid var(--border); padding: 8px 6px; flex-shrink: 0; }
+    .sb-logout { color: #ef4444 !important; }
+    .sb-logout .sb-item-icon { color: #ef4444 !important; }
+    .sb-logout:hover { background: rgba(239, 68, 68, 0.1) !important; }
+
+    /* ──────────── MAIN ──────────── */
+    .main {
+      margin-left: var(--sb-w);
+      height: 100vh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; flex-shrink: 0;
+      position: relative; z-index: 99;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .topbar-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.92rem; font-weight: 600; color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    /* breadcrumb pill */
+    .topbar-crumb {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface-3); border: 1px solid var(--border);
+      border-radius: 99px; padding: 4px 12px 4px 8px;
+      font-size: 0.7rem; color: var(--text-muted);
+    }
+    .topbar-crumb .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--red);
+      box-shadow: 0 0 6px var(--red); flex-shrink: 0;
+    }
+    .crumb-live { color: var(--red); font-weight: 600; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+
+    .btn-glass {
+      background: var(--surface-3); border: 1px solid var(--border);
+      color: var(--text-muted); padding: 7px 14px;
+      border-radius: 8px; font-size: 0.73rem; font-weight: 500;
+      cursor: pointer; display: flex; align-items: center; gap: 6px;
+      transition: all 0.15s; font-family: 'Inter', sans-serif;
+    }
+    .btn-glass:hover { background: var(--surface-2); border-color: var(--border-bright); color: var(--text); }
+
+    .btn-red {
+      background: var(--red); border: none;
+      color: white; padding: 7px 14px;
+      border-radius: 8px; font-size: 0.73rem; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; gap: 6px;
+      transition: all 0.15s; font-family: 'Inter', sans-serif;
+      box-shadow: 0 0 16px var(--red-glow);
+    }
+    .btn-red:hover { background: #c8050f; box-shadow: 0 0 24px var(--red-glow); }
+
+    .menu-toggle {
+      display: none; font-size: 1.1rem;
+      cursor: pointer; color: var(--text-muted);
+      align-items: center; width: 34px; height: 34px;
+      justify-content: center; border-radius: 8px;
+      transition: background 0.15s;
+    }
+    .menu-toggle:hover { background: var(--surface-3); color: var(--text); }
+
+    /* ── Content ── */
+    .content { flex: 1; overflow: hidden; position: relative; }
+
+    .external-iframe {
+      width: 100%; height: 100%;
+      border: none; display: block; background: var(--bg);
+    }
+
+    /* Lightweight overlay shown only the first time a module's iframe is being created */
+    .frame-loading {
+      position: absolute; inset: 0; z-index: 5;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      background: var(--bg); color: var(--text-muted);
+      font-size: 0.8rem; letter-spacing: 0.03em;
+    }
+    .frame-loading i { color: var(--red); }
+
+    /* ──────────── SETTINGS ──────────── */
+    .settings-scroll { height: 100%; overflow-y: auto; padding: 24px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+    .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+
+    .settings-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      transition: border-color 0.2s;
+    }
+    .settings-card:hover { border-color: var(--border-bright); }
+
+    .settings-card-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 20px; padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-card-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--red-dim); border: 1px solid var(--red-border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--red); font-size: 0.85rem;
+    }
+    .settings-card-title { font-family: 'Space Grotesk', sans-serif; font-size: 0.88rem; font-weight: 600; color: var(--text); }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .form-input {
+      width: 100%; padding: 9px 14px;
+      background: var(--surface-3); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-family: 'Inter', sans-serif; font-size: 0.82rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .form-input:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-dim); }
+    .form-input option { background: var(--surface-3); }
+
+    .color-swatch {
+      width: 36px; height: 36px; border-radius: 8px; cursor: pointer;
+      border: 2px solid transparent; transition: all 0.15s;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .color-swatch.selected { border-color: white; transform: scale(1.1); }
+    .color-swatch:hover { transform: scale(1.05); }
+    .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .module-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      gap: 10px;
+    }
+    .module-toggle-row:last-of-type { border-bottom: none; }
+    .module-toggle-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .module-toggle-info i { color: var(--text-muted); width: 16px; text-align: center; flex-shrink: 0; }
+    .module-toggle-name { font-size: 0.8rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .module-toggle-inactive .module-toggle-name { color: var(--text-muted); }
+    .toggle-switch {
+      position: relative; width: 38px; height: 22px; flex-shrink: 0;
+      border-radius: 99px; background: var(--surface-3); border: 1px solid var(--border);
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    }
+    .toggle-switch.on { background: var(--red); border-color: var(--red); box-shadow: 0 0 10px var(--red-glow); }
+    .toggle-switch.disabled { opacity: 0.5; cursor: wait; }
+    .toggle-knob {
+      position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+      border-radius: 50%; background: white; transition: transform 0.15s var(--ease);
+    }
+    .toggle-switch.on .toggle-knob { transform: translateX(16px); }
+    .module-toggle-empty { font-size: 0.76rem; color: var(--text-dim); padding: 8px 0; }
+
+    .success-toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9998;
+      background: var(--surface-2); border: 1px solid #22c55e44;
+      color: #4ade80; padding: 12px 18px; border-radius: 12px;
+      font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; gap: 8px;
+      transform: translateY(20px); opacity: 0; pointer-events: none;
+      transition: all 0.3s var(--ease);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .success-toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+
+    /* ──────────── MOBILE ──────────── */
+    .sidebar-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      z-index: 199;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: var(--sb-expanded);
+        transform: translateX(calc(-1 * var(--sb-expanded)));
+        transition: transform var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+      }
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 0 0 60px rgba(0,0,0,0.6);
+      }
+      .sidebar.open .sb-brand,
+      .sidebar.open .sb-item-label,
+      .sidebar.open .sb-section-text { opacity: 1; transform: translateX(0); pointer-events: auto; }
+      .sidebar.open .sb-section-dot { opacity: 0; }
+      .main { margin-left: 0; }
+      .menu-toggle { display: flex !important; }
+      .sidebar-backdrop { display: block; }
+      .topbar { padding: 0 14px; }
+      .settings-scroll { padding: 14px; }
+      .settings-grid { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 769px) { .menu-toggle { display: none !important; } }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 99px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Loading Screen ── -->
+  <div class="loading-screen" v-if="showLoadingScreen">
+    <div class="load-logo-wrap">
+      <div class="load-logo-bg">
+        <img src="../assets/images/rands-logo.png" alt="Rands" @error="handleLogoError">
+      </div>
+      <div class="load-ring"></div>
+    </div>
+    <div class="load-brand">Rands Cape Town</div>
+    <div class="load-sub">>Venue Operating System</div>
+    <div class="load-bar-wrap"><div class="load-bar"></div></div>
+    <div class="load-msg">{{ loadingMessage }}</div>
+  </div>
+
+  <!-- ── Backdrop ── -->
+  <div class="sidebar-backdrop" v-if="sidebarOpen" @click="sidebarOpen = false"></div>
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar" :class="{ open: sidebarOpen }" v-show="!showLoadingScreen">
+
+    <div class="sb-header">
+      <div class="sb-logo">
+        <img src="../assets/images/rands-logo.png" alt="Rands" @error="handleLogoError">
+      </div>
+      <div class="sb-brand">
+        <div class="sb-brand-name">Rands · Cape Town</div>
+        <div class="sb-brand-sub">Venue Operating System</div>
+      </div>
+    </div>
+
+    <div class="sb-nav">
+      <!-- Control Centre (left-aligned) -->
+      <div class="sb-section-label">
+        <span class="sb-section-dot"></span>
+        <span class="sb-section-text">Control Centre</span>
+      </div>
+      <div v-for="module in allModules" :key="module.id"
+           class="sb-item" :class="{ active: currentSection === 'module_' + module.id }"
+           @click="goToModule(module)">
+        <span class="sb-item-icon"><i :class="getIconClass(module.icon)"></i></span>
+        <span class="sb-item-label">{{ module.name }}</span>
+      </div>
+      <div v-if="modulesError" class="sb-item" style="color:#ef4444; cursor:default;">
+        <span class="sb-item-icon"><i class="fas fa-triangle-exclamation"></i></span>
+        <span class="sb-item-label">Failed to load modules</span>
+      </div>
+      <div v-else-if="!allModules.length" class="sb-item" style="color:var(--text-dim); cursor:default;">
+        <span class="sb-item-icon"><i class="fas fa-circle-info"></i></span>
+        <span class="sb-item-label">No active modules</span>
+      </div>
+
+      <div class="sb-divider"></div>
+
+      <!-- Analytics (left-aligned) -->
+      <div class="sb-section-label">
+        <span class="sb-section-dot"></span>
+        <span class="sb-section-text">Analytics</span>
+      </div>
+      <div class="sb-item" :class="{ active: currentSection === 'overview' }" @click="nav('overview')">
+        <span class="sb-item-icon"><i class="fas fa-chart-pie"></i></span>
+        <span class="sb-item-label">Rands Overview</span>
+      </div>
+
+      <div class="sb-divider"></div>
+
+      <!-- System (left-aligned) -->
+      <div class="sb-section-label">
+        <span class="sb-section-dot"></span>
+        <span class="sb-section-text">System</span>
+      </div>
+      <div class="sb-item" :class="{ active: currentSection === 'settings' }" @click="nav('settings')">
+        <span class="sb-item-icon"><i class="fas fa-sliders-h"></i></span>
+        <span class="sb-item-label">Settings</span>
+      </div>
+    </div>
+
+    <div class="sb-footer">
+      <div class="sb-item sb-logout" @click="logout">
+        <span class="sb-item-icon"><i class="fas fa-sign-out-alt"></i></span>
+        <span class="sb-item-label">Logout</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main" v-show="!showLoadingScreen">
+
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="menu-toggle" @click="sidebarOpen = !sidebarOpen"><i class="fas fa-bars"></i></div>
+        <div class="topbar-crumb">
+          <span class="dot"></span>
+          <span class="crumb-live">Live</span>
+          <span>{{ currentSectionTitle }}</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn-glass" @click="refreshCurrentIframe">
+          <i class="fas fa-rotate-right"></i> Refresh
+        </button>
+        <button class="btn-red" @click="logout">
+          <i class="fas fa-sign-out-alt"></i> Logout
+        </button>
+      </div>
+    </div>
+
+    <!-- Content pane -->
+    <div class="content">
+
+      <!-- Lightweight loading state: only shown the first time a section's iframe is created.
+           Once an iframe has fired its 'load' event it's cached (kept alive, hidden via v-show)
+           so revisiting a module never shows this again. -->
+      <div class="frame-loading" v-if="visited[currentSection] && !loadedFrames[currentSection] && (currentSection === 'overview' || currentSection.indexOf('module_') === 0)">
+        <i class="fas fa-circle-notch fa-spin"></i> Loading module…
+      </div>
+
+      <!-- Overview: created on first visit only (v-if), then kept alive and shown/hidden with v-show -->
+      <iframe v-if="visited.overview"
+              v-show="currentSection === 'overview'"
+              src="../stats/executive-stat.html"
+              class="external-iframe" frameborder="0" title="Rands Overview"
+              @load="onFrameLoad('overview')">
+      </iframe>
+
+      <!-- Modules: each iframe is created only on its first visit (v-if) and then cached —
+           switching away hides it with v-show instead of destroying it, so returning to an
+           already-visited module is instant and doesn't re-run its JS/Supabase queries. -->
+      <template v-for="module in allModules">
+        <iframe v-if="visited['module_' + module.id]"
+                v-show="currentSection === 'module_' + module.id"
+                :key="'frame_' + module.id"
+                :src="getModuleSrc(module)"
+                class="external-iframe" frameborder="0" :title="module.name"
+                @load="onFrameLoad('module_' + module.id)">
+        </iframe>
+      </template>
+
+      <!-- Settings -->
+      <div v-if="currentSection === 'settings'" class="settings-scroll">
+        <div class="settings-grid">
+
+          <!-- Venue Info -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="fas fa-building"></i></div>
+              <div class="settings-card-title">Venue Information</div>
+            </div>
+            <div class="form-group"><label class="form-label">Venue Name</label><input type="text" class="form-input" v-model="venueSettings.venue_name"></div>
+            <div class="form-group"><label class="form-label">Location</label><input type="text" class="form-input" v-model="venueSettings.venue_location"></div>
+            <div class="form-group"><label class="form-label">Contact Email</label><input type="email" class="form-input" v-model="venueSettings.contact_email"></div>
+            <div class="form-group"><label class="form-label">Contact Phone</label><input type="tel" class="form-input" v-model="venueSettings.contact_phone"></div>
+            <button class="btn-red" style="width:100%; justify-content:center; margin-top:4px;" @click="saveVenueSettingsToDB">Save Venue Info</button>
+          </div>
+
+          <!-- Theme -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="fas fa-palette"></i></div>
+              <div class="settings-card-title">Sidebar Theme</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Background</label>
+              <div class="swatches">
+                <div class="color-swatch" style="background:#09090b; border:1px solid #333;" :class="{selected: sidebarBgColor==='#09090b'}" @click="setSidebarBgColor('#09090b')"></div>
+                <div class="color-swatch" style="background:#111114;" :class="{selected: sidebarBgColor==='#111114'}" @click="setSidebarBgColor('#111114')"></div>
+                <div class="color-swatch" style="background:#1e293b;" :class="{selected: sidebarBgColor==='#1e293b'}" @click="setSidebarBgColor('#1e293b')"></div>
+                <div class="color-swatch" style="background:#E30613;" :class="{selected: sidebarBgColor==='#E30613'}" @click="setSidebarBgColor('#E30613')"></div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Active Accent</label>
+              <div class="swatches">
+                <div class="color-swatch" style="background:#E30613;" :class="{selected: activeBgColor==='#E30613'}" @click="setActiveBgColor('#E30613')"></div>
+                <div class="color-swatch" style="background:#f59e0b;" :class="{selected: activeBgColor==='#f59e0b'}" @click="setActiveBgColor('#f59e0b')"></div>
+                <div class="color-swatch" style="background:#10b981;" :class="{selected: activeBgColor==='#10b981'}" @click="setActiveBgColor('#10b981')"></div>
+                <div class="color-swatch" style="background:#3b82f6;" :class="{selected: activeBgColor==='#3b82f6'}" @click="setActiveBgColor('#3b82f6')"></div>
+              </div>
+            </div>
+            <button class="btn-red" style="width:100%; justify-content:center; margin-top:4px;" @click="saveThemeToDB">Save Theme</button>
+          </div>
+
+          <!-- System Prefs -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="fas fa-sliders-h"></i></div>
+              <div class="settings-card-title">System Preferences</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Default Module</label>
+              <select class="form-input" v-model="systemPrefs.default_module">
+                <option value="overview">Rands Overview</option>
+                <option v-for="module in allModules" :key="module.id" :value="'module_' + module.id">{{ module.name }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Auto-refresh</label>
+              <select class="form-input" v-model="systemPrefs.auto_refresh_interval">
+                <option value="0">Disabled</option>
+                <option value="30">30 seconds</option>
+                <option value="60">1 minute</option>
+                <option value="300">5 minutes</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Date Format</label>
+              <select class="form-input" v-model="systemPrefs.date_format">
+                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Items Per Page</label>
+              <select class="form-input" v-model="systemPrefs.items_per_page">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+            <button class="btn-red" style="width:100%; justify-content:center; margin-top:4px;" @click="saveSystemPrefsToDB">Save Preferences</button>
+          </div>
+
+          <!-- Module Visibility -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="fas fa-toggle-on"></i></div>
+              <div class="settings-card-title">Module Visibility</div>
+            </div>
+            <div v-if="!allModulesFull.length" class="module-toggle-empty">No modules found in Supabase.</div>
+            <div v-for="module in allModulesFull" :key="module.id"
+                 class="module-toggle-row" :class="{ 'module-toggle-inactive': !module.is_active }">
+              <div class="module-toggle-info">
+                <i :class="getIconClass(module.icon)"></i>
+                <span class="module-toggle-name">{{ module.name }}</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: module.is_active, disabled: togglingModuleId === module.id }"
+                   @click="togglingModuleId !== module.id && toggleModuleActive(module)">
+                <div class="toggle-knob"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+
+  <!-- Toast -->
+  <div class="success-toast" id="successToast"><i class="fas fa-check-circle"></i> Saved successfully</div>
+
+</div><!-- /app -->
+
+<script type="module">
+  import { supabase } from '../config/supabase.js';
+
+  // Expose the already-authenticated client so same-origin module iframes
+  // (order-admin.html, shisha-admin.html, etc.) can reach in via
+  // `window.parent.supabase` and reuse this exact session instead of
+  // spinning up their own anon client. ES module scope isn't global, so
+  // this explicit assignment is required for `window.parent.supabase`
+  // to resolve from inside an iframe.
+  window.supabase = supabase;
+
+  // Modules are 100% Supabase-driven — no hardcoded fallback list.
+  // Sidebar only shows modules where is_active = true; the Settings
+  // page lets you flip is_active on/off per module (see toggleModuleActive).
+
+  async function loadActiveModules() {
+    const { data, error } = await supabase
+      .from('modules')
+      .select('id, name, icon, path')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return (data || []).map(m => ({ ...m, file: m.path }));
+  }
+
+  async function loadAllModulesForSettings() {
+    const { data, error } = await supabase
+      .from('modules')
+      .select('id, name, icon, path, is_active, display_order')
+      .order('display_order', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  new Vue({
+    el: '#app',
+    data: {
+      showLoadingScreen: true,
+      loadingMessage: 'Initialising systems…',
+      sidebarOpen: false,
+      currentSection: 'overview',
+      allModules: [],
+      allModulesFull: [],
+      modulesError: false,
+      togglingModuleId: null,
+      venueSettings: {
+        id: null,
+        venue_name: 'Rands Vibe',
+        venue_location: 'Cape Town, South Africa',
+        contact_email: 'admin@rands.com',
+        contact_phone: '+27 123 456 789',
+        timezone: 'Africa/Johannesburg',
+        currency: 'ZAR'
+      },
+      systemPrefs: {
+        default_module: 'overview',
+        auto_refresh_interval: '0',
+        date_format: 'DD/MM/YYYY',
+        items_per_page: '25'
+      },
+      sidebarBgColor: '#111114',
+      activeBgColor: '#E30613',
+      refreshInterval: null,
+      // Which sections have ever been opened (so their iframe gets created) and which
+      // have finished their first load (so the loading overlay stops showing). Keyed by
+      // section id ('overview', 'module_<id>'). Powers the lazy-load + cache behaviour.
+      visited: {},
+      loadedFrames: {}
+    },
+    computed: {
+      currentSectionTitle() {
+        if (this.currentSection === 'overview') return 'Rands Overview';
+        if (this.currentSection === 'settings') return 'System Settings';
+        const m = this.allModules.find(m => 'module_' + m.id === this.currentSection);
+        return m ? m.name : 'Dashboard';
+      }
+    },
+    methods: {
+      getIconClass(icon) {
+        if (!icon) return 'fas fa-question';
+        if (icon.startsWith('fas ') || icon.startsWith('fab ') || icon.startsWith('far ')) return icon;
+        if (icon.startsWith('fa-')) return 'fas ' + icon;
+        return 'fas fa-question';
+      },
+      handleLogoError(e) {
+        e.target.style.display = 'none';
+        e.target.parentElement.innerHTML = '<i class="fas fa-crown"></i>';
+      },
+      nav(section) { this.currentSection = section; this.markVisited(section); this.closeSidebar(); },
+      goToModule(module) { const section = 'module_' + module.id; this.currentSection = section; this.markVisited(section); this.closeSidebar(); },
+      closeSidebar() { if (window.innerWidth <= 768) this.sidebarOpen = false; },
+      // First visit to a section flips visited[section] to true, which creates its iframe
+      // (v-if) for the first and only time. Later visits just toggle v-show, reusing it.
+      markVisited(section) {
+        if (!this.visited[section]) Vue.set(this.visited, section, true);
+      },
+      onFrameLoad(section) {
+        Vue.set(this.loadedFrames, section, true);
+      },
+      refreshCurrentIframe() {
+        document.querySelectorAll('.external-iframe').forEach(f => {
+          if (f.offsetParent !== null && f.src) f.src = f.src;
+        });
+      },
+      getModuleSrc(module) {
+        if (typeof module === 'object' && module !== null) return module.path;
+        return (this.allModules.find(m => m.name === module) || {}).path || `${String(module).toLowerCase().replace(/ /g,'-')}-admin.html`;
+      },
+      showToast() {
+        const el = document.getElementById('successToast');
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), 3000);
+      },
+      async logout() {
+        try { await supabase.auth.signOut(); } catch(e) { console.warn(e); }
+        window.location.href = '../login.html';
+      },
+      async reloadModules() {
+        try {
+          this.allModules = await loadActiveModules();
+          this.modulesError = false;
+          // If the module currently being viewed just got hidden, bounce to overview
+          if (this.currentSection.startsWith('module_')) {
+            const stillVisible = this.allModules.some(m => 'module_' + m.id === this.currentSection);
+            if (!stillVisible) { this.currentSection = 'overview'; this.markVisited('overview'); }
+          }
+        } catch (e) {
+          console.error('[Modules] Failed to load:', e);
+          this.allModules = [];
+          this.modulesError = true;
+        }
+      },
+      async loadModulesSettingsList() {
+        try {
+          this.allModulesFull = await loadAllModulesForSettings();
+        } catch (e) {
+          console.error('[Modules] Failed to load settings list:', e);
+        }
+      },
+      async toggleModuleActive(module) {
+        this.togglingModuleId = module.id;
+        const nextState = !module.is_active;
+        try {
+          const { error } = await supabase
+            .from('modules')
+            .update({ is_active: nextState })
+            .eq('id', module.id);
+          if (error) throw error;
+          module.is_active = nextState;
+          await this.reloadModules();
+          this.showToast();
+        } catch (e) {
+          console.error('[Modules] Toggle failed:', e);
+          alert('Could not update module visibility.');
+        } finally {
+          this.togglingModuleId = null;
+        }
+      },
+      setSidebarBgColor(c) { this.sidebarBgColor = c; this.saveThemeToDB(); },
+      setActiveBgColor(c) { this.activeBgColor = c; this.saveThemeToDB(); },
+      async saveVenueSettingsToDB() {
+        try {
+          const { id, ...fields } = this.venueSettings;
+          if (id) {
+            // Existing row: update in place by its real uuid.
+            const { error } = await supabase.from('venue_settings').update({ ...fields, updated_at: new Date() }).eq('id', id);
+            if (error) throw error;
+          } else {
+            // No row yet: insert one and remember the id Postgres generates.
+            const { data, error } = await supabase.from('venue_settings').insert({ ...fields, updated_at: new Date() }).select('id').single();
+            if (error) throw error;
+            this.venueSettings.id = data.id;
+          }
+          this.showToast();
+        } catch (err) { console.error(err); alert('Error saving venue settings.'); }
+      },
+      async saveThemeToDB() {
+        try {
+          const themeData = { sidebarBgColor: this.sidebarBgColor, activeBgColor: this.activeBgColor };
+          await supabase.from('system_config').upsert({ id: 'theme_settings', system_name: 'Theme Configuration', config_value: JSON.stringify(themeData), config_type: 'json', created_at: new Date() });
+          this.showToast();
+        } catch(err) { console.error(err); }
+      },
+      async saveSystemPrefsToDB() {
+        try {
+          const updates = [
+            { preference_key: 'default_module',        preference_value: this.systemPrefs.default_module },
+            { preference_key: 'auto_refresh_interval', preference_value: this.systemPrefs.auto_refresh_interval },
+            { preference_key: 'date_format',           preference_value: this.systemPrefs.date_format },
+            { preference_key: 'items_per_page',        preference_value: this.systemPrefs.items_per_page }
+          ];
+          for (const p of updates) {
+            const { error } = await supabase.from('system_preferences').upsert({ ...p, updated_at: new Date() }, { onConflict: 'preference_key' });
+            if (error) throw error;
+          }
+          this.showToast();
+          this.applyAutoRefresh();
+        } catch(err) { console.error(err); }
+      },
+      async loadVenueSettingsFromDB() {
+        try {
+          // Single-venue setup: there's only ever meant to be one row, so just take the
+          // most recently created one rather than filtering on a fixed id.
+          const { data, error } = await supabase.from('venue_settings').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
+          if (error) throw error;
+          if (data) this.venueSettings = { ...this.venueSettings, ...data };
+        } catch(e) { console.warn(e); }
+      },
+      async loadThemeFromDB() {
+        try {
+          const { data } = await supabase.from('system_config').select('config_value').eq('id', 'theme_settings').maybeSingle();
+          if (data?.config_value) {
+            const t = JSON.parse(data.config_value);
+            this.sidebarBgColor = t.sidebarBgColor || '#111114';
+            this.activeBgColor = t.activeBgColor || '#E30613';
+          }
+        } catch(e) { console.warn(e); }
+      },
+      async loadSystemPrefsFromDB() {
+        try {
+          const { data } = await supabase.from('system_preferences').select('preference_key, preference_value');
+          if (data) data.forEach(p => {
+            if (p.preference_key in this.systemPrefs) this.systemPrefs[p.preference_key] = p.preference_value;
+          });
+        } catch(e) { console.warn(e); }
+      },
+      applyAutoRefresh() {
+        if (this.refreshInterval) clearInterval(this.refreshInterval);
+        const ms = parseInt(this.systemPrefs.auto_refresh_interval) * 1000;
+        if (ms > 0) this.refreshInterval = setInterval(() => {
+          // Only the currently-visible iframe (offsetParent !== null skips the v-show-hidden,
+          // cached ones) so auto-refresh doesn't defeat the point of caching them.
+          document.querySelectorAll('.external-iframe').forEach(f => {
+            if (f.offsetParent !== null && f.src && f.contentWindow) f.contentWindow.location.reload();
+          });
+        }, ms);
+      }
+    },
+    async mounted() {
+      this.loadingMessage = 'Loading modules…';
+      await this.reloadModules();
+
+      // Deep-link support: ?module=<module id> opens straight into that
+      // module's iframe instead of always landing on Overview. This lets
+      // pages like Event Monitor's "Close Event" button return into this
+      // dashboard shell (sidebar, topbar, etc.) rather than opening
+      // event-admin.html directly and unframed.
+      const requestedModule = new URLSearchParams(window.location.search).get('module');
+      if (requestedModule) {
+        const match = this.allModules.find(m => m.id === requestedModule);
+        if (match) this.currentSection = 'module_' + match.id;
+      }
+      // Only the section we're actually landing on gets its iframe created —
+      // never both 'overview' and a deep-linked module.
+      this.markVisited(this.currentSection);
+
+      this.loadingMessage = 'Loading settings…';
+      await Promise.all([this.loadVenueSettingsFromDB(), this.loadThemeFromDB(), this.loadSystemPrefsFromDB(), this.loadModulesSettingsList()]);
+      this.loadingMessage = 'Booting dashboard…';
+      setTimeout(() => { this.showLoadingScreen = false; this.applyAutoRefresh(); }, 600);
+    }
+  });
+</script>
+</body>
+</html>
